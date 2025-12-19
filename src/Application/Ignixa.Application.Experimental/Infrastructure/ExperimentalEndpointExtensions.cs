@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Experimental.Configuration;
+using Ignixa.Application.Experimental.Endpoints;
 
 namespace Ignixa.Application.Experimental.Infrastructure;
 
@@ -36,42 +37,21 @@ public static class ExperimentalEndpointExtensions
         // Feature: MCP - Model Context Protocol
         if (options.Features.Mcp.Enabled)
         {
-            app.MapMcpExperimentalEndpoints();
+            app.MapMcpEndpoints();
         }
 
         // Feature: Transform - $transform operation
         if (options.Features.Transform.Enabled)
         {
-            app.MapTransformExperimentalEndpoints();
+            app.MapTransformEndpoints();
         }
 
         // Feature: Terminology - $expand, $translate, $subsumes
         if (options.Features.Terminology.Enabled)
         {
-            app.MapTerminologyExperimentalEndpoints();
+            app.MapTerminologyEndpoints();
         }
 
         return app;
-    }
-
-    private static void MapMcpExperimentalEndpoints(this WebApplication app)
-    {
-        // MCP endpoints are already registered in the main application via McpEndpoints.cs
-        // This is a placeholder for future MCP-specific endpoint registrations
-        // when MCP is fully migrated to the experimental library
-    }
-
-    private static void MapTransformExperimentalEndpoints(this WebApplication app)
-    {
-        // Transform endpoints are already registered in the main application via OperationEndpoints.cs
-        // This is a placeholder for future Transform-specific endpoint registrations
-        // when Transform is fully migrated to the experimental library
-    }
-
-    private static void MapTerminologyExperimentalEndpoints(this WebApplication app)
-    {
-        // Terminology endpoints are already registered in the main application via TerminologyEndpoints.cs
-        // This is a placeholder for future Terminology-specific endpoint registrations
-        // when Terminology is fully migrated to the experimental library
     }
 }

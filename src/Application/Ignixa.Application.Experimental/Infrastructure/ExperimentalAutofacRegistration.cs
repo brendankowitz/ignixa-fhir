@@ -5,6 +5,13 @@
 
 using Autofac;
 using Ignixa.Application.Experimental.Configuration;
+using Ignixa.Application.Experimental.Features.Mcp.Authorization;
+using Ignixa.Application.Experimental.Features.Terminology.Expand;
+using Ignixa.Application.Experimental.Features.Terminology.Subsumes;
+using Ignixa.Application.Experimental.Features.Terminology.Translate;
+using Ignixa.Application.Experimental.Features.Transform;
+using Ignixa.Serialization.SourceNodes;
+using Medino;
 
 namespace Ignixa.Application.Experimental.Infrastructure;
 
@@ -57,22 +64,53 @@ public static class ExperimentalAutofacRegistration
 
     private static void RegisterMcpHandlers(this ContainerBuilder builder)
     {
-        // MCP handlers are already registered in the main application
-        // This is a placeholder for future MCP-specific handler registrations
-        // when MCP is fully migrated to the experimental library
+        // Register MCP Authorization service
+        builder.RegisterType<McpAuthorizationService>()
+            .As<IMcpAuthorizationService>()
+            .InstancePerLifetimeScope();
+
+        // Note: MCP tools are registered automatically by ModelContextProtocol.AspNetCore
+        // via assembly scanning when endpoints are mapped
     }
 
     private static void RegisterTransformHandlers(this ContainerBuilder builder)
     {
-        // Transform handlers are already registered in the main application
-        // This is a placeholder for future Transform-specific handler registrations
-        // when Transform is fully migrated to the experimental library
+        // Register Transform handler
+        builder.RegisterType<TransformResourceHandler>()
+            .As<IRequestHandler<TransformResourceCommand, ResourceJsonNode>>()
+            .InstancePerLifetimeScope();
+
+        // Register supporting services
+        builder.RegisterType<MapRegistryCache>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<FhirPathExpressionCache>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<ConceptMapResolverService>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<FhirPathEvaluatorWithTimeout>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
     }
 
     private static void RegisterTerminologyHandlers(this ContainerBuilder builder)
     {
-        // Terminology handlers are already registered in the main application
-        // This is a placeholder for future Terminology-specific handler registrations
-        // when Terminology is fully migrated to the experimental library
+        // Register Terminology handlers
+        builder.RegisterType<ExpandValueSetHandler>()
+            .As<IRequestHandler<ExpandValueSetQuery, ExpandValueSetResult>>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<TranslateCodeHandler>()
+            .As<IRequestHandler<TranslateCodeCommand, TranslateCodeResult>>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<SubsumesHandler>()
+            .As<IRequestHandler<SubsumesQuery, SubsumesQueryResult>>()
+            .InstancePerLifetimeScope();
     }
 }
