@@ -6,7 +6,7 @@
 using System.Collections.Frozen;
 using System.Text.Json.Nodes;
 using Ignixa.Application.Features.Experimental.Ips.Api;
-using Ignixa.Serialization;
+using Ignixa.Application.Features.Experimental.Ips.Common;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Strategy;
@@ -55,21 +55,7 @@ public class DefaultIpsGenerationStrategy : IIpsGenerationStrategy
     /// <inheritdoc />
     public ResourceJsonNode CreateAuthor(IpsContext context)
     {
-        var deviceJson = new JsonObject
-        {
-            ["resourceType"] = "Device",
-            ["id"] = Guid.NewGuid().ToString(),
-            ["deviceName"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["name"] = "Ignixa FHIR Server",
-                    ["type"] = "manufacturer-name"
-                }
-            }
-        };
-
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(deviceJson.ToJsonString()!);
+        return IpsDefaults.CreateDefaultAuthor();
     }
 
     /// <inheritdoc />

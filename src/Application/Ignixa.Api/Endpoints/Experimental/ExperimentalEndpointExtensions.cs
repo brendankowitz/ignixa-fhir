@@ -56,6 +56,12 @@ public static class ExperimentalEndpointExtensions
             app.MapTerminologyEndpoints(configureTenantGroup);
         }
 
+        // Feature: Summary - $summary (IPS) operation
+        if (options.Features.Summary.Enabled)
+        {
+            app.MapSummaryEndpoints(configureTenantGroup);
+        }
+
         return app;
     }
 }

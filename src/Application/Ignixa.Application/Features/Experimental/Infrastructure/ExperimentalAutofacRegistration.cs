@@ -7,6 +7,7 @@ using Autofac;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.Ips.Api;
+using Ignixa.Application.Features.Experimental.Ips.Events;
 using Ignixa.Application.Features.Experimental.Ips.Generator;
 using Ignixa.Application.Features.Experimental.Ips.Strategy;
 using Ignixa.Application.Features.Experimental.Mcp.Authorization;
@@ -168,6 +169,16 @@ public static class ExperimentalAutofacRegistration
             .As<IIpsGenerationStrategy>()
             .SingleInstance();
 
+        // IPS Generation Strategy Registry (singleton)
+        builder.RegisterType<Ignixa.Application.Features.Experimental.Ips.Registry.IpsGenerationStrategyRegistry>()
+            .As<IIpsGenerationStrategyRegistry>()
+            .SingleInstance();
+
+        // IPS Generation Strategy Factory (singleton - stateless parser)
+        builder.RegisterType<StructureDefinitionStrategyFactory>()
+            .As<IStructureDefinitionStrategyFactory>()
+            .SingleInstance();
+
         // IPS Generator Service (scoped per request - uses request context)
         builder.RegisterType<IpsGeneratorService>()
             .As<IIpsGeneratorService>()
@@ -176,6 +187,11 @@ public static class ExperimentalAutofacRegistration
         // IPS Generator Handler
         builder.RegisterType<IpsGeneratorHandler>()
             .As<IRequestHandler<IpsGeneratorQuery, IpsGeneratorResult>>()
+            .InstancePerDependency();
+
+        // Package loaded event handler to register IPS strategies
+        builder.RegisterType<PackageInstalledStrategyRegistrationHandler>()
+            .As<INotificationHandler<PackageLoadedEvent>>()
             .InstancePerDependency();
     }
 }

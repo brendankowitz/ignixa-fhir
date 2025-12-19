@@ -19,15 +19,23 @@ namespace Ignixa.Application.Experimental.Tests.Features.Ips;
 /// </summary>
 public class IpsGeneratorHandlerTests
 {
+    private readonly IIpsGenerationStrategyRegistry _strategyRegistry;
     private readonly IIpsGeneratorService _generatorService;
     private readonly ILogger<IpsGeneratorHandler> _logger;
     private readonly IpsGeneratorHandler _handler;
 
     public IpsGeneratorHandlerTests()
     {
+        _strategyRegistry = Substitute.For<IIpsGenerationStrategyRegistry>();
         _generatorService = Substitute.For<IIpsGeneratorService>();
         _logger = NullLogger<IpsGeneratorHandler>.Instance;
-        _handler = new IpsGeneratorHandler(_generatorService, _logger);
+
+        // Setup default strategy
+        var defaultStrategy = Substitute.For<IIpsGenerationStrategy>();
+        defaultStrategy.BundleProfile.Returns("http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips");
+        _strategyRegistry.GetDefaultStrategy().Returns(defaultStrategy);
+
+        _handler = new IpsGeneratorHandler(_strategyRegistry, _generatorService, _logger);
     }
 
     [Fact]
@@ -56,7 +64,10 @@ public class IpsGeneratorHandlerTests
             Profile: null);
 
         var mockBundle = CreateMockBundle();
-        _generatorService.GenerateIpsAsync("patient-123", null, Arg.Any<CancellationToken>())
+        _generatorService.GenerateIpsAsync(
+            "patient-123",
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
+            Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(mockBundle));
 
         // Act
@@ -65,7 +76,7 @@ public class IpsGeneratorHandlerTests
         // Assert
         await _generatorService.Received(1).GenerateIpsAsync(
             "patient-123",
-            null,
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
             Arg.Any<CancellationToken>());
 
         result.ShouldNotBeNull();
@@ -76,6 +87,10 @@ public class IpsGeneratorHandlerTests
     public async Task GivenPatientIdWithProfile_WhenHandling_ThenPassesProfileToService()
     {
         // Arrange
+        var customStrategy = Substitute.For<IIpsGenerationStrategy>();
+        customStrategy.BundleProfile.Returns("http://example.org/profile");
+        _strategyRegistry.GetStrategy("http://example.org/profile").Returns(customStrategy);
+
         var query = new IpsGeneratorQuery(
             PatientId: "patient-123",
             PatientIdentifier: null,
@@ -93,6 +108,8 @@ public class IpsGeneratorHandlerTests
             "patient-123",
             "http://example.org/profile",
             Arg.Any<CancellationToken>());
+
+        _strategyRegistry.Received(1).GetStrategy("http://example.org/profile");
     }
 
     [Fact]
@@ -108,7 +125,7 @@ public class IpsGeneratorHandlerTests
         _generatorService.GenerateIpsByIdentifierAsync(
             "http://system",
             "12345",
-            null,
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
             Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(mockBundle));
 
@@ -119,7 +136,7 @@ public class IpsGeneratorHandlerTests
         await _generatorService.Received(1).GenerateIpsByIdentifierAsync(
             "http://system",
             "12345",
-            null,
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
             Arg.Any<CancellationToken>());
 
         result.ShouldNotBeNull();
@@ -139,7 +156,7 @@ public class IpsGeneratorHandlerTests
         _generatorService.GenerateIpsByIdentifierAsync(
             null,
             "12345",
-            null,
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
             Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(mockBundle));
 
@@ -150,7 +167,7 @@ public class IpsGeneratorHandlerTests
         await _generatorService.Received(1).GenerateIpsByIdentifierAsync(
             null,
             "12345",
-            null,
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
             Arg.Any<CancellationToken>());
     }
 
@@ -164,7 +181,10 @@ public class IpsGeneratorHandlerTests
             Profile: null);
 
         var mockBundle = CreateMockBundleWithEntries(5);
-        _generatorService.GenerateIpsAsync("patient-123", null, Arg.Any<CancellationToken>())
+        _generatorService.GenerateIpsAsync(
+            "patient-123",
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
+            Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(mockBundle));
 
         // Act
@@ -189,12 +209,67 @@ public class IpsGeneratorHandlerTests
         cts.Cancel();
 
         var mockBundle = CreateMockBundle();
-        _generatorService.GenerateIpsAsync("patient-123", null, cts.Token)
+        _generatorService.GenerateIpsAsync(
+            "patient-123",
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
+            cts.Token)
             .Returns(Task.FromCanceled<BundleJsonNode>(cts.Token));
 
         // Act & Assert
         await Should.ThrowAsync<TaskCanceledException>(
             () => _handler.HandleAsync(query, cts.Token));
+    }
+
+    [Fact]
+    public async Task GivenUnknownProfile_WhenHandling_ThenFallsBackToDefaultStrategy()
+    {
+        // Arrange
+        _strategyRegistry.GetStrategy("http://unknown.org/profile").Returns((IIpsGenerationStrategy)null);
+
+        var query = new IpsGeneratorQuery(
+            PatientId: "patient-123",
+            PatientIdentifier: null,
+            Profile: "http://unknown.org/profile");
+
+        var mockBundle = CreateMockBundle();
+        _generatorService.GenerateIpsAsync(
+            "patient-123",
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
+            Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(mockBundle));
+
+        // Act
+        var result = await _handler.HandleAsync(query, CancellationToken.None);
+
+        // Assert
+        _strategyRegistry.Received(1).GetStrategy("http://unknown.org/profile");
+        _strategyRegistry.Received(1).GetDefaultStrategy();
+        result.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenNoProfile_WhenHandling_ThenUsesDefaultStrategy()
+    {
+        // Arrange
+        var query = new IpsGeneratorQuery(
+            PatientId: "patient-123",
+            PatientIdentifier: null,
+            Profile: null);
+
+        var mockBundle = CreateMockBundle();
+        _generatorService.GenerateIpsAsync(
+            "patient-123",
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
+            Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(mockBundle));
+
+        // Act
+        var result = await _handler.HandleAsync(query, CancellationToken.None);
+
+        // Assert
+        _strategyRegistry.DidNotReceive().GetStrategy(Arg.Any<string>());
+        _strategyRegistry.Received(1).GetDefaultStrategy();
+        result.ShouldNotBeNull();
     }
 
     private static BundleJsonNode CreateMockBundle()

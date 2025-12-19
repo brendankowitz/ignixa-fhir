@@ -15,6 +15,7 @@ namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 /// Handler for IPS generation queries.
 /// </summary>
 public class IpsGeneratorHandler(
+    IIpsGenerationStrategyRegistry strategyRegistry,
     IIpsGeneratorService generatorService,
     ILogger<IpsGeneratorHandler> logger) : IRequestHandler<IpsGeneratorQuery, IpsGeneratorResult>
 {
@@ -30,20 +31,22 @@ public class IpsGeneratorHandler(
                 "Either PatientId or PatientIdentifier must be provided");
         }
 
+        var strategy = await SelectStrategyAsync(request.Profile, cancellationToken);
+
         logger.LogInformation(
             "Generating IPS for patient {PatientId} with profile {Profile}",
             request.PatientId ?? request.PatientIdentifier,
-            request.Profile ?? "default");
+            strategy.BundleProfile);
 
         var ipsBundle = request.PatientId is not null
             ? await generatorService.GenerateIpsAsync(
                 request.PatientId,
-                request.Profile,
+                strategy.BundleProfile,
                 cancellationToken)
             : await generatorService.GenerateIpsByIdentifierAsync(
                 ExtractIdentifierSystem(request.PatientIdentifier!),
                 ExtractIdentifierValue(request.PatientIdentifier!),
-                request.Profile,
+                strategy.BundleProfile,
                 cancellationToken);
 
         sw.Stop();
@@ -60,6 +63,51 @@ public class IpsGeneratorHandler(
             metrics.TotalDuration.TotalMilliseconds);
 
         return new IpsGeneratorResult(ipsBundle, metrics);
+    }
+
+    private async Task<IIpsGenerationStrategy> SelectStrategyAsync(
+        string? requestedProfile,
+        CancellationToken cancellationToken)
+    {
+        // Priority 1: Explicit profile parameter
+        if (requestedProfile is not null)
+        {
+            var strategy = strategyRegistry.GetStrategy(requestedProfile);
+            if (strategy is not null)
+            {
+                logger.LogDebug(
+                    "Using explicitly requested profile: {Profile}",
+                    requestedProfile);
+                return strategy;
+            }
+
+            logger.LogWarning(
+                "Requested profile {Profile} not found in registry, falling back to default",
+                requestedProfile);
+        }
+
+        // Priority 2: First profile from CapabilityStatement
+        // TODO: Implement CapabilityStatement lookup when ICapabilityStatementProvider is available
+        // var firstProfile = await GetFirstSummaryProfileFromCapabilityStatementAsync(cancellationToken);
+        // if (firstProfile is not null)
+        // {
+        //     var strategy = strategyRegistry.GetStrategy(firstProfile);
+        //     if (strategy is not null)
+        //     {
+        //         logger.LogDebug(
+        //             "Using profile from CapabilityStatement: {Profile}",
+        //             firstProfile);
+        //         return strategy;
+        //     }
+        // }
+
+        // Priority 3: Default IPS strategy
+        var defaultStrategy = strategyRegistry.GetDefaultStrategy();
+        logger.LogDebug(
+            "Using default IPS strategy: {Profile}",
+            defaultStrategy.BundleProfile);
+
+        return defaultStrategy;
     }
 
     private static string? ExtractIdentifierSystem(string identifier)

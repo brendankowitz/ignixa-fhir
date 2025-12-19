@@ -29,6 +29,11 @@ public sealed class StructureDefinitionJsonNode
     }
 
     /// <summary>
+    /// Gets the underlying ResourceJsonNode for advanced operations like FHIRPath evaluation.
+    /// </summary>
+    public ResourceJsonNode ResourceNode => _resourceNode;
+
+    /// <summary>
     /// Parses StructureDefinition JSON string using Ignixa.Serialization.
     /// Returns null if parsing fails or resourceType is not "StructureDefinition".
     /// </summary>
