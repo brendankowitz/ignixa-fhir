@@ -41,6 +41,7 @@ COPY src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj src/Core/Ignixa.S
 COPY src/Core/Ignixa.Specification/Ignixa.Specification.csproj src/Core/Ignixa.Specification/
 COPY src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj src/Core/Ignixa.SqlOnFhir/
 COPY src/Core/Ignixa.Validation/Ignixa.Validation.csproj src/Core/Ignixa.Validation/
+COPY src/Core/Ignixa.NarrativeGenerator/Ignixa.NarrativeGenerator.csproj src/Core/Ignixa.NarrativeGenerator/
 COPY src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj src/Core/Extensions/Ignixa.Extensions.FirelySdk6/
 # DataLayer
 COPY src/DataLayer/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj src/DataLayer/Ignixa.DataLayer.BlobStorage/

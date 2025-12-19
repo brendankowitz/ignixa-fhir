@@ -103,15 +103,15 @@ public class TerminologyExperimentalOptions
 }
 
 /// <summary>
-/// Configuration options for $summary operation (future feature).
+/// Configuration options for $summary (IPS) operation.
 /// </summary>
 public class SummaryExperimentalOptions
 {
     /// <summary>
-    /// Whether $summary operation is enabled.
-    /// Default: false (not yet implemented).
+    /// Whether $summary (IPS) operation is enabled.
+    /// Default: true (enabled in experimental mode).
     /// </summary>
-    public bool Enabled { get; set; }
+    public bool Enabled { get; set; } = true;
 
     /// <summary>
     /// Maximum number of resources to include in summary.

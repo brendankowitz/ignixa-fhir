@@ -8,7 +8,7 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
-using Ignixa.Application.Operations.Features.Ips.Generator;
+using Ignixa.Application.Features.Experimental.Ips.Generator;
 using Ignixa.Application.Operations.Features.MemberMatch;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;

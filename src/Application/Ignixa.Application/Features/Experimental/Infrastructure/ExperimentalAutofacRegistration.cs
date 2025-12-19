@@ -6,6 +6,9 @@
 using Autofac;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.Configuration;
+using Ignixa.Application.Features.Experimental.Ips.Api;
+using Ignixa.Application.Features.Experimental.Ips.Generator;
+using Ignixa.Application.Features.Experimental.Ips.Strategy;
 using Ignixa.Application.Features.Experimental.Mcp.Authorization;
 using Ignixa.Application.Features.Experimental.Terminology.Expand;
 using Ignixa.Application.Features.Experimental.Terminology.Subsumes;
@@ -67,6 +70,12 @@ public static class ExperimentalAutofacRegistration
         if (options.Features.Terminology.Enabled)
         {
             builder.RegisterTerminologyHandlers();
+        }
+
+        // Feature: Summary - Patient $summary (IPS)
+        if (options.Features.Summary.Enabled)
+        {
+            builder.RegisterIpsHandlers();
         }
 
         return builder;
@@ -149,6 +158,24 @@ public static class ExperimentalAutofacRegistration
 
         builder.RegisterType<SubsumesHandler>()
             .As<IRequestHandler<SubsumesQuery, SubsumesQueryResult>>()
+            .InstancePerDependency();
+    }
+
+    private static void RegisterIpsHandlers(this ContainerBuilder builder)
+    {
+        // IPS Generation Strategy (singleton - stateless configuration)
+        builder.RegisterType<DefaultIpsGenerationStrategy>()
+            .As<IIpsGenerationStrategy>()
+            .SingleInstance();
+
+        // IPS Generator Service (scoped per request - uses request context)
+        builder.RegisterType<IpsGeneratorService>()
+            .As<IIpsGeneratorService>()
+            .InstancePerLifetimeScope();
+
+        // IPS Generator Handler
+        builder.RegisterType<IpsGeneratorHandler>()
+            .As<IRequestHandler<IpsGeneratorQuery, IpsGeneratorResult>>()
             .InstancePerDependency();
     }
 }

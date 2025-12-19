@@ -30,16 +30,17 @@ public class ExperimentalOptionsTests
         options.Features.Mcp.Enabled.ShouldBeTrue();
         options.Features.Transform.Enabled.ShouldBeTrue();
         options.Features.Terminology.Enabled.ShouldBeTrue();
+        options.Features.Summary.Enabled.ShouldBeTrue();
     }
 
     [Fact]
-    public void GivenDefaultOptions_WhenCreated_ThenSummaryDisabledByDefault()
+    public void GivenDefaultOptions_WhenCreated_ThenSummaryEnabledByDefault()
     {
         // Arrange & Act
         var options = new ExperimentalOptions();
 
-        // Assert - Summary is a future feature, disabled by default
-        options.Features.Summary.Enabled.ShouldBeFalse();
+        // Assert - Summary (IPS) is now implemented and enabled by default
+        options.Features.Summary.Enabled.ShouldBeTrue();
     }
 
     [Fact]

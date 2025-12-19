@@ -28,9 +28,6 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Application.Infrastructure.Caching;
-using Ignixa.Application.Operations.Features.Ips.Api;
-using Ignixa.Application.Operations.Features.Ips.Generator;
-using Ignixa.Application.Operations.Features.Ips.Strategy;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Abstractions;
@@ -204,18 +201,7 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<PatientEverythingQuery, SearchResourcesResult>>()
             .InstancePerDependency();
 
-        // Patient $summary (IPS)
-        builder.RegisterType<DefaultIpsGenerationStrategy>()
-            .As<IIpsGenerationStrategy>()
-            .SingleInstance();
-
-        builder.RegisterType<IpsGeneratorService>()
-            .As<IIpsGeneratorService>()
-            .InstancePerLifetimeScope();
-
-        builder.RegisterType<IpsGeneratorHandler>()
-            .As<IRequestHandler<IpsGeneratorQuery, IpsGeneratorResult>>()
-            .InstancePerDependency();
+        // NOTE: IPS ($summary) services are now registered by ExperimentalAutofacRegistration.RegisterIpsHandlers()
 
         // $member-match
         builder.RegisterType<Ignixa.Application.Operations.Features.MemberMatch.MemberMatchHandler>()

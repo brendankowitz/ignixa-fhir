@@ -11,6 +11,7 @@
     <ProjectReference Include="..\..\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.NarrativeGenerator\Ignixa.NarrativeGenerator.csproj" />
   </ItemGroup>
 
   <ItemGroup>
