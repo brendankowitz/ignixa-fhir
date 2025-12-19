@@ -1,10 +1,9 @@
 # Investigation: Narrative Generator Library
 
 **Feature**: fhir-operations
-**Status**: Proposed
+**Status**: Merged
 **Created**: 2025-01-16
-
-**Status**: Investigation
+**Implemented**: PR #125 (Ignixa.NarrativeGenerator)
 **Date**: 2025-12-16
 **Package**: Core SDK (public NuGet package)
 **Dependencies**:

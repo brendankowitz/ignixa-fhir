@@ -19,7 +19,7 @@ This feature implements FHIR operations that extend the base CRUD functionality 
 | [Patient $everything](investigations/patient-everything.md) | Investigation | 2025-11-18 | Optimized SQL-based implementation for Patient $everything operation |
 | [IPS Generator](investigations/ips-generator.md) | Proposed | 2025-12-16 | International Patient Summary (IPS) generation implementation |
 | [Narrative Architecture](investigations/narrative-architecture.md) | Proposed | 2025-01-16 | Narrative generator architecture analysis for XHTML narratives |
-| [Narrative Library](investigations/narrative-library.md) | Proposed | 2025-01-16 | Narrative generator library implementation with Scriban templates |
+| [Narrative Library](investigations/narrative-library.md) | Merged | 2025-01-16 | Narrative generator library implementation with Scriban templates |
 | [Mapping Language](investigations/mapping-language.md) | Investigation | 2025-11-18 | FHIR Mapping Language analysis and implementation approach |
 
 ## Key Components
@@ -29,6 +29,11 @@ This feature implements FHIR operations that extend the base CRUD functionality 
 - DurableTask async operation support
 - Terminology services integration
 - Document generation and narrative rendering
+
+## Related ADRs
+
+- [ADR 2510: FHIR Patch Operations](../../adr/adr-2510-patch-operations.md)
+- [ADR 2512: $member-match Operation](../../adr/adr-2512-member-match-operation.md)
 
 ## Related Features
 

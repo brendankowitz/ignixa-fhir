@@ -15,25 +15,48 @@ All architectural decisions should support the principle that **a developer can 
 
 This principle ensures rapid onboarding, efficient debugging, and a smooth development workflow. Production-ready features should be additive, not prerequisites.
 
-We will keep the ADR structure simple, with just a few sections in this example template:
+## ADR Format
 
-```
+Keep ADRs **concise** (40-100 lines). Focus on the decision and rationale, not implementation details.
 
-# Title
-   Each ADR should have a short, descriptive phrase, such as “ADR 001: Database Schema Changes for Version 1.5.0” or “ADR 009: Introducing Polly for Retry Logic”.
+### Template
 
-## Context 
-   Summarize the relevant factors (technological, organizational, or other) that influence this decision. Present these factors neutrally, highlighting any tensions or constraints that shaped the solution.
-
-## Decision
-   Clearly state the chosen approach or solution in active voice (for example, “We will…”). Describe the rationale and what will be implemented as a result.
+```markdown
+# ADR {YYMM}: {Short Title}
 
 ## Status
-   Indicate whether this decision is proposed, accepted, deprecated, or superseded (with a reference to the new ADR if applicable).
+Proposed | Accepted | Deprecated | Superseded
+
+## Context
+What problem are we solving? Why is this decision needed? (2-3 sentences)
+
+## Decision
+What did we decide? Use bullet points for clarity:
+- Key choice 1
+- Key choice 2
+- Architecture diagram (mermaid) if it aids understanding
 
 ## Consequences
-   Outline the outcomes of applying this decision. Include all effects—beneficial, adverse, or neutral—since these will affect the project over time.
 
+**Positive:**
+- Benefit 1
+- Benefit 2
+
+**Negative:**
+- Trade-off 1
+- Trade-off 2
 ```
+
+### Good Examples
+
+- **Internal**: [adr-2512-member-match-operation](adr-2512-member-match-operation.md) - Clean problem/solution/outcomes structure
+- **External**: [microsoft/fhir-server ADR-2503](https://github.com/microsoft/fhir-server/blob/main/docs/arch/adr-2503-Bundle-include-operation.md) - Simple and direct
+
+### What NOT to Include
+
+- Full code implementations (link to source instead)
+- Week-by-week implementation plans
+- Detailed testing strategies
+- Phase numbers or timeline estimates
 
 This is inspired by [documenting architecture decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions).

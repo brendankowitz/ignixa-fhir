@@ -27,6 +27,10 @@ The goal is to support both patterns using unified abstractions, allowing seamle
 | [partitioning-modes](investigations/partitioning-modes.md) | Viable | Multi-tenancy data partitioning with isolation and distributed modes |
 | [tenant-providers](investigations/tenant-providers.md) | Viable | Tenant provider configuration and management |
 
+## Related ADRs
+
+- [ADR 2510: Multi-Tenancy and Data Partitioning](../../adr/adr-2510-multi-tenancy.md)
+
 ## Decision
 
 *No ADR yet - investigations in progress*

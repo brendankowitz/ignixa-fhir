@@ -6,7 +6,7 @@ Comprehensive authorization system with RBAC and SMART on FHIR scopes.
 
 | Investigation | Status | Created | Description |
 |--------------|--------|---------|-------------|
-| [rbac-capabilities](investigations/rbac-capabilities.md) | Viable | 2025-01-08 | RBAC with CapabilityStatement enforcement architecture |
+| [rbac-capabilities](investigations/rbac-capabilities.md) | Merged | 2025-01-08 | RBAC with CapabilityStatement enforcement architecture |
 
 ## Overview
 

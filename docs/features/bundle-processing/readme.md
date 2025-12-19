@@ -27,6 +27,10 @@ FHIR Bundle processing requires efficient handling of transaction and batch bund
 | [response-streaming](investigations/response-streaming.md) | Viable | Streaming response generation for large bundles |
 | [non-crud-operations](investigations/non-crud-operations.md) | Viable | Non-CRUD operations within bundle processing |
 
+## Related ADRs
+
+- [ADR 2509: Bundle Processing with Channels](../../adr/adr-2509-bundle-processing.md)
+
 ## Decision
 
-*No ADR yet - investigations in progress*
+Two-phase transaction architecture with streaming parser and deferred writes implemented. See ADRs above for details.

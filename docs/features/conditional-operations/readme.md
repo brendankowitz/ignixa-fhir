@@ -20,6 +20,10 @@ FHIR conditional operations allow clients to create, update, patch, and delete r
 |--------------|--------|---------|
 | [conditional-crud](investigations/conditional-crud.md) | Merged | All 6 phases implemented: conditional create, update, delete, patch, read, and bundle integration |
 
+## Related ADRs
+
+- [ADR 2510: FHIR Patch Operations](../../adr/adr-2510-patch-operations.md)
+
 ## Decision
 
 All conditional operations implemented with optimistic concurrency control and verbose OperationOutcomes. See [conditional-crud](investigations/conditional-crud.md).

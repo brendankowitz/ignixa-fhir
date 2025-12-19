@@ -1,12 +1,15 @@
-# Phase 1.1a Implementation Summary: Streaming & Deferred Writes
+# ADR 2510: Streaming Bundle Parser & Deferred Writes
 
-**Date**: October 9, 2025
-**Status**: Accepted
-**ADRs Updated**: ADR-2502, ADR-2500
+## Status
 
----
+Accepted
 
-## Executive Summary
+## Metadata
+
+- **Date**: 2025-10-09
+- **Related**: [ADR-2502: Phase 1.1 Bundle Processing](adr-2502-phase1.1-bundle-processing.md), [ADR-2500: Master Implementation Roadmap](adr-2500-master-implementation-roadmap.md)
+
+## Context
 
 Following completion of two major investigations for Phase 1.1a (Bundle Processing Enhancement), we have made the decision to implement streaming bundle parsing and two-phase deferred writes **early in the roadmap** (Weeks 3-6) rather than deferring these optimizations to later phases.
 

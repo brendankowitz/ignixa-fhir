@@ -21,6 +21,11 @@ This feature area contains investigations related to the fundamental architectur
 | [interface-enhancements](investigations/interface-enhancements.md) | Viable | Interface enhancements for proper implementation |
 | [legacy-type-migration](investigations/legacy-type-migration.md) | Viable | Legacy type migration plan |
 
+## Related ADRs
+
+- [ADR 2509: Vertical Slice Architecture](../../adr/adr-2509-vertical-slice-architecture.md)
+- [ADR 2510: CapabilityStatement Without Firely SDK](../../adr/adr-2510-capability-sourcenode-model.md)
+
 ## Related Features
 
 - [Storage](../storage/readme.md)

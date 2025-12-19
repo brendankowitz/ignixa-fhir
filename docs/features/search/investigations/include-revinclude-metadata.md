@@ -1,8 +1,16 @@
-# Include/RevInclude and Chained Parameter Metadata in CapabilityStatement
+# ADR 2510: Include/RevInclude Capability Metadata
 
-## Overview
+## Status
 
-The CapabilityStatement now includes metadata about supported `_include`, `_revinclude`, and chained parameter capabilities through the `IncludeRevIncludeCapabilitySegment`.
+Accepted
+
+## Context
+
+The CapabilityStatement needs to advertise supported `_include`, `_revinclude`, and chained parameter capabilities to allow clients to discover available search features. This metadata is populated through the `IncludeRevIncludeCapabilitySegment`.
+
+## Decision
+
+We will implement an `IncludeRevIncludeCapabilitySegment` that automatically populates `searchInclude` and `searchRevInclude` arrays in the CapabilityStatement based on reference-type search parameters.
 
 ## Implementation
 

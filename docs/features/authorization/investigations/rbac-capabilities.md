@@ -1,8 +1,9 @@
 # Investigation: RBAC Authorization with Capability Statement Enforcement
 
 **Feature**: authorization
-**Status**: Viable
+**Status**: Merged
 **Created**: 2025-01-08
+**Implemented**: PR #110 (commit 5f81bd8)
 
 ## Problem Statement
 

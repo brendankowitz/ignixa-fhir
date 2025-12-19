@@ -27,6 +27,10 @@ FHIR search is a complex domain requiring support for compartment searches, wild
 | [chaining-refactor](investigations/chaining-refactor.md) | In Progress | Refactoring ChainingSearchTests to use ScenarioBuilder pattern |
 | [composite-provider](investigations/composite-provider.md) | Viable | Search parameter composite provider pattern for IG-defined parameters |
 
+## Related ADRs
+
+- [ADR 2509: InMemory Search Architecture](../../adr/adr-2509-inmemory-search.md)
+
 ## Decision
 
 Compartment wildcard search implemented with multi-resource-type expansion. See [compartment-wildcard-search](investigations/compartment-wildcard-search.md).
