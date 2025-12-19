@@ -59,8 +59,15 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{81B3F1B8-4
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Rest", "Rest", "{5DB93B3E-65B8-4C0A-A08E-633F2E159FE9}"
 	ProjectSection(SolutionItems) = preProject
-		docs\rest\SearchExamples.http = docs\rest\SearchExamples.http
-		docs\rest\AuthorizationExamples.http = docs\rest\AuthorizationExamples.http
+		docs\rest\operation-member-match.http = docs\rest\operation-member-match.http
+		docs\rest\search-examples.http = docs\rest\search-examples.http
+		docs\rest\authorization-examples.http = docs\rest\authorization-examples.http
+		docs\rest\operation-export.http = docs\rest\operation-export.http
+		docs\rest\operation-import.http = docs\rest\operation-import.http
+		docs\rest\sql-on-fhir.http = docs\rest\sql-on-fhir.http
+		docs\rest\operation-patient-everything.http = docs\rest\operation-patient-everything.http
+		docs\rest\operation-terminology.http = docs\rest\operation-terminology.http
+		docs\rest\operation-transform.http = docs\rest\operation-transform.http
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bench", "bench", "{760AB15A-8938-8D9B-BEDE-5CE1484B84C3}"
@@ -121,17 +128,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Extensions", "Extensions", "{5413DD8F-4CB6-48E7-8289-E76063861D4B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.Tests", "test\Ignixa.Extensions.Tests\Ignixa.Extensions.Tests.csproj", "{E33026F5-67A4-43BF-9611-31D6C8B721BD}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Operations", "Operations", "{CE1C21AE-08A3-4734-BD04-F4E75E916ACF}"
-	ProjectSection(SolutionItems) = preProject
-		docs\rest\export.http = docs\rest\export.http
-		docs\rest\import.http = docs\rest\import.http
-		docs\rest\PatientEverything.http = docs\rest\PatientEverything.http
-		docs\rest\SqlOnFhir.http = docs\rest\SqlOnFhir.http
-		docs\rest\Terminology.http = docs\rest\Terminology.http
-		docs\rest\TransformOperation.http = docs\rest\TransformOperation.http
-		docs\rest\Operations-MemberMatch.http = docs\rest\Operations-MemberMatch.http
-	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk5", "src\Core\Extensions\Ignixa.Extensions.FirelySdk5\Ignixa.Extensions.FirelySdk5.csproj", "{FE11D059-0FCB-497B-8C92-3A27B9083174}"
 EndProject
@@ -745,7 +741,6 @@ Global
 		{C282DC1F-6F99-4A9F-8639-C0885D2C820A} = {5413DD8F-4CB6-48E7-8289-E76063861D4B}
 		{5413DD8F-4CB6-48E7-8289-E76063861D4B} = {0955C698-034D-424C-A981-095EB50A5673}
 		{E33026F5-67A4-43BF-9611-31D6C8B721BD} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
-		{CE1C21AE-08A3-4734-BD04-F4E75E916ACF} = {5DB93B3E-65B8-4C0A-A08E-633F2E159FE9}
 		{FE11D059-0FCB-497B-8C92-3A27B9083174} = {5413DD8F-4CB6-48E7-8289-E76063861D4B}
 		{9F3A8B1D-E5C7-4D9F-A8E1-2B4C5D6E7F8A} = {0955C698-034D-424C-A981-095EB50A5673}
 		{8AE810CB-2A3B-465F-A157-365FADA69B01} = {0C88DD14-F956-CE84-757C-A364CCF449FC}

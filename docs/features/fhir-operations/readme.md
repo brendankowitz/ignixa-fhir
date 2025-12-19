@@ -32,8 +32,9 @@ This feature implements FHIR operations that extend the base CRUD functionality 
 
 ## Related ADRs
 
-- [ADR 2510: FHIR Patch Operations](../../adr/adr-2510-patch-operations.md)
-- [ADR 2512: $member-match Operation](../../adr/adr-2512-member-match-operation.md)
+- [ADR-2510: FHIR Patch Operations](../../adr/adr-2510-patch-operations.md)
+- [ADR-2512: $member-match Operation](../../adr/adr-2512-member-match-operation.md)
+- [ADR-2512: Narrative Generator Library](../../adr/adr-2512-narrative-generator.md)
 
 ## Related Features
 

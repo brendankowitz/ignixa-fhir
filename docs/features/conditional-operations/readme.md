@@ -22,7 +22,8 @@ FHIR conditional operations allow clients to create, update, patch, and delete r
 
 ## Related ADRs
 
-- [ADR 2510: FHIR Patch Operations](../../adr/adr-2510-patch-operations.md)
+- [ADR-2510: FHIR Patch Operations](../../adr/adr-2510-patch-operations.md)
+- [ADR-2510: Conditional CRUD Operations](../../adr/adr-2510-conditional-operations.md)
 
 ## Decision
 

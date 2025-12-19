@@ -24,4 +24,4 @@ High-performance FHIR server requires multi-level caching to avoid redundant wor
 
 ## Decision
 
-*No ADR yet - both investigations completed, implementation in production*
+See [ADR-2510: Four-Scope Caching Architecture](../../adr/adr-2510-caching-architecture.md)

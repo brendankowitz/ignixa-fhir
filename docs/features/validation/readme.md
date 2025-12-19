@@ -31,4 +31,6 @@ FHIR validation is critical for production servers but must balance correctness,
 
 ## Decision
 
-Firely-inspired validation architecture with compiled schemas and composable assertions. Core phases 1-6 complete, terminology integration pending. See [validation-architecture](investigations/validation-architecture.md).
+Firely-inspired validation architecture with compiled schemas and composable assertions. Core phases 1-6 complete, terminology integration pending.
+
+See [ADR-2510: Three-Tier Validation Architecture](../../adr/adr-2510-validation-architecture.md)

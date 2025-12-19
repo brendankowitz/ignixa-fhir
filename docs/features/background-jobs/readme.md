@@ -17,6 +17,10 @@ This feature covers background job patterns for:
 | [DurableTask](investigations/durabletask.md) | Complete | 2025-10-14 | Azure DurableTask framework for long-running background operations |
 | [Watchdog Patterns](investigations/watchdog-patterns.md) | Complete | 2025-10-14 | Transaction recovery and cleanup patterns with distributed locking |
 
+## Decision
+
+See [ADR-2510: Background Jobs with DurableTask Framework](../../adr/adr-2510-background-jobs.md)
+
 ## Key Decisions
 
 1. **DurableTask for Background Operations**: Use Azure DurableTask framework for all long-running operations requiring persistence, monitoring, and fault tolerance

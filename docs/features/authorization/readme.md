@@ -35,3 +35,7 @@ Total authorization overhead: ~1.5ms per request
 ### Critical Insight
 
 The CapabilityStatement is not just documentation - it's a **contract** the server must enforce. If the server advertises that AuditEvent doesn't support update, then PUT /AuditEvent/123 must be rejected even with valid auth.
+
+## Decision
+
+See [ADR-2501: RBAC Authorization with Capability Statement Enforcement](../../adr/adr-2501-authorization.md)

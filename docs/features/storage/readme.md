@@ -31,3 +31,5 @@ FHIR resource storage requires flexible backends supporting transactions, versio
 ## Decision
 
 File-based storage with NDJSON format implemented for development. Production backends (Cosmos, SQL) are separate features.
+
+See [ADR-2510: NDJSON File-Based Storage](../../adr/adr-2510-ndjson-storage.md)
