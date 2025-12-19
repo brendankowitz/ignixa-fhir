@@ -8,7 +8,7 @@ using Shouldly;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
-using Ignixa.Application.Features.Mcp.Authorization;
+using Ignixa.Application.Features.Experimental.Mcp.Authorization;
 using Ignixa.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;

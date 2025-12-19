@@ -10,7 +10,6 @@ using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Operations.Features.MemberMatch;
 using Ignixa.Application.Operations.Features.PatientEverything;
-using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -39,8 +38,9 @@ public static class OperationEndpoints
     /// - POST /{resourceType}/$validate - Type-level validation
     /// - POST /{resourceType}/{id}/$validate - Instance-level validation
     /// - GET /Patient/{id}/$everything - Patient $everything operation
-    /// - POST /StructureMap/$transform - Type-level transform (map in Parameters)
-    /// - POST /StructureMap/{id}/$transform - Instance-level transform (use specific map)
+    /// - POST /Patient/$member-match - Member match operation
+    ///
+    /// NOTE: $transform endpoints moved to Experimental/TransformEndpoints.cs
     /// </summary>
     public static IEndpointRouteBuilder MapOperationEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -83,20 +83,7 @@ public static class OperationEndpoints
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
-        // POST /StructureMap/$transform - Type-level transform
-        tenantGroup.MapPost("/StructureMap/$transform", HandleTransformType)
-            .WithName("TransformResourceType")
-            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
-
-        // POST /StructureMap/{id}/$transform - Instance-level transform
-        tenantGroup.MapPost("/StructureMap/{id}/$transform", HandleTransformInstance)
-            .WithName("TransformResourceInstance")
-            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+        // NOTE: $transform endpoints moved to Experimental/TransformEndpoints.cs
 
         // POST /Patient/$member-match - Member match operation (tenant-explicit)
         tenantGroup.MapPost("/Patient/$member-match", HandleMemberMatch)
@@ -143,20 +130,7 @@ public static class OperationEndpoints
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
-        // POST /StructureMap/$transform - Type-level transform (agnostic route)
-        endpoints.MapPost("/StructureMap/$transform", HandleTransformTypeAgnostic)
-            .WithName("TransformResourceTypeAgnostic")
-            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
-
-        // POST /StructureMap/{id}/$transform - Instance-level transform (agnostic route)
-        endpoints.MapPost("/StructureMap/{id}/$transform", HandleTransformInstanceAgnostic)
-            .WithName("TransformResourceInstanceAgnostic")
-            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+        // NOTE: $transform endpoints moved to Experimental/TransformEndpoints.cs
 
         // POST /Patient/$member-match - Member match operation (agnostic route)
         endpoints.MapPost("/Patient/$member-match", HandleMemberMatchAgnostic)
@@ -521,189 +495,7 @@ public static class OperationEndpoints
         return Results.Empty;
     }
 
-    // ==================== $transform Operation Handlers ====================
-
-    /// <summary>
-    /// Handles POST /tenant/{tenantId}/StructureMap/$transform (type-level, tenant-explicit).
-    /// Map parameters provided in Parameters resource.
-    /// </summary>
-    private static async Task<IResult> HandleTransformType(
-        HttpContext context,
-        int tenantId,
-        [FromServices] IMediator mediator,
-        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-        CancellationToken cancellationToken)
-    {
-        // Parse Parameters from request body using JsonSourceNodeFactory
-        ParametersJsonNode? parameters;
-        try
-        {
-            await using var memoryStream = memoryStreamManager.GetStream("transform-request");
-            await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
-            memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
-        }
-        catch
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
-                "Request body must be a valid FHIR Parameters resource"));
-        }
-
-        if (parameters == null)
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
-                "Request body must contain a FHIR Parameters resource"));
-        }
-
-        // Extract parameters
-        var source = parameters.GetParameterStringValue("source");
-        var sourceMap = parameters.GetParameterResource<StructureMapJsonNode>("sourceMap");
-        var srcMaps = parameters.GetParameterStringValues("srcMap").ToList();
-        var supportingMaps = parameters.GetParameterResources<StructureMapJsonNode>("supportingMap").ToList();
-        var content = parameters.GetParameterResource<ResourceJsonNode>("content");
-
-        // Create command
-        var command = new TransformResourceCommand(
-            Source: source,
-            SourceMap: sourceMap,
-            SrcMaps: srcMaps,
-            SupportingMaps: supportingMaps,
-            Content: content);
-
-        try
-        {
-            var result = await mediator.SendAsync(command, cancellationToken);
-
-            var resourceBytes = result.SerializeToBytes();
-
-            return FhirResults.Ok(resourceBytes);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Processing,
-                $"Transformation failed: {ex.Message}"));
-        }
-    }
-
-    /// <summary>
-    /// Handles POST /tenant/{tenantId}/StructureMap/{id}/$transform (instance-level, tenant-explicit).
-    /// Uses specific StructureMap identified by {id}.
-    /// </summary>
-    private static async Task<IResult> HandleTransformInstance(
-        HttpContext context,
-        int tenantId,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-        CancellationToken cancellationToken)
-    {
-        // Parse Parameters from request body using JsonSourceNodeFactory
-        ParametersJsonNode? parameters;
-        try
-        {
-            await using var memoryStream = memoryStreamManager.GetStream("transform-request");
-            await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
-            memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
-        }
-        catch
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
-                "Request body must be a valid FHIR Parameters resource"));
-        }
-
-        if (parameters == null)
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
-                "Request body must contain a FHIR Parameters resource"));
-        }
-
-        // Extract content parameter (required)
-        var content = parameters.GetParameterResource<ResourceJsonNode>("content");
-
-        // Create command using resource ID as source
-        var command = new TransformResourceCommand(
-            Source: $"StructureMap/{id}",
-            Content: content);
-
-        try
-        {
-            var result = await mediator.SendAsync(command, cancellationToken);
-
-            var resourceBytes = result.SerializeToBytes();
-
-            return FhirResults.Ok(resourceBytes);
-        }
-        catch (InvalidOperationException ex)
-        {
-            // Check if it's a "not found" error
-            if (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
-            {
-                return Results.NotFound(CreateOperationOutcome(
-                    OperationOutcomeJsonNode.IssueSeverity.Error,
-                    OperationOutcomeJsonNode.IssueType.NotFound,
-                    $"StructureMap/{id} not found"));
-            }
-
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Processing,
-                $"Transformation failed: {ex.Message}"));
-        }
-    }
-
-    /// <summary>
-    /// Handles POST /StructureMap/$transform (type-level, tenant-agnostic).
-    /// </summary>
-    private static async Task<IResult> HandleTransformTypeAgnostic(
-        HttpContext context,
-        [FromServices] IMediator mediator,
-        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-        CancellationToken cancellationToken)
-    {
-        // For agnostic route, determine tenant from context
-        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
-                "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/StructureMap/$transform"));
-        }
-
-        return await HandleTransformType(context, tenantId, mediator, memoryStreamManager, cancellationToken);
-    }
-
-    /// <summary>
-    /// Handles POST /StructureMap/{id}/$transform (instance-level, tenant-agnostic).
-    /// </summary>
-    private static async Task<IResult> HandleTransformInstanceAgnostic(
-        HttpContext context,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-        CancellationToken cancellationToken)
-    {
-        // For agnostic route, determine tenant from context
-        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
-                "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/StructureMap/{id}/$transform"));
-        }
-
-        return await HandleTransformInstance(context, tenantId, id, mediator, memoryStreamManager, cancellationToken);
-    }
+    // NOTE: $transform handlers moved to Experimental/TransformEndpoints.cs
 
     // ==================== $member-match Operation Handlers ====================
 

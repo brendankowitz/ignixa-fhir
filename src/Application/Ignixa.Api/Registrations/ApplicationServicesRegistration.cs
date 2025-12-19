@@ -29,16 +29,10 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Application.Operations.Features.PatientEverything;
-using Ignixa.Application.Operations.Features.Terminology.Expand;
-using Ignixa.Application.Operations.Features.Terminology.Subsumes;
-using Ignixa.Application.Operations.Features.Terminology.Translate;
-using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.FhirMappingLanguage.Mutator;
-using Ignixa.FhirMappingLanguage.Parser;
-using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
@@ -80,8 +74,7 @@ public static class ApplicationServicesRegistration
         // Patch handlers
         RegisterPatchServices(builder);
 
-        // FHIR Mapping Language (FML) services
-        RegisterFmlServices(builder);
+        // NOTE: FML services are now registered by ExperimentalAutofacRegistration.RegisterTransformHandlers()
 
         // CapabilityStatement services
         RegisterCapabilityServices(builder);
@@ -200,33 +193,13 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<ValidateResourceCommand, ValidateResourceResult>>()
             .InstancePerDependency();
 
-        // Terminology operations
-        builder.RegisterType<ExpandValueSetHandler>()
-            .As<IRequestHandler<ExpandValueSetQuery, ExpandValueSetResult>>()
-            .InstancePerDependency();
-
-        builder.RegisterType<TranslateCodeHandler>()
-            .As<IRequestHandler<TranslateCodeCommand, TranslateCodeResult>>()
-            .InstancePerDependency();
-
-        builder.RegisterType<SubsumesHandler>()
-            .As<IRequestHandler<SubsumesQuery, SubsumesQueryResult>>()
-            .InstancePerDependency();
+        // NOTE: Terminology ($expand, $translate, $subsumes) and $transform handlers
+        // are now registered by ExperimentalAutofacRegistration.RegisterExperimentalServices()
 
         // Patient $everything
         builder.RegisterType<PatientEverythingHandler>()
             .As<IRequestHandler<PatientEverythingQuery, SearchResourcesResult>>()
             .InstancePerDependency();
-
-        // $transform (FHIR Mapping Language)
-        builder.RegisterType<TransformResourceHandler>()
-            .As<IRequestHandler<TransformResourceCommand, ResourceJsonNode>>()
-            .InstancePerLifetimeScope();
-
-        // ConceptMap translation service
-        builder.RegisterType<ConceptMapResolverService>()
-            .AsSelf()
-            .InstancePerLifetimeScope();
 
         // $member-match
         builder.RegisterType<Ignixa.Application.Operations.Features.MemberMatch.MemberMatchHandler>()
@@ -322,43 +295,7 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
     }
 
-    private static void RegisterFmlServices(ContainerBuilder builder)
-    {
-        // FHIR Mapping Language parser
-        builder.RegisterType<MappingParser>()
-            .AsSelf()
-            .SingleInstance();
-
-        // StructureMapParser (scoped per-request, receives tenant FHIR version)
-        builder.Register(c =>
-        {
-            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext;
-            var fhirVersion = requestContext?.FhirVersion;
-            return new StructureMapParser(fhirVersion);
-        })
-        .AsSelf()
-        .InstancePerLifetimeScope();
-
-        // MapRegistryCache (scoped per-request)
-        builder.RegisterType<Ignixa.Application.Operations.Features.Transform.MapRegistryCache>()
-            .AsSelf()
-            .As<IMapRegistry>()
-            .InstancePerLifetimeScope();
-
-        // FHIRPath expression caching
-        builder.RegisterType<FhirPathExpressionCache>()
-            .AsSelf()
-            .SingleInstance();
-
-        // FHIRPath evaluator with timeout protection
-        builder.Register(c => new FhirPathEvaluatorWithTimeout(
-                c.Resolve<FhirPathExpressionCache>(),
-                c.Resolve<FhirPathEvaluator>(),
-                TimeSpan.FromSeconds(5),
-                c.Resolve<ILogger<FhirPathEvaluatorWithTimeout>>()))
-            .AsSelf()
-            .SingleInstance();
-    }
+    // NOTE: RegisterFmlServices removed - now in ExperimentalAutofacRegistration.RegisterTransformHandlers()
 
     private static void RegisterCapabilityServices(ContainerBuilder builder)
     {
@@ -567,8 +504,8 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
 
         // MCP authorization service
-        builder.RegisterType<Ignixa.Application.Features.Mcp.Authorization.McpAuthorizationService>()
-            .As<Ignixa.Application.Features.Mcp.Authorization.IMcpAuthorizationService>()
+        builder.RegisterType<Ignixa.Application.Features.Experimental.Mcp.Authorization.McpAuthorizationService>()
+            .As<Ignixa.Application.Features.Experimental.Mcp.Authorization.IMcpAuthorizationService>()
             .InstancePerLifetimeScope();
 
         // SMART configuration provider

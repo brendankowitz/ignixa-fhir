@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Application\Ignixa.Application.Experimental\Ignixa.Application.Experimental.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 

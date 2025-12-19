@@ -3,10 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Application.Experimental.Configuration;
+using Ignixa.Application.Features.Experimental.Configuration;
 using Shouldly;
 
-namespace Ignixa.Application.Experimental.Tests.Configuration;
+namespace Ignixa.Application.Features.Experimental.Tests.Configuration;
 
 public class ExperimentalOptionsTests
 {

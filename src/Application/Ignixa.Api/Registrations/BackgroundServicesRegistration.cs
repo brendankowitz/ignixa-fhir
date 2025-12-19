@@ -85,7 +85,7 @@ public static class BackgroundServicesRegistration
             services
                 .AddMcpServer()
                 .WithHttpTransport()
-                .WithToolsFromAssembly(typeof(Ignixa.Application.Features.Mcp.Tools.DiagnosticTool).Assembly)
+                .WithToolsFromAssembly(typeof(Ignixa.Application.Features.Experimental.Mcp.Tools.DiagnosticTool).Assembly)
                 .WithToolsFromAssembly(typeof(Ignixa.Application.BackgroundOperations.JobManagement.GetJobStatusTool).Assembly);
         }
 

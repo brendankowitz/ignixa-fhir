@@ -127,6 +127,7 @@ docs/features/
 | [conditional-operations](conditional-operations/) | Complete | conditional-crud |
 | [deployment](deployment/) | Research | azure-container-apps |
 | [e2e-testing](e2e-testing/) | Complete | gap-analysis, implementation-checklist, data-setup-patterns, analysis-readme |
+| [experimental-library](experimental-library/) | Proposed | library-proposal |
 | [export](export/) | Research | streaming-architecture, high-throughput-design, +2 more |
 | [fhir-compatibility](fhir-compatibility/) | Proposed | compatibility-remediation |
 | [fhir-faker](fhir-faker/) | Partial | layered-architecture, scenario-generation, +6 more |

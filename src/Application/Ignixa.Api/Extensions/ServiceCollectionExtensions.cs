@@ -5,6 +5,7 @@
 
 using Autofac;
 using Ignixa.Api.Registrations;
+using Ignixa.Application.Features.Experimental.Infrastructure;
 
 namespace Ignixa.Api.Extensions;
 
@@ -97,6 +98,10 @@ public static class ServiceCollectionExtensions
 
         // Background job handlers
         builder.RegisterBackgroundJobHandlers();
+
+        // Experimental services (MCP, Transform, Terminology)
+        // Controlled by Experimental:Enabled and per-feature configuration
+        builder.RegisterExperimentalServices(configuration);
 
         return builder;
     }
