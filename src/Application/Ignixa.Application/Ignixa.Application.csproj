@@ -27,19 +27,6 @@
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Reference ASP.NET Core framework for web types -->
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <!-- Add ASP.NET Core implicit usings -->
-    <Using Include="Microsoft.AspNetCore.Builder" />
-    <Using Include="Microsoft.AspNetCore.Http" />
-    <Using Include="Microsoft.AspNetCore.Routing" />
-    <Using Include="Microsoft.Extensions.Configuration" />
-    <Using Include="Microsoft.Extensions.DependencyInjection" />
-    <Using Include="Microsoft.Extensions.Hosting" />
-    <Using Include="Microsoft.Extensions.Logging" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

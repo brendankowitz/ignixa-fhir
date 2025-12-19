@@ -140,10 +140,10 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["BlobStorage:RootDirectory"] = Path.Combine(_testDataPath, "blobs"),
 
                 // Disable MCP for tests
-                ["Mcp:Enabled"] = "false",
+                ["Experimental:Features:Mcp:Enabled"] = "false",
 
                 // Disable terminology auto-import for faster test startup
-                ["Terminology:EnableAutoImport"] = "false",
+                ["Experimental:Features:Terminology:EnableAutoImport"] = "false",
 
                 // Disable transaction watcher for tests
                 ["TransactionWatcher:Enabled"] = "false",

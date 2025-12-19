@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Experimental.Configuration;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ignixa.Application.Features.Experimental.Infrastructure;
 
@@ -38,27 +40,13 @@ public static class ExperimentalServicesRegistration
             configuration.GetSection(ExperimentalOptions.SectionName));
 
         // Feature: MCP - Model Context Protocol server
-        if (options.Features.Mcp.Enabled)
-        {
-            services.AddExperimentalMcpServices(configuration);
-        }
+        // MCP server registration is handled in Ignixa.Api/Registrations/BackgroundServicesRegistration.cs
 
         // Feature: Transform - No additional IServiceCollection registrations needed
         // Handler registrations are done via Autofac
 
         // Feature: Terminology - No additional IServiceCollection registrations needed
         // Handler registrations are done via Autofac
-
-        return services;
-    }
-
-    private static IServiceCollection AddExperimentalMcpServices(
-        this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        // MCP server is already configured in the main application
-        // This is a placeholder for future MCP-specific service registrations
-        // when MCP is fully migrated to the experimental library
 
         return services;
     }

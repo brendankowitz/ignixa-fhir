@@ -178,7 +178,7 @@ public class SummaryExperimentalOptions
 {
     public bool Enabled { get; set; } = false;
     public int MaxResources { get; set; } = 1000;
-    public List<string> AllowedResourceTypes { get; set; } = [];
+    public ICollection<string> AllowedResourceTypes { get; } = [];
 }
 ```
 

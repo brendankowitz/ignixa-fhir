@@ -403,17 +403,12 @@ public static class ApplicationServicesRegistration
 
     private static void RegisterEventHandlers(ContainerBuilder builder, IConfiguration configuration)
     {
-        var terminologyAutoImportEnabled = configuration.GetValue<bool>("Terminology:EnableAutoImport", false);
+        var terminologyAutoImportEnabled = configuration.GetValue<bool>("Experimental:Features:Terminology:EnableAutoImport", false);
 
         // Package loaded notification handler
         builder.RegisterType<Ignixa.Application.Events.Package.PackageLoadedNotificationHandler>()
             .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageLoaded>>()
             .InstancePerDependency();
-
-        // Package loaded map cache invalidation
-        builder.RegisterType<Ignixa.Application.Operations.Events.PackageLoadedMapCacheInvalidationHandler>()
-            .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
-            .InstancePerLifetimeScope();
 
         // Search parameter sync handler
         builder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedSearchParameterSyncHandler>()

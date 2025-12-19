@@ -4,11 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Events.Package;
-using Ignixa.Application.Operations.Features.Transform;
+using Ignixa.Application.Features.Experimental.Transform;
 using Medino;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Application.Operations.Events;
+namespace Ignixa.Application.Features.Experimental.Transform.Events;
 
 /// <summary>
 /// Handles PackageLoadedEvent to invalidate cached StructureMaps from the updated package.

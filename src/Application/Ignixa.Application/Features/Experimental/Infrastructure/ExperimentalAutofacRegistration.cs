@@ -4,12 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
+using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.Mcp.Authorization;
 using Ignixa.Application.Features.Experimental.Terminology.Expand;
 using Ignixa.Application.Features.Experimental.Terminology.Subsumes;
 using Ignixa.Application.Features.Experimental.Terminology.Translate;
 using Ignixa.Application.Features.Experimental.Transform;
+using Ignixa.Application.Features.Experimental.Transform.Events;
 using Ignixa.Application.Infrastructure;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirMappingLanguage.Parser;
@@ -18,6 +20,7 @@ using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.Infrastructure;
@@ -126,6 +129,11 @@ public static class ExperimentalAutofacRegistration
         builder.RegisterType<ConceptMapResolverService>()
             .AsSelf()
             .InstancePerLifetimeScope();
+
+        // Package loaded event handler to invalidate map cache
+        builder.RegisterType<PackageLoadedMapCacheInvalidationHandler>()
+            .As<INotificationHandler<PackageLoadedEvent>>()
+            .InstancePerDependency();
     }
 
     private static void RegisterTerminologyHandlers(this ContainerBuilder builder)
@@ -133,14 +141,14 @@ public static class ExperimentalAutofacRegistration
         // Register Terminology handlers
         builder.RegisterType<ExpandValueSetHandler>()
             .As<IRequestHandler<ExpandValueSetQuery, ExpandValueSetResult>>()
-            .InstancePerLifetimeScope();
+            .InstancePerDependency();
 
         builder.RegisterType<TranslateCodeHandler>()
             .As<IRequestHandler<TranslateCodeCommand, TranslateCodeResult>>()
-            .InstancePerLifetimeScope();
+            .InstancePerDependency();
 
         builder.RegisterType<SubsumesHandler>()
             .As<IRequestHandler<SubsumesQuery, SubsumesQueryResult>>()
-            .InstancePerLifetimeScope();
+            .InstancePerDependency();
     }
 }
