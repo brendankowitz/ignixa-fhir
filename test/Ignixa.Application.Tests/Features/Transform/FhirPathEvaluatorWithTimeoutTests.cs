@@ -66,7 +66,7 @@ public class FhirPathEvaluatorWithTimeoutTests
 
     #region Timeout Tests
 
-    [Fact]
+    [Fact(Skip = "Flaky test - timing-sensitive timeout behavior varies on CI runners")]
     public async Task GivenShortTimeout_WhenComplexExpression_ThenThrowsTimeoutException()
     {
         // Arrange

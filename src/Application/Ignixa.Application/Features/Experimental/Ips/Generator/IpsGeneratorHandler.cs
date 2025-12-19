@@ -31,7 +31,7 @@ public class IpsGeneratorHandler(
                 "Either PatientId or PatientIdentifier must be provided");
         }
 
-        var strategy = await SelectStrategyAsync(request.Profile, cancellationToken);
+        var strategy = SelectStrategy(request.Profile);
 
         logger.LogInformation(
             "Generating IPS for patient {PatientId} with profile {Profile}",
@@ -65,9 +65,7 @@ public class IpsGeneratorHandler(
         return new IpsGeneratorResult(ipsBundle, metrics);
     }
 
-    private async Task<IIpsGenerationStrategy> SelectStrategyAsync(
-        string? requestedProfile,
-        CancellationToken cancellationToken)
+    private IIpsGenerationStrategy SelectStrategy(string? requestedProfile)
     {
         // Priority 1: Explicit profile parameter
         if (requestedProfile is not null)

@@ -124,6 +124,14 @@ public static class SummaryEndpoints
         [FromQuery] string? profile,
         CancellationToken cancellationToken)
     {
+        if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Invalid,
+                "Profile parameter must be a well-formed absolute URI"));
+        }
+
         var query = new IpsGeneratorQuery(
             PatientId: id,
             PatientIdentifier: null,
@@ -159,6 +167,14 @@ public static class SummaryEndpoints
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "Patient identifier is required when patient ID is not provided in URL"));
+        }
+
+        if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Invalid,
+                "Profile parameter must be a well-formed absolute URI"));
         }
 
         var query = new IpsGeneratorQuery(
@@ -212,6 +228,14 @@ public static class SummaryEndpoints
                 // Malformed JSON in request body - proceed without profile parameter
                 // This is acceptable since the profile parameter is optional
             }
+        }
+
+        if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Invalid,
+                "Profile parameter must be a well-formed absolute URI"));
         }
 
         var query = new IpsGeneratorQuery(
