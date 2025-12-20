@@ -16,14 +16,14 @@ namespace Ignixa.Application.Features.Experimental.Ips.Strategy;
 /// </summary>
 public class DefaultIpsGenerationStrategy : IIpsGenerationStrategy
 {
-    private static readonly IReadOnlyList<Section> s_sections = CreateSections();
-    private static readonly FrozenDictionary<string, Section> s_sectionByResourceType = CreateSectionByResourceType();
+    private static readonly IReadOnlyList<Section> Sections = CreateSections();
+    private static readonly FrozenDictionary<string, Section> SectionByResourceType = CreateSectionByResourceType();
 
     /// <inheritdoc />
     public string BundleProfile => IpsConstants.DefaultBundleProfile;
 
     /// <inheritdoc />
-    public IReadOnlyList<Section> GetSections() => s_sections;
+    public IReadOnlyList<Section> GetSections() => Sections;
 
     /// <inheritdoc />
     public bool ShouldIncludeResource(Section section, ResourceJsonNode resource, IpsContext context)
@@ -49,7 +49,7 @@ public class DefaultIpsGenerationStrategy : IIpsGenerationStrategy
     public Section? ClassifyResource(ResourceJsonNode resource)
     {
         var resourceType = resource.ResourceType;
-        return s_sectionByResourceType.GetValueOrDefault(resourceType);
+        return SectionByResourceType.GetValueOrDefault(resourceType);
     }
 
     /// <inheritdoc />
@@ -221,7 +221,7 @@ public class DefaultIpsGenerationStrategy : IIpsGenerationStrategy
     {
         var dict = new Dictionary<string, Section>();
 
-        foreach (var section in s_sections)
+        foreach (var section in Sections)
         {
             foreach (var resourceType in section.ResourceTypes)
             {

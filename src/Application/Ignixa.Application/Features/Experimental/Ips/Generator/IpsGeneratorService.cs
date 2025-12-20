@@ -14,6 +14,7 @@ using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.NarrativeGenerator;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
@@ -247,130 +248,116 @@ public class IpsGeneratorService(
         resource.MutableNode["text"] = textNode;
     }
 
-    private ResourceJsonNode BuildComposition(
+    private CompositionJsonNode BuildComposition(
         IpsContext context,
         Dictionary<Section, List<ResourceJsonNode>> sectionResources)
     {
         var compositionId = Guid.NewGuid().ToString();
 
-        var composition = new JsonObject
+        var composition = new CompositionJsonNode
         {
-            ["resourceType"] = "Composition",
-            ["id"] = compositionId,
-            ["meta"] = new JsonObject
-            {
-                ["profile"] = new JsonArray { IpsConstants.CompositionProfile }
-            },
-            ["status"] = "final",
-            ["type"] = new JsonObject
-            {
-                ["coding"] = new JsonArray
-                {
-                    new JsonObject
-                    {
-                        ["system"] = IpsConstants.LoincSystem,
-                        ["code"] = IpsConstants.CompositionTypeCode,
-                        ["display"] = IpsConstants.CompositionTypeDisplay
-                    }
-                }
-            },
-            ["subject"] = new JsonObject
-            {
-                ["reference"] = $"Patient/{context.PatientId}"
-            },
-            ["date"] = context.GenerationTime.ToString("o"),
-            ["title"] = context.Strategy.CreateTitle(context)
+            Id = compositionId,
+            Status = CompositionJsonNode.CompositionStatus.Final,
+            Date = context.GenerationTime,
+            Title = context.Strategy.CreateTitle(context),
+            Subject = ReferenceJsonNode.FromResourceTypeAndId("Patient", context.PatientId),
+            Type = CreateCompositionType()
         };
 
-        // Add author
+        composition.Meta.Profiles.Add(IpsConstants.CompositionProfile);
+
         var author = context.Strategy.CreateAuthor(context);
-        composition["author"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["reference"] = $"{author.ResourceType}/{author.Id}"
-            }
-        };
-
-        // Build sections
-        var sectionsArray = new JsonArray();
+        composition.Author.Add(ReferenceJsonNode.FromResourceTypeAndId(author.ResourceType, author.Id));
 
         foreach (var section in context.Strategy.GetSections())
         {
             var resources = sectionResources[section];
 
-            // Skip empty optional/recommended sections
             if (resources.Count == 0 && section.Cardinality != SectionCardinality.Required)
             {
                 continue;
             }
 
-            var sectionNode = new JsonObject
-            {
-                ["title"] = section.Title,
-                ["code"] = new JsonObject
-                {
-                    ["coding"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["system"] = section.CodeSystem,
-                            ["code"] = section.Code,
-                            ["display"] = section.Display
-                        }
-                    }
-                }
-            };
-
-            if (resources.Count > 0)
-            {
-                var entryArray = new JsonArray();
-                foreach (var resource in resources)
-                {
-                    entryArray.Add(new JsonObject
-                    {
-                        ["reference"] = $"{resource.ResourceType}/{resource.Id}"
-                    });
-                }
-                sectionNode["entry"] = entryArray;
-
-                sectionNode["text"] = new JsonObject
-                {
-                    ["status"] = "generated",
-                    ["div"] = GenerateSectionNarrative(section, resources)
-                };
-            }
-            else
-            {
-                sectionNode["emptyReason"] = new JsonObject
-                {
-                    ["coding"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["system"] = IpsConstants.EmptyReasonSystem,
-                            ["code"] = "unavailable",
-                            ["display"] = "Unavailable"
-                        }
-                    }
-                };
-
-                sectionNode["text"] = new JsonObject
-                {
-                    ["status"] = "generated",
-                    ["div"] = $"<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>No {section.Title.ToLower(CultureInfo.InvariantCulture)} information available.</p></div>"
-                };
-            }
-
-            sectionsArray.Add(sectionNode);
+            var sectionComponent = CreateSectionComponent(section, resources);
+            composition.Section.Add(sectionComponent);
         }
 
-        composition["section"] = sectionsArray;
-
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(composition.ToJsonString()!);
+        return composition;
     }
 
-    private static string GenerateSectionNarrative(Section section, List<ResourceJsonNode> resources)
+    private static CodeableConceptJsonNode CreateCompositionType()
+    {
+        var type = new CodeableConceptJsonNode();
+        type.Coding.Add(new CodingJsonNode
+        {
+            System = IpsConstants.LoincSystem,
+            Code = IpsConstants.CompositionTypeCode,
+            Display = IpsConstants.CompositionTypeDisplay
+        });
+        return type;
+    }
+
+    private CompositionJsonNode.SectionComponent CreateSectionComponent(
+        Section section,
+        List<ResourceJsonNode> resources)
+    {
+        var sectionComponent = new CompositionJsonNode.SectionComponent
+        {
+            Title = section.Title,
+            Code = CreateSectionCode(section)
+        };
+
+        if (resources.Count > 0)
+        {
+            foreach (var resource in resources)
+            {
+                sectionComponent.Entry.Add(ReferenceJsonNode.FromResourceTypeAndId(resource.ResourceType, resource.Id));
+            }
+
+            sectionComponent.Text = new NarrativeJsonNode
+            {
+                Status = NarrativeJsonNode.NarrativeStatus.Generated,
+                Div = GenerateSectionNarrative(section, resources)
+            };
+        }
+        else
+        {
+            sectionComponent.EmptyReason = CreateEmptyReason();
+            sectionComponent.Text = new NarrativeJsonNode
+            {
+                Status = NarrativeJsonNode.NarrativeStatus.Generated,
+                Div = $"<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>No {section.Title.ToLower(CultureInfo.InvariantCulture)} information available.</p></div>"
+            };
+        }
+
+        return sectionComponent;
+    }
+
+    private static CodeableConceptJsonNode CreateSectionCode(Section section)
+    {
+        var code = new CodeableConceptJsonNode();
+        code.Coding.Add(new CodingJsonNode
+        {
+            System = section.CodeSystem,
+            Code = section.Code,
+            Display = section.Display
+        });
+        return code;
+    }
+
+    private static CodeableConceptJsonNode CreateEmptyReason()
+    {
+        var emptyReason = new CodeableConceptJsonNode();
+        emptyReason.Coding.Add(new CodingJsonNode
+        {
+            System = IpsConstants.EmptyReasonSystem,
+            Code = "unavailable",
+            Display = "Unavailable"
+        });
+        return emptyReason;
+    }
+
+    private string GenerateSectionNarrative(Section section, List<ResourceJsonNode> resources)
     {
         var sb = new System.Text.StringBuilder();
         sb.Append($"<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>{section.Title}</h3>");
@@ -394,19 +381,21 @@ public class IpsGeneratorService(
         return sb.ToString();
     }
 
-    private static string GetResourceDisplay(ResourceJsonNode resource)
+    private string GetResourceDisplay(ResourceJsonNode resource)
     {
         var resourceType = resource.ResourceType;
 
-        var display = resource.MutableNode["code"]?["text"]?.GetValue<string>()
-            ?? resource.MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>()
-            ?? resource.MutableNode["medicationCodeableConcept"]?["text"]?.GetValue<string>()
-            ?? resource.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["display"]?.GetValue<string>()
-            ?? resource.MutableNode["vaccineCode"]?["text"]?.GetValue<string>()
-            ?? resource.MutableNode["vaccineCode"]?["coding"]?[0]?["display"]?.GetValue<string>()
+        // Use FHIRPath to extract display from common CodeableConcept paths
+        // Checks: code.text, code.coding[0].display, medicationCodeableConcept.text, etc.
+        var fhirPathExpression = "(code | medicationCodeableConcept | vaccineCode).text | (code | medicationCodeableConcept | vaccineCode).coding.first().display";
+
+        var element = resource.ToElement(schema);
+        var results = element.Select(fhirPathExpression);
+
+        var display = results.FirstOrDefault()?.Value?.ToString()
             ?? $"{resourceType}/{resource.Id}";
 
-        return System.Web.HttpUtility.HtmlEncode(display);
+        return System.Net.WebUtility.HtmlEncode(display);
     }
 
     private BundleJsonNode AssembleBundle(

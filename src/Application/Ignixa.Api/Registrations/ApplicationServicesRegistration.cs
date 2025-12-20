@@ -35,6 +35,7 @@ using Ignixa.Domain.Models;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
+using Ignixa.NarrativeGenerator;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
@@ -75,6 +76,9 @@ public static class ApplicationServicesRegistration
         RegisterPatchServices(builder);
 
         // NOTE: FML services are now registered by ExperimentalAutofacRegistration.RegisterTransformHandlers()
+
+        // Narrative generation services
+        RegisterNarrativeServices(builder);
 
         // CapabilityStatement services
         RegisterCapabilityServices(builder);
@@ -509,5 +513,24 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<Ignixa.Application.Features.Authorization.Services.OidcDiscoverySmartConfigurationProvider>()
             .As<Ignixa.Application.Features.Authorization.Services.ISmartConfigurationProvider>()
             .InstancePerLifetimeScope();
+    }
+
+    private static void RegisterNarrativeServices(ContainerBuilder builder)
+    {
+        // Narrative Generator (scoped per request - requires ISchema)
+        builder.Register(c =>
+        {
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            var requestContextAccessor = c.Resolve<IFhirRequestContextAccessor>();
+
+            var requestContext = requestContextAccessor.RequestContext;
+            var schema = requestContext is not null
+                ? versionContext.GetSchemaProvider(requestContext.FhirVersion, requestContext.TenantId)
+                : versionContext.GetBaseSchemaProvider(FhirVersion.R4);
+
+            return FhirNarrativeGenerator.Create(schema);
+        })
+        .As<INarrativeGenerator>()
+        .InstancePerLifetimeScope();
     }
 }

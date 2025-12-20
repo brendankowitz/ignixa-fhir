@@ -310,6 +310,48 @@ Prefer modern C# language features supported by .NET 9+:
 | **Raw string literals** | `"""json"""` | Escaped strings for JSON/XML |
 | **Idiomatic boolean** | `!flag`, `flag` | `flag == false`, `flag == true` |
 
+### FHIR Data Access Patterns
+
+**CRITICAL: Prefer FHIRPath over direct JSON manipulation**
+
+When extracting data from FHIR resources, use FHIRPath expressions instead of querying `MutableNode` or `JsonNode` directly:
+
+| Pattern | Use ✅ | Avoid ❌ |
+|---------|--------|---------|
+| **Extract values** | `element.Select("code.text")` | `resource.MutableNode["code"]?["text"]?.GetValue<string>()` |
+| **Navigate paths** | `element.Select("name.given.first()")` | Nested null-conditional operators on `MutableNode` |
+| **Multiple paths** | `element.Select("code \| medicationCodeableConcept")` | Multiple try-catch blocks for different paths |
+| **Conditional logic** | `element.IsTrue("status = 'active'")` | Manual comparison with extracted values |
+
+**Why FHIRPath?**
+- **Declarative**: Expresses intent, not implementation
+- **Cached**: `Select()` extension has AST + compiled delegate caching (7x speedup)
+- **Robust**: Handles missing elements gracefully (returns empty, not null exceptions)
+- **Standard**: FHIR-native query language, familiar to healthcare developers
+- **Maintainable**: Easier to understand and modify than nested JSON navigation
+
+**Example:**
+```csharp
+// ✅ GOOD: FHIRPath with caching
+using Ignixa.FhirPath.Evaluation;
+
+var element = resource.ToElement(schema);
+var display = element.Select("code.text | code.coding.first().display")
+    .FirstOrDefault()?.Value?.ToString()
+    ?? "Unknown";
+
+// ❌ BAD: Manual JSON navigation
+var display = resource.MutableNode["code"]?["text"]?.GetValue<string>()
+    ?? resource.MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>()
+    ?? "Unknown";
+```
+
+**Available Extension Methods** (from `TypedElementExtensions`):
+- `element.Select(expression)` - Returns collection of matching elements
+- `element.Scalar(expression)` - Returns single scalar value or null
+- `element.IsTrue(expression)` - Returns true if expression evaluates to boolean true
+- `element.IsBoolean(expression, value)` - Checks if expression matches specific boolean value
+
 ---
 
 ## High-Quality Task Output Checklist

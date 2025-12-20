@@ -77,4 +77,19 @@ public class MetaJsonNode : BaseJsonNode
         }
     }
 
+    [JsonIgnore]
+    public MutablePrimitiveList<string> Profiles => GetPrimitiveListProperty<string>("profile");
+
+    [JsonIgnore]
+    public MutablePrimitiveList<string> Security => GetPrimitiveListProperty<string>("security");
+
+    [JsonIgnore]
+    public MutablePrimitiveList<string> Tags => GetPrimitiveListProperty<string>("tag");
+
+    [JsonIgnore]
+    public string? Source
+    {
+        get => GetProperty<string>("source");
+        set => SetProperty("source", value);
+    }
 }

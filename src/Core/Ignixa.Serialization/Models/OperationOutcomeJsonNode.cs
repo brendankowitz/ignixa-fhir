@@ -387,28 +387,28 @@ public class CodingJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public string System
+    public string? System
     {
         get => GetProperty<string>("system");
         set => SetProperty("system", value);
     }
 
     [JsonIgnore]
-    public string Version
+    public string? Version
     {
         get => GetProperty<string>("version");
         set => SetProperty("version", value);
     }
 
     [JsonIgnore]
-    public string Code
+    public string? Code
     {
         get => GetProperty<string>("code");
         set => SetProperty("code", value);
     }
 
     [JsonIgnore]
-    public string Display
+    public string? Display
     {
         get => GetProperty<string>("display");
         set => SetProperty("display", value);

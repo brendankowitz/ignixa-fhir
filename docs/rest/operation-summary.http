@@ -1,0 +1,383 @@
+@hostname = https://localhost:7058
+
+###############################################################################
+# Patient $summary (IPS) Operation Tests
+# FHIR Patient $summary operation for International Patient Summary generation
+# Generates standardized patient summaries following IPS specification
+###############################################################################
+
+### Setup: Create test patient with comprehensive clinical data
+# @name setupData
+POST {{hostname}}
+Content-Type: application/fhir+json
+Prefer: return=minimal
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        {
+            "resource": {
+                "resourceType": "Patient",
+                "id": "ips-test-patient",
+                "identifier": [
+                    {
+                        "system": "http://example.org/patient-id",
+                        "value": "IPS-12345"
+                    },
+                    {
+                        "system": "urn:oid:2.16.840.1.113883.4.1",
+                        "value": "123-45-6789"
+                    }
+                ],
+                "name": [{ "family": "IpsTest", "given": ["Alice"] }],
+                "birthDate": "1975-03-15",
+                "gender": "female",
+                "address": [
+                    {
+                        "line": ["123 Medical Center Dr"],
+                        "city": "Boston",
+                        "state": "MA",
+                        "postalCode": "02115",
+                        "country": "US"
+                    }
+                ]
+            },
+            "request": { "method": "PUT", "url": "Patient/ips-test-patient" }
+        },
+        {
+            "resource": {
+                "resourceType": "Practitioner",
+                "id": "ips-practitioner",
+                "name": [{ "family": "Johnson", "given": ["Emily"], "prefix": ["Dr."] }]
+            },
+            "request": { "method": "PUT", "url": "Practitioner/ips-practitioner" }
+        },
+        {
+            "resource": {
+                "resourceType": "AllergyIntolerance",
+                "id": "allergy-penicillin",
+                "clinicalStatus": { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active" }] },
+                "verificationStatus": { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "code": "confirmed" }] },
+                "type": "allergy",
+                "category": ["medication"],
+                "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "91936005", "display": "Allergy to penicillin" }] },
+                "patient": { "reference": "Patient/ips-test-patient" },
+                "recordedDate": "2020-05-10"
+            },
+            "request": { "method": "PUT", "url": "AllergyIntolerance/allergy-penicillin" }
+        },
+        {
+            "resource": {
+                "resourceType": "Condition",
+                "id": "condition-diabetes",
+                "clinicalStatus": { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active" }] },
+                "verificationStatus": { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status", "code": "confirmed" }] },
+                "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "44054006", "display": "Type 2 diabetes mellitus" }] },
+                "subject": { "reference": "Patient/ips-test-patient" },
+                "onsetDateTime": "2018-03-01"
+            },
+            "request": { "method": "PUT", "url": "Condition/condition-diabetes" }
+        },
+        {
+            "resource": {
+                "resourceType": "MedicationStatement",
+                "id": "med-metformin",
+                "status": "active",
+                "medicationCodeableConcept": { "coding": [{ "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "860975", "display": "Metformin 500 MG" }] },
+                "subject": { "reference": "Patient/ips-test-patient" },
+                "effectivePeriod": { "start": "2018-03-15" }
+            },
+            "request": { "method": "PUT", "url": "MedicationStatement/med-metformin" }
+        },
+        {
+            "resource": {
+                "resourceType": "Immunization",
+                "id": "imm-covid",
+                "status": "completed",
+                "vaccineCode": { "coding": [{ "system": "http://hl7.org/fhir/sid/cvx", "code": "208", "display": "COVID-19 vaccine" }] },
+                "patient": { "reference": "Patient/ips-test-patient" },
+                "occurrenceDateTime": "2024-01-15",
+                "primarySource": true
+            },
+            "request": { "method": "PUT", "url": "Immunization/imm-covid" }
+        },
+        {
+            "resource": {
+                "resourceType": "Procedure",
+                "id": "proc-appendectomy",
+                "status": "completed",
+                "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "80146002", "display": "Appendectomy" }] },
+                "subject": { "reference": "Patient/ips-test-patient" },
+                "performedDateTime": "2010-06-20",
+                "performer": [{ "actor": { "reference": "Practitioner/ips-practitioner" } }]
+            },
+            "request": { "method": "PUT", "url": "Procedure/proc-appendectomy" }
+        },
+        {
+            "resource": {
+                "resourceType": "Observation",
+                "id": "obs-bp",
+                "status": "final",
+                "category": [{ "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "vital-signs" }] }],
+                "code": { "coding": [{ "system": "http://loinc.org", "code": "85354-9", "display": "Blood pressure" }] },
+                "subject": { "reference": "Patient/ips-test-patient" },
+                "effectiveDateTime": "2024-12-15T10:30:00Z",
+                "component": [
+                    {
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "8480-6", "display": "Systolic BP" }] },
+                        "valueQuantity": { "value": 130, "unit": "mmHg", "system": "http://unitsofmeasure.org", "code": "mm[Hg]" }
+                    },
+                    {
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "8462-4", "display": "Diastolic BP" }] },
+                        "valueQuantity": { "value": 85, "unit": "mmHg", "system": "http://unitsofmeasure.org", "code": "mm[Hg]" }
+                    }
+                ]
+            },
+            "request": { "method": "PUT", "url": "Observation/obs-bp" }
+        },
+        {
+            "resource": {
+                "resourceType": "Observation",
+                "id": "obs-glucose",
+                "status": "final",
+                "category": [{ "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "laboratory" }] }],
+                "code": { "coding": [{ "system": "http://loinc.org", "code": "2339-0", "display": "Glucose" }] },
+                "subject": { "reference": "Patient/ips-test-patient" },
+                "effectiveDateTime": "2024-12-10T08:00:00Z",
+                "valueQuantity": { "value": 125, "unit": "mg/dL", "system": "http://unitsofmeasure.org", "code": "mg/dL" }
+            },
+            "request": { "method": "PUT", "url": "Observation/obs-glucose" }
+        }
+    ]
+}
+
+###############################################################################
+# Basic GET Operations by Patient ID
+###############################################################################
+
+### Get patient summary by ID (tenant-agnostic route)
+# Expected: 200 OK with Bundle containing IPS Composition and referenced resources
+GET {{hostname}}/Patient/ips-test-patient/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips&_pretty=true
+Accept: application/fhir+json
+
+### Get patient summary by ID (tenant-explicit route)
+# Expected: 200 OK with Bundle containing IPS Composition and referenced resources
+GET {{hostname}}/tenant/1/Patient/ips-test-patient/$summary
+Accept: application/fhir+json
+
+### Get patient summary with pretty printing
+# Expected: 200 OK with formatted JSON
+GET {{hostname}}/Patient/ips-test-patient/$summary?_pretty=true
+Accept: application/fhir+json
+
+###############################################################################
+# GET with Profile Parameter
+###############################################################################
+
+### Get patient summary with IPS profile (explicit)
+# Expected: 200 OK with Bundle conforming to IPS Bundle profile
+GET {{hostname}}/Patient/ips-test-patient/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips
+Accept: application/fhir+json
+
+### Get patient summary with IPS Composition profile
+# Expected: 200 OK with Bundle containing IPS Composition
+GET {{hostname}}/Patient/ips-test-patient/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Composition-uv-ips
+Accept: application/fhir+json
+
+### Get patient summary with IPS profile and pretty printing
+GET {{hostname}}/Patient/ips-test-patient/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips&_pretty=true
+Accept: application/fhir+json
+
+###############################################################################
+# POST Operations by Patient ID
+###############################################################################
+
+### Post patient summary by ID (no parameters)
+# Expected: 200 OK with Bundle containing IPS Composition
+POST {{hostname}}/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+### Post patient summary by ID with profile parameter
+# Expected: 200 OK with Bundle conforming to specified profile
+POST {{hostname}}/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "profile",
+            "valueUri": "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips"
+        }
+    ]
+}
+
+### Post patient summary with tenant-explicit route
+POST {{hostname}}/tenant/1/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "profile",
+            "valueUri": "http://hl7.org/fhir/uv/ips/StructureDefinition/Composition-uv-ips"
+        }
+    ]
+}
+
+###############################################################################
+# GET by Identifier
+###############################################################################
+
+### Get patient summary by identifier (system|value format)
+# Expected: 200 OK with Bundle for patient matching identifier
+GET {{hostname}}/Patient/$summary?identifier=http://example.org/patient-id|IPS-12345
+Accept: application/fhir+json
+
+### Get patient summary by identifier with profile
+GET {{hostname}}/Patient/$summary?identifier=http://example.org/patient-id|IPS-12345&profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips
+Accept: application/fhir+json
+
+### Get patient summary by identifier (tenant-explicit)
+GET {{hostname}}/tenant/1/Patient/$summary?identifier=http://example.org/patient-id|IPS-12345
+Accept: application/fhir+json
+
+### Get patient summary by SSN identifier
+GET {{hostname}}/Patient/$summary?identifier=urn:oid:2.16.840.1.113883.4.1|123-45-6789&_pretty=true
+Accept: application/fhir+json
+
+###############################################################################
+# Error Cases - Patient Not Found (404)
+###############################################################################
+
+### Patient not found by ID
+# Expected: 404 Not Found with OperationOutcome
+GET {{hostname}}/Patient/nonexistent-patient/$summary
+Accept: application/fhir+json
+
+### Patient not found by identifier
+# Expected: 404 Not Found with OperationOutcome
+GET {{hostname}}/Patient/$summary?identifier=http://example.org/patient-id|UNKNOWN-ID
+Accept: application/fhir+json
+
+###############################################################################
+# Error Cases - Invalid Profile URL (400)
+###############################################################################
+
+### Invalid profile URL (not absolute URI) - GET
+# Expected: 400 Bad Request with OperationOutcome
+GET {{hostname}}/Patient/ips-test-patient/$summary?profile=invalid-profile
+Accept: application/fhir+json
+
+### Invalid profile URL (relative URI) - GET
+# Expected: 400 Bad Request with OperationOutcome
+GET {{hostname}}/Patient/ips-test-patient/$summary?profile=/StructureDefinition/Bundle-uv-ips
+Accept: application/fhir+json
+
+### Invalid profile URL - POST
+# Expected: 400 Bad Request with OperationOutcome
+POST {{hostname}}/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "profile",
+            "valueUri": "not-a-valid-uri"
+        }
+    ]
+}
+
+### Invalid profile URL (empty string) - POST
+# Expected: 400 Bad Request with OperationOutcome
+POST {{hostname}}/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "profile",
+            "valueUri": ""
+        }
+    ]
+}
+
+###############################################################################
+# Error Cases - Missing Identifier Parameter (400)
+###############################################################################
+
+### Missing identifier parameter when ID not in URL
+# Expected: 400 Bad Request with OperationOutcome
+GET {{hostname}}/Patient/$summary
+Accept: application/fhir+json
+
+### Empty identifier parameter
+# Expected: 400 Bad Request with OperationOutcome
+GET {{hostname}}/Patient/$summary?identifier=
+Accept: application/fhir+json
+
+###############################################################################
+# Additional Test Scenarios
+###############################################################################
+
+### Test with existing search patient (from search-data-batch.json)
+# Uses patient data from standard test data set
+GET {{hostname}}/Patient/searchpatient1/$summary?_pretty=true
+Accept: application/fhir+json
+
+### Test with another search patient
+GET {{hostname}}/Patient/searchpatient2/$summary?_pretty=true
+Accept: application/fhir+json
+
+### Test POST with empty Parameters body
+# Should work without errors (profile is optional)
+POST {{hostname}}/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": []
+}
+
+### Test POST with malformed JSON
+# Expected: Should handle gracefully (profile parameter is optional)
+POST {{hostname}}/Patient/ips-test-patient/$summary
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters"
+
+###############################################################################
+# Cleanup
+###############################################################################
+
+### Delete test patient and related resources
+POST {{hostname}}
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        { "request": { "method": "DELETE", "url": "Observation/obs-glucose" } },
+        { "request": { "method": "DELETE", "url": "Observation/obs-bp" } },
+        { "request": { "method": "DELETE", "url": "Procedure/proc-appendectomy" } },
+        { "request": { "method": "DELETE", "url": "Immunization/imm-covid" } },
+        { "request": { "method": "DELETE", "url": "MedicationStatement/med-metformin" } },
+        { "request": { "method": "DELETE", "url": "Condition/condition-diabetes" } },
+        { "request": { "method": "DELETE", "url": "AllergyIntolerance/allergy-penicillin" } },
+        { "request": { "method": "DELETE", "url": "Practitioner/ips-practitioner" } },
+        { "request": { "method": "DELETE", "url": "Patient/ips-test-patient" } }
+    ]
+}
