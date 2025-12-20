@@ -266,44 +266,46 @@ public class XhtmlSanitizerTests
     }
 
     [Fact]
-    public void GivenXhtmlWithForbiddenSection_WhenSanitizing_ThenRemovesSection()
+    public void GivenXhtmlWithForbiddenNav_WhenSanitizing_ThenRemovesNav()
     {
-        // Arrange - <section> is an HTML5 semantic element, not allowed in FHIR
-        var xhtml = "<div><section>Section content</section><p>Safe</p></div>";
+        // Arrange - <nav> is an HTML5 semantic element for navigation, not allowed in FHIR narratives
+        var xhtml = "<div><nav>Navigation content</nav><p>Safe</p></div>";
 
         // Act
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.ShouldNotContain("<section");
+        result.ShouldNotContain("<nav");
         result.ShouldContain("<p>Safe</p>");
     }
 
     [Fact]
-    public void GivenXhtmlWithAriaAttributes_WhenSanitizing_ThenRemovesAriaAttributes()
+    public void GivenXhtmlWithForbiddenFooter_WhenSanitizing_ThenRemovesFooter()
     {
-        // Arrange - ARIA attributes are not in FHIR's allowed attribute list
-        var xhtml = "<div aria-label=\"Test\" aria-labelledby=\"heading\"><p>Content</p></div>";
+        // Arrange - <footer> is an HTML5 semantic element for footers, not allowed in FHIR narratives
+        var xhtml = "<div><footer>Footer content</footer><p>Safe</p></div>";
 
         // Act
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.ShouldNotContain("aria-label");
-        result.ShouldNotContain("aria-labelledby");
+        result.ShouldNotContain("<footer");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     [Fact]
-    public void GivenXhtmlWithRoleAttribute_WhenSanitizing_ThenRemovesRole()
+    public void GivenXhtmlWithForbiddenForm_WhenSanitizing_ThenRemovesForm()
     {
-        // Arrange - role attribute is not in FHIR's allowed attribute list
-        var xhtml = "<div role=\"region\"><p>Content</p></div>";
+        // Arrange - <form> and form elements are not allowed in FHIR narratives
+        var xhtml = "<div><form><input type=\"text\"/></form><p>Safe</p></div>";
 
         // Act
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.ShouldNotContain("role=");
+        result.ShouldNotContain("<form");
+        result.ShouldNotContain("<input");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     #endregion
@@ -712,6 +714,341 @@ public class XhtmlSanitizerTests
         result.ShouldNotContain("data:");
         result.ShouldContain("Dangerous link"); // Text preserved
         result.ShouldContain("alt=\"Dangerous\""); // Safe attribute preserved
+    }
+
+    #endregion
+
+    #region WCAG 2.1 AA Accessibility Tests (FHIR-53652)
+
+    [Fact]
+    public void GivenXhtmlWithAriaAttributes_WhenSanitizing_ThenPreservesAriaAttributes()
+    {
+        // Arrange - ARIA attributes are now allowed per FHIR-53652
+        var xhtml = """
+            <div role="region" aria-label="Main content" aria-labelledby="heading1" aria-describedby="desc1" aria-hidden="false">
+                <h3 id="heading1">Patient Demographics</h3>
+                <p id="desc1">Demographic information for the patient</p>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("role=\"region\"");
+        result.ShouldContain("aria-label=\"Main content\"");
+        result.ShouldContain("aria-labelledby=\"heading1\"");
+        result.ShouldContain("aria-describedby=\"desc1\"");
+        result.ShouldContain("aria-hidden=\"false\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithRoleAlert_WhenSanitizing_ThenPreservesRole()
+    {
+        // Arrange - Critical allergy alert use case
+        var xhtml = """
+            <div role="alert" class="fhir-alert fhir-allergy">
+                <strong>SEVERE ALLERGY:</strong> Anaphylactic reaction to Penicillin
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("role=\"alert\"");
+        result.ShouldContain("<strong>SEVERE ALLERGY:</strong>");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithRoleStatus_WhenSanitizing_ThenPreservesRole()
+    {
+        // Arrange - Lab results summary use case
+        var xhtml = """
+            <div role="status" class="fhir-summary">
+                <p>Complete Blood Count: 4 abnormal values detected</p>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("role=\"status\"");
+        result.ShouldContain("4 abnormal values detected");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithSectionElement_WhenSanitizing_ThenPreservesSection()
+    {
+        // Arrange - <section> is now allowed for document structure per FHIR-53652
+        var xhtml = """
+            <div>
+                <section aria-labelledby="vital-signs-heading">
+                    <h3 id="vital-signs-heading">Vital Signs</h3>
+                    <p>Blood Pressure: 120/80 mmHg</p>
+                </section>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("<section");
+        result.ShouldContain("aria-labelledby=\"vital-signs-heading\"");
+        result.ShouldContain("<h3 id=\"vital-signs-heading\">Vital Signs</h3>");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithFigureAndFigcaption_WhenSanitizing_ThenPreservesElements()
+    {
+        // Arrange - Medical imaging use case
+        var xhtml = """
+            <div>
+                <figure>
+                    <img src="https://example.com/xray.jpg" alt="Chest X-ray showing pneumonia"/>
+                    <figcaption>Chest X-ray dated January 15, 2025</figcaption>
+                </figure>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("<figure>");
+        result.ShouldContain("<figcaption>");
+        result.ShouldContain("Chest X-ray dated January 15, 2025");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithMarkElement_WhenSanitizing_ThenPreservesMark()
+    {
+        // Arrange - Highlighting abnormal lab values
+        var xhtml = """
+            <div>
+                <p>WBC: <mark>12.5 K/µL</mark> (abnormal - reference range: 4.5-11.0)</p>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("<mark>12.5 K/µL</mark>");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithTimeElement_WhenSanitizing_ThenPreservesTime()
+    {
+        // Arrange - Semantic date/time representation
+        var xhtml = """
+            <div>
+                <p>Lab drawn on <time datetime="2025-01-15T08:30:00Z">January 15, 2025 at 8:30 AM</time></p>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("<time");
+        result.ShouldContain("datetime=\"2025-01-15T08:30:00Z\"");
+        result.ShouldContain("January 15, 2025 at 8:30 AM");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithArticleAndAside_WhenSanitizing_ThenPreservesElements()
+    {
+        // Arrange - Document structure elements
+        var xhtml = """
+            <div>
+                <article>
+                    <h3>Encounter Summary</h3>
+                    <p>Patient presented with fever and cough.</p>
+                </article>
+                <aside>
+                    <p>Note: Patient has history of asthma</p>
+                </aside>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("<article>");
+        result.ShouldContain("<aside>");
+        result.ShouldContain("Encounter Summary");
+        result.ShouldContain("Note: Patient has history of asthma");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithDirLtr_WhenSanitizing_ThenPreservesDirAttribute()
+    {
+        // Arrange - Left-to-right language support
+        var xhtml = "<div dir=\"ltr\"><p>English content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("dir=\"ltr\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithDirRtl_WhenSanitizing_ThenPreservesDirAttribute()
+    {
+        // Arrange - Right-to-left language support (Arabic, Hebrew, etc.)
+        var xhtml = "<div dir=\"rtl\"><p>محتوى عربي</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("dir=\"rtl\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithDirAuto_WhenSanitizing_ThenPreservesDirAttribute()
+    {
+        // Arrange - Automatic direction based on content
+        var xhtml = "<div dir=\"auto\"><p>Mixed content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("dir=\"auto\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithInvalidDirValue_WhenSanitizing_ThenRemovesDirAttribute()
+    {
+        // Arrange - Invalid dir value (only ltr, rtl, auto allowed)
+        var xhtml = "<div dir=\"invalid\" class=\"content\"><p>Content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldNotContain("dir=\"invalid\"");
+        result.ShouldContain("class=\"content\""); // Other attributes preserved
+    }
+
+    [Fact]
+    public void GivenXhtmlWithDirUpperCase_WhenSanitizing_ThenPreservesDirAttribute()
+    {
+        // Arrange - Dir attribute is case-insensitive
+        var xhtml = "<div dir=\"LTR\"><p>Content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("dir=\"LTR\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithAccessibleTable_WhenSanitizing_ThenPreservesAriaAttributes()
+    {
+        // Arrange - Accessible table with ARIA
+        var xhtml = """
+            <div>
+                <table role="table" aria-label="Laboratory Results - Complete Blood Count">
+                    <caption>Lab Results</caption>
+                    <thead>
+                        <tr role="row">
+                            <th role="columnheader" scope="col">Test</th>
+                            <th role="columnheader" scope="col">Result</th>
+                            <th role="columnheader" scope="col">Reference Range</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr role="row">
+                            <td role="cell">WBC</td>
+                            <td role="cell"><mark>12.5 K/µL</mark></td>
+                            <td role="cell">4.5-11.0 K/µL</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.ShouldContain("role=\"table\"");
+        result.ShouldContain("aria-label=\"Laboratory Results - Complete Blood Count\"");
+        result.ShouldContain("role=\"row\"");
+        result.ShouldContain("role=\"columnheader\"");
+        result.ShouldContain("role=\"cell\"");
+        result.ShouldContain("<mark>12.5 K/µL</mark>");
+    }
+
+    [Fact]
+    public void GivenCompleteAccessibilityExample_WhenSanitizing_ThenPreservesAllAccessibilityFeatures()
+    {
+        // Arrange - Comprehensive WCAG 2.1 AA compliant narrative
+        var xhtml = """
+            <div xmlns="http://www.w3.org/1999/xhtml" lang="en" dir="ltr">
+                <div role="alert" class="fhir-alert">
+                    <strong>CRITICAL ALERT:</strong> Severe penicillin allergy
+                </div>
+
+                <section aria-labelledby="demographics-heading">
+                    <h3 id="demographics-heading">Patient Demographics</h3>
+                    <p>Date of Birth: <time datetime="1985-06-15">June 15, 1985</time></p>
+                </section>
+
+                <section aria-labelledby="labs-heading">
+                    <h3 id="labs-heading">Laboratory Results</h3>
+                    <figure>
+                        <table role="table" aria-label="Complete Blood Count">
+                            <caption>CBC Results</caption>
+                            <tr role="row">
+                                <th role="columnheader">Test</th>
+                                <th role="columnheader">Value</th>
+                            </tr>
+                            <tr role="row">
+                                <td role="cell">WBC</td>
+                                <td role="cell"><mark aria-label="Abnormal result">12.5 K/µL</mark></td>
+                            </tr>
+                        </table>
+                        <figcaption>Lab results from <time datetime="2025-01-15">January 15, 2025</time></figcaption>
+                    </figure>
+                </section>
+
+                <aside aria-label="Clinical note">
+                    <p>Patient requires close monitoring</p>
+                </aside>
+            </div>
+            """;
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert - Verify all accessibility features are preserved
+        result.ShouldContain("role=\"alert\"");
+        result.ShouldContain("role=\"table\"");
+        result.ShouldContain("role=\"row\"");
+        result.ShouldContain("role=\"columnheader\"");
+        result.ShouldContain("role=\"cell\"");
+        result.ShouldContain("aria-labelledby=\"demographics-heading\"");
+        result.ShouldContain("aria-labelledby=\"labs-heading\"");
+        result.ShouldContain("aria-label=\"Complete Blood Count\"");
+        result.ShouldContain("aria-label=\"Abnormal result\"");
+        result.ShouldContain("aria-label=\"Clinical note\"");
+        result.ShouldContain("<section");
+        result.ShouldContain("<figure>");
+        result.ShouldContain("<figcaption>");
+        result.ShouldContain("<mark");
+        result.ShouldContain("<time");
+        result.ShouldContain("<aside");
+        result.ShouldContain("dir=\"ltr\"");
+        result.ShouldContain("lang=\"en\"");
     }
 
     #endregion

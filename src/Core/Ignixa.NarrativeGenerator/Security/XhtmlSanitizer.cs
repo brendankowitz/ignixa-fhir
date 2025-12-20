@@ -10,18 +10,25 @@ namespace Ignixa.NarrativeGenerator.Security;
 /// <remarks>
 /// <para>
 /// This sanitizer enforces the FHIR narrative XHTML specification by:
-/// - Allowing only FHIR-approved HTML elements per HTML 4.0 chapters 7-11 (except section 4 of chapter 9) and 15
-/// - Allowing only safe attributes (style, class, id, title, lang, href, src, alt)
+/// - Allowing FHIR-approved HTML elements per HTML 4.0 chapters 7-11 (except section 4 of chapter 9) and 15
+/// - Allowing WCAG 2.1 accessibility attributes (ARIA, role, dir) per FHIR-53652
+/// - Allowing select HTML5 elements for accessibility (figure, mark, section, etc.)
+/// - Allowing only safe attributes (style, class, id, title, lang, href, src, alt, ARIA)
 /// - Removing all JavaScript vectors (javascript:, data:, vbscript:, on* handlers)
 /// - Ensuring href/src attributes only use http/https schemes
 /// - Adding xmlns="http://www.w3.org/1999/xhtml" to the root div element (FHIR requirement)
 /// </para>
 /// <para>
 /// Per FHIR specification, the following are NOT allowed:
-/// - HTML5 semantic elements (header, footer, section, article, aside, nav, details, summary)
-/// - ARIA attributes (aria-label, aria-labelledby, aria-describedby, role)
+/// - HTML5 form elements (header, footer, nav, details, summary)
 /// - Event handlers (onclick, onload, etc.)
 /// - Scripts, forms, frames, iframes, objects
+/// </para>
+/// <para>
+/// Accessibility support (WCAG 2.1 AA compliance per FHIR-53652):
+/// - ARIA attributes: role, aria-label, aria-labelledby, aria-describedby, aria-hidden
+/// - HTML5 elements: figure, figcaption, mark, section, article, aside, time
+/// - RTL language support: dir attribute (ltr, rtl, auto)
 /// </para>
 /// </remarks>
 internal partial class XhtmlSanitizer
@@ -29,10 +36,11 @@ internal partial class XhtmlSanitizer
     /// <summary>
     /// FHIR-allowed HTML elements per the FHIR narrative specification.
     /// Based on HTML 4.0 chapters 7-11 (except section 4 of chapter 9) and chapter 15.
+    /// Includes HTML5 accessibility elements per FHIR-53652.
     /// </summary>
     /// <remarks>
-    /// HTML5 semantic elements (header, footer, section, article, aside, nav, details, summary)
-    /// are explicitly NOT allowed.
+    /// HTML5 form elements (header, footer, nav, details, summary, form, input, button)
+    /// are explicitly NOT allowed. Only accessibility-focused HTML5 elements are permitted.
     /// </remarks>
     private static readonly FrozenSet<string> AllowedElements = FrozenSet.ToFrozenSet([
         // Text elements (HTML 4.0 chapter 9)
@@ -52,15 +60,18 @@ internal partial class XhtmlSanitizer
         // Links and images (HTML 4.0 chapter 13 and 15)
         "a", "img",
         // Address (HTML 4.0 chapter 7)
-        "address"
+        "address",
+        // HTML5 accessibility elements (FHIR-53652 WCAG 2.1 AA compliance)
+        "figure", "figcaption", "mark", "section", "article", "aside", "time"
     ]);
 
     /// <summary>
     /// FHIR-allowed attributes for narrative XHTML.
+    /// Includes ARIA attributes for WCAG 2.1 AA compliance per FHIR-53652.
     /// </summary>
     /// <remarks>
-    /// ARIA attributes (aria-*, role) are NOT allowed per FHIR specification.
-    /// Only standard HTML 4.0 attributes are permitted.
+    /// ARIA attributes (aria-*, role) are allowed per FHIR-53652 for accessibility.
+    /// These work with HTML 4.0 (layered on top) and significantly improve screen reader support.
     /// </remarks>
     private static readonly FrozenSet<string> AllowedAttributes = FrozenSet.ToFrozenSet([
         // Common attributes (per FHIR spec)
@@ -70,7 +81,9 @@ internal partial class XhtmlSanitizer
         // Table attributes (HTML 4.0)
         "colspan", "rowspan", "abbr", "headers", "scope",
         // Other standard attributes
-        "datetime", "cite", "width", "height"
+        "datetime", "cite", "width", "height",
+        // ARIA attributes (FHIR-53652 WCAG 2.1 AA compliance)
+        "role", "aria-label", "aria-labelledby", "aria-describedby", "aria-hidden"
     ]);
 
     /// <summary>
@@ -182,6 +195,9 @@ internal partial class XhtmlSanitizer
         // Special handling for href/src - must be http/https only
         SanitizeUrlAttribute(element, "href");
         SanitizeUrlAttribute(element, "src");
+
+        // Special handling for dir - must be ltr, rtl, or auto (FHIR-53652)
+        SanitizeDirAttribute(element);
     }
 
     /// <summary>
@@ -202,6 +218,34 @@ internal partial class XhtmlSanitizer
         // Remove attribute if URL is invalid or uses disallowed scheme
         if (!Uri.TryCreate(urlValue, UriKind.Absolute, out var uri) ||
             (uri.Scheme != "http" && uri.Scheme != "https"))
+        {
+            attr.Remove();
+        }
+    }
+
+    /// <summary>
+    /// Validates and sanitizes the dir attribute for RTL language support.
+    /// </summary>
+    /// <param name="element">The element containing the dir attribute.</param>
+    /// <remarks>
+    /// Per FHIR-53652, the dir attribute SHALL have one of these values: ltr, rtl, auto.
+    /// This is essential for right-to-left language support (Arabic, Hebrew, etc.).
+    /// </remarks>
+    private static void SanitizeDirAttribute(XElement element)
+    {
+        var attr = element.Attribute("dir");
+        if (attr is null)
+        {
+            return;
+        }
+
+        // Note: Using ToLowerInvariant for case-insensitive HTML attribute value comparison (standard practice)
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        var dirValue = attr.Value.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        // Remove attribute if value is not ltr, rtl, or auto
+        if (dirValue != "ltr" && dirValue != "rtl" && dirValue != "auto")
         {
             attr.Remove();
         }

@@ -5,7 +5,7 @@
   <div class="fhir-header">
     <h3 class="fhir-resource-type">{{ l10n.t "Binary.Title" }}</h3>
     {{~ if (fhir.exists resource "id") ~}}
-    <span class="fhir-id"Binary.Id" }}">{{ fhir.path resource "id" }}</span>
+    <span class="fhir-id">{{ fhir.path resource "id" }}</span>
     {{~ end ~}}
   </div>
 

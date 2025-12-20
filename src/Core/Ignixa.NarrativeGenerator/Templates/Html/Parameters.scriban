@@ -5,7 +5,7 @@
   <div class="fhir-header">
     <h3 class="fhir-resource-type">{{ l10n.t "Parameters.Title" }}</h3>
     {{~ if (fhir.exists resource "id") ~}}
-    <span class="fhir-id"Parameters.Id" }}">{{ fhir.path resource "id" }}</span>
+    <span class="fhir-id">{{ fhir.path resource "id" }}</span>
     {{~ end ~}}
   </div>
 
