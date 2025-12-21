@@ -26,10 +26,13 @@ FHIR search is a complex domain requiring support for compartment searches, wild
 | [sql-on-fhir](investigations/sql-on-fhir.md) | Viable | SQL on FHIR v2 implementation analysis using ViewDefinitions for analytics queries |
 | [chaining-refactor](investigations/chaining-refactor.md) | In Progress | Refactoring ChainingSearchTests to use ScenarioBuilder pattern |
 | [composite-provider](investigations/composite-provider.md) | Viable | Search parameter composite provider pattern for IG-defined parameters |
+| [custom-parameter-architecture-comparison](investigations/custom-parameter-architecture-comparison.md) | In Progress | Comparison of 3 architectural approaches for custom search parameter indexing (Microsoft/HAPI/LinuxForHealth analysis) |
+| [event-sourced-conformance](investigations/event-sourced-conformance.md) | Viable | Event-sourced architecture for package/conformance management - replaces 6 classes with 3, eliminates caches, atomic activation |
 
 ## Related ADRs
 
 - [ADR 2509: InMemory Search Architecture](../../adr/adr-2509-inmemory-search.md)
+- [ADR 2512: Event-Sourced Conformance Management](../../adr/adr-2512-event-sourced-conformance.md)
 
 ## Decision
 
