@@ -253,4 +253,18 @@ public interface IPackageResourceRepository
     Task<PackageResource?> GetStructureMapByUrlAsync(
         string canonicalUrl,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets all conformance resources from a specific package version for activation.
+    /// Returns SearchParameters and StructureDefinitions ready for event-sourced activation.
+    /// Used by PackageActivationPipeline to load resources before validation and event emission.
+    /// </summary>
+    /// <param name="packageId">NPM package identifier (e.g., "hl7.fhir.us.core").</param>
+    /// <param name="version">NPM package version (e.g., "5.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Package resources ready for activation.</returns>
+    Task<PackageResource[]> GetResourcesForActivationAsync(
+        string packageId,
+        string version,
+        CancellationToken cancellationToken);
 }

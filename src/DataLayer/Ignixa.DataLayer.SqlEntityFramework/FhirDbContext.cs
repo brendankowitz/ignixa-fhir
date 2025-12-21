@@ -185,6 +185,13 @@ public class FhirDbContext : DbContext
     /// </summary>
     public DbSet<TermConceptMapElementEntity> TermConceptMapElements { get; set; } = null!;
 
+    // Event sourcing tables
+
+    /// <summary>
+    /// Gets or sets the SourceEvents table (event store for conformance management).
+    /// </summary>
+    public DbSet<EventStore.SourceEventEntity> SourceEvents => Set<EventStore.SourceEventEntity>();
+
     /// <summary>
     /// Configures database provider options and warnings.
     /// </summary>
@@ -219,6 +226,7 @@ public class FhirDbContext : DbContext
         ConfigureBackgroundJobEntity(modelBuilder);
         ConfigurePackageResourceEntity(modelBuilder);
         ConfigureTerminologyEntities(modelBuilder);
+        ConfigureEventStoreEntities(modelBuilder);
     }
 
     private static void ConfigureResourceEntity(ModelBuilder modelBuilder)
@@ -849,5 +857,10 @@ public class FhirDbContext : DbContext
             .HasDatabaseName("IX_TermConceptMapElement_Target")
             .IncludeProperties(tcme => new { tcme.TermConceptMapId, tcme.SourceSystemId, tcme.SourceCode, tcme.Equivalence })
             .HasFilter("[TargetSystemId] IS NOT NULL");
+    }
+
+    private static void ConfigureEventStoreEntities(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new EventStore.SourceEventEntityConfiguration());
     }
 }

@@ -815,6 +815,34 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         return entity != null ? MapEntityToModel(entity) : null;
     }
 
+    public async Task<PackageResource[]> GetResourcesForActivationAsync(
+        string packageId,
+        string version,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var entities = await dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.PackageId == packageId
+                && pr.PackageVersion == version
+                && pr.IsActive
+                && (pr.ResourceType == "SearchParameter" || pr.ResourceType == "StructureDefinition"))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Retrieved {Count} conformance resources from package {PackageId}@{Version} for activation",
+            entities.Count,
+            packageId,
+            version);
+
+        return entities.Select(MapEntityToModel).ToArray();
+    }
+
     /// <summary>
     /// Checks if a SearchParameter applies to a given resource type by parsing the base[] field.
     /// </summary>

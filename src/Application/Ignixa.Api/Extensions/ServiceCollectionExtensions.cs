@@ -55,6 +55,9 @@ public static class ServiceCollectionExtensions
         // Sidecar logging provider (if enabled, must be after gRPC clients)
         services.AddSidecarLogging(configuration);
 
+        // Conformance services (event store initializer)
+        services.AddConformanceServices();
+
         return services;
     }
 
@@ -102,6 +105,9 @@ public static class ServiceCollectionExtensions
         // Experimental services (MCP, Transform, Terminology)
         // Controlled by Experimental:Enabled and per-feature configuration
         builder.RegisterExperimentalServices(configuration);
+
+        // Conformance services (event store, state, activation pipeline)
+        builder.RegisterConformanceServices(configuration);
 
         return builder;
     }

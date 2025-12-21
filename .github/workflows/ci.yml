@@ -93,6 +93,7 @@ jobs:
           dotnet pack src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Application/Ignixa.Domain/Ignixa.Domain.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Application/Ignixa.Conformance.Events/Ignixa.Conformance.Events.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           # Note: Ignixa.Sidecar.Contracts is packed in core-packages for public NuGet.org distribution
           # DataLayer (src/DataLayer/)
           dotnet pack src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
