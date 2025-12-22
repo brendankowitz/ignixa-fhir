@@ -8,7 +8,7 @@ const FeatureList = [
     emoji: '🏥',
     description: (
       <>
-        Full support for FHIR R4, R4B, R5, and STU3. Seamlessly handle multiple 
+        Full support for FHIR R4, R4B, R5, R6, and STU3. Seamlessly handle multiple
         FHIR versions in a single deployment with version-aware routing.
       </>
     ),

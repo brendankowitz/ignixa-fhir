@@ -6,7 +6,42 @@ description: FHIR search capabilities and parameters
 
 # Search Parameters
 
-Ignixa implements comprehensive FHIR search with support for all standard search parameters.
+Ignixa implements comprehensive FHIR search with support for all standard search parameters plus extensible search via FHIR packages.
+
+## Package-Based Search Parameters
+
+Beyond the base FHIR specification parameters, Ignixa can load additional SearchParameter definitions from installed FHIR packages (Implementation Guides). Packages can be installed via:
+
+- **MCP tools** - Use `install_fhir_package` tool via AI assistants
+- **Configuration** - Pre-load packages at startup (see [MCP Server](/docs/server/features/mcp-server))
+
+This enables:
+- **Implementation Guide parameters** - US Core, AU Base, UK Core, etc.
+- **Custom SearchParameters** - Define your own search parameters
+- **Custom resource types** - Search parameters for StructureDefinitions with custom types
+
+### Configuration
+
+Control how package search parameters are loaded:
+
+```json
+{
+  "SearchParameters": {
+    "ConflictResolution": {
+      "PackagePriorityOrder": ["hl7.fhir.us.core", "hl7.fhir.au.base"],
+      "UseSemanticVersioning": true,
+      "LogConflicts": true,
+      "EagerLoadPackageSearchParameters": true
+    }
+  }
+}
+```
+
+| Setting | Description |
+|---------|-------------|
+| `PackagePriorityOrder` | Priority when multiple packages define same parameter code |
+| `UseSemanticVersioning` | Newer versions win when no explicit priority |
+| `EagerLoadPackageSearchParameters` | Load all at startup vs. lazy per resource type |
 
 ## Basic Search
 

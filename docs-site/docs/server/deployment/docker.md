@@ -6,7 +6,11 @@ description: Deploy Ignixa using Docker
 
 # Docker Deployment
 
-Ignixa provides official Docker images for easy deployment.
+Ignixa provides official Docker images for deployment with SQL Server.
+
+:::note SQL Server Required
+Ignixa requires SQL Server for data storage. The simplest deployment uses Docker Compose with SQL Server.
+:::
 
 ## Official Image
 
@@ -24,27 +28,9 @@ docker pull ghcr.io/brendankowitz/ignixa-fhir:release
 | `latest` | Latest build from main branch |
 | `x.y.z` | Specific version |
 
-## Quick Start
+## Docker Compose (Recommended)
 
-### Development (File System Storage)
-
-```bash
-docker run -p 8080:8080 ghcr.io/brendankowitz/ignixa-fhir:release
-```
-
-Access at `http://localhost:8080/metadata`.
-
-### With Volume Persistence
-
-```bash
-docker run -p 8080:8080 \
-  -v ignixa-data:/app/data \
-  ghcr.io/brendankowitz/ignixa-fhir:release
-```
-
-## Docker Compose
-
-For production deployments with SQL Server:
+The easiest way to run Ignixa is with Docker Compose, which includes SQL Server.
 
 ### docker-compose.yml
 
@@ -55,8 +41,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - Storage__Provider=SqlServer
-      - Storage__ConnectionString=Server=sql;Database=IgnixaFhir;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=true
+      - Tenants__Configurations__1__Storage__ConnectionString=Server=sql;Database=FHIR_R4;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=true
+      - ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
     depends_on:
       sql:
         condition: service_healthy
@@ -89,18 +75,22 @@ SQL_SA_PASSWORD=YourStrong!Passw0rd
 docker compose up -d
 ```
 
+Access at `http://localhost:8080/metadata`.
+
 ## Environment Variables
 
-All configuration can be passed via environment variables:
+Configuration uses the standard ASP.NET Core double-underscore notation:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `Storage__Provider` | Storage backend | `FileSystem` |
-| `Storage__ConnectionString` | SQL connection string | - |
-| `Storage__DataPath` | File system data path | `/app/data` |
-| `Tenancy__Mode` | Tenant mode | `SingleTenant` |
-| `Validation__Level` | Validation level | `Spec` |
-| `ASPNETCORE_URLS` | Listening URLs | `http://+:8080` |
+| Variable | Description |
+|----------|-------------|
+| `Tenants__Configurations__1__Storage__ConnectionString` | SQL Server connection string |
+| `Tenants__Mode` | `Isolated` (default) |
+| `Authorization__Enabled` | Enable authorization (`true`/`false`) |
+| `Experimental__Enabled` | Enable experimental features |
+| `ASPNETCORE_URLS` | Listening URLs (default: `http://+:8080`) |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Handle X-Forwarded headers behind proxy |
+
+See [Configuration](/docs/getting-started/configuration) for all options.
 
 ## Health Checks
 
@@ -122,6 +112,17 @@ healthcheck:
   interval: 30s
   timeout: 10s
   retries: 3
+```
+
+## Connecting to External SQL Server
+
+To use an existing SQL Server instead of the containerized one:
+
+```bash
+docker run -p 8080:8080 \
+  -e Tenants__Configurations__1__Storage__ConnectionString="Server=your-server.database.windows.net;Database=FHIR_R4;Authentication=Active Directory Default" \
+  -e ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
+  ghcr.io/brendankowitz/ignixa-fhir:release
 ```
 
 ## Resource Limits
@@ -180,6 +181,7 @@ Configure structured logging:
 docker run -p 8080:8080 \
   -e Logging__LogLevel__Default=Information \
   -e Logging__LogLevel__Ignixa=Debug \
+  -e Tenants__Configurations__1__Storage__ConnectionString="..." \
   ghcr.io/brendankowitz/ignixa-fhir:release
 ```
 
@@ -197,9 +199,6 @@ Extend the base image:
 ```dockerfile
 FROM ghcr.io/brendankowitz/ignixa-fhir:release
 
-# Add custom profiles
-COPY ./profiles /app/profiles
-
 # Custom configuration
 COPY ./appsettings.Production.json /app/appsettings.Production.json
 
@@ -210,12 +209,14 @@ Build and run:
 
 ```bash
 docker build -t my-ignixa .
-docker run -p 8080:8080 my-ignixa
+docker run -p 8080:8080 \
+  -e Tenants__Configurations__1__Storage__ConnectionString="..." \
+  my-ignixa
 ```
 
 ## Kubernetes
 
-For Kubernetes deployments, see the Helm charts in the repository or use the following minimal deployment:
+For Kubernetes deployments:
 
 ```yaml
 apiVersion: apps/v1
@@ -238,13 +239,13 @@ spec:
           ports:
             - containerPort: 8080
           env:
-            - name: Storage__Provider
-              value: SqlServer
-            - name: Storage__ConnectionString
+            - name: Tenants__Configurations__1__Storage__ConnectionString
               valueFrom:
                 secretKeyRef:
                   name: ignixa-secrets
                   key: connection-string
+            - name: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+              value: "true"
           livenessProbe:
             httpGet:
               path: /health/live

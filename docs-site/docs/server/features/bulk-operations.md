@@ -232,5 +232,5 @@ Export files are stored based on configuration:
 
 ## Related Documentation
 
-- [ADR: Background Jobs](/docs/adr/adr-2510-background-jobs)
+- [ADR: Background Jobs](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2510-background-jobs.md)
 - [Azure Deployment](/docs/server/deployment/azure)

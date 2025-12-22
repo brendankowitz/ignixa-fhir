@@ -40,6 +40,7 @@ const sidebars = {
       items: [
         'server/fhir/capability-statement',
         'server/fhir/supported-resources',
+        'server/fhir/bundles',
         'server/fhir/search-parameters',
         'server/fhir/operations',
       ],
@@ -50,6 +51,7 @@ const sidebars = {
       items: [
         'server/features/validation',
         'server/features/bulk-operations',
+        'server/features/mcp-server',
         'server/features/subscriptions',
       ],
     },
@@ -87,28 +89,15 @@ const sidebars = {
         'core-sdk/search',
         'core-sdk/fhir-fakes',
         'core-sdk/package-management',
+        'core-sdk/narrative-generator',
+        'core-sdk/fhir-mapping-language',
+        'core-sdk/sql-on-fhir',
       ],
     },
   ],
 
   adrSidebar: [
-    {
-      type: 'category',
-      label: 'Architecture Decision Records',
-      link: {
-        type: 'doc',
-        id: 'adr/index',
-      },
-      items: [
-        'adr/adr-2501-authorization',
-        'adr/adr-2509-vertical-slice-architecture',
-        'adr/adr-2509-inmemory-search',
-        'adr/adr-2509-bundle-processing',
-        'adr/adr-2510-multi-tenancy',
-        'adr/adr-2510-background-jobs',
-        'adr/adr-2510-validation-architecture',
-      ],
-    },
+    'adr/index',
   ],
 };
 

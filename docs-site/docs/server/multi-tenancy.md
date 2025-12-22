@@ -167,5 +167,5 @@ az deployment group create \
 
 ## Related Documentation
 
-- [ADR: Multi-Tenancy](/docs/adr/adr-2510-multi-tenancy)
+- [ADR: Multi-Tenancy](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2510-multi-tenancy.md)
 - [Azure Deployment](/docs/server/deployment/azure)

@@ -10,11 +10,17 @@ This guide walks you through making your first FHIR requests with Ignixa. By the
 
 ## Start the Server
 
-If you haven't already, start Ignixa using Docker:
+If you haven't already, start Ignixa using Docker Compose with SQL Server:
 
 ```bash
-docker run -p 8080:8080 ghcr.io/brendankowitz/ignixa-fhir:release
+git clone https://github.com/brendankowitz/ignixa-fhir.git
+cd ignixa-fhir
+cp .env.example .env
+# Edit .env and set SQL_SA_PASSWORD
+docker compose up -d
 ```
+
+See the [Installation Guide](/docs/getting-started/installation) for alternative deployment options including Azure.
 
 ## Verify the Server
 

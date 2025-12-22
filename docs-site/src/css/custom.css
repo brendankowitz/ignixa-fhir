@@ -40,14 +40,26 @@
   --docusaurus-highlighted-code-line-bg: rgba(244, 140, 80, 0.2);
 }
 
-/* Hero section styling */
+/* Hero section styling - force light text on dark background */
 .hero--primary {
   background: linear-gradient(135deg, #023e8a 0%, #0077b6 50%, #00b4d8 100%);
+}
+
+.hero--primary .hero__title,
+.hero--primary .hero__subtitle {
+  color: #fff;
 }
 
 .hero__title {
   font-size: 3rem;
 }
+
+/* Ensure hero text stays white in dark mode too */
+[data-theme='dark'] .hero--primary .hero__title,
+[data-theme='dark'] .hero--primary .hero__subtitle {
+  color: #fff;
+}
+
 
 /* Code block enhancements */
 .prism-code {
@@ -74,9 +86,22 @@ th {
   height: 2rem;
 }
 
-/* Footer links */
-.footer__link-item:hover {
+/* Footer - improved contrast on dark background */
+.footer--dark .footer__link-item {
+  color: #90caf9;
+}
+
+.footer--dark .footer__link-item:hover {
+  color: #bbdefb;
   text-decoration: underline;
+}
+
+.footer--dark .footer__title {
+  color: #fff;
+}
+
+.footer--dark .footer__copyright {
+  color: #b0bec5;
 }
 
 /* Sidebar category styling */

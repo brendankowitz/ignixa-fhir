@@ -7,6 +7,7 @@ on:
       - 'docs-site/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

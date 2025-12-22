@@ -6,15 +6,16 @@ description: FHIR operations supported by Ignixa
 
 # Operations
 
-Ignixa supports standard FHIR operations and custom operations for healthcare workflows.
+Ignixa supports standard FHIR operations for validation, bulk data, patient access, and terminology.
 
-## Validation
+## Core Operations
 
 ### $validate
 
 Validate a resource against FHIR specifications and profiles:
 
 ```bash
+# Type-level validation
 POST /Patient/$validate
 Content-Type: application/fhir+json
 
@@ -30,105 +31,42 @@ Content-Type: application/fhir+json
 }
 ```
 
-Response:
-
-```json
-{
-  "resourceType": "OperationOutcome",
-  "issue": [{
-    "severity": "information",
-    "code": "informational",
-    "diagnostics": "Validation successful"
-  }]
-}
-```
-
 #### Validation Modes
 
 ```bash
 # Validate against a profile
 POST /Patient/$validate?profile=http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient
 
-# Validation mode
+# Validation mode (create, update, delete)
 POST /Patient/$validate?mode=create
-POST /Patient/$validate?mode=update
-POST /Patient/$validate?mode=delete
 ```
 
-## Bulk Data Operations
+#### Validation Depth
 
-### $export
-
-Bulk data export following the [FHIR Bulk Data Access](https://hl7.org/fhir/uv/bulkdata/) specification:
+Control validation depth via Prefer header:
 
 ```bash
-# System-level export
-GET /$export
-
-# Patient-level export
-GET /Patient/$export
-
-# Group-level export
-GET /Group/{id}/$export
+POST /Patient/$validate
+Prefer: mode=minimal   # Structure only
+Prefer: mode=spec      # FHIR spec compliance (default)
+Prefer: mode=full      # Full profile validation with terminology
 ```
 
-#### Export Parameters
+### $everything
 
-| Parameter | Description |
-|-----------|-------------|
-| `_outputFormat` | ndjson, parquet |
-| `_since` | Export resources modified since |
-| `_type` | Resource types to include |
-| `_typeFilter` | Search filters per type |
-
-#### Async Response
-
-```
-HTTP/1.1 202 Accepted
-Content-Location: /$export-poll-status?_jobId=abc123
-```
-
-Poll for completion:
+Retrieve all data for a patient:
 
 ```bash
-GET /$export-poll-status?_jobId=abc123
+GET /Patient/{id}/$everything
+GET /Patient/{id}/$everything?start=2024-01-01&end=2024-12-31
+GET /Patient/{id}/$everything?_type=Observation,Condition
+GET /Patient/{id}/$everything?_since=2024-01-01T00:00:00Z
+GET /Patient/{id}/$everything?_count=100
 ```
-
-### $import
-
-Bulk data import:
-
-```bash
-POST /$import
-Content-Type: application/fhir+json
-
-{
-  "resourceType": "Parameters",
-  "parameter": [
-    {
-      "name": "inputFormat",
-      "valueCode": "application/fhir+ndjson"
-    },
-    {
-      "name": "inputSource",
-      "valueUri": "https://storage.example.org/import/"
-    },
-    {
-      "name": "input",
-      "part": [
-        { "name": "type", "valueCode": "Patient" },
-        { "name": "url", "valueUri": "https://storage.example.org/import/Patient.ndjson" }
-      ]
-    }
-  ]
-}
-```
-
-## Patient Operations
 
 ### $member-match
 
-Match patients across different sources:
+Match patients across different payer systems (HRex specification):
 
 ```bash
 POST /Patient/$member-match
@@ -144,86 +82,141 @@ Content-Type: application/fhir+json
         "identifier": [{ "system": "http://example.org", "value": "12345" }],
         "name": [{ "family": "Smith", "given": ["John"] }]
       }
+    },
+    {
+      "name": "CoverageToMatch",
+      "resource": {
+        "resourceType": "Coverage",
+        "status": "active",
+        "beneficiary": { "reference": "Patient/member" }
+      }
     }
   ]
 }
 ```
 
-### $everything
+## Bulk Data Operations
 
-Retrieve all data for a patient:
+### $export
+
+Bulk data export following the [FHIR Bulk Data Access](https://hl7.org/fhir/uv/bulkdata/) specification:
 
 ```bash
-GET /Patient/{id}/$everything
-GET /Patient/{id}/$everything?start=2024-01-01&end=2024-12-31
+# System-level export
+POST /$export
+
+# Tenant-level export
+POST /tenant/{tenantId}/$export
+
+# Group-level export
+POST /Group/{id}/$export
 ```
 
-## Document Operations
+#### Export Parameters
 
-### $document
+| Parameter | Description |
+|-----------|-------------|
+| `_type` | Resource types to include (comma-separated) |
+| `_since` | Export resources modified since |
+| `_typeFilter` | Search filters per type |
+| `_outputFormat` | `application/fhir+ndjson` or `application/vnd.apache.parquet` |
+| `_viewDefinition` | SQL on FHIR ViewDefinition ID (required for Parquet) |
 
-Generate a document from a Composition:
+#### Async Response
 
-```bash
-GET /Composition/{id}/$document
-GET /Composition/{id}/$document?persist=true
+```
+HTTP/1.1 202 Accepted
+Content-Location: /tenant/{tenantId}/_export/{jobId}
 ```
 
-## Terminology Operations
-
-### $expand (ValueSet)
-
-Expand a ValueSet:
+Poll for completion:
 
 ```bash
-GET /ValueSet/{id}/$expand
-POST /ValueSet/$expand
+GET /tenant/{tenantId}/_export/{jobId}
+```
+
+### $import
+
+Bulk data import:
+
+```bash
+POST /tenant/{tenantId}/$import
+Content-Type: application/fhir+json
 
 {
   "resourceType": "Parameters",
   "parameter": [
-    { "name": "url", "valueUri": "http://hl7.org/fhir/ValueSet/observation-codes" },
-    { "name": "filter", "valueString": "blood" }
+    {
+      "name": "inputFormat",
+      "valueCode": "application/fhir+ndjson"
+    },
+    {
+      "name": "input",
+      "part": [
+        { "name": "type", "valueCode": "Patient" },
+        { "name": "url", "valueUri": "https://storage.example.org/import/Patient.ndjson" }
+      ]
+    }
   ]
 }
 ```
 
-### $validate-code (ValueSet)
+## Experimental Operations
 
-Check if a code is in a ValueSet:
+These operations are available when experimental features are enabled.
+
+### $summary (IPS)
+
+Generate an International Patient Summary:
 
 ```bash
-GET /ValueSet/{id}/$validate-code?code=29463-7&system=http://loinc.org
+# By patient ID
+GET /Patient/{id}/$summary
+
+# By patient identifier
+GET /Patient/$summary?identifier=http://example.org|12345
+
+# With specific profile
+GET /Patient/{id}/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips
 ```
 
-### $lookup (CodeSystem)
+### $expand (ValueSet)
 
-Get details about a code:
+Expand a ValueSet to a list of codes:
 
 ```bash
-GET /CodeSystem/$lookup?system=http://loinc.org&code=29463-7
+GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes
+GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes&filter=blood
+GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes&count=100&offset=0
 ```
 
 ### $translate (ConceptMap)
 
-Translate codes between systems:
+Translate codes between systems using ConceptMap:
 
 ```bash
-GET /ConceptMap/$translate?url=http://example.org/map&code=123&system=http://source.org
-```
-
-## Structure Operations
-
-### $snapshot (StructureDefinition)
-
-Generate a snapshot from a differential:
-
-```bash
-POST /StructureDefinition/$snapshot
+POST /ConceptMap/$translate
+Content-Type: application/fhir+json
 
 {
-  "resourceType": "StructureDefinition",
-  "differential": { ... }
+  "code": "123",
+  "system": "http://source.org",
+  "url": "http://example.org/ConceptMap/my-map"
+}
+```
+
+### $subsumes (CodeSystem)
+
+Test subsumption relationship between codes:
+
+```bash
+POST /CodeSystem/$subsumes
+Content-Type: application/fhir+json
+
+{
+  "codeA": "parent-code",
+  "codeB": "child-code",
+  "system": "http://example.org/CodeSystem/my-codes"
 }
 ```
 
@@ -232,36 +225,45 @@ POST /StructureDefinition/$snapshot
 Transform data using a StructureMap:
 
 ```bash
+# Using a stored StructureMap
 POST /StructureMap/{id}/$transform
 Content-Type: application/fhir+json
 
 {
   "resourceType": "Parameters",
   "parameter": [{
-    "name": "source",
+    "name": "content",
     "resource": { ... }
   }]
 }
-```
 
-## Custom Operations
+# Using an inline StructureMap
+POST /StructureMap/$transform
+Content-Type: application/fhir+json
 
-Ignixa supports custom operations via OperationDefinition:
-
-```json
 {
-  "resourceType": "OperationDefinition",
-  "name": "myOperation",
-  "status": "active",
-  "kind": "operation",
-  "code": "my-operation",
-  "resource": ["Patient"],
-  "system": false,
-  "type": true,
-  "instance": true,
-  "parameter": [...]
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "sourceMap",
+      "resource": { "resourceType": "StructureMap", ... }
+    },
+    {
+      "name": "content",
+      "resource": { ... }
+    }
+  ]
 }
 ```
+
+## Not Yet Implemented
+
+The following operations are planned but not yet available:
+
+- `$document` - Generate document from Composition
+- `$validate-code` - Validate code in ValueSet
+- `$lookup` - CodeSystem code lookup
+- `$snapshot` - Generate StructureDefinition snapshot
 
 ## Related Documentation
 

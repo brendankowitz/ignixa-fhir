@@ -1,19 +1,19 @@
-facebook:
-  label: Facebook
-  permalink: /facebook
-  description: Facebook tag description
+announcement:
+  label: Announcement
+  permalink: /announcement
+  description: Project announcements and updates
 
-hello:
-  label: Hello
-  permalink: /hello
-  description: Hello tag description
+release:
+  label: Release
+  permalink: /release
+  description: Release notes and version updates
 
-docusaurus:
-  label: Docusaurus
-  permalink: /docusaurus
-  description: Docusaurus tag description
+fhir:
+  label: FHIR
+  permalink: /fhir
+  description: FHIR specification and standards
 
-hola:
-  label: Hola
-  permalink: /hola
-  description: Hola tag description
+architecture:
+  label: Architecture
+  permalink: /architecture
+  description: Architecture decisions and design

@@ -18,13 +18,14 @@ function HomepageHeader() {
         <p className="hero__subtitle">{siteConfig.tagline}</p>
         <div className={styles.buttons}>
           <Link
-            className="button button--secondary button--lg"
+            className="button button--lg"
+            style={{backgroundColor: '#fff', color: '#023e8a', border: 'none'}}
             to="/docs/getting-started/installation">
             Get Started 🚀
           </Link>
           <Link
-            className="button button--outline button--secondary button--lg"
-            style={{marginLeft: '1rem'}}
+            className="button button--lg"
+            style={{marginLeft: '1rem', backgroundColor: 'transparent', color: '#fff', border: '2px solid #fff'}}
             to="/docs/core-sdk/overview">
             Core SDK 📦
           </Link>

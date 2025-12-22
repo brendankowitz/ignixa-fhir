@@ -257,4 +257,4 @@ curl -X GET http://localhost:8080/Patient \
 ## Related Documentation
 
 - [Authorization](/docs/server/security/authorization)
-- [ADR: Authorization](/docs/adr/adr-2501-authorization)
+- [ADR: Authorization](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2501-authorization.md)

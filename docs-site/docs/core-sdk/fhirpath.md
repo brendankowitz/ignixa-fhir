@@ -6,7 +6,7 @@ description: Compiled FHIRPath expression engine
 
 # Ignixa.FhirPath
 
-A high-performance FHIRPath implementation with expression compilation and caching.
+A high-performance FHIRPath implementation with expression compilation and caching, implementing the [FHIRPath N1 (Normative) specification](http://hl7.org/fhirpath/N1/).
 
 ## Installation
 
@@ -189,7 +189,7 @@ var evaluator = new FhirPathEvaluator(options);
 ```csharp
 var context = new EvaluationContext
 {
-    Variables = new Dictionary<string, ITypedElement>
+    Variables = new Dictionary<string, IElement>
     {
         ["today"] = FhirDateTime.Parse(DateTime.Today.ToString("yyyy-MM-dd"))
     }
@@ -215,7 +215,7 @@ var patient = element.Select("subject.resolve()", context).First();
 ```csharp
 public class MyResolver : IFhirPathResolver
 {
-    public ITypedElement? Resolve(string reference)
+    public IElement? Resolve(string reference)
     {
         // Fetch from database, cache, etc.
         return repository.Read(reference);

@@ -20,6 +20,7 @@ permissions:
   contents: write
   id-token: write
   packages: write
+  pages: write
 
 jobs:
   # =============================================================================
@@ -496,12 +497,25 @@ jobs:
           prerelease: false
 
   # =============================================================================
-  # Stage 5: Summary (always runs)
+  # Stage 5: Deploy Documentation
+  # =============================================================================
+  deploy-docs:
+    name: 📚 Deploy Documentation
+    needs: [create-github-release]
+    if: needs.create-github-release.result == 'success'
+    uses: ./.github/workflows/docs.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  # =============================================================================
+  # Stage 6: Summary (always runs)
   # =============================================================================
   release-summary:
     name: 📋 Release Summary
     runs-on: ubuntu-latest
-    needs: [prepare-release, publish-docker, publish-nuget-core, publish-nuget-internal, create-git-tag, create-github-release]
+    needs: [prepare-release, publish-docker, publish-nuget-core, publish-nuget-internal, create-git-tag, create-github-release, deploy-docs]
     if: always()
 
     steps:
@@ -513,6 +527,7 @@ jobs:
           NUGET_INTERNAL_RESULT: ${{ needs.publish-nuget-internal.result }}
           TAG_RESULT: ${{ needs.create-git-tag.result }}
           RELEASE_RESULT: ${{ needs.create-github-release.result }}
+          DOCS_RESULT: ${{ needs.deploy-docs.result }}
         run: |
           echo "## 📋 Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -538,9 +553,10 @@ jobs:
           echo "| NuGet Internal (GitHub Packages) | $(result_emoji $NUGET_INTERNAL_RESULT) $NUGET_INTERNAL_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "| Git Tag | $(result_emoji $TAG_RESULT) $TAG_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "| GitHub Release | $(result_emoji $RELEASE_RESULT) $RELEASE_RESULT |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation | $(result_emoji $DOCS_RESULT) $DOCS_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "$DOCKER_RESULT" == "success" ] && [ "$NUGET_CORE_RESULT" == "success" ] && [ "$NUGET_INTERNAL_RESULT" == "success" ] && [ "$TAG_RESULT" == "success" ] && [ "$RELEASE_RESULT" == "success" ]; then
+          if [ "$DOCKER_RESULT" == "success" ] && [ "$NUGET_CORE_RESULT" == "success" ] && [ "$NUGET_INTERNAL_RESULT" == "success" ] && [ "$TAG_RESULT" == "success" ] && [ "$RELEASE_RESULT" == "success" ] && [ "$DOCS_RESULT" == "success" ]; then
             echo "### 🎉 All stages completed successfully!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Docker**: \`ghcr.io/${{ github.repository }}:release\` and \`ghcr.io/${{ github.repository }}:${RELEASE_VERSION}\`" >> $GITHUB_STEP_SUMMARY

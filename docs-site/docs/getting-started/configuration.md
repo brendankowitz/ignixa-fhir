@@ -6,214 +6,394 @@ description: Configure Ignixa FHIR Server for different environments
 
 # Configuration
 
-Ignixa uses standard ASP.NET Core configuration with `appsettings.json`. This guide covers essential configuration options.
+Ignixa uses standard ASP.NET Core configuration with `appsettings.json`. All settings can be overridden via environment variables using double-underscore notation (e.g., `Tenants__Mode`).
 
-## Storage Provider
+## Tenant Configuration (Required)
 
-By default, Ignixa uses file system storage for development. For production, configure SQL Server.
+Ignixa requires at least two tenant configurations: Tenant 0 (system partition) and Tenant 1+ (your data).
 
-### File System (Development)
+```json
+{
+  "Tenants": {
+    "Mode": "Isolated",
+    "Configurations": [
+      {
+        "TenantId": 0,
+        "DisplayName": "System Partition (Reserved)",
+        "FhirVersion": "4.0",
+        "IsActive": true,
+        "IsSystemPartition": true,
+        "Storage": {
+          "Type": "SqlEntityFramework",
+          "InheritConnectionStringFromTenant": true
+        }
+      },
+      {
+        "TenantId": 1,
+        "DisplayName": "Production Database",
+        "FhirVersion": "4.0",
+        "IsActive": true,
+        "Storage": {
+          "Type": "SqlEntityFramework",
+          "ConnectionString": "Server=localhost;Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Key Settings
+
+| Setting | Description |
+|---------|-------------|
+| `Mode` | `Isolated` - each tenant has separate data. (`Distributed` planned but not yet implemented) |
+| `TenantId` | Unique identifier. `0` is reserved for system operations |
+| `FhirVersion` | `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6) |
+| `Storage.Type` | `SqlEntityFramework` (recommended) |
+| `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
+
+### SQL Server Connection String
+
+For production SQL Server:
 
 ```json
 {
   "Storage": {
-    "Provider": "FileSystem",
-    "DataPath": "./fhir-data"
+    "Type": "SqlEntityFramework",
+    "ConnectionString": "Server=your-server.database.windows.net;Database=FHIR_R4;Authentication=Active Directory Default;TrustServerCertificate=true"
   }
 }
 ```
 
-### SQL Server (Production)
+For local development with Windows Auth:
 
 ```json
 {
   "Storage": {
-    "Provider": "SqlServer",
-    "ConnectionString": "Server=localhost;Database=IgnixaFhir;User Id=sa;Password=YourPassword;TrustServerCertificate=true"
+    "Type": "SqlEntityFramework",
+    "ConnectionString": "Server=(local);Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
   }
 }
 ```
 
-### Azure Blob Storage
+## Blob Storage
+
+Configure blob storage for bulk import/export operations:
 
 ```json
 {
-  "Storage": {
-    "Provider": "BlobStorage",
-    "BlobStorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net"
-  }
-}
-```
-
-## Multi-Tenancy
-
-Enable multi-tenant mode for isolated data partitions:
-
-```json
-{
-  "Tenancy": {
-    "Mode": "MultiTenant",
-    "DefaultTenantId": 1
-  }
-}
-```
-
-With multi-tenancy enabled:
-- Access tenants via `/tenant/{id}/Patient/123`
-- Each tenant has isolated storage
-- Tenant 0 is reserved for system operations
-
-See [Multi-Tenancy](/docs/server/multi-tenancy) for details.
-
-## FHIR Versions
-
-Configure supported FHIR versions:
-
-```json
-{
-  "Fhir": {
-    "DefaultVersion": "R4",
-    "SupportedVersions": ["R4", "R4B", "R5"]
-  }
-}
-```
-
-## Validation
-
-Configure the three-tier validation engine:
-
-```json
-{
-  "Validation": {
-    "Level": "Spec",
-    "EnableProfileValidation": true,
-    "ValidateOnCreate": true,
-    "ValidateOnUpdate": true
-  }
-}
-```
-
-Validation levels:
-- **Fast** - Structural validation only (fastest)
-- **Spec** - FHIR specification compliance
-- **Profile** - Full profile validation (slowest)
-
-## Search Configuration
-
-Tune search behavior:
-
-```json
-{
-  "Search": {
-    "DefaultPageSize": 20,
-    "MaxPageSize": 100,
-    "MaxIncludeIterations": 3,
-    "MaxTotalResults": 10000
-  }
-}
-```
-
-## Environment Variables
-
-All settings can be overridden with environment variables using double underscore notation:
-
-```bash
-# Storage provider
-export Storage__Provider=SqlServer
-export Storage__ConnectionString="Server=..."
-
-# Multi-tenancy
-export Tenancy__Mode=MultiTenant
-
-# Validation level
-export Validation__Level=Profile
-```
-
-## Docker Environment
-
-When running with Docker, pass environment variables:
-
-```bash
-docker run -p 8080:8080 \
-  -e Storage__Provider=SqlServer \
-  -e Storage__ConnectionString="Server=host.docker.internal;..." \
-  ghcr.io/brendankowitz/ignixa-fhir:release
-```
-
-Or use Docker Compose with an `.env` file:
-
-```yaml
-# docker-compose.yml
-services:
-  ignixa:
-    image: ghcr.io/brendankowitz/ignixa-fhir:release
-    environment:
-      - Storage__Provider=SqlServer
-      - Storage__ConnectionString=${SQL_CONNECTION_STRING}
-```
-
-## Azure Deployment
-
-For Azure deployments, use Managed Identity and Key Vault:
-
-```json
-{
-  "Azure": {
+  "BlobStorage": {
+    "Provider": "Azure",
+    "ContainerName": "fhirstorage",
     "UseManagedIdentity": true,
-    "KeyVaultUri": "https://your-keyvault.vault.azure.net/"
+    "StorageAccountUri": "https://youraccount.blob.core.windows.net"
   }
 }
 ```
 
-See [Azure Deployment](/docs/server/deployment/azure) for complete setup.
+### Provider Options
+
+| Provider | Use Case |
+|----------|----------|
+| `Local` | Development - stores in `RootDirectory` on filesystem |
+| `Azure` | Production - Azure Blob Storage with Managed Identity or connection string |
+
+For local development with Azurite:
+
+```json
+{
+  "BlobStorage": {
+    "Provider": "Azure",
+    "UseManagedIdentity": false,
+    "ConnectionString": "UseDevelopmentStorage=true",
+    "ContainerName": "fhirstorage"
+  }
+}
+```
+
+## DurableTask (Bulk Operations)
+
+Bulk import/export uses DurableTask for orchestration. SQL Server backend is recommended:
+
+```json
+{
+  "DurableTask": {
+    "Provider": "SqlServer",
+    "SqlServer": {
+      "TaskHubName": "ignixa"
+    }
+  }
+}
+```
+
+The SQL Server provider uses the same database as Tenant 0 (system partition), eliminating additional infrastructure dependencies. Schema is created automatically on startup.
+
+### Alternative Providers
+
+```json
+{
+  "DurableTask": {
+    "Provider": "AzureStorage",
+    "AzureStorage": {
+      "UseManagedIdentity": true,
+      "StorageAccountName": "youraccount",
+      "TaskHubName": "ignixa"
+    }
+  }
+}
+```
+
+## Authentication
+
+Configure OIDC authentication with any compliant provider (Entra ID, Okta, etc.):
+
+```json
+{
+  "Authentication": {
+    "Authority": "https://login.microsoftonline.com/{tenant}/v2.0",
+    "Audience": "api://your-app-id"
+  }
+}
+```
+
+The server discovers endpoints automatically from `/.well-known/openid-configuration`.
+
+## Authorization
+
+Enable RBAC-based authorization:
+
+```json
+{
+  "Authorization": {
+    "Enabled": true,
+    "RequireAuthentication": true,
+    "EnforceTenantIsolation": true,
+    "EnforceCapabilities": true
+  }
+}
+```
+
+### Default Roles
+
+| Role | Description |
+|------|-------------|
+| `Admin` | Full access to all resources |
+| `SystemAdmin` | Cross-tenant administrative access |
+| `Clinician` | Access to clinical resources (Patient, Observation, etc.) |
+| `ReadOnly` | Read-only access to all resources |
+
+### SMART on FHIR
+
+```json
+{
+  "Authorization": {
+    "SmartOnFhir": {
+      "EnableSmartConfiguration": true,
+      "AuthorizeUrl": "https://your-idp.com/authorize",
+      "TokenUrl": "https://your-idp.com/token"
+    }
+  }
+}
+```
+
+## Experimental Features
+
+Enable or disable experimental features:
+
+```json
+{
+  "Experimental": {
+    "Enabled": true,
+    "Features": {
+      "Mcp": {
+        "Enabled": true,
+        "Transport": "http"
+      },
+      "Transform": {
+        "Enabled": true,
+        "TimeoutSeconds": 30
+      },
+      "Terminology": {
+        "Enabled": true,
+        "EnableAutoImport": true
+      },
+      "Summary": {
+        "Enabled": true,
+        "MaxResources": 1000
+      }
+    }
+  }
+}
+```
+
+| Feature | Description |
+|---------|-------------|
+| `Mcp` | Model Context Protocol for AI integration |
+| `Transform` | FHIR Mapping Language `$transform` operation |
+| `Terminology` | `$expand`, `$translate`, `$subsumes` operations |
+| `Summary` | Patient `$summary` (IPS) operation |
+
+## Bulk Import Tuning
+
+Configure import performance for high-volume ingestion:
+
+```json
+{
+  "Import": {
+    "MaxConcurrentFiles": 2,
+    "ConsumerCount": 8,
+    "BatchSize": 100,
+    "ChannelCapacity": 1000
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `MaxConcurrentFiles` | 2 | Files processed in parallel |
+| `ConsumerCount` | 8 | Writer threads per file |
+| `BatchSize` | 100 | Resources per database write |
+| `ChannelCapacity` | 1000 | Backpressure buffer size |
+
+## Transaction Watcher
+
+Automatically commits stalled transactions:
+
+```json
+{
+  "TransactionWatcher": {
+    "Enabled": true,
+    "ScanInterval": "00:01:00",
+    "StallThreshold": "00:05:00"
+  }
+}
+```
 
 ## Logging
-
-Configure logging levels:
 
 ```json
 {
   "Logging": {
     "LogLevel": {
       "Default": "Information",
-      "Ignixa": "Debug",
-      "Microsoft.EntityFrameworkCore": "Warning"
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+      "Ignixa": "Debug"
     }
   }
 }
 ```
 
-## Complete Example
-
-Full `appsettings.Production.json`:
+For troubleshooting SQL queries, set EF Core command logging to `Debug`:
 
 ```json
 {
-  "Storage": {
-    "Provider": "SqlServer",
-    "ConnectionString": "Server=sql.example.com;Database=IgnixaFhir;User Id=app;Password=..."
-  },
-  "Tenancy": {
-    "Mode": "MultiTenant",
-    "DefaultTenantId": 1
-  },
-  "Fhir": {
-    "DefaultVersion": "R4",
-    "SupportedVersions": ["R4", "R4B", "R5"]
-  },
-  "Validation": {
-    "Level": "Spec",
-    "EnableProfileValidation": true
-  },
-  "Search": {
-    "DefaultPageSize": 50,
-    "MaxPageSize": 100
-  },
+  "Logging": {
+    "LogLevel": {
+      "Microsoft.EntityFrameworkCore.Database.Command": "Debug"
+    }
+  }
+}
+```
+
+## Environment Variables
+
+Override any setting with environment variables:
+
+```bash
+# Tenant connection string
+export Tenants__Configurations__1__Storage__ConnectionString="Server=..."
+
+# Enable authorization
+export Authorization__Enabled=true
+export Authorization__RequireAuthentication=true
+
+# Blob storage
+export BlobStorage__Provider=Azure
+export BlobStorage__UseManagedIdentity=true
+export BlobStorage__StorageAccountUri="https://account.blob.core.windows.net"
+
+# DurableTask
+export DurableTask__Provider=SqlServer
+```
+
+## Docker/Container Deployment
+
+When running in containers, use environment variables:
+
+```bash
+docker run -p 8080:8080 \
+  -e Tenants__Configurations__1__Storage__ConnectionString="Server=host.docker.internal;Database=FHIR_R4;..." \
+  -e BlobStorage__Provider=Azure \
+  -e BlobStorage__ConnectionString="DefaultEndpointsProtocol=https;..." \
+  -e ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
+  ghcr.io/brendankowitz/ignixa-fhir:release
+```
+
+:::tip
+Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App Service, AKS ingress) to correctly handle `X-Forwarded-*` headers.
+:::
+
+## Complete Production Example
+
+```json
+{
   "Logging": {
     "LogLevel": {
       "Default": "Warning",
       "Ignixa": "Information"
     }
+  },
+  "Authentication": {
+    "Authority": "https://login.microsoftonline.com/{tenant}/v2.0",
+    "Audience": "api://ignixa-fhir"
+  },
+  "Authorization": {
+    "Enabled": true,
+    "RequireAuthentication": true,
+    "EnforceTenantIsolation": true
+  },
+  "BlobStorage": {
+    "Provider": "Azure",
+    "UseManagedIdentity": true,
+    "StorageAccountUri": "https://youraccount.blob.core.windows.net",
+    "ContainerName": "fhirstorage"
+  },
+  "DurableTask": {
+    "Provider": "SqlServer",
+    "SqlServer": {
+      "TaskHubName": "ignixa"
+    }
+  },
+  "Tenants": {
+    "Mode": "Isolated",
+    "Configurations": [
+      {
+        "TenantId": 0,
+        "DisplayName": "System Partition",
+        "FhirVersion": "4.0",
+        "IsActive": true,
+        "IsSystemPartition": true,
+        "Storage": {
+          "Type": "SqlEntityFramework",
+          "InheritConnectionStringFromTenant": true
+        }
+      },
+      {
+        "TenantId": 1,
+        "DisplayName": "Production",
+        "FhirVersion": "4.0",
+        "IsActive": true,
+        "Storage": {
+          "Type": "SqlEntityFramework",
+          "ConnectionString": "Server=sql.example.com;Database=FHIR_R4;Authentication=Active Directory Default"
+        }
+      }
+    ]
+  },
+  "Experimental": {
+    "Enabled": false
   }
 }
 ```
@@ -222,3 +402,4 @@ Full `appsettings.Production.json`:
 
 - [Server Architecture](/docs/server/architecture) - Understand the internal design
 - [Security Configuration](/docs/server/security/authentication) - Set up authentication
+- [Multi-Tenancy](/docs/server/multi-tenancy) - Configure tenant isolation

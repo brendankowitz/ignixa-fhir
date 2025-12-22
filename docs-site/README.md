@@ -1,41 +1,100 @@
-# Website
+# Ignixa FHIR Documentation Site
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+Docusaurus-based documentation for the Ignixa FHIR project.
 
-## Installation
+**Live Site**: https://brendankowitz.github.io/ignixa-fhir/
 
-```bash
-yarn
-```
-
-## Local Development
+## Development
 
 ```bash
-yarn start
+cd docs-site
+npm install
+npm start        # Development server at http://localhost:3000
+npm run build    # Build static site
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+## Structure
 
-## Build
-
-```bash
-yarn build
+```
+docs-site/
+├── docs/               # Documentation markdown files
+│   ├── getting-started/  # Installation, quick start, configuration
+│   ├── server/           # Server features and deployment
+│   ├── core-sdk/         # SDK package documentation
+│   └── adr/              # Architecture decision records (links to /docs/adr)
+├── blog/               # Blog posts
+├── src/                # Custom React components
+└── static/             # Images and assets
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+## Documentation Guidelines
+
+### Style
+
+- **Direct**: Skip filler phrases like "Let's explore..." or "In this section..."
+- **Active voice**: "Ignixa validates resources" not "Resources are validated"
+- **Code-first**: Show working examples before explaining concepts
+- **Healthcare context**: Include FHIR-specific details (LOINC codes, references)
+
+### Code Examples
+
+All code examples must be compilable/runnable:
+
+```csharp
+// Include using statements
+using Ignixa.Serialization;
+
+// Use realistic FHIR data
+var json = """{"resourceType": "Patient", "id": "123"}""";
+var sourceNode = JsonSourceNavigator.Parse(json);
+Console.WriteLine(sourceNode["id"].Text); // Output: 123
+```
+
+### Page Structure
+
+```markdown
+---
+sidebar_position: N
+title: Short Title
+description: One-line description for SEO
+---
+
+# Title
+
+One paragraph overview (2-3 sentences max).
+
+## Quick Start
+
+Show the simplest working example first.
+
+## Detailed Sections
+
+Break down features with code examples.
+
+## Related Documentation
+
+Links to related pages.
+```
+
+### Terminology
+
+| Use | Instead Of |
+|-----|-----------|
+| ISourceNode | source node, SourceNode |
+| FHIRPath | FHIR Path, fhirpath |
+| CapabilityStatement | Conformance (deprecated) |
+| R4, R4B, R5 | FHIR 4.0, FHIR 4.3 |
 
 ## Deployment
 
-Using SSH:
+Documentation deploys automatically:
+- On push to `main` with changes in `docs-site/`
+- When running the publish-release workflow
+- Manually via `workflow_dispatch` on the docs workflow
 
-```bash
-USE_SSH=true yarn deploy
-```
+## Adding Documentation
 
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+1. Create markdown file in appropriate `docs/` subdirectory
+2. Add frontmatter with `sidebar_position`, `title`, `description`
+3. Update `sidebars.js` if adding new section
+4. Run `npm run build` to validate links

@@ -159,6 +159,106 @@ DELETE /Patient?identifier=12345
 | JSON | `application/fhir+json` | ✅ Primary |
 | NDJSON | `application/fhir+ndjson` | ✅ Bulk operations |
 
+:::note JSON Only
+Ignixa supports JSON format only. XML is not supported.
+:::
+
+## HTTP Headers
+
+### Request Headers
+
+#### Prefer (RFC 7240)
+
+Controls response behavior and validation level:
+
+```bash
+# Return full resource in response
+Prefer: return=representation
+
+# Return minimal response (headers only)
+Prefer: return=minimal
+
+# Return OperationOutcome
+Prefer: return=OperationOutcome
+
+# Control validation level
+Prefer: validation=minimal   # Structure only (fastest)
+Prefer: validation=spec      # FHIR specification compliance
+Prefer: validation=full      # Full profile validation
+
+# Combine preferences
+Prefer: return=representation, validation=spec
+```
+
+| Preference | Values | Description |
+|------------|--------|-------------|
+| `return` | `representation`, `minimal`, `OperationOutcome` | Response body content |
+| `validation` | `minimal`, `spec`, `full` | Validation depth |
+
+#### X-Provenance
+
+Submit provenance alongside create/update operations:
+
+```bash
+POST /Patient
+Content-Type: application/fhir+json
+X-Provenance: {"resourceType":"Provenance","recorded":"2024-01-15T10:30:00Z","agent":[{"who":{"reference":"Practitioner/123"}}]}
+
+{ "resourceType": "Patient", ... }
+```
+
+The `X-Provenance` header:
+- MUST contain a valid Provenance resource
+- MUST NOT include `target` (server auto-fills with created resource)
+- Maximum size: 16KB
+
+#### Conditional Headers
+
+| Header | Purpose | Example |
+|--------|---------|---------|
+| `If-Match` | Optimistic concurrency | `If-Match: W/"5"` |
+| `If-None-Match` | Conditional read (304) | `If-None-Match: W/"3"` |
+| `If-Modified-Since` | Date-based conditional | `If-Modified-Since: Wed, 17 Oct 2025 14:30:00 GMT` |
+| `If-None-Exist` | Conditional create | `If-None-Exist: identifier=12345` |
+
+#### Content Negotiation
+
+| Header | Supported Values |
+|--------|------------------|
+| `Accept` | `application/fhir+json`, `application/json`, `*/*` |
+| `Content-Type` | `application/fhir+json`, `application/json` |
+
+### Response Headers
+
+| Header | Description | Example |
+|--------|-------------|---------|
+| `ETag` | Weak ETag for versioning | `W/"5"` |
+| `Last-Modified` | Resource modification time | `Wed, 17 Oct 2025 14:30:00 GMT` |
+| `Location` | Created/updated resource URL | `/Patient/123/_history/1` |
+| `Preference-Applied` | Preferences honored | `return=representation, validation=spec` |
+
+### Query Parameters
+
+#### _pretty
+
+Pretty-print JSON output for debugging:
+
+```bash
+GET /Patient/123?_pretty=true
+
+# Presence implies true
+GET /Patient/123?_pretty
+```
+
+#### _format
+
+Specify response format (JSON only supported):
+
+```bash
+GET /Patient/123?_format=json
+GET /Patient/123?_format=application/fhir+json
+```
+
 ## Related Documentation
 
 - [Supported Resources](/docs/server/fhir/supported-resources)

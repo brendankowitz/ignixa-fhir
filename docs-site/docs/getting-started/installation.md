@@ -6,67 +6,61 @@ description: Install Ignixa FHIR Server and Core SDK packages
 
 # Installation
 
-Ignixa offers two ways to get started:
+## Deploy the FHIR Server
 
-1. **Ignixa FHIR Server** - A complete, production-ready FHIR server
-2. **Core SDK Packages** - Modular NuGet packages for building custom FHIR applications
+### Quickest: Deploy to Azure (Recommended)
 
-## Prerequisites
+Deploy a production-ready environment with a single click:
 
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) or later
-- Docker (optional, for SQL Server)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
 
-## Option 1: Run the FHIR Server
+This provisions App Service, SQL Server, Storage, and Managed Identity automatically.
 
-### Using Docker (Recommended)
+See [Azure Deployment](/docs/server/deployment/azure) for CLI options and configuration.
 
-Pull and run the official Docker image:
+### Local Development: Docker Compose
 
 ```bash
-docker pull ghcr.io/brendankowitz/ignixa-fhir:release
-
-docker run -p 8080:8080 ghcr.io/brendankowitz/ignixa-fhir:release
-```
-
-Access the FHIR metadata endpoint at `http://localhost:8080/metadata`.
-
-### Using Docker Compose (with SQL Server)
-
-For a production-like environment with SQL Server:
-
-```bash
-# Clone the repository
 git clone https://github.com/brendankowitz/ignixa-fhir.git
 cd ignixa-fhir
 
-# Create environment file
-cp .env.example .env
-# Edit .env and set SQL_SA_PASSWORD
-
-# Start the stack
+# Create .env with SQL_SA_PASSWORD=YourStrong!Passw0rd
 docker compose up -d
 ```
+
+Access at `http://localhost:8080/metadata`.
+
+See [Docker Deployment](/docs/server/deployment/docker) for details.
 
 ### From Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/brendankowitz/ignixa-fhir.git
 cd ignixa-fhir
-
-# Build the solution
 dotnet build All.sln
 
-# Run the API
-cd src/Application/Ignixa.Api
+cd src/Application/Ignixa.Web
 dotnet run
 ```
 
-The server starts at `https://localhost:5001/metadata` by default.
+Requires SQL Server. Configure connection in `appsettings.Development.json`:
 
-## Option 2: Install Core SDK Packages
+```json
+{
+  "Tenants": {
+    "Configurations": [{
+      "TenantId": 1,
+      "Storage": {
+        "ConnectionString": "Server=(local);Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
+      }
+    }]
+  }
+}
+```
 
-Install individual packages using the .NET CLI:
+## Install Core SDK Packages
+
+Use the SDK packages independently to build custom FHIR applications:
 
 ```bash
 # Foundation packages
@@ -86,8 +80,6 @@ dotnet add package Ignixa.FhirFakes
 See the [Core SDK Overview](/docs/core-sdk/overview) for detailed package descriptions.
 
 ## CLI Tools
-
-Ignixa also provides command-line tools:
 
 ```bash
 # Synthetic FHIR data generator

@@ -10,16 +10,23 @@
 [![NuGet](https://img.shields.io/badge/NuGet-Ignixa_Core-004880?logo=nuget)](https://www.nuget.org/packages?q=Ignixa) 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker)](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir) 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-blue)](https://brendankowitz.github.io/ignixa-fhir/)
 
 </div>
 
 ---
 
-## 🚀 Overview
+> **Project Status: Advanced Research / Reference Implementation**
+>
+> This is a personal project exploring "next-gen" FHIR architecture. It supports and tests advanced parts of the FHIR specification but is **not** a supported enterprise product.
 
-**Ignixa** is an enterprise-grade, reference implementation of a FHIR Server, engineered for high performance and scalability. Built on **dotnet** and **Clean Architecture** principles, it offers a robust foundation for healthcare data interoperability.
+---
 
-Designed for the cloud, Ignixa supports **multi-tenancy** out of the box, with data isolation and configurable storage backends including **SQL Server** and **Azure Blob Storage**.
+## Overview
+
+**Ignixa** is a modular, high-performance FHIR ecosystem built on **.NET**. It serves as both a **Reference Server** and a suite of **Standalone Tools** for the modern health IT developer.
+
+Built on **Clean Architecture** principles with strict separation of concerns, Ignixa supports **multi-tenancy** out of the box, with data isolation and configurable storage backends including **SQL Server** and **Azure Blob Storage**.
 
 ## ✨ Key Features
 

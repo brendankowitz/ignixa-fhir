@@ -215,5 +215,5 @@ See [Multi-Tenancy](/docs/server/multi-tenancy) for tenant isolation details.
 
 ## Related Documentation
 
-- [ADR: Vertical Slice Architecture](/docs/adr/adr-2509-vertical-slice-architecture)
-- [ADR: Multi-Tenancy](/docs/adr/adr-2510-multi-tenancy)
+- [ADR: Vertical Slice Architecture](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2509-vertical-slice-architecture.md)
+- [ADR: Multi-Tenancy](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2510-multi-tenancy.md)

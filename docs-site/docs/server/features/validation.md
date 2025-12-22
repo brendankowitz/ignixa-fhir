@@ -195,13 +195,13 @@ Validate coded values against ValueSets:
 }
 ```
 
-## Performance Considerations
+## Usage Guidelines
 
-| Level | Relative Speed | Use Case |
-|-------|---------------|----------|
-| Fast | 1x (baseline) | High-throughput ingestion |
-| Spec | ~2-3x slower | Standard API operations |
-| Profile | ~5-10x slower | Compliance testing |
+| Level | Use Case |
+|-------|----------|
+| Fast | High-throughput ingestion, bulk import |
+| Spec | Standard API operations |
+| Profile | Compliance testing, IG validation |
 
 For high-volume ingestion, consider:
 
@@ -211,5 +211,5 @@ For high-volume ingestion, consider:
 
 ## Related Documentation
 
-- [ADR: Validation Architecture](/docs/adr/adr-2510-validation-architecture)
+- [ADR: Validation Architecture](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2510-validation-architecture.md)
 - [Core SDK: Validation](/docs/core-sdk/validation)

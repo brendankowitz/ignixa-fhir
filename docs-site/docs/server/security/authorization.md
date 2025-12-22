@@ -298,4 +298,4 @@ All authorization decisions are logged:
 ## Related Documentation
 
 - [Authentication](/docs/server/security/authentication)
-- [ADR: Authorization](/docs/adr/adr-2501-authorization)
+- [ADR: Authorization](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2501-authorization.md)

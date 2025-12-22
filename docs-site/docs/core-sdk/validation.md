@@ -262,13 +262,13 @@ foreach (var entry in bundle["entry"].Children())
 }
 ```
 
-## Performance Considerations
+## Usage Guidelines
 
-| Level | Relative Speed | Use Case |
-|-------|---------------|----------|
-| Fast | 1x (baseline) | Bulk ingestion |
-| Spec | 2-3x | Standard API |
-| Profile | 5-10x | Compliance testing |
+| Level | Use Case |
+|-------|----------|
+| Fast | Bulk ingestion, high throughput |
+| Spec | Standard API operations |
+| Profile | Compliance testing, IG validation |
 
 ### Optimization Tips
 
