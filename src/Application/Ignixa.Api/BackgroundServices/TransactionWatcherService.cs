@@ -29,6 +29,12 @@ public sealed class TransactionWatcherService : BackgroundService
     /// </summary>
     private const string OrchestrationInstanceId = "TransactionWatcher-Singleton";
 
+    /// <summary>
+    /// Delay before starting to allow DurableTask worker initialization.
+    /// This matches the DurableTaskHostedService retry delay pattern.
+    /// </summary>
+    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(10);
+
     private readonly TaskHubClient _taskHubClient;
     private readonly TransactionWatcherOptions _options;
     private readonly ILogger<TransactionWatcherService> _logger;
@@ -45,8 +51,11 @@ public sealed class TransactionWatcherService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Wait a bit for the DurableTask worker to initialize
-        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+        // Wait for the DurableTask worker to initialize
+        // This delay is necessary because DurableTaskHostedService initializes the worker
+        // in the background and may take up to 10 seconds for the initial retry
+        _logger.LogDebug("Waiting {Delay} for DurableTask worker to initialize", StartupDelay);
+        await Task.Delay(StartupDelay, stoppingToken);
 
         if (!_options.Enabled)
         {
@@ -64,7 +73,16 @@ public sealed class TransactionWatcherService : BackgroundService
             // Check if orchestration is already running
             var existingState = await _taskHubClient.GetOrchestrationStateAsync(OrchestrationInstanceId);
 
-            if (existingState?.OrchestrationStatus is OrchestrationStatus.Running or OrchestrationStatus.Pending)
+            // Check all active orchestration statuses
+            // Running: Currently executing
+            // Pending: Scheduled but not yet started
+            // ContinuedAsNew: Restarted with new input (counts as active)
+            // Suspended: Paused but not terminated (counts as active)
+            if (existingState?.OrchestrationStatus is
+                OrchestrationStatus.Running or
+                OrchestrationStatus.Pending or
+                OrchestrationStatus.ContinuedAsNew or
+                OrchestrationStatus.Suspended)
             {
                 _logger.LogInformation(
                     "TransactionWatcher orchestration already running (Instance: {InstanceId}, Status: {Status})",
@@ -107,4 +125,3 @@ public sealed class TransactionWatcherService : BackgroundService
         await base.StopAsync(cancellationToken);
     }
 }
-

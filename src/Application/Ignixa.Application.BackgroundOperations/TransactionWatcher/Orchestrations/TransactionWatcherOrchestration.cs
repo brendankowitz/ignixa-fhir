@@ -17,7 +17,7 @@ namespace Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrati
 /// Pattern: Monitor/Polling (see ADR-2510)
 /// - Uses context.CreateTimer() for reliable durable timers that survive restarts
 /// - Schedules TransactionWatcherActivity for the actual scanning work
-/// - Continues running indefinitely until disabled or terminated
+/// - Continues running indefinitely until disabled or terminated via TaskHubClient.TerminateInstanceAsync()
 /// </summary>
 public class TransactionWatcherOrchestration : TaskOrchestration<TransactionWatcherOrchestrationOutput, TransactionWatcherOrchestrationInput>
 {
@@ -25,10 +25,6 @@ public class TransactionWatcherOrchestration : TaskOrchestration<TransactionWatc
         OrchestrationContext context,
         TransactionWatcherOrchestrationInput input)
     {
-        int totalScans = 0;
-        int totalCommitted = 0;
-        int totalFailed = 0;
-
         // If disabled, return immediately
         if (!input.Enabled)
         {
@@ -39,35 +35,23 @@ public class TransactionWatcherOrchestration : TaskOrchestration<TransactionWatc
                 StoppedReason: "Disabled via configuration (TransactionWatcher:Enabled = false)");
         }
 
-        // Eternal orchestration loop
+        // Eternal orchestration loop - runs indefinitely until terminated
+        // Note: Counters are reset on each replay, but the orchestration
+        // continues from where it left off due to DurableTask's replay semantics
         while (true)
         {
             // Execute the scan activity
             var activityInput = new TransactionWatcherActivityInput(
                 StallThreshold: input.StallThreshold);
 
-            var result = await context.ScheduleTask<TransactionWatcherActivityOutput>(
+            await context.ScheduleTask<TransactionWatcherActivityOutput>(
                 typeof(TransactionWatcherActivity),
                 activityInput);
-
-            totalScans++;
-            totalCommitted += result.TransactionsCommitted;
-            totalFailed += result.TransactionsFailed;
 
             // Wait for the configured scan interval before next scan
             // Using durable timer - survives restarts and doesn't block workers
             var nextScanTime = context.CurrentUtcDateTime.Add(input.ScanInterval);
             await context.CreateTimer(nextScanTime, CancellationToken.None);
         }
-
-        // This code is unreachable due to the eternal loop, but kept for completeness
-        // The orchestration can be terminated via TaskHubClient.TerminateInstanceAsync()
-#pragma warning disable CS0162 // Unreachable code detected
-        return new TransactionWatcherOrchestrationOutput(
-            TotalScans: totalScans,
-            TotalCommitted: totalCommitted,
-            TotalFailed: totalFailed,
-            StoppedReason: null);
-#pragma warning restore CS0162
     }
 }
