@@ -33,7 +33,7 @@ const config = {
       ({
         docs: {
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/brendankowitz/ignixa-fhir/tree/main/docs-site/',
+          editUrl: 'https://github.com/brendankowitz/ignixa-fhir/tree/main/docs/site/',
         },
         blog: {
           showReadingTime: true,
@@ -41,7 +41,7 @@ const config = {
             type: ['rss', 'atom'],
             xslt: true,
           },
-          editUrl: 'https://github.com/brendankowitz/ignixa-fhir/tree/main/docs-site/',
+          editUrl: 'https://github.com/brendankowitz/ignixa-fhir/tree/main/docs/site/',
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
           onUntruncatedBlogPosts: 'warn',

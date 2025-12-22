@@ -10,11 +10,11 @@ Guidance for Claude Code to deliver high-quality output on **featurework**, **de
 
 The project documentation is at **https://brendankowitz.github.io/ignixa-fhir/**
 
-- **Source**: `docs-site/` (Docusaurus)
-- **Guidelines**: See `docs-site/README.md` for documentation style and structure
+- **Source**: `docs/site/` (Docusaurus)
+- **Guidelines**: See `docs/site/README.md` for documentation style and structure
 - **ADRs**: Architectural decisions are in `docs/adr/` (linked from docs site)
 
-When implementing features, update relevant documentation in `docs-site/docs/`.
+When implementing features, update relevant documentation in `docs/site/docs/`.
 
 ---
 

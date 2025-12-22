@@ -7,7 +7,7 @@ Docusaurus-based documentation for the Ignixa FHIR project.
 ## Development
 
 ```bash
-cd docs-site
+cd docs/site
 npm install
 npm start        # Development server at http://localhost:3000
 npm run build    # Build static site
@@ -16,7 +16,7 @@ npm run build    # Build static site
 ## Structure
 
 ```
-docs-site/
+docs/site/
 ├── docs/               # Documentation markdown files
 │   ├── getting-started/  # Installation, quick start, configuration
 │   ├── server/           # Server features and deployment
@@ -88,7 +88,7 @@ Links to related pages.
 ## Deployment
 
 Documentation deploys automatically:
-- On push to `main` with changes in `docs-site/`
+- On push to `main` with changes in `docs/site/`
 - When running the publish-release workflow
 - Manually via `workflow_dispatch` on the docs workflow
 

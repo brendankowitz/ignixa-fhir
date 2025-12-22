@@ -8,7 +8,7 @@ on:
       - 'test/**'
       - 'bench/**'
       - 'tools/**'
-      - 'docs-site/**'
+      - 'docs/site/**'
       - 'All.sln'
       - 'Directory.Packages.props'
       - 'Directory.Build.props'
@@ -192,14 +192,14 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: docs-site/package-lock.json
+          cache-dependency-path: docs/site/package-lock.json
 
       - name: Install dependencies
-        working-directory: docs-site
+        working-directory: docs/site
         run: npm ci
 
       - name: Build documentation (validates links)
-        working-directory: docs-site
+        working-directory: docs/site
         run: npm run build
 
   pr-success:
