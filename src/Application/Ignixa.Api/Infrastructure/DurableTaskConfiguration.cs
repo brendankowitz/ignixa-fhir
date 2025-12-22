@@ -8,10 +8,12 @@ using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
+using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
 using Ignixa.DataLayer.FileSystem.DurableTask;
 using ExportCompleteJobActivity = Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity;
 using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activities;
 using TerminologyActivities = Ignixa.Application.BackgroundOperations.Terminology.Activities;
+using TransactionWatcherActivities = Ignixa.Application.BackgroundOperations.TransactionWatcher.Activities;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -50,6 +52,7 @@ public static class DurableTaskConfiguration
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
             worker.AddTaskOrchestrations(typeof(ImportOrchestration));
             worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
+            worker.AddTaskOrchestrations(typeof(TransactionWatcherOrchestration));
 
             // Register Export activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<GetExportRangesActivity>(sp);
@@ -64,6 +67,9 @@ public static class DurableTaskConfiguration
 
             // Register Terminology activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<TerminologyActivities.ImportTerminologyResourceActivity>(sp);
+
+            // Register TransactionWatcher activities with service provider for DI
+            worker.AddTaskActivitiesFromInterface<TransactionWatcherActivities.TransactionWatcherActivity>(sp);
 
             return worker;
         });

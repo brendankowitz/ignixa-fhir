@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
+using Ignixa.Api.BackgroundServices;
+using Ignixa.Api.Configuration;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Export;
@@ -47,6 +49,10 @@ public static class BackgroundServicesRegistration
 
         // DurableTask framework
         services.AddDurableTask();
+
+        // TransactionWatcher configuration and service
+        services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
+        services.AddHostedService<TransactionWatcherService>();
 
         return services;
     }

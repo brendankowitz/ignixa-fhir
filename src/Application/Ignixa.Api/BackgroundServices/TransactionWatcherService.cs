@@ -3,45 +3,55 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using DurableTask.Core;
 using Microsoft.Extensions.Options;
 using Ignixa.Api.Configuration;
-using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Constants;
+using Ignixa.Application.BackgroundOperations.TransactionWatcher.Models;
+using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
 
 namespace Ignixa.Api.BackgroundServices;
 
 /// <summary>
-/// Background service that monitors for stalled transactions and automatically commits them.
-/// Runs periodically based on configured ScanInterval.
-/// Multi-tenant aware: Scans all active tenants and routes to correct storage implementation (FileSystem or SQL).
+/// Background service that starts the TransactionWatcher DurableTask orchestration.
+/// The orchestration monitors for stalled transactions and automatically commits them
+/// using durable timers based on configured ScanInterval.
+///
+/// This service:
+/// 1. Creates or resumes the TransactionWatcher orchestration on startup
+/// 2. Uses a singleton orchestration instance ID for the entire cluster
+/// 3. The orchestration handles all timing via durable timers (survives restarts)
 /// </summary>
-public sealed class TransactionWatcherService : IHostedService, IDisposable
+public sealed class TransactionWatcherService : BackgroundService
 {
-    private readonly IFhirRepositoryFactory _repositoryFactory;
-    private readonly ITenantConfigurationStore _tenantConfigStore;
+    /// <summary>
+    /// Singleton instance ID for the TransactionWatcher orchestration.
+    /// Using a fixed ID ensures only one instance runs across the cluster.
+    /// </summary>
+    private const string OrchestrationInstanceId = "TransactionWatcher-Singleton";
+
+    private readonly TaskHubClient _taskHubClient;
     private readonly TransactionWatcherOptions _options;
     private readonly ILogger<TransactionWatcherService> _logger;
-    private Timer? _timer;
-    private int _isExecuting;
 
     public TransactionWatcherService(
-        IFhirRepositoryFactory repositoryFactory,
-        ITenantConfigurationStore tenantConfigStore,
+        TaskHubClient taskHubClient,
         IOptions<TransactionWatcherOptions> options,
         ILogger<TransactionWatcherService> logger)
     {
-        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
-        _tenantConfigStore = tenantConfigStore ?? throw new ArgumentNullException(nameof(tenantConfigStore));
+        _taskHubClient = taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Wait a bit for the DurableTask worker to initialize
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
         if (!_options.Enabled)
         {
             _logger.LogInformation("Transaction watcher is disabled (TransactionWatcher:Enabled = false)");
-            return Task.CompletedTask;
+            return;
         }
 
         _logger.LogInformation(
@@ -49,185 +59,52 @@ public sealed class TransactionWatcherService : IHostedService, IDisposable
             _options.ScanInterval,
             _options.StallThreshold);
 
-        // Start timer with configured scan interval
-        _timer = new Timer(
-            ExecuteScanAsync,
-            null,
-            TimeSpan.Zero,  // Start immediately
-            _options.ScanInterval);
-
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Transaction watcher stopping");
-
-        _timer?.Change(Timeout.Infinite, 0);
-
-        return Task.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _timer?.Dispose();
-        GC.SuppressFinalize(this);
-    }
-
-    private async void ExecuteScanAsync(object? state)
-    {
-        // Prevent overlapping executions
-        if (Interlocked.CompareExchange(ref _isExecuting, 1, 0) != 0)
-        {
-            _logger.LogDebug("Skipping scan - previous scan still running");
-            return;
-        }
-
         try
         {
-            await ScanAndCommitStalledTransactionsAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fatal error during transaction watcher scan");
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _isExecuting, 0);
-        }
-    }
+            // Check if orchestration is already running
+            var existingState = await _taskHubClient.GetOrchestrationStateAsync(OrchestrationInstanceId);
 
-    private async Task ScanAndCommitStalledTransactionsAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogDebug("Starting transaction watcher scan cycle");
-
-        var scanStartTime = DateTimeOffset.UtcNow;
-        int totalStalled = 0;
-        int totalCommitted = 0;
-        int totalFailed = 0;
-
-        try
-        {
-            // Get all active tenants
-            var tenants = await _tenantConfigStore.GetAllTenantsAsync(cancellationToken);
-
-            // Filter out system partition (Partition 0)
-            var activeTenants = tenants
-                .Where(t => !t.IsSystemPartition && t.IsActive)
-                .ToList();
-
-            _logger.LogDebug(
-                "Scanning {Count} active tenants for stalled transactions",
-                activeTenants.Count);
-
-            // Scan each tenant's repository
-            foreach (var tenant in activeTenants)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    _logger.LogInformation("Transaction watcher scan cancelled");
-                    break;
-                }
-
-                try
-                {
-                    _logger.LogDebug(
-                        "Scanning tenant {TenantId} ({TenantName}) for stalled transactions",
-                        tenant.TenantId,
-                        tenant.DisplayName);
-
-                    // Get repository for this tenant
-                    var repository = await _repositoryFactory.GetRepositoryAsync(tenant.TenantId, cancellationToken);
-
-                    // Query for stalled transactions
-                    var stalledTransactions = await repository.GetStalledTransactionsAsync(
-                        _options.StallThreshold,
-                        cancellationToken);
-
-                    if (stalledTransactions.Count > 0)
-                    {
-                        _logger.LogWarning(
-                            "Found {Count} stalled transactions for tenant {TenantId} ({TenantName})",
-                            stalledTransactions.Count,
-                            tenant.TenantId,
-                            tenant.DisplayName);
-
-                        totalStalled += stalledTransactions.Count;
-
-                        // Commit each stalled transaction
-                        foreach (var transactionId in stalledTransactions)
-                        {
-                            if (cancellationToken.IsCancellationRequested)
-                            {
-                                break;
-                            }
-
-                            try
-                            {
-                                _logger.LogInformation(
-                                    "Committing stalled transaction {TransactionId} for tenant {TenantId}",
-                                    transactionId,
-                                    tenant.TenantId);
-
-                                await repository.CommitTransactionAsync(transactionId, cancellationToken);
-
-                                totalCommitted++;
-
-                                _logger.LogInformation(
-                                    "Successfully committed stalled transaction {TransactionId} for tenant {TenantId}",
-                                    transactionId,
-                                    tenant.TenantId);
-                            }
-                            catch (Exception ex)
-                            {
-                                totalFailed++;
-
-                                _logger.LogError(
-                                    ex,
-                                    "Failed to commit stalled transaction {TransactionId} for tenant {TenantId} - will retry on next scan",
-                                    transactionId,
-                                    tenant.TenantId);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogDebug(
-                            "No stalled transactions found for tenant {TenantId}",
-                            tenant.TenantId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Error scanning tenant {TenantId} ({TenantName}) for stalled transactions",
-                        tenant.TenantId,
-                        tenant.DisplayName);
-                }
-            }
-
-            var scanDuration = DateTimeOffset.UtcNow - scanStartTime;
-
-            if (totalStalled > 0)
+            if (existingState?.OrchestrationStatus is OrchestrationStatus.Running or OrchestrationStatus.Pending)
             {
                 _logger.LogInformation(
-                    "Transaction watcher scan complete: {Duration}ms, {TotalStalled} stalled, {TotalCommitted} committed, {TotalFailed} failed",
-                    scanDuration.TotalMilliseconds,
-                    totalStalled,
-                    totalCommitted,
-                    totalFailed);
+                    "TransactionWatcher orchestration already running (Instance: {InstanceId}, Status: {Status})",
+                    OrchestrationInstanceId,
+                    existingState.OrchestrationStatus);
+                return;
             }
-            else
-            {
-                _logger.LogDebug(
-                    "Transaction watcher scan complete: {Duration}ms, no stalled transactions found",
-                    scanDuration.TotalMilliseconds);
-            }
+
+            // Create input for the orchestration
+            var input = new TransactionWatcherOrchestrationInput(
+                ScanInterval: _options.ScanInterval,
+                StallThreshold: _options.StallThreshold,
+                Enabled: _options.Enabled);
+
+            // Start the orchestration
+            var instance = await _taskHubClient.CreateOrchestrationInstanceAsync(
+                typeof(TransactionWatcherOrchestration),
+                OrchestrationInstanceId,
+                input);
+
+            _logger.LogInformation(
+                "TransactionWatcher orchestration started (Instance: {InstanceId})",
+                instance.InstanceId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fatal error during transaction watcher scan");
+            _logger.LogError(ex, "Failed to start TransactionWatcher orchestration");
         }
     }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Transaction watcher service stopping");
+
+        // Note: We don't terminate the orchestration on shutdown because:
+        // 1. It's durable and will resume when the service restarts
+        // 2. It uses durable timers that survive restarts
+        // 3. Terminating would lose all state
+
+        await base.StopAsync(cancellationToken);
+    }
 }
+
