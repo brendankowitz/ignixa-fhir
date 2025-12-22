@@ -20,7 +20,7 @@ GET /metadata
   "status": "active",
   "kind": "instance",
   "fhirVersion": "4.0.1",
-  "format": ["json", "xml"],
+  "format": ["json"],
   "software": {
     "name": "Ignixa FHIR Server",
     "version": "1.0.0"
@@ -157,7 +157,6 @@ DELETE /Patient?identifier=12345
 | Format | MIME Type | Support |
 |--------|-----------|---------|
 | JSON | `application/fhir+json` | ✅ Primary |
-| XML | `application/fhir+xml` | ✅ |
 | NDJSON | `application/fhir+ndjson` | ✅ Bulk operations |
 
 ## Related Documentation

@@ -84,7 +84,6 @@ Email notifications:
 | `id-only` | Only resource type and ID |
 | `full-resource` | Complete resource |
 | `application/fhir+json` | JSON format |
-| `application/fhir+xml` | XML format |
 
 ## Criteria
 

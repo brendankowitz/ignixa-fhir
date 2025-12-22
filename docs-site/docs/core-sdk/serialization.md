@@ -1,12 +1,12 @@
 ---
 sidebar_position: 3
 title: Serialization
-description: High-performance FHIR JSON/XML serialization
+description: High-performance FHIR JSON serialization
 ---
 
 # Ignixa.Serialization
 
-High-performance FHIR serialization using `System.Text.Json` with streaming support.
+High-performance FHIR JSON serialization using `System.Text.Json` with streaming support.
 
 ## Installation
 

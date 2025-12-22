@@ -15,12 +15,12 @@ Ignixa.Abstractions (Foundation)
         ↓
 Ignixa.Specification (FHIR Metadata)
         ↓
-Ignixa.Serialization (JSON/XML)
+Ignixa.Serialization (JSON)
         ↓
-┌───────┬────────┬──────────┐
-│       │        │          │
-↓       ↓        ↓          ↓
-FhirPath  Search  Validation  ...
+┌───────┬────────┬──────────┬────────────────────┐
+│       │        │          │                    │
+↓       ↓        ↓          ↓                    ↓
+FhirPath  Search  Validation  NarrativeGenerator  ...
 ```
 
 ## Available Packages
@@ -60,6 +60,7 @@ FhirPath  Search  Validation  ...
 
 | Package | Description | NuGet |
 |---------|-------------|-------|
+| **Ignixa.Extensions.FirelySdk5** | Firely SDK 5.x integration | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Extensions.FirelySdk5)](https://www.nuget.org/packages/Ignixa.Extensions.FirelySdk5) |
 | **Ignixa.Extensions.FirelySdk6** | Firely SDK 6.x integration | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Extensions.FirelySdk6)](https://www.nuget.org/packages/Ignixa.Extensions.FirelySdk6) |
 
 ## Quick Start

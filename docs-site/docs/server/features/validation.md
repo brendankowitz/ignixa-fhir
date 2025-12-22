@@ -14,7 +14,7 @@ Ignixa provides a three-tier validation system that balances performance with co
 
 Structural validation only - fastest option:
 
-- JSON/XML well-formedness
+- JSON structure validity
 - Required field presence
 - Basic type checking
 - No external lookups

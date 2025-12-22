@@ -31,8 +31,24 @@ Ignixa follows Clean Architecture principles with strict layer separation, ensur
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ SQL Server  │  │ FileSystem  │  │   Blob Storage      │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                     Core SDK (Shared)                        │
+│  ┌──────────────┐ ┌─────────────┐ ┌──────────┐ ┌─────────┐  │
+│  │ Abstractions │ │Serialization│ │ FHIRPath │ │Validation│  │
+│  └──────────────┘ └─────────────┘ └──────────┘ └─────────┘  │
+│  ┌──────────────┐ ┌─────────────┐ ┌──────────┐              │
+│  │Specification │ │   Search    │ │FhirFakes │              │
+│  └──────────────┘ └─────────────┘ └──────────┘              │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+The **Core SDK** packages are shared building blocks used across all layers. They provide:
+- **Abstractions**: Core interfaces (`ISourceNode`, `IElement`)
+- **Serialization**: JSON parsing and writing
+- **FHIRPath**: Expression evaluation
+- **Validation**: Three-tier validation engine
+- **Search**: Parameter indexing and extraction
+- **Specification**: FHIR structure definitions
 
 ## CQRS Pattern
 
