@@ -60,7 +60,6 @@ public class ResourceRowGenerator
             new SqlMetaData("IsRawResourceMetaSet", SqlDbType.Bit),
             new SqlMetaData("RequestMethod", SqlDbType.VarChar, 10),
             new SqlMetaData("SearchParamHash", SqlDbType.VarChar, 64),
-            new SqlMetaData("ExpiresAt", SqlDbType.DateTimeOffset),
         };
 
         for (int index = 0; index < resources.Count; index++)
@@ -114,16 +113,6 @@ public class ResourceRowGenerator
 
             // SearchParamHash: TODO Phase 2
             record.SetDBNull(11);
-
-            // ExpiresAt: Set from ResourceWrapper (from X-TTL header)
-            if (resource.ExpiresAt.HasValue)
-            {
-                record.SetDateTimeOffset(12, resource.ExpiresAt.Value);
-            }
-            else
-            {
-                record.SetDBNull(12);
-            }
 
             yield return record;
         }
