@@ -479,3 +479,126 @@ Prefer: validation=minimum
     "reference": "Patient/example"
   }
 }
+
+### ============================
+### TTL (Time-To-Live) Examples
+### ============================
+### TTL is set via X-TTL header using ISO 8601 duration format
+### Examples: PT1H (1 hour), P1D (1 day), P30D (30 days), P2Y (2 years)
+
+### Create Patient with 30-day TTL
+PUT {{hostname}}/Patient/ttl-test-patient
+Content-Type: application/fhir+json
+X-TTL: P30D
+
+{
+  "resourceType": "Patient",
+  "id": "ttl-test-patient",
+  "active": true,
+  "name": [
+    {
+      "family": "TTLTest",
+      "given": ["Temporary"]
+    }
+  ],
+  "gender": "unknown"
+}
+
+### Create Observation with 1-hour TTL (short-lived)
+POST {{hostname}}/Observation
+Content-Type: application/fhir+json
+X-TTL: PT1H
+
+{
+  "resourceType": "Observation",
+  "status": "preliminary",
+  "code": {
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "8867-4",
+        "display": "Heart rate"
+      }
+    ]
+  },
+  "subject": {
+    "reference": "Patient/ttl-test-patient"
+  },
+  "valueQuantity": {
+    "value": 72,
+    "unit": "beats/minute",
+    "system": "http://unitsofmeasure.org",
+    "code": "/min"
+  }
+}
+
+### Create Encounter with 2-year TTL (retention policy)
+PUT {{hostname}}/Encounter/ttl-retention-test
+Content-Type: application/fhir+json
+X-TTL: P2Y
+
+{
+  "resourceType": "Encounter",
+  "id": "ttl-retention-test",
+  "status": "finished",
+  "class": {
+    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    "code": "AMB"
+  },
+  "subject": {
+    "reference": "Patient/ttl-test-patient"
+  }
+}
+
+### Update resource and change its TTL (extend to 90 days)
+PUT {{hostname}}/Patient/ttl-test-patient
+Content-Type: application/fhir+json
+X-TTL: P90D
+
+{
+  "resourceType": "Patient",
+  "id": "ttl-test-patient",
+  "active": true,
+  "name": [
+    {
+      "family": "TTLTest",
+      "given": ["Extended"]
+    }
+  ],
+  "gender": "unknown"
+}
+
+### Update resource without X-TTL header (TTL unchanged)
+PUT {{hostname}}/Patient/ttl-test-patient
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "ttl-test-patient",
+  "active": false,
+  "name": [
+    {
+      "family": "TTLTest",
+      "given": ["Updated"]
+    }
+  ],
+  "gender": "unknown"
+}
+
+### Search for resources WITH a TTL set
+GET {{hostname}}/Patient?_ttl:missing=false
+
+### Search for resources WITHOUT a TTL (permanent)
+GET {{hostname}}/Patient?_ttl:missing=true
+
+### Search for resources expiring before a specific date
+GET {{hostname}}/Patient?_ttl=lt2025-12-31
+
+### Search for resources expiring in the next 7 days
+GET {{hostname}}/Patient?_ttl=lt2025-01-01
+
+### Verify TTL test patient exists
+GET {{hostname}}/Patient/ttl-test-patient
+
+### Delete TTL test patient (cleanup)
+DELETE {{hostname}}/Patient/ttl-test-patient

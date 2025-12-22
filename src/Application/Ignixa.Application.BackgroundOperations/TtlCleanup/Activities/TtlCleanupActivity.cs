@@ -5,8 +5,7 @@
 
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Models;
-using Ignixa.DataLayer.SqlEntityFramework;
-using Microsoft.EntityFrameworkCore;
+using Ignixa.Domain.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.TtlCleanup.Activities;
@@ -17,11 +16,11 @@ namespace Ignixa.Application.BackgroundOperations.TtlCleanup.Activities;
 /// Hard deletion removes all versions of the resource plus all search parameter indexes.
 /// </summary>
 public class TtlCleanupActivity(
-    SqlEntityFrameworkRepositoryFactory repositoryFactory,
+    IFhirRepositoryFactory repositoryFactory,
     ILogger<TtlCleanupActivity> logger)
     : AsyncTaskActivity<TtlCleanupActivityInput, TtlCleanupActivityOutput>
 {
-    private readonly SqlEntityFrameworkRepositoryFactory _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+    private readonly IFhirRepositoryFactory _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
     private readonly ILogger<TtlCleanupActivity> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     protected override async Task<TtlCleanupActivityOutput> ExecuteAsync(
@@ -39,25 +38,12 @@ public class TtlCleanupActivity(
 
         try
         {
-            using var dbContext = await _repositoryFactory.GetDbContextAsync(input.TenantId, CancellationToken.None);
+            var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
 
-            var now = DateTimeOffset.UtcNow;
-
-            // Query ResourceTtl table for expired entries
-            // Join with Resource to ensure we only process current (non-deleted, non-history) resources
-            var expiredResources = await (from ttl in dbContext.ResourceTtls
-                                          join r in dbContext.Resources on new { ttl.ResourceTypeId, ttl.ResourceId } equals new { r.ResourceTypeId, r.ResourceId }
-                                          where ttl.ExpiresAt < now
-                                              && !r.IsHistory
-                                              && !r.IsDeleted
-                                          select new
-                                          {
-                                              ttl.ResourceTypeId,
-                                              ttl.ResourceId,
-                                              ttl.ExpiresAt
-                                          })
-                .Take(input.BatchSize)
-                .ToListAsync(CancellationToken.None);
+            // Query for expired resources using provider-agnostic interface
+            var expiredResources = await repository.GetExpiredResourcesAsync(
+                input.BatchSize,
+                CancellationToken.None);
 
             expiredCount = expiredResources.Count;
 
@@ -89,8 +75,7 @@ public class TtlCleanupActivity(
                         resource.ExpiresAt,
                         input.TenantId);
 
-                    await HardDeleteResourceAsync(
-                        dbContext,
+                    await repository.HardDeleteResourceAsync(
                         resource.ResourceTypeId,
                         resource.ResourceId,
                         CancellationToken.None);
@@ -144,53 +129,5 @@ public class TtlCleanupActivity(
                 FailedCount: failedCount,
                 ErrorMessage: ex.Message);
         }
-    }
-
-    /// <summary>
-    /// Hard deletes a resource and all its history versions and search indexes, and the TTL entry.
-    /// Uses ExecuteSqlInterpolatedAsync for efficient bulk deletion.
-    /// Based on TtlCleanupService.HardDeleteResourceAsync but also deletes from ResourceTtl table.
-    /// </summary>
-    private async Task HardDeleteResourceAsync(
-        FhirDbContext dbContext,
-        short resourceTypeId,
-        string resourceId,
-        CancellationToken cancellationToken)
-    {
-        // Delete all search parameter indexes for all versions + resource versions + TTL entry
-        // Use temp table approach for efficient deletion
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $@"-- Create temp table to hold surrogate IDs
-              DECLARE @SurrogateIds TABLE (ResourceSurrogateId BIGINT PRIMARY KEY);
-
-              -- Find all surrogate IDs for this resource
-              INSERT INTO @SurrogateIds (ResourceSurrogateId)
-              SELECT ResourceSurrogateId
-              FROM dbo.Resource
-              WHERE ResourceTypeId = {resourceTypeId} AND ResourceId = {resourceId};
-
-              -- Delete all search parameter indexes
-              DELETE FROM dbo.ReferenceSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenText WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.StringSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.UriSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.NumberSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.QuantitySearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.DateTimeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.ReferenceTokenCompositeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenTokenCompositeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenDateTimeCompositeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenQuantityCompositeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenStringCompositeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.TokenNumberNumberCompositeSearchParam WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-              DELETE FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
-
-              -- Delete all resource versions (current + history)
-              DELETE FROM dbo.Resource WHERE ResourceTypeId = {resourceTypeId} AND ResourceId = {resourceId};
-
-              -- Delete TTL entry (after successfully deleting resource)
-              DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = {resourceTypeId} AND ResourceId = {resourceId};",
-            cancellationToken);
     }
 }

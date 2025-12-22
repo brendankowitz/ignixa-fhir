@@ -150,4 +150,28 @@ public interface IFhirRepository
         ResourceRequest request,
         TransactionId? transactionId = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets expired resources from TTL table (ExpiresAt &lt; now).
+    /// Used by TTL cleanup background job.
+    /// </summary>
+    /// <param name="batchSize">Maximum number of expired resources to return.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of expired resource metadata (ResourceTypeId, ResourceId, ExpiresAt).</returns>
+    Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
+        int batchSize,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Hard deletes a resource: removes all versions, all search indexes, and TTL entry.
+    /// Used for TTL expiration and GDPR right-to-be-forgotten.
+    /// This is PHYSICAL deletion, not FHIR logical deletion.
+    /// </summary>
+    /// <param name="resourceTypeId">Resource type ID (short).</param>
+    /// <param name="resourceId">Resource ID (string).</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task HardDeleteResourceAsync(
+        short resourceTypeId,
+        string resourceId,
+        CancellationToken ct = default);
 }

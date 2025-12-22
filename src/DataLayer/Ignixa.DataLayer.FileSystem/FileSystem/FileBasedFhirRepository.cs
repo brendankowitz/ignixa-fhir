@@ -1190,6 +1190,25 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         }
     }
 
+    public Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
+        int batchSize,
+        CancellationToken ct = default)
+    {
+        _logger.LogWarning(
+            "GetExpiredResourcesAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported");
+        return Task.FromResult<IReadOnlyList<ExpiredResourceInfo>>(Array.Empty<ExpiredResourceInfo>());
+    }
+
+    public Task HardDeleteResourceAsync(
+        short resourceTypeId,
+        string resourceId,
+        CancellationToken ct = default)
+    {
+        _logger.LogWarning(
+            "HardDeleteResourceAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported");
+        return Task.CompletedTask;
+    }
+
     private class ResourceMetadata
     {
         public string TransactionId { get; set; } = string.Empty;
