@@ -65,6 +65,23 @@ public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
         }
     }
 
+    public void LogTtlDeletion(
+        int tenantId,
+        string resourceType,
+        string resourceId,
+        DateTimeOffset expiresAt,
+        bool success)
+    {
+        if (success)
+        {
+            LogTtlDeletionSuccess(logger, tenantId, resourceType, resourceId, expiresAt);
+        }
+        else
+        {
+            LogTtlDeletionFailure(logger, tenantId, resourceType, resourceId, expiresAt);
+        }
+    }
+
     [LoggerMessage(
         Level = LogLevel.Information,
         Message = "AUDIT: Tenant access AUTHORIZED - User={UserId}, Tenant={TenantId}, Operation={Operation}, Resource={ResourceType}/{ResourceId}")]
@@ -88,4 +105,16 @@ public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
         Message = "AUDIT: Action={Action}, Outcome={Outcome}, User={UserId}, Client={ClientIp}, Method={Method}, Path={Path}, Status={StatusCode}, Duration={DurationMs}ms")]
     private static partial void LogHttpRequestFailure(
         ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "AUDIT: TTL DELETION SUCCESS - Tenant={TenantId}, Resource={ResourceType}/{ResourceId}, ExpiredAt={ExpiresAt}, Reason=TTL_EXPIRATION")]
+    private static partial void LogTtlDeletionSuccess(
+        ILogger logger, int tenantId, string resourceType, string resourceId, DateTimeOffset expiresAt);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "AUDIT: TTL DELETION FAILURE - Tenant={TenantId}, Resource={ResourceType}/{ResourceId}, ExpiredAt={ExpiresAt}, Reason=TTL_EXPIRATION")]
+    private static partial void LogTtlDeletionFailure(
+        ILogger logger, int tenantId, string resourceType, string resourceId, DateTimeOffset expiresAt);
 }

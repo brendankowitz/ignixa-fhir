@@ -39,6 +39,17 @@ public class SidecarAuditLogger(
         _ = LogHttpRequestAsync(auditEvent);
     }
 
+    public void LogTtlDeletion(
+        int tenantId,
+        string resourceType,
+        string resourceId,
+        DateTimeOffset expiresAt,
+        bool success)
+    {
+        // Fire-and-forget: Queue for async processing
+        _ = LogTtlDeletionAsync(tenantId, resourceType, resourceId, expiresAt, success);
+    }
+
     private async Task LogTenantAccessAsync(
         string userId,
         int tenantId,
@@ -107,6 +118,45 @@ public class SidecarAuditLogger(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to log HTTP request audit event");
+        }
+    }
+
+    private async Task LogTtlDeletionAsync(
+        int tenantId,
+        string resourceType,
+        string resourceId,
+        DateTimeOffset expiresAt,
+        bool success)
+    {
+        try
+        {
+            var request = new AuditEventRequest
+            {
+                Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+                TenantId = tenantId.ToString(),
+                UserId = "system",
+                ResourceType = resourceType,
+                ResourceId = resourceId,
+                Operation = AuditOperation.Delete,
+                HttpStatusCode = success ? 204 : 500,
+                Success = success,
+                IpAddress = "127.0.0.1",
+                CorrelationId = string.Empty
+            };
+
+            request.CustomProperties.Add("reason", "TTL_EXPIRATION");
+            request.CustomProperties.Add("expiresAt", expiresAt.ToString("O"));
+            request.CustomProperties.Add("deletionType", "HARD_DELETE");
+
+            await client.LogAuditEventAsync(request);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        {
+            logger.LogError(ex, "Audit sidecar unavailable - TTL deletion audit event lost");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to log TTL deletion audit event");
         }
     }
 

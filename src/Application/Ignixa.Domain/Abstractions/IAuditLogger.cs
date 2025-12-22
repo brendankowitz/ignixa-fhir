@@ -35,6 +35,22 @@ public interface IAuditLogger
     /// </summary>
     /// <param name="auditEvent">The audit event details</param>
     void LogHttpRequest(HttpRequestAuditEvent auditEvent);
+
+    /// <summary>
+    /// Logs a resource deletion due to TTL expiration.
+    /// Used by background cleanup jobs to track automatic deletions.
+    /// </summary>
+    /// <param name="tenantId">Tenant ID</param>
+    /// <param name="resourceType">FHIR resource type</param>
+    /// <param name="resourceId">Resource ID</param>
+    /// <param name="expiresAt">Original expiration timestamp</param>
+    /// <param name="success">Whether the deletion succeeded</param>
+    void LogTtlDeletion(
+        int tenantId,
+        string resourceType,
+        string resourceId,
+        DateTimeOffset expiresAt,
+        bool success);
 }
 
 /// <summary>

@@ -939,15 +939,18 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
         // Query ResourceTtl table for expired entries
         // Join with Resource to ensure we only process current (non-deleted, non-history) resources
+        // Join with ResourceType to get the resource type name for audit logging
         var expiredResources = await (from ttl in _context.ResourceTtls
                                       join r in _context.Resources on new { ttl.ResourceTypeId, ttl.ResourceId } equals new { r.ResourceTypeId, r.ResourceId }
+                                      join rt in _context.ResourceTypes on ttl.ResourceTypeId equals rt.ResourceTypeId
                                       where ttl.ExpiresAt < now
                                           && !r.IsHistory
                                           && !r.IsDeleted
                                       select new ExpiredResourceInfo(
                                           ttl.ResourceTypeId,
                                           ttl.ResourceId,
-                                          ttl.ExpiresAt))
+                                          ttl.ExpiresAt,
+                                          rt.Name))
             .Take(batchSize)
             .ToListAsync(ct);
 

@@ -12,4 +12,5 @@ namespace Ignixa.Domain.Models;
 public record ExpiredResourceInfo(
     short ResourceTypeId,
     string ResourceId,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string ResourceType);

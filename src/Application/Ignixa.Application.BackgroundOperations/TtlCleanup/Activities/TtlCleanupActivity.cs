@@ -17,10 +17,12 @@ namespace Ignixa.Application.BackgroundOperations.TtlCleanup.Activities;
 /// </summary>
 public class TtlCleanupActivity(
     IFhirRepositoryFactory repositoryFactory,
+    IAuditLogger auditLogger,
     ILogger<TtlCleanupActivity> logger)
     : AsyncTaskActivity<TtlCleanupActivityInput, TtlCleanupActivityOutput>
 {
     private readonly IFhirRepositoryFactory _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+    private readonly IAuditLogger _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
     private readonly ILogger<TtlCleanupActivity> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     protected override async Task<TtlCleanupActivityOutput> ExecuteAsync(
@@ -70,7 +72,7 @@ public class TtlCleanupActivity(
                 {
                     _logger.LogInformation(
                         "Deleting expired resource {ResourceType}/{ResourceId} (expired at {ExpiresAt}) for tenant {TenantId}",
-                        resource.ResourceTypeId,
+                        resource.ResourceType,
                         resource.ResourceId,
                         resource.ExpiresAt,
                         input.TenantId);
@@ -84,9 +86,17 @@ public class TtlCleanupActivity(
 
                     _logger.LogInformation(
                         "Successfully deleted expired resource {ResourceType}/{ResourceId} for tenant {TenantId}",
-                        resource.ResourceTypeId,
+                        resource.ResourceType,
                         resource.ResourceId,
                         input.TenantId);
+
+                    // Audit log the successful deletion
+                    _auditLogger.LogTtlDeletion(
+                        input.TenantId,
+                        resource.ResourceType,
+                        resource.ResourceId,
+                        resource.ExpiresAt,
+                        success: true);
                 }
                 catch (Exception ex)
                 {
@@ -95,9 +105,17 @@ public class TtlCleanupActivity(
                     _logger.LogError(
                         ex,
                         "Failed to delete expired resource {ResourceType}/{ResourceId} for tenant {TenantId}",
-                        resource.ResourceTypeId,
+                        resource.ResourceType,
                         resource.ResourceId,
                         input.TenantId);
+
+                    // Audit log the failed deletion
+                    _auditLogger.LogTtlDeletion(
+                        input.TenantId,
+                        resource.ResourceType,
+                        resource.ResourceId,
+                        resource.ExpiresAt,
+                        success: false);
                 }
             }
 
