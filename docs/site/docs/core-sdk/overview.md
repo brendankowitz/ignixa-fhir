@@ -11,66 +11,92 @@ The Ignixa Core SDK is a collection of high-performance, reusable .NET libraries
 ## Package Overview
 
 ```
-Ignixa.Abstractions (Foundation)
-        ↓
-Ignixa.Specification (FHIR Metadata)
-        ↓
-Ignixa.Serialization (JSON)
-        ↓
-┌───────┬────────┬──────────┬────────────────────┐
-│       │        │          │                    │
-↓       ↓        ↓          ↓                    ↓
-FhirPath  Search  Validation  NarrativeGenerator  ...
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Feature Packages                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Search     Validation    FhirFakes    NarrativeGenerator   SqlOnFhir   │
+│  FhirMappingLanguage      PackageManagement        Extensions.FirelySdk6│
+└──────┬─────────┬──────────────┬─────────────────────────────────────────┘
+       │         │              │
+       ▼         ▼              ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         Core Packages                                    │
+├──────────────┬──────────────────────────┬───────────────────────────────┤
+│ Specification│       Serialization      │          FhirPath             │
+│  (metadata)  │         (JSON)           │        (expressions)          │
+└──────┬───────┴────────────┬─────────────┴──────────────┬────────────────┘
+       │                    │                            │
+       └────────────────────┼────────────────────────────┘
+                            ▼
+              ┌────────────────────────────┐
+              │    Ignixa.Abstractions     │
+              │  (IElement, ISourceNode)   │
+              └────────────────────────────┘
 ```
+
+**Dependency Relationships** (from .csproj files):
+
+| Package | Depends On |
+|---------|------------|
+| **Abstractions** | *(foundation - no internal deps)* |
+| **Serialization** | Abstractions |
+| **FhirPath** | Abstractions |
+| **Specification** | Serialization, Abstractions |
+| **Search** | FhirPath, Specification, Serialization |
+| **Validation** | FhirPath, Specification, Serialization |
+| **FhirFakes** | Specification, Serialization |
+| **NarrativeGenerator** | Abstractions, FhirPath, Serialization |
+| **SqlOnFhir** | Abstractions, FhirPath, Serialization |
+| **FhirMappingLanguage** | Abstractions, FhirPath, Serialization |
+| **PackageManagement** | Abstractions |
+| **Extensions.FirelySdk6** | Abstractions, Serialization |
 
 ## Available Packages
 
 ### Foundation
 
-| Package | Description | NuGet |
-|---------|-------------|-------|
-| **Ignixa.Abstractions** | Core interfaces (`IElement`, `ISourceNode`, `IType`) | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Abstractions)](https://www.nuget.org/packages/Ignixa.Abstractions) |
-| **Ignixa.Specification** | FHIR structure definitions for R4/R4B/R5/R6/STU3 | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Specification)](https://www.nuget.org/packages/Ignixa.Specification) |
+| Package | Description |
+|---------|-------------|
+| **Ignixa.Abstractions** | Core interfaces (`IElement`, `ISourceNavigator`, `IType`) |
+| **Ignixa.Specification** | FHIR structure definitions for STU3/R4/R4B/R5/R6 |
 
 ### Data Processing
 
-| Package | Description | NuGet |
-|---------|-------------|-------|
-| **Ignixa.Serialization** | High-performance JSON serialization | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Serialization)](https://www.nuget.org/packages/Ignixa.Serialization) |
-| **Ignixa.Search** | Search parameter definitions and indexing | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Search)](https://www.nuget.org/packages/Ignixa.Search) |
-| **Ignixa.Validation** | Three-tier validation engine | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Validation)](https://www.nuget.org/packages/Ignixa.Validation) |
+| Package | Description |
+|---------|-------------|
+| **Ignixa.Serialization** | High-performance JSON serialization with typed models |
+| **Ignixa.Search** | Search parameter definitions and indexing |
+| **Ignixa.Validation** | Schema-based validation engine |
 
 ### Advanced Features
 
-| Package | Description | NuGet |
-|---------|-------------|-------|
-| **Ignixa.FhirPath** | Compiled FHIRPath expression engine | [![NuGet](https://img.shields.io/nuget/v/Ignixa.FhirPath)](https://www.nuget.org/packages/Ignixa.FhirPath) |
-| **Ignixa.FhirMappingLanguage** | FHIR Mapping Language parser | [![NuGet](https://img.shields.io/nuget/v/Ignixa.FhirMappingLanguage)](https://www.nuget.org/packages/Ignixa.FhirMappingLanguage) |
-| **Ignixa.NarrativeGenerator** | FHIR narrative generation | [![NuGet](https://img.shields.io/nuget/v/Ignixa.NarrativeGenerator)](https://www.nuget.org/packages/Ignixa.NarrativeGenerator) |
-| **Ignixa.SqlOnFhir** | SQL on FHIR v2 implementation | [![NuGet](https://img.shields.io/nuget/v/Ignixa.SqlOnFhir)](https://www.nuget.org/packages/Ignixa.SqlOnFhir) |
-| **Ignixa.PackageManagement** | FHIR package management | [![NuGet](https://img.shields.io/nuget/v/Ignixa.PackageManagement)](https://www.nuget.org/packages/Ignixa.PackageManagement) |
+| Package | Description |
+|---------|-------------|
+| **Ignixa.FhirPath** | Compiled FHIRPath expression engine |
+| **Ignixa.FhirMappingLanguage** | FHIR Mapping Language (FML) evaluator |
+| **Ignixa.NarrativeGenerator** | FHIR narrative generation (HTML, Markdown, Compact) |
+| **Ignixa.SqlOnFhir** | SQL on FHIR v2 ViewDefinition evaluator |
+| **Ignixa.PackageManagement** | FHIR package loading from NPM registry |
 
 ### Testing & Development
 
-| Package | Description | NuGet |
-|---------|-------------|-------|
-| **Ignixa.FhirFakes** | Synthetic FHIR data generator | [![NuGet](https://img.shields.io/nuget/v/Ignixa.FhirFakes)](https://www.nuget.org/packages/Ignixa.FhirFakes) |
+| Package | Description |
+|---------|-------------|
+| **Ignixa.FhirFakes** | Synthetic FHIR data generator with clinical scenarios |
 
-### Extensions
+### Interoperability
 
-| Package | Description | NuGet |
-|---------|-------------|-------|
-| **Ignixa.Extensions.FirelySdk5** | Firely SDK 5.x integration | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Extensions.FirelySdk5)](https://www.nuget.org/packages/Ignixa.Extensions.FirelySdk5) |
-| **Ignixa.Extensions.FirelySdk6** | Firely SDK 6.x integration | [![NuGet](https://img.shields.io/nuget/v/Ignixa.Extensions.FirelySdk6)](https://www.nuget.org/packages/Ignixa.Extensions.FirelySdk6) |
+| Package | Description |
+|---------|-------------|
+| **Ignixa.Extensions.FirelySdk6** | Bidirectional Firely SDK 6.x integration |
 
 ## Quick Start
 
-Install the packages you need:
-
 ```bash
-# Basic FHIR processing
+# Core packages
 dotnet add package Ignixa.Abstractions
 dotnet add package Ignixa.Serialization
+dotnet add package Ignixa.Specification
 
 # FHIRPath evaluation
 dotnet add package Ignixa.FhirPath
@@ -88,7 +114,7 @@ dotnet add package Ignixa.FhirFakes
 
 ```csharp
 using Ignixa.Serialization;
-using Ignixa.Abstractions;
+using Ignixa.Specification;
 
 var json = """
 {
@@ -98,12 +124,12 @@ var json = """
 }
 """;
 
-// Parse to ISourceNode
-var sourceNode = JsonSourceNavigator.Parse(json);
+// Parse to ISourceNavigator
+var sourceNode = JsonSourceNodeFactory.Parse(json);
 
 // Navigate the structure
-var resourceType = sourceNode.Name; // "Patient"
-var id = sourceNode["id"].Text; // "123"
+var resourceType = sourceNode.ResourceType; // "Patient"
+var id = sourceNode["id"].Text;             // "123"
 var familyName = sourceNode["name"][0]["family"].Text; // "Smith"
 ```
 
@@ -111,14 +137,16 @@ var familyName = sourceNode["name"][0]["family"].Text; // "Smith"
 
 ```csharp
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Specification;
 
-var element = sourceNode.ToElement(schema);
+var schemaProvider = FhirVersion.R4.GetSchemaProvider();
+var element = sourceNode.ToElement(schemaProvider);
 
 // Simple path
 var names = element.Select("name.given");
 
-// Complex expression
-var activePatients = element.IsTrue("active = true");
+// Boolean check
+var isActive = element.IsTrue("active = true");
 
 // Scalar value
 var birthDate = element.Scalar("birthDate")?.ToString();
@@ -128,15 +156,26 @@ var birthDate = element.Scalar("birthDate")?.ToString();
 
 ```csharp
 using Ignixa.Validation;
+using Ignixa.Validation.Schema;
 
-var validator = new FhirValidator(ValidationLevel.Spec);
-var outcome = await validator.ValidateAsync(sourceNode);
+var schemaProvider = FhirVersion.R4.GetSchemaProvider();
+var schemaResolver = new StructureDefinitionSchemaResolver(schemaProvider);
+var cachedResolver = new CachedValidationSchemaResolver(schemaResolver);
 
-if (!outcome.Success)
+// Get validation schema
+var schema = cachedResolver.GetSchema("Patient");
+
+// Validate
+var element = sourceNode.ToElement(schemaProvider);
+var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+var state = new ValidationState();
+var result = schema.Validate(element, settings, state);
+
+if (!result.IsValid)
 {
-    foreach (var issue in outcome.Issues)
+    foreach (var issue in result.Issues)
     {
-        Console.WriteLine($"{issue.Severity}: {issue.Diagnostics}");
+        Console.WriteLine($"{issue.Severity}: {issue.Message}");
     }
 }
 ```
@@ -144,64 +183,75 @@ if (!outcome.Success)
 ### Generate Test Data
 
 ```csharp
-using Ignixa.FhirFakes;
+using Ignixa.FhirFakes.Scenarios;
+using Ignixa.FhirFakes.Scenarios.Predefined;
+using Ignixa.Specification;
 
-var faker = new FhirFaker();
+var schemaProvider = FhirVersion.R4.GetSchemaProvider();
 
-// Generate a single patient
-var patient = faker.Generate<Patient>();
+// Use predefined clinical scenarios
+var diabeticPatient = schemaProvider.GetDiabeticPatient(age: 52);
+var bundle = diabeticPatient.ToBundle();
 
-// Generate a population
-var population = faker.GeneratePopulation(count: 1000);
+// Or build custom scenarios
+var scenario = new ScenarioBuilder(schemaProvider)
+    .WithPatient(p => p.WithAge(35).WithGender(g => g.Female))
+    .AddEncounter("Annual checkup")
+    .AddComprehensiveMetabolicPanel()
+    .Build();
 ```
 
 ## Key Design Principles
 
-### 1. ISourceNode Abstraction
+### 1. ISourceNavigator Abstraction
 
-All packages work with `ISourceNode`, a lightweight abstraction over FHIR data:
+All packages work with `ISourceNavigator`, a lightweight abstraction over FHIR JSON:
 
 ```csharp
-public interface ISourceNode
+public interface ISourceNavigator
 {
     string Name { get; }
-    string? Text { get; }
-    IEnumerable<ISourceNode> Children(string? name = null);
+    string Text { get; }
+    string Location { get; }
+    string ResourceType { get; }
+    IEnumerable<ISourceNavigator> Children(string? name = null);
 }
 ```
 
-### 2. Zero-Copy Serialization
+### 2. IElement for Typed Operations
 
-The serialization layer minimizes allocations:
+Convert to `IElement` for FHIRPath evaluation and validation:
 
 ```csharp
-// Streaming serialization
-await using var writer = new FhirJsonWriter(stream);
-await writer.WriteAsync(sourceNode);
+var element = sourceNode.ToElement(schemaProvider);
+
+// IElement has type information
+var instanceType = element.InstanceType;  // "Patient"
+var typeInfo = element.Type;              // Type metadata
 ```
 
 ### 3. Compiled Expressions
 
-FHIRPath expressions are compiled and cached:
+FHIRPath expressions are automatically parsed, compiled, and cached:
 
 ```csharp
-// First call: parse + compile
+// First call: parse + compile + cache
 var result = element.Select("name.given.first()");
 
-// Subsequent calls: cached delegate
+// Subsequent calls: uses cached compiled delegate
 var result2 = element.Select("name.given.first()");
 ```
 
 ## FHIR Version Support
 
-| Package | R4 | R4B | R5 | R6 | STU3 |
-|---------|:--:|:---:|:--:|:--:|:----:|
+| Package | STU3 | R4 | R4B | R5 | R6 |
+|---------|:----:|:--:|:---:|:--:|:--:|
 | Abstractions | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Specification | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Serialization | ✅ | ✅ | ✅ | ✅ | ✅ |
 | FhirPath | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Validation | ✅ | ✅ | ✅ | 🚧 | ✅ |
-| Search | ✅ | ✅ | ✅ | 🚧 | ✅ |
+| Validation | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Search | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## Related Documentation
 
@@ -215,3 +265,4 @@ var result2 = element.Select("name.given.first()");
 - [Narrative Generator](/docs/core-sdk/narrative-generator)
 - [FHIR Mapping Language](/docs/core-sdk/fhir-mapping-language)
 - [SQL on FHIR](/docs/core-sdk/sql-on-fhir)
+- [Firely SDK Compatibility](/docs/core-sdk/firely-sdk-compatibility)

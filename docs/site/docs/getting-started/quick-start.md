@@ -1,202 +1,72 @@
 ---
 sidebar_position: 2
 title: Quick Start
-description: Create and query FHIR resources in under 10 minutes
+description: Make your first FHIR requests
 ---
 
 # Quick Start
 
-This guide walks you through making your first FHIR requests with Ignixa. By the end, you'll have created a Patient resource and performed searches.
+Create and query FHIR resources using the REST API.
 
-## Start the Server
+## Prerequisites
 
-If you haven't already, start Ignixa using Docker Compose with SQL Server:
-
-```bash
-git clone https://github.com/brendankowitz/ignixa-fhir.git
-cd ignixa-fhir
-cp .env.example .env
-# Edit .env and set SQL_SA_PASSWORD
-docker compose up -d
-```
-
-See the [Installation Guide](/docs/getting-started/installation) for alternative deployment options including Azure.
-
-## Verify the Server
-
-Check the server is running by fetching the CapabilityStatement:
+Start the server following the [Installation Guide](/docs/getting-started/installation), then verify it's running:
 
 ```bash
 curl http://localhost:8080/metadata
 ```
 
-You should see a JSON response describing the server's capabilities.
-
 ## Create a Patient
-
-Create your first Patient resource:
 
 ```bash
 curl -X POST http://localhost:8080/Patient \
   -H "Content-Type: application/fhir+json" \
   -d '{
     "resourceType": "Patient",
-    "name": [{
-      "use": "official",
-      "family": "Smith",
-      "given": ["John", "William"]
-    }],
+    "name": [{"family": "Smith", "given": ["John"]}],
     "gender": "male",
     "birthDate": "1990-05-15"
   }'
 ```
 
-The response includes the created resource with a server-assigned `id`:
+Note the `id` in the response for subsequent requests.
 
-```json
-{
-  "resourceType": "Patient",
-  "id": "abc123",
-  "meta": {
-    "versionId": "1",
-    "lastUpdated": "2024-01-15T10:30:00Z"
-  },
-  "name": [{
-    "use": "official",
-    "family": "Smith",
-    "given": ["John", "William"]
-  }],
-  "gender": "male",
-  "birthDate": "1990-05-15"
-}
-```
-
-## Read a Patient
-
-Retrieve the patient using the assigned ID:
+## Read
 
 ```bash
-curl http://localhost:8080/Patient/abc123
+curl http://localhost:8080/Patient/{id}
 ```
 
-## Search for Patients
-
-Search by family name:
+## Search
 
 ```bash
 curl "http://localhost:8080/Patient?family=Smith"
 ```
 
-Search with multiple parameters:
+## Update
 
 ```bash
-curl "http://localhost:8080/Patient?gender=male&birthdate=gt1980-01-01"
-```
-
-## Create an Observation
-
-Create an Observation linked to your Patient:
-
-```bash
-curl -X POST http://localhost:8080/Observation \
-  -H "Content-Type: application/fhir+json" \
-  -d '{
-    "resourceType": "Observation",
-    "status": "final",
-    "code": {
-      "coding": [{
-        "system": "http://loinc.org",
-        "code": "29463-7",
-        "display": "Body Weight"
-      }]
-    },
-    "subject": {
-      "reference": "Patient/abc123"
-    },
-    "valueQuantity": {
-      "value": 75,
-      "unit": "kg",
-      "system": "http://unitsofmeasure.org",
-      "code": "kg"
-    }
-  }'
-```
-
-## Search with Includes
-
-Fetch Observations and include the referenced Patient:
-
-```bash
-curl "http://localhost:8080/Observation?subject=Patient/abc123&_include=Observation:subject"
-```
-
-## Update a Patient
-
-Update using PUT (full resource replacement):
-
-```bash
-curl -X PUT http://localhost:8080/Patient/abc123 \
+curl -X PUT http://localhost:8080/Patient/{id} \
   -H "Content-Type: application/fhir+json" \
   -d '{
     "resourceType": "Patient",
-    "id": "abc123",
-    "name": [{
-      "use": "official",
-      "family": "Smith",
-      "given": ["John", "William"]
-    }],
+    "id": "{id}",
+    "name": [{"family": "Smith", "given": ["John"]}],
     "gender": "male",
     "birthDate": "1990-05-15",
-    "telecom": [{
-      "system": "phone",
-      "value": "+1-555-0123",
-      "use": "mobile"
-    }]
+    "telecom": [{"system": "phone", "value": "+1-555-0123"}]
   }'
 ```
 
-## View History
-
-View all versions of a resource:
+## Delete
 
 ```bash
-curl http://localhost:8080/Patient/abc123/_history
-```
-
-## Delete a Patient
-
-Delete the resource:
-
-```bash
-curl -X DELETE http://localhost:8080/Patient/abc123
-```
-
-## Using the .NET SDK
-
-If you're building a .NET application, use the Core SDK packages:
-
-```csharp
-using Ignixa.Serialization;
-using Ignixa.Abstractions;
-
-// Parse FHIR JSON
-var json = """
-{
-  "resourceType": "Patient",
-  "name": [{ "family": "Smith", "given": ["John"] }]
-}
-""";
-
-var sourceNode = JsonSourceNavigator.Parse(json);
-var patient = sourceNode.ToSourceNode();
-
-// Navigate the resource
-var familyName = patient["name"][0]["family"].Text;
-Console.WriteLine($"Family name: {familyName}");
+curl -X DELETE http://localhost:8080/Patient/{id}
 ```
 
 ## Next Steps
 
-- [Configuration](/docs/getting-started/configuration) - Configure storage backends
-- [FHIR Compliance](/docs/server/fhir/capability-statement) - Understand supported features
+- [Server Configuration](/docs/server/configuration) - Configure storage and features
+- [Search Parameters](/docs/server/fhir/search-parameters) - Advanced search options
+- [Supported Resources](/docs/server/fhir/supported-resources) - Full resource list
 - [Core SDK](/docs/core-sdk/overview) - Build custom FHIR applications

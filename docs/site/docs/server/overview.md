@@ -6,7 +6,10 @@ description: Ignixa FHIR Server architecture and capabilities
 
 # Server Overview
 
-**Ignixa** is an enterprise-grade FHIR server built on .NET 9 and Clean Architecture principles. It provides a robust foundation for healthcare data interoperability with support for multiple FHIR versions, multi-tenancy, and cloud-native deployment.
+**Ignixa** is a modular, high-performance FHIR ecosystem built on **.NET**.
+It serves as both a **Reference Server** and a suite of **Standalone Tools** offering a robust foundation for healthcare data interoperability.
+
+Designed for the cloud, Ignixa supports multi-tenancy out of the box, with data isolation and configurable storage backends (currently SQL Server) and bulk operations supporting Azure Blob Storage.
 
 ## Key Features
 
@@ -117,7 +120,7 @@ Ignixa supports multiple storage backends:
 
 1. [Installation](/docs/getting-started/installation) - Deploy the server
 2. [Quick Start](/docs/getting-started/quick-start) - First FHIR requests
-3. [Configuration](/docs/getting-started/configuration) - Customize settings
+3. [Configuration](/docs/server/configuration) - Customize settings
 
 ## Related Documentation
 

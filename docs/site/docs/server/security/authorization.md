@@ -6,6 +6,10 @@ description: Access control and permission management
 
 # Authorization
 
+:::caution Under Development
+Authorization features are under active development. Configuration options and APIs may change.
+:::
+
 Ignixa provides fine-grained authorization based on SMART on FHIR scopes and custom policies.
 
 ## Access Control Model
@@ -95,140 +99,68 @@ Resources in the Patient compartment:
 
 ### Basic Authorization
 
+Enable authorization and control behavior:
+
 ```json
 {
   "Authorization": {
     "Enabled": true,
-    "DefaultPolicy": "authenticated",
-    "EnforceScopesOnRead": true,
-    "EnforceScopesOnWrite": true
+    "RequireAuthentication": true,
+    "EnforceTenantIsolation": true,
+    "EnforceCapabilities": true
   }
 }
 ```
 
-### Custom Policies
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `Enabled` | Whether authorization is enforced | `true` |
+| `RequireAuthentication` | Whether authentication required for all endpoints (except `/metadata`) | `true` |
+| `EnforceTenantIsolation` | Whether to enforce tenant boundaries in authorization | `true` |
+| `EnforceCapabilities` | Whether to enforce CapabilityStatement compliance (reject unsupported operations) | `true` |
+
+### Default Roles
+
+Configure default role permissions:
 
 ```json
 {
   "Authorization": {
-    "Policies": {
-      "AdminOnly": {
-        "RequiredRoles": ["admin"],
-        "AllowedOperations": ["*"]
+    "DefaultRoles": {
+      "Admin": {
+        "Permissions": [
+          { "ResourceType": "*", "Interaction": "*" }
+        ],
+        "McpAccess": true
       },
-      "ReadOnly": {
-        "RequiredScopes": ["*.read"],
-        "AllowedOperations": ["read", "search"]
-      },
-      "PatientAccess": {
-        "RequiredScopes": ["patient/*"],
-        "CompartmentRestriction": true
+      "Clinician": {
+        "Permissions": [
+          { "ResourceType": "Patient", "Interaction": "read" },
+          { "ResourceType": "Observation", "Interaction": "*" },
+          { "ResourceType": "Condition", "Interaction": "*" }
+        ],
+        "McpAccess": false
       }
-    }
+    },
+    "McpEnabledRoles": ["Admin", "SystemAdmin", "Mcp"]
   }
 }
 ```
 
-### Resource-Level Policies
-
+Roles are assigned via JWT claims:
 ```json
 {
-  "Authorization": {
-    "ResourcePolicies": {
-      "Patient": {
-        "Read": "authenticated",
-        "Write": "AdminOnly",
-        "Delete": "AdminOnly"
-      },
-      "Observation": {
-        "Read": "PatientAccess",
-        "Write": "PatientAccess"
-      }
-    }
-  }
+  "sub": "user123",
+  "roles": ["Clinician"],
+  "tenant_id": "1"
 }
 ```
 
 ## Tenant-Based Authorization
 
-In multi-tenant deployments, authorization is tenant-scoped:
+In multi-tenant deployments, authorization is tenant-scoped. Users can only access resources within their authorized tenants.
 
-```json
-{
-  "tenantId": "1",
-  "scopes": ["patient/*.read"]
-}
-```
-
-Users can only access resources within their authorized tenants.
-
-### Tenant Claim Configuration
-
-```json
-{
-  "Authorization": {
-    "TenantClaim": "tenant_id",
-    "CrossTenantAccess": false
-  }
-}
-```
-
-## Role-Based Access Control
-
-### Define Roles
-
-```json
-{
-  "Authorization": {
-    "Roles": {
-      "clinician": {
-        "Scopes": ["patient/*.read", "patient/*.write"],
-        "AllowedResourceTypes": ["Patient", "Observation", "Condition"]
-      },
-      "admin": {
-        "Scopes": ["system/*.*"],
-        "AllowedResourceTypes": ["*"]
-      },
-      "researcher": {
-        "Scopes": ["system/*.read"],
-        "ExcludedResourceTypes": ["Patient"]
-      }
-    }
-  }
-}
-```
-
-### Role Assignment
-
-Roles are assigned via claims in the JWT:
-
-```json
-{
-  "sub": "user123",
-  "roles": ["clinician"],
-  "tenant_id": "1"
-}
-```
-
-## Operation-Level Authorization
-
-Control access to specific operations:
-
-```json
-{
-  "Authorization": {
-    "Operations": {
-      "$export": {
-        "RequiredRoles": ["admin", "data-export"],
-        "RequiredScopes": ["system/*.*"]
-      },
-      "$validate": {
-        "RequiredScopes": ["*.read"]
-      }
-    }
-  }
-}
-```
+The tenant ID is extracted from the request path (`/tenant/{tenantId}/...`) and enforced at the authorization layer. If `EnforceTenantIsolation` is enabled, cross-tenant access is blocked.
 
 ## Audit Logging
 

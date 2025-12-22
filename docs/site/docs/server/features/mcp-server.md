@@ -39,6 +39,8 @@ Enable MCP in `appsettings.json`:
 }
 ```
 
+Default: Enabled (when Experimental:Enabled is true)
+
 ## Endpoint
 
 The MCP server is accessible at:
@@ -47,7 +49,7 @@ The MCP server is accessible at:
 POST /mcp
 ```
 
-This endpoint uses Server-Sent Events (SSE) transport for streaming responses.
+This endpoint uses MCP Streamable HTTP transport for bidirectional streaming with AI clients like Claude.
 
 ## Available Tools
 
@@ -363,8 +365,10 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 }
 ```
 
+Note: Replace `localhost:5000` with your server's actual URL. The MCP server uses HTTP streaming (Streamable HTTP) for bidirectional communication with Claude.
+
 ## Related Documentation
 
-- [Configuration](/docs/getting-started/configuration) - Enable experimental features
+- [Configuration](/docs/server/configuration) - Enable experimental features
 - [Authorization](/docs/server/security/authorization) - Configure MCP roles
 - [Bulk Operations](/docs/server/features/bulk-operations) - Export/import details

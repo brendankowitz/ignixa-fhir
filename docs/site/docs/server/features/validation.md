@@ -8,61 +8,26 @@ description: Three-tier validation system
 
 Ignixa provides a three-tier validation system that balances performance with conformance checking.
 
-## Validation Levels
+## Validation Features
 
-### Fast Validation
+The server provides validation via the `$validate` operation endpoint. Validation checks FHIR resource structure and conformance rules.
 
-Structural validation only - fastest option:
+### Validation Checks
+
+Ignixa performs the following validation checks:
 
 - JSON structure validity
 - Required field presence
 - Basic type checking
-- No external lookups
-
-```json
-{
-  "Validation": {
-    "Level": "Fast"
-  }
-}
-```
-
-### Specification Validation
-
-FHIR specification compliance:
-
-- All Fast checks, plus:
 - Value domain validation
 - Reference format checking
 - CodeableConcept structure
 - Cardinality constraints
-
-```json
-{
-  "Validation": {
-    "Level": "Spec"
-  }
-}
-```
-
-### Profile Validation
-
-Full profile-based validation:
-
-- All Spec checks, plus:
-- StructureDefinition constraints
+- StructureDefinition constraints (if profiles are loaded)
 - Extension validation
-- Terminology binding validation
 - Invariant (FHIRPath) evaluation
 
-```json
-{
-  "Validation": {
-    "Level": "Profile",
-    "EnableProfileValidation": true
-  }
-}
-```
+Note: Detailed configuration of validation levels is managed through installed FHIR packages and StructureDefinitions. For custom validation behavior, use invariants in StructureDefinitions.
 
 ## Validation Flow
 
@@ -92,6 +57,20 @@ OperationOutcome
 
 Validate resources without storing:
 
+### Basic Validation (Tenant-Explicit)
+
+```bash
+POST /tenant/{tenantId}/Patient/$validate
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "name": [{ "family": "Smith" }]
+}
+```
+
+Or single-tenant mode:
+
 ```bash
 POST /Patient/$validate
 Content-Type: application/fhir+json
@@ -102,21 +81,56 @@ Content-Type: application/fhir+json
 }
 ```
 
-### Validate Against Profile
+### Validate Against a Specific Profile
+
+Use a Parameters resource with the `profile` parameter:
 
 ```bash
-POST /Patient/$validate?profile=http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient
+POST /tenant/{tenantId}/Patient/$validate
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "profile",
+      "valueUri": "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"
+    },
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "name": [{ "family": "Smith" }]
+      }
+    }
+  ]
+}
 ```
 
 ### Validation Modes
 
-```bash
-# Validate for create
-POST /Patient/$validate?mode=create
+Specify validation mode (create, update, delete) in the Parameters resource:
 
-# Validate for update
-POST /Patient/$validate?mode=update
+```bash
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "mode",
+      "valueCode": "create"
+    },
+    {
+      "name": "resource",
+      "resource": { ... }
+    }
+  ]
+}
 ```
+
+Supported modes:
+- `create` - Validate as if creating a new resource
+- `update` - Validate as if updating an existing resource
+- `delete` - Validate deletion constraints
 
 ## OperationOutcome
 
@@ -151,20 +165,14 @@ Validation results are returned as OperationOutcome:
 | `warning` | Doesn't conform to best practice | Accepted |
 | `information` | Informational message | Accepted |
 
-## Validation on Create/Update
+## Validation Configuration
 
-Configure automatic validation:
+The server validates resources during create and update operations. Validation behavior is controlled by installed FHIR packages and their StructureDefinitions.
 
-```json
-{
-  "Validation": {
-    "ValidateOnCreate": true,
-    "ValidateOnUpdate": true,
-    "RejectOnError": true,
-    "RejectOnWarning": false
-  }
-}
-```
+To control which profiles validate resources:
+1. Install FHIR packages using the package management endpoints
+2. Configure StructureDefinitions with validation rules and invariants
+3. Resources will automatically be validated against installed profiles
 
 ## Custom Validation Rules
 
@@ -184,30 +192,21 @@ Add custom validation via invariants in StructureDefinitions:
 
 ## Terminology Validation
 
-Validate coded values against ValueSets:
+Terminology validation checks coded values against ValueSets defined in installed FHIR packages. The server uses the Ignixa Terminology Service to expand and validate value sets.
 
-```json
-{
-  "Validation": {
-    "ValidateTerminology": true,
-    "TerminologyServer": "https://tx.fhir.org/r4"
-  }
-}
-```
+To enable terminology validation:
+1. Install FHIR packages that contain ValueSet definitions
+2. Configure StructureDefinitions with binding constraints
+3. The server will validate coded elements against their bound ValueSets during validation
 
-## Usage Guidelines
+See [Operations](/docs/server/fhir/operations#expand-valueset) for $expand, $translate, and $subsumes operations.
 
-| Level | Use Case |
-|-------|----------|
-| Fast | High-throughput ingestion, bulk import |
-| Spec | Standard API operations |
-| Profile | Compliance testing, IG validation |
+## Best Practices
 
-For high-volume ingestion, consider:
-
-1. Use Fast validation on ingest
-2. Batch validate asynchronously
-3. Profile validate on read
+1. **Use `$validate` endpoint before creating resources** - Test conformance without storing invalid data
+2. **Profile validation via StructureDefinitions** - Install the appropriate FHIR packages for your domain (e.g., US Core, AU Base)
+3. **Custom invariants** - Add FHIRPath expressions in StructureDefinitions for business rule validation
+4. **Error handling** - Check OperationOutcome severity levels to determine whether validation failures should be treated as fatal
 
 ## Related Documentation
 

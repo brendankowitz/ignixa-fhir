@@ -5,10 +5,10 @@
     <b>High-Performance, Multi-Tenant, Cloud-Native FHIR Server for dotnet</b>
   </p>
 
-[![dotnet](https://img.shields.io/badge/dotnet-9.0-512BD4)](https://dotnet.microsoft.com/) 
-[![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20R6%20%7C%20STU3-orange)](https://hl7.org/fhir/) 
-[![NuGet](https://img.shields.io/badge/NuGet-Ignixa_Core-004880?logo=nuget)](https://www.nuget.org/packages?q=Ignixa) 
-[![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker)](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir) 
+[![dotnet](https://img.shields.io/badge/dotnet-9.0-512BD4)](https://dotnet.microsoft.com/)
+[![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20R6%20%7C%20STU3-orange)](https://hl7.org/fhir/)
+[![NuGet](https://img.shields.io/badge/NuGet-Ignixa_Core-004880?logo=nuget)](https://www.nuget.org/packages?q=Ignixa)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker)](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-blue)](https://brendankowitz.github.io/ignixa-fhir/)
 
@@ -16,42 +16,45 @@
 
 ---
 
-> **Project Status: Advanced Research / Reference Implementation**
->
-> This is a personal project exploring "next-gen" FHIR architecture. It supports and tests advanced parts of the FHIR specification but is **not** a supported enterprise product.
+> **Project Status:** Advanced Research / Reference Implementation. This is a personal project exploring "next-gen" architecture. It implements and pushes the advanced parts of the FHIR specification but is not a supported production product. This project heavily uses the most advanced coding AI agents (with a lot of manual validation and code-reviews) to implement and iterate quickly.
 
 ---
 
 ## Overview
 
-**Ignixa** is a modular, high-performance FHIR ecosystem built on **.NET**. It serves as both a **Reference Server** and a suite of **Standalone Tools** for the modern health IT developer.
+**Ignixa** is a modular, high-performance FHIR ecosystem built on **.NET**.
+It serves as both a **Reference Server** and a suite of **Standalone Tools** offering a robust foundation for healthcare data interoperability.
 
-Built on **Clean Architecture** principles with strict separation of concerns, Ignixa supports **multi-tenancy** out of the box, with data isolation and configurable storage backends including **SQL Server** and **Azure Blob Storage**.
+Designed for the cloud, Ignixa supports multi-tenancy out of the box, with data isolation and configurable storage backends (currently SQL Server) and bulk operations supporting Azure Blob Storage.
 
 ## ✨ Key Features
 
 ### 🏥 Core FHIR Capabilities
-*   **Multi-Version Support**: Seamlessly handles **R4, R4B, R5, R6-Ballot2, and STU3**.
-*   **Comprehensive API**: Full CRUD, Search, History, Batch/Transaction Bundles, and Patch (FHIRPath Patch).
-*   **Advanced Validation**: Three-tier validation engine (Fast, Spec, Profile) ensuring data integrity.
-*   **Extensive Search**: Support for standard and advanced search parameters, including chaining and includes.
+
+* **Multi-Version Support**: Seamlessly handles **R4, R4B, R5, R6-Ballot2, and STU3**.
+* **Comprehensive API**: Full CRUD, Search, History, Batch/Transaction Bundles, and Patch (FHIRPath Patch).
+* **Advanced Validation**: Three-tier validation engine (Fast, Spec, Profile) ensuring data integrity.
+* **Extensive Search**: Support for standard and advanced search parameters, including chaining and includes.
 
 ### ⚡ Performance & Scalability
-*   **Streaming-First**: Zero-copy serialization and response streaming minimize memory footprint, even for large datasets.
-*   **High Throughput**: Built on ASP.NET Core Minimal APIs for the lowest overhead.
-*   **Background Processing**: Integrated **DurableTask** framework for reliable, asynchronous bulk `$export` and `$import` operations.
+
+* **Streaming-First**: Zero-copy serialization and response streaming minimize memory footprint, even for large datasets.
+* **High Throughput**: Built on ASP.NET Core Minimal APIs for the lowest overhead.
+* **Background Processing**: Integrated **DurableTask** framework for reliable, asynchronous bulk `$export` and `$import` operations.
 
 ### 🏢 Enterprise Ready
-*   **Multi-Tenancy**: Built-in tenant isolation (Physical partitioning).
-*   **Production Storage**: robust **SQL Server (EF Core)** provider with optimized indexing.
-*   **Cloud Native**: Container-ready with Azure integration (App Service, SQL Database, Storage).
-*   **Clean Architecture**: Strict separation of concerns (Domain, Application, Infrastructure, API) facilitates maintenance and extension.
+
+* **Multi-Tenancy**: Built-in tenant isolation (Physical partitioning).
+* **Production Storage**: robust **SQL Server (EF Core)** provider with optimized indexing.
+* **Cloud Native**: Container-ready with Azure integration (App Service, SQL Database, Storage).
+* **Clean Architecture**: Strict separation of concerns (Domain, Application, Infrastructure, API) facilitates maintenance and extension.
 
 ## 📦 Deployment
 
 ### Azure
 
 Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This provisions a complete, secure environment with:
+
 - **App Service (Linux)** for hosting the container.
 - **SQL Server** with auto-provisioned tenant databases.
 - **Storage Accounts** for FHIR data and DurableTask orchestration.
@@ -62,19 +65,23 @@ Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This p
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
 
 Or use the CLI:
+
 ```bash
 az deployment group create \
   --resource-group ignixa-dev \
   --template-file deploy/azure/azuredeploy.json \
   --parameters appName=ignixa-demo
+
 ```
 
 **Advanced: Bicep Templates for Multi-Tenant Deployment (e.g., 10 tenants):**
+
 ```bash
 az deployment group create \
   --resource-group ignixa-prod \
   --template-file deploy/azure/main.bicep \
   --parameters appName=ignixa-prod tenantCount=10
+
 ```
 
 [**📚 View Complete Azure Deployment Guide**](deploy/azure/README.md)
@@ -85,6 +92,7 @@ The official image is available on GitHub Container Registry:
 
 ```bash
 docker pull ghcr.io/brendankowitz/ignixa-fhir:release
+
 ```
 
 #### Production Mode (SQL Server) 🚀
@@ -93,17 +101,19 @@ For a complete, high-performance experience with **SQL Server**, use Docker Comp
 
 ```bash
 docker compose up -d
+
 ```
 
 The server will be available at `http://localhost:8080/metadata`.
 
-> **Configuration**: You must create a `.env` file (see `.env.example`) to set the `SQL_SA_PASSWORD` and optionally the image tag.
+> __Configuration__: You must create a `.env` file (see `.env.example`) to set the `SQL_SA_PASSWORD` and optionally the image tag.
 
 ## 🛠️ Quick Start (Local Development)
 
 ### Prerequisites
-*   [dotnet 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-*   Docker (optional, for SQL Server tests)
+
+* [dotnet 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+* Docker (optional, for SQL Server tests)
 
 ### Build & Run
 
@@ -118,6 +128,7 @@ dotnet build All.sln
 # 3. Run the API (defaults to File System storage for dev)
 cd src/Ignixa.Api
 dotnet run
+
 ```
 
 Access the metadata endpoint at `https://localhost:5001/metadata`.
@@ -135,6 +146,7 @@ Ignixa uses standard `appsettings.json` for configuration.
     "ConnectionString": "Server=(localdb)\mssqllocaldb;Database=IgnixaFhir;Trusted_Connection=True;"
   }
 }
+
 ```
 
 *See `appsettings.json` for full configuration options.*
@@ -150,18 +162,20 @@ Ignixa includes a suite of powerful CLI tools to accelerate development and test
 | **[ignixa-validator](tools/Ignixa.Validation.Cli)** | High-performance FHIR resource validation (JSON) against official profiles. |
 
 Install any tool globally:
+
 ```bash
 dotnet tool install --global Ignixa.FhirFakes.Cli
+
 ```
 
 ## 🏗️ Architecture
 
 Ignixa follows a strict **Clean Architecture** pattern using **CQRS** (Command Query Responsibility Segregation) with **[Medino](https://github.com/brendankowitz/Medino)**.
 
-*   **API**: Minimal API endpoints, middleware, and presentation logic.
-*   **Application**: Business logic, CQRS Handlers (Commands/Queries).
-*   **Domain**: Core entities, value objects, and repository interfaces.
-*   **DataLayer**: Infrastructure implementations (SQL, FileSystem, BlobStorage).
+* **API**: Minimal API endpoints, middleware, and presentation logic.
+* **Application**: Business logic, CQRS Handlers (Commands/Queries).
+* **Domain**: Core entities, value objects, and repository interfaces.
+* **DataLayer**: Infrastructure implementations (SQL, FileSystem, BlobStorage).
 
 ## 🧩 Ignixa Core SDK
 
@@ -193,8 +207,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 Ignixa is inspired by and incorporates patterns from excellent open-source projects:
-*   [Microsoft FHIR Server](https://github.com/microsoft/fhir-server)
-*   [Firely dotnet SDK](https://github.com/FirelyTeam/firely-net-sdk)
+
+* [Microsoft FHIR Server](https://github.com/microsoft/fhir-server)
+* [Firely dotnet SDK](https://github.com/FirelyTeam/firely-net-sdk)
 
 ---
 

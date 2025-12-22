@@ -1,36 +1,39 @@
 ---
 sidebar_position: 1
 title: Installation
-description: Install Ignixa FHIR Server and Core SDK packages
+description: Choose your path - run the server or use the SDK
 ---
 
-# Installation
+# Getting Started
 
-## Deploy the FHIR Server
+Choose your path based on what you want to do.
 
-### Quickest: Deploy to Azure (Recommended)
+## Run the FHIR Server
 
-Deploy a production-ready environment with a single click:
+Deploy a fully-featured FHIR R4/R5 server.
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
+### Docker (Recommended)
 
-This provisions App Service, SQL Server, Storage, and Managed Identity automatically.
-
-See [Azure Deployment](/docs/server/deployment/azure) for CLI options and configuration.
-
-### Local Development: Docker Compose
+The fastest way to run locally with SQL Server included:
 
 ```bash
 git clone https://github.com/brendankowitz/ignixa-fhir.git
 cd ignixa-fhir
-
-# Create .env with SQL_SA_PASSWORD=YourStrong!Passw0rd
+echo "SQL_SA_PASSWORD=<your-password>" > .env
 docker compose up -d
 ```
 
-Access at `http://localhost:8080/metadata`.
+Access at `http://localhost:8080/metadata`
 
-See [Docker Deployment](/docs/server/deployment/docker) for details.
+See [Docker Deployment](/docs/server/deployment/docker) for configuration options.
+
+### Azure
+
+One-click deployment to Azure App Service:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
+
+See [Azure Deployment](/docs/server/deployment/azure) for CLI options.
 
 ### From Source
 
@@ -38,61 +41,39 @@ See [Docker Deployment](/docs/server/deployment/docker) for details.
 git clone https://github.com/brendankowitz/ignixa-fhir.git
 cd ignixa-fhir
 dotnet build All.sln
-
 cd src/Application/Ignixa.Web
 dotnet run
 ```
 
-Requires SQL Server. Configure connection in `appsettings.Development.json`:
+Requires SQL Server configured in `appsettings.Development.json`.
 
-```json
-{
-  "Tenants": {
-    "Configurations": [{
-      "TenantId": 1,
-      "Storage": {
-        "ConnectionString": "Server=(local);Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
-      }
-    }]
-  }
-}
-```
+## Use the Core SDK
 
-## Install Core SDK Packages
-
-Use the SDK packages independently to build custom FHIR applications:
+Build custom FHIR applications with standalone NuGet packages. No server required.
 
 ```bash
-# Foundation packages
-dotnet add package Ignixa.Abstractions
-dotnet add package Ignixa.Specification
-dotnet add package Ignixa.Serialization
-
-# Feature packages
-dotnet add package Ignixa.FhirPath
-dotnet add package Ignixa.Validation
-dotnet add package Ignixa.Search
-
-# Testing & Development
-dotnet add package Ignixa.FhirFakes
+dotnet add package Ignixa.Serialization   # JSON parsing
+dotnet add package Ignixa.FhirPath        # FHIRPath evaluation
+dotnet add package Ignixa.Validation      # Resource validation
+dotnet add package Ignixa.FhirFakes       # Test data generation
 ```
 
-See the [Core SDK Overview](/docs/core-sdk/overview) for detailed package descriptions.
+See [Core SDK Overview](/docs/core-sdk/overview) for all packages.
 
 ## CLI Tools
 
+Standalone command-line tools:
+
 ```bash
-# Synthetic FHIR data generator
-dotnet tool install --global Ignixa.FhirFakes.Cli
-
-# FHIR resource validator
-dotnet tool install --global Ignixa.Validation.Cli
-
-# SQL on FHIR transformer
-dotnet tool install --global Ignixa.SqlOnFhir.Cli
+dotnet tool install --global Ignixa.FhirFakes.Cli     # Generate test data
+dotnet tool install --global Ignixa.Validation.Cli   # Validate resources
+dotnet tool install --global Ignixa.SqlOnFhir.Cli    # Transform to Parquet/CSV
 ```
 
 ## Next Steps
 
-- [Quick Start Guide](/docs/getting-started/quick-start) - Make your first FHIR requests
-- [Configuration](/docs/getting-started/configuration) - Configure storage and features
+| Goal | Next Step |
+|------|-----------|
+| Try the FHIR API | [Quick Start](/docs/getting-started/quick-start) |
+| Configure the server | [Server Configuration](/docs/server/configuration) |
+| Build with the SDK | [Core SDK Overview](/docs/core-sdk/overview) |

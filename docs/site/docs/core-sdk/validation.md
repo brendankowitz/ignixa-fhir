@@ -6,7 +6,7 @@ description: Three-tier FHIR validation engine
 
 # Ignixa.Validation
 
-Three-tier validation system supporting Fast, Spec, and Profile validation levels.
+Three-tier validation system supporting Minimal, Spec, and Full validation depths.
 
 ## Installation
 
@@ -18,110 +18,131 @@ dotnet add package Ignixa.Validation
 
 ```csharp
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
+using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
-// Create validator
-var validator = new FhirValidator(ValidationLevel.Spec);
+// Get schema provider for your FHIR version
+var schemaProvider = new R4CoreSchemaProvider();
 
-// Validate a resource
-var outcome = await validator.ValidateAsync(sourceNode);
+// Create schema resolver
+var schemaResolver = new StructureDefinitionSchemaResolver(schemaProvider);
+var cachedResolver = new CachedValidationSchemaResolver(schemaResolver);
 
-if (!outcome.Success)
+// Get validation schema - accepts type name or canonical URL
+var schema = cachedResolver.GetSchema("Patient");
+// Or: cachedResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+
+// Convert resource to IElement
+var sourceNode = JsonNodeSourceNode.Create(resourceJsonNode);
+var element = sourceNode.ToElement(schemaProvider);
+
+// Validate the resource
+var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+var state = new ValidationState();
+var result = schema.Validate(element, settings, state);
+
+if (!result.IsValid)
 {
-    foreach (var issue in outcome.Issues)
+    foreach (var issue in result.Issues)
     {
-        Console.WriteLine($"{issue.Severity}: {issue.Diagnostics}");
+        Console.WriteLine($"{issue.Severity}: {issue.Message}");
     }
 }
 ```
 
-## Validation Levels
+## Validation Depths
 
-### Fast
+### Minimal
 
 Structural validation only - fastest option:
 
 ```csharp
-var validator = new FhirValidator(ValidationLevel.Fast);
+var settings = new ValidationSettings { Depth = ValidationDepth.Minimal };
 ```
 
 Checks:
 - JSON structure validity
-- Required element presence
-- Array vs single element correctness
-- Basic type validity
+- ID format validation
+- Narrative structure
+- Basic resource type validation
 
 ### Spec
 
 FHIR specification compliance:
 
 ```csharp
-var validator = new FhirValidator(ValidationLevel.Spec);
+var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
 ```
 
-Checks (includes Fast, plus):
+Checks (includes Minimal, plus):
 - Cardinality constraints (min/max)
+- Type checking
 - Reference format validation
-- Primitive value domains
-- CodeableConcept structure
-- Binding strength (required/extensible)
+- Choice element validation
+- Required terminology bindings
+- Fixed value constraints
+- Pattern constraints
 
-### Profile
+### Full
 
 Full profile-based validation:
 
 ```csharp
-var validator = new FhirValidator(ValidationLevel.Profile);
+var settings = new ValidationSettings { Depth = ValidationDepth.Full };
 ```
 
 Checks (includes Spec, plus):
-- StructureDefinition constraints
-- Extension validation
-- Slice matching
-- Terminology bindings (with external lookup)
 - FHIRPath invariants
+- Slice matching
+- Extension validation
+- Extensible terminology bindings
+- Display name validation
+- Advanced profile constraints
 
-## Validation Options
+## Validation Settings
 
 ```csharp
-var options = new ValidationOptions
+var settings = new ValidationSettings
 {
-    Level = ValidationLevel.Profile,
-    
-    // Behavior
-    ValidateReferences = true,
-    ResolveExternalReferences = false,
-    
-    // Terminology
-    ValidateTerminology = true,
-    TerminologyServer = "https://tx.fhir.org/r4",
-    
-    // Performance
-    MaxIssues = 100,
-    TimeoutSeconds = 30
-};
+    // Validation depth (Minimal/Spec/Full)
+    Depth = ValidationDepth.Full,
 
-var validator = new FhirValidator(options);
+    // Skip terminology validation if needed
+    SkipTerminologyValidation = false,
+
+    // How to handle terminology service failures
+    TerminologyFailureMode = TerminologyFailureMode.Warning,
+
+    // Optional terminology service for code validation
+    TerminologyService = new InMemoryTerminologyService()
+};
 ```
 
-## OperationOutcome
+## Validation Results
 
-Validation returns an OperationOutcome:
+Validation returns a `ValidationResult`:
 
 ```csharp
-public class ValidationResult
+public sealed record ValidationResult
 {
-    public bool Success { get; }
+    public bool IsValid { get; }
     public IReadOnlyList<ValidationIssue> Issues { get; }
-    public ISourceNode? OperationOutcome { get; }
+    public bool HasErrors { get; }
+    public bool HasWarnings { get; }
+
+    // Convert to FHIR OperationOutcome
+    public OperationOutcomeJsonNode ToOperationOutcome();
 }
 
-public class ValidationIssue
+public sealed record ValidationIssue
 {
     public IssueSeverity Severity { get; }
-    public IssueType Code { get; }
-    public string Diagnostics { get; }
-    public string? Location { get; }
-    public string? Expression { get; }
+    public string Code { get; }
+    public string Path { get; }
+    public string Message { get; }
+    public CodeableConceptJsonNode? Details { get; }
 }
 ```
 
@@ -139,96 +160,168 @@ public class ValidationIssue
 ### Against Specific Profile
 
 ```csharp
-var outcome = await validator.ValidateAsync(
-    sourceNode, 
-    profile: "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"
-);
+// Get schema for a specific profile
+var profileUrl = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient";
+var schema = cachedResolver.GetSchema(profileUrl);
+
+// Validate against the profile
+var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+var state = new ValidationState();
+var result = schema.Validate(element, settings, state);
 ```
 
-### Against Multiple Profiles
+### Using Custom Schema Resolvers
 
 ```csharp
-var profiles = new[] 
+// Create a custom resolver that combines multiple sources
+public class CustomSchemaResolver : IValidationSchemaResolver
 {
-    "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient",
-    "http://example.org/StructureDefinition/my-patient"
-};
+    private readonly IValidationSchemaResolver _baseResolver;
+    private readonly Dictionary<string, ValidationSchema> _customSchemas = new();
 
-var outcome = await validator.ValidateAsync(sourceNode, profiles);
-```
-
-### With Profile Resolution
-
-```csharp
-var resolver = new PackageProfileResolver(packageManager);
-var validator = new FhirValidator(options, resolver);
-```
-
-## Custom Validation Rules
-
-### FHIRPath Invariants
-
-```csharp
-var customInvariant = new Invariant
-{
-    Key = "my-rule-1",
-    Severity = IssueSeverity.Error,
-    Human = "Patient must have either name or identifier",
-    Expression = "name.exists() or identifier.exists()"
-};
-
-options.CustomInvariants.Add(customInvariant);
-```
-
-### Custom Validators
-
-```csharp
-public class MyCustomValidator : IValidator
-{
-    public async Task<ValidationResult> ValidateAsync(
-        ISourceNode resource, 
-        CancellationToken cancellationToken)
+    public CustomSchemaResolver(IValidationSchemaResolver baseResolver)
     {
-        var issues = new List<ValidationIssue>();
-        
-        // Custom validation logic
-        if (SomeCondition(resource))
-        {
-            issues.Add(new ValidationIssue
-            {
-                Severity = IssueSeverity.Warning,
-                Code = IssueType.BusinessRule,
-                Diagnostics = "Custom validation message"
-            });
-        }
-        
-        return new ValidationResult(issues);
+        _baseResolver = baseResolver;
+    }
+
+    public void AddCustomSchema(string canonicalUrl, ValidationSchema schema)
+    {
+        _customSchemas[canonicalUrl] = schema;
+    }
+
+    public ValidationSchema? GetSchema(string canonicalUrl)
+    {
+        return _customSchemas.TryGetValue(canonicalUrl, out var schema)
+            ? schema
+            : _baseResolver.GetSchema(canonicalUrl);
     }
 }
+```
 
-// Register custom validator
-options.CustomValidators.Add(new MyCustomValidator());
+## Custom Validation Checks
+
+### Implementing Custom Checks
+
+```csharp
+public class BusinessRuleCheck : IValidationCheck
+{
+    public ValidationResult Validate(
+        IElement element,
+        ValidationSettings settings,
+        ValidationState state)
+    {
+        var issues = new List<ValidationIssue>();
+
+        // Example: Require Patient to have either name or identifier
+        if (element.Name == "Patient")
+        {
+            var hasName = element.Children("name").Any();
+            var hasIdentifier = element.Children("identifier").Any();
+
+            if (!hasName && !hasIdentifier)
+            {
+                issues.Add(new ValidationIssue(
+                    IssueSeverity.Error,
+                    "business-rule-1",
+                    "Patient",
+                    "Patient must have either name or identifier"));
+            }
+        }
+
+        return issues.Any()
+            ? ValidationResult.Failure(issues)
+            : ValidationResult.Success();
+    }
+}
+```
+
+### Adding Checks to Schema
+
+```csharp
+// Build custom schema with additional checks
+var baseSchema = cachedResolver.GetSchema(canonicalUrl);
+var customChecks = new List<IValidationCheck>
+{
+    new BusinessRuleCheck(),
+    new OrganizationPolicyCheck()
+};
+
+// Combine base checks with custom checks
+var allChecks = baseSchema.Checks.Concat(customChecks).ToList();
+
+var customSchema = new ValidationSchema(
+    baseSchema.CanonicalUrl,
+    baseSchema.ResourceType,
+    universalChecks: allChecks.Where(c => /* categorize */).ToList(),
+    specChecks: new List<IValidationCheck>(),
+    profileChecks: customChecks);
 ```
 
 ## Terminology Validation
 
-### With External Server
+### Using InMemoryTerminologyService
 
 ```csharp
-var options = new ValidationOptions
+using Ignixa.Validation.Services;
+
+// Create an in-memory terminology service
+var termService = new InMemoryTerminologyService();
+
+// Configure validation settings
+var settings = new ValidationSettings
 {
-    ValidateTerminology = true,
-    TerminologyServer = "https://tx.fhir.org/r4"
+    Depth = ValidationDepth.Full,
+    SkipTerminologyValidation = false,
+    TerminologyService = termService,
+    TerminologyFailureMode = TerminologyFailureMode.Warning
 };
 ```
 
-### With Local ValueSets
+### Implementing Custom Terminology Service
 
 ```csharp
-var termService = new LocalTerminologyService();
-termService.LoadValueSet(myValueSet);
+public class CustomTerminologyService : ITerminologyService
+{
+    public async Task<TerminologyValidationResult> ValidateCodeAsync(
+        string? system,
+        string? code,
+        string? display,
+        string? valueSetUrl,
+        CancellationToken cancellationToken)
+    {
+        // Implement code validation logic
+        // e.g., check against external terminology server
+        var isValid = await CheckCodeAgainstServer(system, code, valueSetUrl);
 
-var validator = new FhirValidator(options, terminologyService: termService);
+        return new TerminologyValidationResult(
+            IsValid: isValid,
+            Severity: isValid ? IssueSeverity.Information : IssueSeverity.Error,
+            Message: isValid ? null : $"Code {system}#{code} not found in {valueSetUrl}");
+    }
+
+    public async Task<BindingValidationResult> ValidateBindingAsync(
+        string valueSetUrl,
+        BindingStrength strength,
+        string? system,
+        string? code,
+        string? display,
+        string? version,
+        CancellationToken cancellationToken)
+    {
+        // Validate based on binding strength
+        // Required → Error, Extensible → Warning, Preferred → Info
+        var validationResult = await ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
+
+        return new BindingValidationResult(
+            IsValid: validationResult.IsValid,
+            Strength: strength,
+            Severity: DetermineSeverity(validationResult.IsValid, strength),
+            Message: validationResult.Message,
+            SuggestedDisplay: null);
+    }
+
+    // Implement other ITerminologyService methods (LookupCodeAsync, ExpandValueSetAsync, etc.)...
+}
 ```
 
 ## Batch Validation
@@ -236,13 +329,27 @@ var validator = new FhirValidator(options, terminologyService: termService);
 ### Multiple Resources
 
 ```csharp
-var results = new List<ValidationResult>();
+// Validate multiple resources in parallel
+var schemaProvider = new R4CoreSchemaProvider();
+var schemaResolver = new CachedValidationSchemaResolver(
+    new StructureDefinitionSchemaResolver(schemaProvider));
 
-await Parallel.ForEachAsync(resources, async (resource, ct) =>
+var results = new ConcurrentBag<ValidationResult>();
+var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+
+await Parallel.ForEachAsync(resources, async (resourceNode, ct) =>
 {
-    var result = await validator.ValidateAsync(resource, ct);
-    lock (results)
+    var sourceNode = JsonNodeSourceNode.Create(resourceNode.MutableNode);
+    var element = sourceNode.ToElement(schemaProvider);
+    var resourceType = resourceNode.ResourceType;
+
+    var schema = schemaResolver.GetSchema(
+        $"http://hl7.org/fhir/StructureDefinition/{resourceType}");
+
+    if (schema != null)
     {
+        var state = new ValidationState();
+        var result = schema.Validate(element, settings, state);
         results.Add(result);
     }
 });
@@ -251,31 +358,83 @@ await Parallel.ForEachAsync(resources, async (resource, ct) =>
 ### Bundle Validation
 
 ```csharp
-// Validate entire bundle
-var bundleResult = await validator.ValidateAsync(bundle);
+// Validate entire bundle as a resource
+var bundleSchema = schemaResolver.GetSchema(
+    "http://hl7.org/fhir/StructureDefinition/Bundle");
 
-// Validate each entry
-foreach (var entry in bundle["entry"].Children())
+var bundleElement = JsonNodeSourceNode.Create(bundle.MutableNode)
+    .ToElement(schemaProvider);
+
+var bundleResult = bundleSchema.Validate(bundleElement, settings, new ValidationState());
+
+// Validate each entry resource individually
+if (bundle.Entry != null)
 {
-    var resource = entry["resource"];
-    var result = await validator.ValidateAsync(resource);
+    foreach (var entry in bundle.Entry)
+    {
+        if (entry.Resource != null)
+        {
+            var entryElement = JsonNodeSourceNode.Create(entry.Resource.MutableNode)
+                .ToElement(schemaProvider);
+            var entrySchema = schemaResolver.GetSchema(
+                $"http://hl7.org/fhir/StructureDefinition/{entry.Resource.ResourceType}");
+            var entryResult = entrySchema?.Validate(entryElement, settings, new ValidationState());
+        }
+    }
 }
 ```
 
+## CLI Tool
+
+The `ignixa-validator` tool validates FHIR resources from the command line.
+
+### Installation
+
+```bash
+dotnet tool install --global Ignixa.Validation.Cli
+```
+
+### Usage
+
+```bash
+# Validate a file
+ignixa-validator r4 --input patient.json --console
+
+# Validate inline JSON
+ignixa-validator r4 --json '{"resourceType":"Patient","id":"123"}' --console
+
+# Output OperationOutcome to file
+ignixa-validator r4 --input patient.json --out result.json
+
+# Use different FHIR versions
+ignixa-validator r5 --input patient.json --console
+ignixa-validator stu3 --input patient.json --console
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--input <file>` | Path to JSON file to validate |
+| `--json <string>` | Inline JSON string to validate |
+| `--out <file>` | Output file for OperationOutcome JSON |
+| `--console` | Display formatted results in console |
+
 ## Usage Guidelines
 
-| Level | Use Case |
+| Depth | Use Case |
 |-------|----------|
-| Fast | Bulk ingestion, high throughput |
-| Spec | Standard API operations |
-| Profile | Compliance testing, IG validation |
+| Minimal | Bulk ingestion, high throughput scenarios |
+| Spec | Standard API operations, general-purpose validation |
+| Full | Compliance testing, IG validation, profile conformance |
 
 ### Optimization Tips
 
-1. **Cache StructureDefinitions** when validating against profiles
-2. **Use Fast level** for initial ingestion, validate later
-3. **Limit MaxIssues** for early termination
-4. **Batch validation** with parallelism
+1. **Use CachedValidationSchemaResolver** - Caches compiled schemas to avoid rebuilding checks
+2. **Choose appropriate depth** - Use Minimal for bulk ingestion, Full only when needed
+3. **Reuse ValidationSettings** - Create once and reuse across validations
+4. **Parallel validation** - Validate multiple resources concurrently (schemas are thread-safe)
+5. **Skip terminology when possible** - Set `SkipTerminologyValidation = true` for performance
 
 ## Related Documentation
 

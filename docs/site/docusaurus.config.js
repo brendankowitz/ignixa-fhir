@@ -19,7 +19,12 @@ const config = {
   projectName: 'ignixa-fhir',
 
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
 
   i18n: {
     defaultLocale: 'en',
@@ -35,17 +40,7 @@ const config = {
           sidebarPath: './sidebars.js',
           editUrl: 'https://github.com/brendankowitz/ignixa-fhir/tree/main/docs/site/',
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ['rss', 'atom'],
-            xslt: true,
-          },
-          editUrl: 'https://github.com/brendankowitz/ignixa-fhir/tree/main/docs/site/',
-          onInlineTags: 'warn',
-          onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
-        },
+        blog: false,
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -93,7 +88,6 @@ const config = {
             position: 'left',
             label: 'ADRs',
           },
-          {to: '/blog', label: 'Blog', position: 'left'},
           {
             href: 'https://github.com/brendankowitz/ignixa-fhir',
             label: 'GitHub',
@@ -141,10 +135,6 @@ const config = {
           {
             title: 'More',
             items: [
-              {
-                label: 'Blog',
-                to: '/blog',
-              },
               {
                 label: 'GitHub',
                 href: 'https://github.com/brendankowitz/ignixa-fhir',

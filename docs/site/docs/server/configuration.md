@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 2
 title: Configuration
 description: Configure Ignixa FHIR Server for different environments
 ---
@@ -88,24 +88,45 @@ Configure blob storage for bulk import/export operations:
     "ContainerName": "fhirstorage",
     "UseManagedIdentity": true,
     "StorageAccountUri": "https://youraccount.blob.core.windows.net"
+  },
+  "AzureBlobStorage": {
+    "ConnectionString": "DefaultEndpointsProtocol=https;AccountName=youraccount;AccountKey=...;EndpointSuffix=core.windows.net",
+    "ContainerName": "fhirstorage",
+    "UseManagedIdentity": true,
+    "StorageAccountUri": "https://youraccount.blob.core.windows.net"
   }
 }
 ```
 
 ### Provider Options
 
-| Provider | Use Case |
-|----------|----------|
-| `Local` | Development - stores in `RootDirectory` on filesystem |
-| `Azure` | Production - Azure Blob Storage with Managed Identity or connection string |
+| Provider | Use Case | Configuration Section |
+|----------|----------|----------------------|
+| `Local` | Development - stores in `RootDirectory` on filesystem | `LocalFileBlobStorage` |
+| `Azure` | Production - Azure Blob Storage with Managed Identity or connection string | `AzureBlobStorage` |
 
-For local development with Azurite:
+For local development with filesystem:
+
+```json
+{
+  "BlobStorage": {
+    "Provider": "Local"
+  },
+  "LocalFileBlobStorage": {
+    "RootDirectory": "fhir-exports"
+  }
+}
+```
+
+For Azurite (Azure Storage emulator):
 
 ```json
 {
   "BlobStorage": {
     "Provider": "Azure",
-    "UseManagedIdentity": false,
+    "UseManagedIdentity": false
+  },
+  "AzureBlobStorage": {
     "ConnectionString": "UseDevelopmentStorage=true",
     "ContainerName": "fhirstorage"
   }
@@ -241,8 +262,8 @@ Configure import performance for high-volume ingestion:
 ```json
 {
   "Import": {
-    "MaxConcurrentFiles": 2,
-    "ConsumerCount": 8,
+    "MaxConcurrentFiles": 1,
+    "ConsumerCount": 1,
     "BatchSize": 100,
     "ChannelCapacity": 1000
   }
@@ -251,10 +272,14 @@ Configure import performance for high-volume ingestion:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `MaxConcurrentFiles` | 2 | Files processed in parallel |
-| `ConsumerCount` | 8 | Writer threads per file |
+| `MaxConcurrentFiles` | 1 | Files processed in parallel (default 1, increase for higher throughput) |
+| `ConsumerCount` | 1 | Writer threads per file (default 1, increase to 4-8 for parallel processing) |
 | `BatchSize` | 100 | Resources per database write |
 | `ChannelCapacity` | 1000 | Backpressure buffer size |
+
+:::note
+Higher concurrency values improve throughput but use more system resources and threads. Start with defaults and increase conservatively based on monitoring. Each concurrent file spawn 1 producer + ConsumerCount worker threads, so total threads = MaxConcurrentFiles * (1 + ConsumerCount).
+:::
 
 ## Transaction Watcher
 

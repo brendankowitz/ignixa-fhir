@@ -1,12 +1,12 @@
 ---
-sidebar_position: 8
+sidebar_position: 9
 title: Package Management
 description: FHIR package management and loading
 ---
 
 # Ignixa.PackageManagement
 
-Download, cache, and load FHIR implementation guide packages.
+Download, cache, and load FHIR implementation guide packages from NPM registries.
 
 ## Installation
 
@@ -18,226 +18,196 @@ dotnet add package Ignixa.PackageManagement
 
 ```csharp
 using Ignixa.PackageManagement;
+using Ignixa.PackageManagement.Infrastructure;
+using Microsoft.Extensions.Logging;
 
-// Create package manager
-var packageManager = new FhirPackageManager();
+// Create package loader with caching
+var cacheManager = new PackageCacheManager("/var/cache/fhir-packages", logger);
+var loader = new NpmPackageLoader(httpClient, cacheManager, null, logger);
 
-// Install a package
-await packageManager.InstallAsync("hl7.fhir.us.core", "6.1.0");
+// Download a package
+var packageStream = await loader.DownloadPackageAsync("hl7.fhir.us.core", "6.1.0", cancellationToken);
 
-// Load resources
-var profiles = packageManager.GetResources("StructureDefinition");
+// Extract resources from package
+var extractor = new PackageExtractor(logger);
+var result = await extractor.ExtractAsync(packageStream, cancellationToken);
+
+// Access extracted resources
+foreach (var resource in result.Resources)
+{
+    Console.WriteLine($"{resource.ResourceType}: {resource.Canonical}");
+}
 ```
 
-## Package Installation
+## Package Loading
 
-### From Registry
+### NPM Registry
+
+The `NpmPackageLoader` downloads packages from configurable NPM registries (default: https://packages.simplifier.net).
 
 ```csharp
-// Install from packages.fhir.org
-await packageManager.InstallAsync("hl7.fhir.us.core", "6.1.0");
-
-// Install latest version
-await packageManager.InstallAsync("hl7.fhir.us.core");
-
-// Install with dependencies
-await packageManager.InstallAsync("hl7.fhir.us.core", "6.1.0", includeDependencies: true);
+// Download a package from registry
+var loader = new NpmPackageLoader(httpClient, cacheManager, options, logger);
+var packageStream = await loader.DownloadPackageAsync(
+    "hl7.fhir.us.core",
+    "6.1.0",
+    cancellationToken
+);
 ```
 
-### From File
+### Composite Loading
+
+Use `CompositePackageLoader` to try multiple loaders in sequence (e.g., Embedded → NPM):
 
 ```csharp
-// Install from local tgz file
-await packageManager.InstallFromFileAsync("./my-package.tgz");
-```
+var embeddedLoader = new EmbeddedPackageLoader(embeddedPackages, logger);
+var npmLoader = new NpmPackageLoader(httpClient, cacheManager, null, logger);
 
-### From URL
+var compositeLoader = new CompositePackageLoader(
+    logger,
+    embeddedLoader,  // Try built-in packages first
+    npmLoader        // Fall back to NPM registry
+);
 
-```csharp
-// Install from URL
-await packageManager.InstallFromUrlAsync("https://packages.simplifier.net/hl7.fhir.us.core/6.1.0");
+var packageStream = await compositeLoader.DownloadPackageAsync(
+    "hl7.fhir.us.core",
+    "6.1.0",
+    cancellationToken
+);
 ```
 
 ## Package Discovery
 
-### List Installed
+### Search for Packages
 
 ```csharp
-var installed = packageManager.GetInstalledPackages();
+var searchService = new NpmPackageSearchService(httpClient, options, logger);
 
-foreach (var pkg in installed)
+var results = await searchService.SearchPackagesAsync(
+    "us core",
+    maxResults: 10,
+    cancellationToken
+);
+
+foreach (var result in results)
 {
-    Console.WriteLine($"{pkg.Name}@{pkg.Version}");
+    Console.WriteLine($"Package: {result.PackageId}");
+    Console.WriteLine($"  Latest: {result.LatestVersion}");
+    Console.WriteLine($"  Description: {result.Description}");
+    Console.WriteLine($"  Relevance: {result.RelevanceScore}%");
 }
 ```
 
-### Search Registry
+### Search Result
 
 ```csharp
-var results = await packageManager.SearchAsync("us core");
-
-foreach (var pkg in results)
+public record PackageSearchResult
 {
-    Console.WriteLine($"{pkg.Name}: {pkg.Description}");
+    // Package ID (e.g., "hl7.fhir.us.core")
+    public required string PackageId { get; init; }
+    
+    // Package description
+    public string? Description { get; init; }
+    
+    // FHIR version(s)
+    public string? FhirVersion { get; init; }
+    
+    // Latest version
+    public string? LatestVersion { get; init; }
+    
+    // Search relevance score (0-100)
+    public int RelevanceScore { get; init; }
 }
 ```
 
-### Get Package Info
+## Resource Extraction
+
+### Extract from Package Stream
 
 ```csharp
-var info = await packageManager.GetPackageInfoAsync("hl7.fhir.us.core");
+var extractor = new PackageExtractor(logger);
+var extractionResult = await extractor.ExtractAsync(packageStream, cancellationToken);
 
-Console.WriteLine($"Latest: {info.LatestVersion}");
-Console.WriteLine($"Versions: {string.Join(", ", info.Versions)}");
+var manifest = extractionResult.Manifest;
+var resources = extractionResult.Resources;
+
+Console.WriteLine($"Package: {manifest.Name}@{manifest.Version}");
+Console.WriteLine($"FHIR Version: {manifest.FhirVersion}");
+Console.WriteLine($"Resources: {resources.Count}");
 ```
 
-## Resource Loading
-
-### Get All Resources
+### Extracted Resources
 
 ```csharp
-// Get all resources from a package
-var resources = packageManager.GetResources("hl7.fhir.us.core");
-```
-
-### Get By Type
-
-```csharp
-// Get StructureDefinitions
-var profiles = packageManager.GetResources("hl7.fhir.us.core", "StructureDefinition");
-
-// Get ValueSets
-var valueSets = packageManager.GetResources("hl7.fhir.us.core", "ValueSet");
-```
-
-### Get By URL
-
-```csharp
-// Get specific resource by canonical URL
-var profile = packageManager.GetResourceByUrl(
-    "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"
-);
-```
-
-### Search Resources
-
-```csharp
-var results = packageManager.SearchResources(
-    resourceType: "StructureDefinition",
-    filter: r => r["type"]?.Text == "Patient"
-);
+public record ExtractedResource
+{
+    // Resource type (e.g., "StructureDefinition")
+    public required string ResourceType { get; init; }
+    
+    // Canonical URL
+    public required string Canonical { get; init; }
+    
+    // Resource version
+    public string? Version { get; init; }
+    
+    // Resource ID
+    public required string ResourceId { get; init; }
+    
+    // Full JSON
+    public required string ResourceJson { get; init; }
+    
+    // FHIR version
+    public required string FhirVersion { get; init; }
+}
 ```
 
 ## Caching
 
-### Cache Location
+### Configure Cache Location
 
 ```csharp
-var options = new PackageManagerOptions
+var options = new NpmPackageLoaderOptions
 {
-    CacheDirectory = "/var/cache/fhir-packages",
-    MaxCacheSize = 1_000_000_000, // 1GB
-    CacheExpiration = TimeSpan.FromDays(30)
+    RegistryUrl = "https://packages.simplifier.net",
+    RequestTimeout = TimeSpan.FromSeconds(30),
+    EnableRetryPolicies = true
 };
 
-var packageManager = new FhirPackageManager(options);
+var cacheManager = new PackageCacheManager("/var/cache/fhir-packages", logger);
+var loader = new NpmPackageLoader(httpClient, cacheManager, options, logger);
 ```
 
-### Clear Cache
+### Cache Manager
 
 ```csharp
-// Clear all cached packages
-packageManager.ClearCache();
+var cacheManager = new PackageCacheManager(cacheDirectory, logger);
 
-// Clear specific package
-packageManager.ClearCache("hl7.fhir.us.core");
-```
+// Get cache path for a package
+var cachePath = cacheManager.GetCachePath("hl7.fhir.us.core", "6.1.0");
 
-## Dependency Management
+// Check if package is cached
+bool isCached = cacheManager.IsCached("hl7.fhir.us.core", "6.1.0");
 
-### View Dependencies
+// Delete cached package
+cacheManager.DeleteCachedPackage("hl7.fhir.us.core", "6.1.0");
 
-```csharp
-var deps = await packageManager.GetDependenciesAsync("hl7.fhir.us.core", "6.1.0");
-
-foreach (var dep in deps)
-{
-    Console.WriteLine($"  {dep.Name}@{dep.Version}");
-}
-```
-
-### Install Tree
-
-```csharp
-// Install with full dependency tree
-await packageManager.InstallAsync(
-    "hl7.fhir.us.core", 
-    "6.1.0", 
-    includeDependencies: true,
-    skipOptional: true
-);
-```
-
-## Package Manifest
-
-### Read Manifest
-
-```csharp
-var manifest = await packageManager.GetManifestAsync("hl7.fhir.us.core");
-
-Console.WriteLine($"Name: {manifest.Name}");
-Console.WriteLine($"Title: {manifest.Title}");
-Console.WriteLine($"FHIR Version: {manifest.FhirVersion}");
-Console.WriteLine($"Author: {manifest.Author}");
-```
-
-### Manifest Properties
-
-```csharp
-public class PackageManifest
-{
-    public string Name { get; }
-    public string Version { get; }
-    public string Title { get; }
-    public string Description { get; }
-    public string FhirVersion { get; }
-    public string Author { get; }
-    public string Url { get; }
-    public IReadOnlyList<PackageDependency> Dependencies { get; }
-}
-```
-
-## Integration with Validation
-
-```csharp
-// Load profiles for validation
-var packageManager = new FhirPackageManager();
-await packageManager.InstallAsync("hl7.fhir.us.core", "6.1.0");
-
-var profiles = packageManager.GetResources("StructureDefinition");
-
-// Create validator with loaded profiles
-var resolver = new PackageProfileResolver(packageManager);
-var validator = new FhirValidator(options, resolver);
-
-// Validate against US Core Patient
-var outcome = await validator.ValidateAsync(
-    patient,
-    "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"
-);
+// Clear entire cache
+cacheManager.ClearCache();
 ```
 
 ## Offline Mode
 
 ```csharp
-var options = new PackageManagerOptions
+var options = new NpmPackageLoaderOptions
 {
-    OfflineMode = true,
-    CacheDirectory = "/var/cache/fhir-packages"
+    RegistryUrl = "https://packages.simplifier.net",
+    EnableRetryPolicies = false
 };
 
-// Only uses cached packages, no network requests
-var packageManager = new FhirPackageManager(options);
+var cacheManager = new PackageCacheManager(offlineCacheDirectory, logger);
+
+// Use only cached packages - no network requests
+var loader = new NpmPackageLoader(httpClient, cacheManager, options, logger);
 ```
 
 ## Registry Configuration
@@ -245,27 +215,68 @@ var packageManager = new FhirPackageManager(options);
 ### Custom Registry
 
 ```csharp
-var options = new PackageManagerOptions
+var options = new NpmPackageLoaderOptions
 {
-    Registries = new[]
-    {
-        "https://packages.fhir.org",
-        "https://packages.simplifier.net",
-        "https://my-internal-registry.example.org"
-    }
+    RegistryUrl = "https://my-internal-registry.example.org"
 };
+
+var loader = new NpmPackageLoader(httpClient, cacheManager, options, logger);
 ```
 
-### Authentication
+### Retry Policies
 
 ```csharp
-var options = new PackageManagerOptions
+// Built-in resilience policies for transient failures
+var retryPolicy = PackageLoaderResiliencePolicies.CreateRetryPolicy(logger);
+var circuitBreakerPolicy = PackageLoaderResiliencePolicies.CreateCircuitBreakerPolicy(logger);
+
+// Configure resilient HTTP handler
+var handler = new ResilientHttpMessageHandler(new HttpClientHandler(), logger);
+var httpClient = new HttpClient(handler);
+```
+
+## Package Manifest
+
+### PackageManifest Record
+
+```csharp
+public record PackageManifest
 {
-    RegistryCredentials = new Dictionary<string, string>
-    {
-        ["https://my-internal-registry.example.org"] = "Bearer my-token"
-    }
-};
+    // Package name (e.g., "hl7.fhir.us.core")
+    public required string Name { get; init; }
+    
+    // Package version (e.g., "5.0.1")
+    public required string Version { get; init; }
+    
+    // FHIR version (e.g., "4.0.1")
+    public required string FhirVersion { get; init; }
+    
+    // Package title
+    public string? Title { get; init; }
+    
+    // Package description
+    public string? Description { get; init; }
+    
+    // License
+    public string? License { get; init; }
+}
+```
+
+## Known Packages
+
+```csharp
+// Core FHIR packages (pre-compiled, should not load at runtime)
+if (KnownPackages.IsCorePackage("hl7.fhir.r4.core"))
+{
+    // Skip loading - use embedded Ignixa.Specification instead
+}
+
+// Examples of core packages:
+// - hl7.fhir.r2.core
+// - hl7.fhir.r3.core
+// - hl7.fhir.r4.core
+// - hl7.fhir.r4b.core
+// - hl7.fhir.r5.core
 ```
 
 ## Related Documentation

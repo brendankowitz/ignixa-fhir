@@ -6,6 +6,10 @@ description: Authentication options for Ignixa FHIR Server
 
 # Authentication
 
+:::caution Under Development
+Authentication features are under active development. Configuration options and APIs may change.
+:::
+
 Ignixa supports multiple authentication mechanisms for securing FHIR endpoints.
 
 ## Overview
@@ -99,112 +103,48 @@ For EHR-launched apps:
 
 ## OAuth 2.0 / OpenID Connect
 
-### Azure AD Configuration
-
-```json
-{
-  "Authentication": {
-    "Provider": "AzureAD",
-    "Authority": "https://login.microsoftonline.com/{tenant-id}",
-    "ClientId": "{client-id}",
-    "ValidateIssuer": true,
-    "ValidAudiences": ["api://ignixa-fhir"]
-  }
-}
-```
-
-### Generic OIDC
-
-```json
-{
-  "Authentication": {
-    "Provider": "OpenIdConnect",
-    "Authority": "https://auth.example.org",
-    "ClientId": "{client-id}",
-    "ClientSecret": "{secret}",
-    "ResponseType": "code",
-    "Scopes": ["openid", "profile", "fhir"]
-  }
-}
-```
-
-## API Keys
-
-For server-to-server communication:
+Ignixa supports any standard OIDC-compliant identity provider including Azure AD, Okta, Auth0, Keycloak, and others.
 
 ### Configuration
 
+Configure any OIDC provider in `appsettings.json`:
+
 ```json
 {
   "Authentication": {
-    "ApiKeys": {
-      "Enabled": true,
-      "HeaderName": "X-API-Key",
-      "Keys": {
-        "integration-service": {
-          "Hash": "sha256:...",
-          "Scopes": ["system/*.read", "system/*.write"],
-          "Tenants": [1, 2]
-        }
-      }
-    }
+    "Authority": "https://login.microsoftonline.com/{tenant-id}",
+    "ClientId": "{client-id}"
   }
 }
 ```
 
-### Usage
+The implementation automatically handles:
+- OIDC discovery (`.well-known/openid-configuration`)
+- JWT signature validation
+- Token expiration checks
+- Issuer validation
 
-```bash
-curl -H "X-API-Key: your-api-key" http://localhost:8080/Patient
-```
+### Supported Providers
 
-## JWT Configuration
+- **Azure AD** - Authority: `https://login.microsoftonline.com/{tenant-id}`
+- **Okta** - Authority: `https://{domain}.okta.com`
+- **Auth0** - Authority: `https://{domain}.auth0.com`
+- **Keycloak** - Authority: `https://keycloak.example.org/auth/realms/{realm}`
+- **Generic OIDC** - Any OIDC-compliant provider
 
 ### Token Validation
 
-```json
-{
-  "Authentication": {
-    "Jwt": {
-      "ValidateIssuer": true,
-      "ValidIssuers": ["https://auth.example.org"],
-      "ValidateAudience": true,
-      "ValidAudiences": ["api://ignixa-fhir"],
-      "ValidateLifetime": true,
-      "ClockSkew": "00:05:00"
-    }
-  }
-}
-```
-
-### Custom Claims
-
-Map claims to FHIR context:
+Configurable JWT validation:
 
 ```json
 {
   "Authentication": {
-    "ClaimMappings": {
-      "PatientId": "patient_id",
-      "TenantId": "tenant",
-      "Scopes": "scope"
-    }
-  }
-}
-```
-
-## Anonymous Access
-
-For public read-only access:
-
-```json
-{
-  "Authentication": {
-    "AllowAnonymous": {
-      "Enabled": true,
-      "AllowedPaths": ["/metadata", "/.well-known/*"],
-      "AllowedMethods": ["GET"]
-    }
+    "Authority": "https://auth.example.org",
+    "ValidateIssuer": true,
+    "ValidateAudience": true,
+    "ValidAudiences": ["api://ignixa-fhir"],
+    "ValidateLifetime": true,
+    "ClockSkew": "00:05:00"
   }
 }
 ```
@@ -215,8 +155,7 @@ For public read-only access:
 
 | Header | Description |
 |--------|-------------|
-| `Authorization` | Bearer token |
-| `Content-Type` | FHIR content type |
+| `Authorization` | Bearer token (required when `Authorization:RequireAuthentication` is true) |
 
 ### Example Request
 

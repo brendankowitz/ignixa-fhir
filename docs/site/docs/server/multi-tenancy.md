@@ -140,30 +140,41 @@ For Azure deployments, each tenant can have dedicated resources:
 
 ## Provisioning Tenants
 
-Tenants are provisioned via the admin API or configuration:
-
-### Via Configuration
+Tenants are provisioned via configuration in `appsettings.json`:
 
 ```json
 {
-  "Tenancy": {
-    "Tenants": [
-      { "Id": 1, "Name": "Hospital A" },
-      { "Id": 2, "Name": "Clinic B" }
+  "Tenants": {
+    "Mode": "Isolated",
+    "Configurations": [
+      {
+        "Id": 1,
+        "DisplayName": "Hospital A",
+        "FhirVersion": "R4B",
+        "Storage": {
+          "Type": "SqlServer",
+          "ConnectionString": "Server=localhost;Database=fhir_tenant1;..."
+        }
+      },
+      {
+        "Id": 2,
+        "DisplayName": "Clinic B",
+        "FhirVersion": "R4",
+        "Storage": {
+          "Type": "SqlServer",
+          "ConnectionString": "Server=localhost;Database=fhir_tenant2;..."
+        }
+      }
     ]
   }
 }
 ```
 
-### Via Deployment
-
-Using the Azure Bicep templates:
-
-```bash
-az deployment group create \
-  --template-file deploy/azure/main.bicep \
-  --parameters tenantCount=10
-```
+Each tenant can have:
+- Different FHIR versions (R4, R4B, R5)
+- Different storage backends (SQL Server, FileSystem, Blob Storage)
+- Different search configurations
+- Isolated access controls
 
 ## Related Documentation
 

@@ -11,12 +11,11 @@ const sidebars = {
       link: {
         type: 'generated-index',
         title: 'Getting Started',
-        description: 'Learn how to get started with Ignixa FHIR Server and Core SDK.',
+        description: 'Get up and running with Ignixa FHIR Server.',
       },
       items: [
         'getting-started/installation',
         'getting-started/quick-start',
-        'getting-started/configuration',
       ],
     },
   ],
@@ -31,6 +30,7 @@ const sidebars = {
       },
       items: [
         'server/architecture',
+        'server/configuration',
         'server/multi-tenancy',
       ],
     },
@@ -92,6 +92,7 @@ const sidebars = {
         'core-sdk/narrative-generator',
         'core-sdk/fhir-mapping-language',
         'core-sdk/sql-on-fhir',
+        'core-sdk/firely-sdk-compatibility',
       ],
     },
   ],

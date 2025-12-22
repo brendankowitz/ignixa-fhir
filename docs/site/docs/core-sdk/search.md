@@ -1,12 +1,12 @@
 ---
 sidebar_position: 6
 title: Search
-description: FHIR search parameter indexing and extraction
+description: FHIR search parameter definitions and management
 ---
 
 # Ignixa.Search
 
-Search parameter definitions, indexing, and value extraction for FHIR resources.
+Search parameter definitions, indexing, and compartment management for FHIR resources.
 
 ## Installation
 
@@ -17,29 +17,109 @@ dotnet add package Ignixa.Search
 ## Quick Start
 
 ```csharp
-using Ignixa.Search;
+using Ignixa.Search.Definition;
+using Ignixa.Specification;
+using Microsoft.Extensions.Logging;
 
-// Get search parameters for Patient
-var searchParams = SearchParameterRegistry.GetParameters("Patient");
+// Create search parameter definition manager
+var schemaProvider = FhirVersion.R4.GetSchemaProvider();
+var manager = new SearchParameterDefinitionManager(schemaProvider, logger);
 
-// Extract search values from a resource
-var extractor = new SearchValueExtractor();
-var values = extractor.Extract(patient, searchParams);
+// Get parameters for a resource type
+var patientParams = manager.GetSearchParameters("Patient");
+
+foreach (var param in patientParams)
+{
+    Console.WriteLine($"{param.Code}: {param.Type}");
+}
 ```
 
-## Search Parameters
+## Search Parameter Management
 
-### Get Parameters by Resource
+### ISearchParameterDefinitionManager
 
 ```csharp
-// All parameters for a resource type
-var patientParams = SearchParameterRegistry.GetParameters("Patient");
+public interface ISearchParameterDefinitionManager
+{
+    // All search parameters across all resource types
+    IEnumerable<SearchParameterInfo> AllSearchParameters { get; }
 
-// Specific parameter
-var nameParam = SearchParameterRegistry.GetParameter("Patient", "name");
+    // Get search parameters for a resource type
+    IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType);
+
+    // Try to get search parameters (returns false if resource type unknown)
+    bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters);
+
+    // Get specific parameter by resource type and code
+    SearchParameterInfo GetSearchParameter(string resourceType, string code);
+
+    // Try to get specific parameter
+    bool TryGetSearchParameter(string resourceType, string code, out SearchParameterInfo searchParameter);
+
+    // Get parameter by definition URL
+    SearchParameterInfo GetSearchParameter(Uri definitionUri);
+
+    // Add custom search parameters at runtime
+    void AddNewSearchParameters(IReadOnlyCollection<IElement> searchParameters, bool calculateHash = true);
+
+    // Remove custom search parameter
+    void DeleteSearchParameter(string url, bool calculateHash = true);
+}
 ```
 
-### Parameter Types
+### Filtered Managers
+
+```csharp
+// Only returns parameters marked as supported
+var supportedManager = new SupportedSearchParameterDefinitionManager(manager);
+var supported = supportedManager.GetSearchParameters("Patient");
+
+// Only returns parameters marked as searchable
+var searchableManager = new SearchableSearchParameterDefinitionManager(manager);
+var searchable = searchableManager.GetSearchParameters("Patient");
+```
+
+## SearchParameterInfo
+
+```csharp
+public class SearchParameterInfo
+{
+    // Parameter name (e.g., "family")
+    public string Name { get; }
+
+    // Parameter code used in queries (e.g., "family")
+    public string Code { get; }
+
+    // Parameter type (string, token, reference, date, etc.)
+    public SearchParamType Type { get; }
+
+    // Canonical URL
+    public Uri Url { get; }
+
+    // FHIRPath expression for extraction
+    public string Expression { get; }
+
+    // Description
+    public string Description { get; }
+
+    // Base resource types this parameter applies to
+    public IReadOnlyList<string> BaseResourceTypes { get; }
+
+    // Target resource types (for reference parameters)
+    public IReadOnlyList<string> TargetResourceTypes { get; }
+
+    // Components (for composite parameters)
+    public IReadOnlyList<SearchParameterComponentInfo> Component { get; }
+
+    // Whether this parameter is searchable
+    public bool IsSearchable { get; }
+
+    // Whether this parameter is supported
+    public bool IsSupported { get; }
+}
+```
+
+## Search Parameter Types
 
 | Type | Description | Example |
 |------|-------------|---------|
@@ -52,207 +132,74 @@ var nameParam = SearchParameterRegistry.GetParameter("Patient", "name");
 | `uri` | URI values | `url` |
 | `composite` | Multiple values | `component-code-value-quantity` |
 
-### Parameter Definition
+## Compartment Support
+
+### CompartmentDefinitionManager
 
 ```csharp
-public class SearchParameter
+using Ignixa.Search.Definition;
+using Ignixa.Specification.ValueSets.Normative;
+
+var compartmentManager = new CompartmentDefinitionManager(FhirVersion.R4);
+
+// Get search params for a resource in a compartment
+if (compartmentManager.TryGetSearchParams("Observation", CompartmentType.Patient, out var searchParams))
 {
-    public string Name { get; }
-    public string Code { get; }
-    public SearchParamType Type { get; }
-    public string Expression { get; }
-    public IReadOnlyList<string> Base { get; }
-    public IReadOnlyList<SearchModifier> Modifiers { get; }
+    Console.WriteLine($"Patient compartment search params for Observation:");
+    foreach (var param in searchParams)
+    {
+        Console.WriteLine($"  - {param}");
+    }
+}
+
+// Get all resource types in a compartment
+if (compartmentManager.TryGetResourceTypes(CompartmentType.Patient, out var resourceTypes))
+{
+    Console.WriteLine($"Resources in Patient compartment: {string.Join(", ", resourceTypes)}");
 }
 ```
 
-## Value Extraction
+### CompartmentType
 
-### Extract All Values
+Available compartment types from the FHIR specification:
+
+- `CompartmentType.Patient`
+- `CompartmentType.Encounter`
+- `CompartmentType.RelatedPerson`
+- `CompartmentType.Practitioner`
+- `CompartmentType.Device`
+
+## Parameter Conflict Resolution
+
+When multiple IGs define SearchParameters with the same code, use conflict resolution:
 
 ```csharp
-var extractor = new SearchValueExtractor();
-var values = extractor.Extract(patient);
+using Ignixa.Search.Definition;
 
-foreach (var (param, value) in values)
+var options = new SearchParameterResolutionOptions
 {
-    Console.WriteLine($"{param.Code}: {value}");
-}
-```
-
-### Extract Specific Parameter
-
-```csharp
-var nameValues = extractor.Extract(patient, "name");
-// Returns: ["Smith", "John", "William"]
-```
-
-### Indexed Values
-
-```csharp
-public class SearchIndexValue
-{
-    public string ParameterCode { get; }
-    public SearchParamType Type { get; }
-    public object Value { get; }
-    
-    // Type-specific properties
-    public string? StringValue { get; }
-    public string? System { get; }
-    public string? Code { get; }
-    public decimal? NumberValue { get; }
-    public DateTimeOffset? DateValue { get; }
-    public string? ReferenceValue { get; }
-}
-```
-
-## Search Value Types
-
-### String Values
-
-```csharp
-// name = "Smith"
-var values = extractor.Extract(patient, "name");
-// ["Smith", "John", "William"]
-```
-
-### Token Values
-
-```csharp
-// identifier = "http://hospital.org|MRN123"
-var values = extractor.Extract(patient, "identifier");
-// [{ System: "http://hospital.org", Code: "MRN123" }]
-```
-
-### Reference Values
-
-```csharp
-// subject = Patient/123
-var values = extractor.Extract(observation, "subject");
-// [{ Reference: "Patient/123", Type: "Patient", Id: "123" }]
-```
-
-### Date Values
-
-```csharp
-// birthdate = 1990-05-15
-var values = extractor.Extract(patient, "birthdate");
-// [{ Start: 1990-05-15, End: 1990-05-15 }]
-```
-
-### Quantity Values
-
-```csharp
-// value-quantity = 75|http://unitsofmeasure.org|kg
-var values = extractor.Extract(observation, "value-quantity");
-// [{ Value: 75, System: "http://unitsofmeasure.org", Code: "kg" }]
-```
-
-## Custom Search Parameters
-
-### Define Custom Parameter
-
-```csharp
-var customParam = new SearchParameter
-{
-    Name = "myExtension",
-    Code = "my-extension",
-    Type = SearchParamType.Token,
-    Expression = "Patient.extension.where(url='http://example.org/ext').value",
-    Base = ["Patient"]
+    // Higher priority packages win (first = highest priority)
+    PackagePriorityOrder = ["hl7.fhir.us.core", "hl7.fhir.r4.core"],
+    UseSemanticVersioning = true,
+    LogConflicts = true
 };
 
-SearchParameterRegistry.Register(customParam);
-```
+var resolver = new SearchParameterConflictResolver(options, logger);
 
-### Expression-Based Extraction
-
-```csharp
-var extractor = new SearchValueExtractor();
-var values = extractor.ExtractWithExpression(
-    resource, 
-    "Observation.code.coding.where(system='http://loinc.org')"
+// Resolve conflict among candidates with same code for a resource type
+var winner = resolver.ResolveConflict(
+    candidates: conflictingParams,
+    code: "identifier",
+    resourceType: "Patient",
+    packageMetadata: packageMetadataLookup
 );
 ```
 
-## Indexing
+### Resolution Strategy
 
-### Build Search Index
-
-```csharp
-var indexer = new SearchIndexer();
-
-// Index a single resource
-var index = indexer.Index(patient);
-
-// Bulk indexing
-var indices = resources.Select(r => indexer.Index(r)).ToList();
-```
-
-### Index Structure
-
-```csharp
-public class SearchIndex
-{
-    public string ResourceType { get; }
-    public string ResourceId { get; }
-    public string ResourceVersionId { get; }
-    public IReadOnlyList<SearchIndexValue> Values { get; }
-}
-```
-
-## Query Building
-
-### Build Query from Parameters
-
-```csharp
-var queryBuilder = new SearchQueryBuilder();
-
-// Parse search parameters
-var query = queryBuilder.Parse("Patient", "name=Smith&gender=male&birthdate=gt1980");
-
-// Get structured query
-foreach (var clause in query.Clauses)
-{
-    Console.WriteLine($"{clause.Parameter}: {clause.Modifier} {clause.Value}");
-}
-```
-
-### Query Structure
-
-```csharp
-public class SearchQuery
-{
-    public string ResourceType { get; }
-    public IReadOnlyList<SearchClause> Clauses { get; }
-    public IReadOnlyList<IncludeClause> Includes { get; }
-    public SortClause? Sort { get; }
-    public int? Count { get; }
-}
-```
-
-## Performance
-
-### Caching
-
-```csharp
-var options = new SearchOptions
-{
-    CacheExpressions = true,
-    CacheSize = 1000
-};
-
-var extractor = new SearchValueExtractor(options);
-```
-
-### Parallel Extraction
-
-```csharp
-var results = await Parallel.ForEachAsync(resources, async (resource, ct) =>
-{
-    return await Task.Run(() => extractor.Extract(resource), ct);
-});
-```
+1. **Explicit priority** - Packages listed in `PackagePriorityOrder` win (first = highest)
+2. **Semantic versioning** - Highest version wins when no priority configured
+3. **Alphabetical** - Package ID sort for deterministic ordering when versions equal
 
 ## Related Documentation
 

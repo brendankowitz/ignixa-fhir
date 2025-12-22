@@ -12,6 +12,8 @@ Ignixa supports standard FHIR operations for validation, bulk data, patient acce
 
 ### $validate
 
+[FHIR Spec](https://hl7.org/fhir/resource-operation-validate.html)
+
 Validate a resource against FHIR specifications and profiles:
 
 ```bash
@@ -54,6 +56,8 @@ Prefer: mode=full      # Full profile validation with terminology
 
 ### $everything
 
+[FHIR Spec](https://hl7.org/fhir/patient-operation-everything.html)
+
 Retrieve all data for a patient:
 
 ```bash
@@ -65,6 +69,8 @@ GET /Patient/{id}/$everything?_count=100
 ```
 
 ### $member-match
+
+[Da Vinci HRex Spec](https://hl7.org/fhir/us/davinci-hrex/OperationDefinition-member-match.html)
 
 Match patients across different payer systems (HRex specification):
 
@@ -97,49 +103,44 @@ Content-Type: application/fhir+json
 
 ## Bulk Data Operations
 
+| Operation | Spec | Description |
+|-----------|------|-------------|
+| `$export` | [Bulk Data](https://hl7.org/fhir/uv/bulkdata/export.html) | Async export to NDJSON or Parquet |
+| `$import` | [Bulk Data](https://hl7.org/fhir/uv/bulkdata/import.html) | Async bulk import from NDJSON |
+
 ### $export
 
-Bulk data export following the [FHIR Bulk Data Access](https://hl7.org/fhir/uv/bulkdata/) specification:
+Start an asynchronous bulk export operation:
 
 ```bash
-# System-level export
+# System-level export (auto-detect tenant)
 POST /$export
 
-# Tenant-level export
+# Tenant-scoped export
 POST /tenant/{tenantId}/$export
 
-# Group-level export
-POST /Group/{id}/$export
+# Group-scoped export (members only)
+POST /Group/{groupId}/$export
+
+# Query parameters
+POST /tenant/{tenantId}/$export?_type=Patient,Observation&_since=2024-01-01&_outputFormat=ndjson
 ```
 
-#### Export Parameters
+Supported parameters:
+- `_type` - Comma-separated list of resource types to export
+- `_since` - Only include resources modified after this date
+- `_typeFilter` - Advanced resource filtering
+- `_outputFormat` - `ndjson` (default) or `parquet`
+- `_viewDefinition` - SQL on FHIR ViewDefinition for Parquet output
 
-| Parameter | Description |
-|-----------|-------------|
-| `_type` | Resource types to include (comma-separated) |
-| `_since` | Export resources modified since |
-| `_typeFilter` | Search filters per type |
-| `_outputFormat` | `application/fhir+ndjson` or `application/vnd.apache.parquet` |
-| `_viewDefinition` | SQL on FHIR ViewDefinition ID (required for Parquet) |
-
-#### Async Response
-
-```
-HTTP/1.1 202 Accepted
-Content-Location: /tenant/{tenantId}/_export/{jobId}
-```
-
-Poll for completion:
-
-```bash
-GET /tenant/{tenantId}/_export/{jobId}
-```
+Returns `202 Accepted` with `Content-Location` header pointing to the status endpoint.
 
 ### $import
 
-Bulk data import:
+Start an asynchronous bulk import operation:
 
 ```bash
+# Tenant-scoped import
 POST /tenant/{tenantId}/$import
 Content-Type: application/fhir+json
 
@@ -151,15 +152,20 @@ Content-Type: application/fhir+json
       "valueCode": "application/fhir+ndjson"
     },
     {
-      "name": "input",
-      "part": [
-        { "name": "type", "valueCode": "Patient" },
-        { "name": "url", "valueUri": "https://storage.example.org/import/Patient.ndjson" }
-      ]
+      "name": "inputSource",
+      "valueUri": "https://example.org/export/patients.ndjson"
+    },
+    {
+      "name": "mode",
+      "valueCode": "IncrementalLoad"
     }
   ]
 }
 ```
+
+Returns `202 Accepted` with `Content-Location` header to poll job status.
+
+See [Bulk Operations](/docs/server/features/bulk-operations) for detailed usage, parameters, and configuration.
 
 ## Experimental Operations
 
@@ -167,13 +173,18 @@ These operations are available when experimental features are enabled.
 
 ### $summary (IPS)
 
+[IPS Spec](https://hl7.org/fhir/uv/ips/OperationDefinition-summary.html)
+
 Generate an International Patient Summary:
 
 ```bash
-# By patient ID
+# By patient ID (GET)
 GET /Patient/{id}/$summary
 
-# By patient identifier
+# By patient ID (POST)
+POST /Patient/{id}/$summary
+
+# By patient identifier (GET)
 GET /Patient/$summary?identifier=http://example.org|12345
 
 # With specific profile
@@ -181,6 +192,8 @@ GET /Patient/{id}/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinitio
 ```
 
 ### $expand (ValueSet)
+
+[FHIR Spec](https://hl7.org/fhir/valueset-operation-expand.html)
 
 Expand a ValueSet to a list of codes:
 
@@ -191,6 +204,8 @@ GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes&count=1
 ```
 
 ### $translate (ConceptMap)
+
+[FHIR Spec](https://hl7.org/fhir/conceptmap-operation-translate.html)
 
 Translate codes between systems using ConceptMap:
 
@@ -207,6 +222,8 @@ Content-Type: application/fhir+json
 
 ### $subsumes (CodeSystem)
 
+[FHIR Spec](https://hl7.org/fhir/codesystem-operation-subsumes.html)
+
 Test subsumption relationship between codes:
 
 ```bash
@@ -221,6 +238,8 @@ Content-Type: application/fhir+json
 ```
 
 ### $transform (StructureMap)
+
+[FHIR Spec](https://hl7.org/fhir/structuremap-operation-transform.html)
 
 Transform data using a StructureMap:
 
@@ -260,10 +279,10 @@ Content-Type: application/fhir+json
 
 The following operations are planned but not yet available:
 
-- `$document` - Generate document from Composition
-- `$validate-code` - Validate code in ValueSet
-- `$lookup` - CodeSystem code lookup
-- `$snapshot` - Generate StructureDefinition snapshot
+- [`$document`](https://hl7.org/fhir/composition-operation-document.html) - Generate document from Composition
+- [`$validate-code`](https://hl7.org/fhir/valueset-operation-validate-code.html) - Validate code in ValueSet
+- [`$lookup`](https://hl7.org/fhir/codesystem-operation-lookup.html) - CodeSystem code lookup
+- [`$snapshot`](https://hl7.org/fhir/structuredefinition-operation-snapshot.html) - Generate StructureDefinition snapshot
 
 ## Related Documentation
 

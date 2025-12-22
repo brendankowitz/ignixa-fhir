@@ -82,30 +82,20 @@ GET /metadata
 
 ## Operations
 
-### Validate
+| Operation | Level | Description |
+|-----------|-------|-------------|
+| [`$validate`](https://hl7.org/fhir/resource-operation-validate.html) | Type, Instance | Validate resource against specs/profiles |
+| [`$everything`](https://hl7.org/fhir/patient-operation-everything.html) | Instance | Retrieve all patient data |
+| [`$member-match`](https://hl7.org/fhir/us/davinci-hrex/OperationDefinition-member-match.html) | Type | Match patients across payer systems |
+| [`$export`](https://hl7.org/fhir/uv/bulkdata/export.html) | System, Group | Async bulk data export |
+| [`$import`](https://hl7.org/fhir/uv/bulkdata/import.html) | System | Async bulk data import |
+| [`$summary`](https://hl7.org/fhir/uv/ips/OperationDefinition-summary.html) | Instance | Generate International Patient Summary |
+| [`$expand`](https://hl7.org/fhir/valueset-operation-expand.html) | Type, Instance | Expand ValueSet to codes |
+| [`$translate`](https://hl7.org/fhir/conceptmap-operation-translate.html) | Type | Translate codes via ConceptMap |
+| [`$subsumes`](https://hl7.org/fhir/codesystem-operation-subsumes.html) | Type | Test code subsumption |
+| [`$transform`](https://hl7.org/fhir/structuremap-operation-transform.html) | Type, Instance | Transform data via StructureMap |
 
-```bash
-POST /{type}/$validate
-```
-
-Validates a resource against FHIR specifications and profiles.
-
-### Export (Bulk Data)
-
-```bash
-GET /$export
-GET /Group/{id}/$export
-```
-
-Async bulk data export following the Bulk Data Access specification.
-
-### Import (Bulk Data)
-
-```bash
-POST /$import
-```
-
-Async bulk data import with validation.
+See [Operations](/docs/server/fhir/operations) for detailed usage and examples.
 
 ## Versioning
 
@@ -181,19 +171,19 @@ Prefer: return=minimal
 # Return OperationOutcome
 Prefer: return=OperationOutcome
 
-# Control validation level
-Prefer: validation=minimal   # Structure only (fastest)
-Prefer: validation=spec      # FHIR specification compliance
-Prefer: validation=full      # Full profile validation
+# Control validation level (used with $validate operations)
+Prefer: mode=minimal   # Structure only (fastest)
+Prefer: mode=spec      # FHIR specification compliance (default)
+Prefer: mode=full      # Full profile validation with terminology
 
 # Combine preferences
-Prefer: return=representation, validation=spec
+Prefer: return=representation, mode=spec
 ```
 
 | Preference | Values | Description |
 |------------|--------|-------------|
 | `return` | `representation`, `minimal`, `OperationOutcome` | Response body content |
-| `validation` | `minimal`, `spec`, `full` | Validation depth |
+| `mode` | `minimal`, `spec`, `full` | Validation depth (for $validate operations) |
 
 #### X-Provenance
 

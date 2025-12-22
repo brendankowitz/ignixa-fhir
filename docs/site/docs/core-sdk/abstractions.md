@@ -16,12 +16,12 @@ dotnet add package Ignixa.Abstractions
 
 ## Core Interfaces
 
-### ISourceNode
+### ISourceNavigator
 
 The primary abstraction for navigating FHIR data:
 
 ```csharp
-public interface ISourceNode
+public interface ISourceNavigator
 {
     /// <summary>
     /// Name of the element (property name in JSON)
@@ -31,38 +31,77 @@ public interface ISourceNode
     /// <summary>
     /// Primitive value as string, if any
     /// </summary>
-    string? Text { get; }
+    string Text { get; }
+
+    /// <summary>
+    /// Location of this node within the tree of data
+    /// </summary>
+    string Location { get; }
 
     /// <summary>
     /// Resource type for resources, null otherwise
     /// </summary>
-    string? ResourceType { get; }
+    string ResourceType { get; }
 
     /// <summary>
     /// Navigate to child elements
     /// </summary>
-    IEnumerable<ISourceNode> Children(string? name = null);
+    IEnumerable<ISourceNavigator> Children(string? name = null);
+
+    /// <summary>
+    /// Retrieve attached metadata (e.g., source JsonNode)
+    /// </summary>
+    T? Meta<T>() where T : class;
 }
 ```
 
 ### IElement
 
-Extended interface with type information:
+Typed element interface for FHIRPath evaluation and validation:
 
 ```csharp
-public interface IElement : ISourceNode
+public interface IElement
 {
     /// <summary>
-    /// FHIR type name (e.g., "string", "dateTime", "Patient")
+    /// Element name (e.g., "name", "birthDate", "valueQuantity")
+    /// </summary>
+    string Name { get; }
+
+    /// <summary>
+    /// Primitive value (typed: bool, int, decimal, string, DateTimeOffset)
+    /// </summary>
+    object? Value { get; }
+
+    /// <summary>
+    /// Runtime type name (e.g., "HumanName", "string", "Patient")
     /// </summary>
     string InstanceType { get; }
 
     /// <summary>
-    /// Schema information for this element
+    /// Dotted location for error reporting (e.g., "Patient.name[0].family")
     /// </summary>
-    IElementDefinitionSummary? Definition { get; }
+    string Location { get; }
+
+    /// <summary>
+    /// Type metadata from StructureDefinition
+    /// </summary>
+    IType? Type { get; }
+
+    /// <summary>
+    /// Child elements (supports choice element semantics)
+    /// </summary>
+    IReadOnlyList<IElement> Children(string? name = null);
+
+    /// <summary>
+    /// Retrieve attached metadata (e.g., source JsonNode)
+    /// </summary>
+    T? Meta<T>() where T : class;
 }
 ```
+
+:::note ISourceNavigator vs IElement
+`ISourceNavigator` is for raw JSON navigation (parsing). `IElement` is for typed operations (FHIRPath, validation). Convert with `sourceNavigator.ToElement(schema)`.
+:::
 
 ### IType
 
@@ -81,71 +120,71 @@ public interface IType
 
 ```csharp
 // Get all children
-foreach (var child in sourceNode.Children())
+foreach (var child in sourceNavigator.Children())
 {
     Console.WriteLine($"{child.Name}: {child.Text}");
 }
 
 // Get specific child by name
-var name = sourceNode.Children("name").FirstOrDefault();
+var name = sourceNavigator.Children("name").FirstOrDefault();
 
 // Indexer shorthand
-var family = sourceNode["name"][0]["family"];
+var family = sourceNavigator["name"][0]["family"];
 ```
 
 ### Deep Navigation
 
 ```csharp
 // Navigate multiple levels
-var givenName = sourceNode["name"][0]["given"][0].Text;
+var givenName = sourceNavigator["name"][0]["given"][0].Text;
 
 // Handle missing paths safely
-var telecom = sourceNode["telecom"]?.FirstOrDefault();
+var telecom = sourceNavigator["telecom"]?.FirstOrDefault();
 ```
 
 ### Resource Type Detection
 
 ```csharp
-var resourceType = sourceNode.ResourceType;
+var resourceType = sourceNavigator.ResourceType;
 
 switch (resourceType)
 {
     case "Patient":
-        ProcessPatient(sourceNode);
+        ProcessPatient(sourceNavigator);
         break;
     case "Observation":
-        ProcessObservation(sourceNode);
+        ProcessObservation(sourceNavigator);
         break;
 }
 ```
 
 ## Extension Methods
 
-### Common Extensions
+### ToElement
+
+Convert `ISourceNavigator` to `IElement` for typed operations (requires `Ignixa.Serialization`):
 
 ```csharp
-using Ignixa.Abstractions.Extensions;
+using Ignixa.Serialization.SourceNodes;
 
-// Get text value with default
-var text = sourceNode.GetText("default");
+// Convert to typed element for FHIRPath and validation
+var element = sourceNavigator.ToElement(schemaProvider);
 
-// Check if has children
-var hasChildren = sourceNode.HasChildren();
-
-// Get all descendant nodes
-var descendants = sourceNode.Descendants();
+// Now you can use FHIRPath
+var names = element.Select("name.given");
 ```
 
-### Type Conversion
+### Working with Primitive Values
+
+Get values directly from `ISourceNavigator.Text` or use FHIRPath type conversions:
 
 ```csharp
-// Convert to typed element
-var element = sourceNode.ToElement(schema);
+// Direct text access
+var birthDateText = sourceNavigator.Children("birthDate").FirstOrDefault()?.Text;
 
-// Get typed value
-var dateTime = sourceNode.ToDateTime();
-var boolean = sourceNode.ToBoolean();
-var integer = sourceNode.ToInteger();
+// Or use FHIRPath for type conversion
+var element = sourceNavigator.ToElement(schemaProvider);
+var birthDate = element.Select("birthDate.toDateTime()").FirstOrDefault();
 ```
 
 ## Value Objects
@@ -163,33 +202,35 @@ public record ResourceIdentifier(string ResourceType, string Id)
 ### CodeableConcept Handling
 
 ```csharp
-var coding = sourceNode["code"]["coding"][0];
+var coding = sourceNavigator["code"]["coding"][0];
 var system = coding["system"].Text;
 var code = coding["code"].Text;
 var display = coding["display"].Text;
 ```
 
-## Custom ISourceNode Implementation
+## Custom ISourceNavigator Implementation
 
-Implement `ISourceNode` for custom data sources:
+Implement `ISourceNavigator` for custom data sources:
 
 ```csharp
-public class MySourceNode : ISourceNode
+public class MySourceNavigator : ISourceNavigator
 {
     private readonly JsonElement _element;
 
     public string Name { get; }
-    
-    public string? Text => _element.ValueKind == JsonValueKind.String 
-        ? _element.GetString() 
-        : null;
 
-    public string? ResourceType => 
-        _element.TryGetProperty("resourceType", out var rt) 
-            ? rt.GetString() 
-            : null;
+    public string Text => _element.ValueKind == JsonValueKind.String
+        ? _element.GetString()
+        : string.Empty;
 
-    public IEnumerable<ISourceNode> Children(string? name = null)
+    public string Location { get; }
+
+    public string ResourceType =>
+        _element.TryGetProperty("resourceType", out var rt)
+            ? rt.GetString() ?? string.Empty
+            : string.Empty;
+
+    public IEnumerable<ISourceNavigator> Children(string? name = null)
     {
         if (_element.ValueKind != JsonValueKind.Object)
             yield break;
@@ -197,42 +238,61 @@ public class MySourceNode : ISourceNode
         foreach (var prop in _element.EnumerateObject())
         {
             if (name is null || prop.Name == name)
-                yield return new MySourceNode(prop.Name, prop.Value);
+                yield return new MySourceNavigator(prop.Name, prop.Value);
         }
+    }
+
+    public T? Meta<T>() where T : class
+    {
+        // Return attached metadata if any
+        return null;
     }
 }
 ```
 
 ## Best Practices
 
-### 1. Prefer FHIRPath over Manual Navigation
+### 1. Prefer FHIRPath and ISourceNavigator over Direct JSON Access
+
+FHIRPath and `ISourceNavigator` understand FHIR's business logic:
+- **Choice types**: `value[x]` elements correctly resolve to `valueQuantity`, `valueString`, etc.
+- **Extensions**: Navigate through shadow properties and extensions
+- **Polymorphism**: Handles contained resources and references properly
 
 ```csharp
-// ✅ Good: Declarative, handles missing elements
+// ✅ Good: FHIRPath with full FHIR semantics
 var display = element.Select("code.coding.first().display").FirstOrDefault();
 
-// ❌ Avoid: Verbose, error-prone
-var display = sourceNode["code"]?["coding"]?[0]?["display"]?.Text;
+// ✅ Also Good: ISourceNavigator understands FHIR structure
+var display = sourceNavigator["code"]["coding"][0]["display"].Text;
+
+// ❌ Avoid: Direct MutableNode access bypasses FHIR semantics
+var node = resourceJsonNode.MutableNode;
+var display = node["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
 ```
+
+:::warning Direct JSON Access
+Accessing `JsonSourceNode.MutableNode` or raw `System.Text.Json.Nodes.JsonNode` directly bypasses FHIR-specific handling. Use `ISourceNavigator` or FHIRPath for correct FHIR semantics.
+:::
 
 ### 2. Use Type Information
 
 ```csharp
-var element = sourceNode.ToElement(schema);
+var element = sourceNavigator.ToElement(schemaProvider);
 
 // Now you have type information
-var type = element.InstanceType;
-var definition = element.Definition;
+var instanceType = element.InstanceType;  // e.g., "Patient", "HumanName"
+var typeInfo = element.Type;              // Type metadata from StructureDefinition
 ```
 
 ### 3. Handle Missing Data Gracefully
 
 ```csharp
 // Use null-conditional operators
-var birthDate = sourceNode["birthDate"]?.Text;
+var birthDate = sourceNavigator["birthDate"]?.Text;
 
 // Or provide defaults
-var active = sourceNode["active"]?.Text ?? "true";
+var active = sourceNavigator["active"]?.Text ?? "true";
 ```
 
 ## Related Documentation
