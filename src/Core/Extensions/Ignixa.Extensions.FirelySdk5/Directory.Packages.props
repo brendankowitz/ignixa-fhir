@@ -13,10 +13,10 @@
 
   <ItemGroup>
     <!-- Override Firely SDK packages to use 5.10.3 (last stable 5.x release before 6.0) -->
-    <PackageVersion Update="Hl7.Fhir.Base" Version="5.13.0" />
-    <PackageVersion Update="Hl7.Fhir.R4" Version="5.13.0" />
-    <PackageVersion Update="Hl7.Fhir.R4B" Version="5.13.0" />
-    <PackageVersion Update="Hl7.Fhir.R5" Version="5.13.0" />
-    <PackageVersion Update="Hl7.Fhir.Stu3" Version="5.13.0" />
+    <PackageVersion Update="Hl7.Fhir.Base" Version="5.13.1" />
+    <PackageVersion Update="Hl7.Fhir.R4" Version="5.13.1" />
+    <PackageVersion Update="Hl7.Fhir.R4B" Version="5.13.1" />
+    <PackageVersion Update="Hl7.Fhir.R5" Version="5.13.1" />
+    <PackageVersion Update="Hl7.Fhir.Stu3" Version="5.13.1" />
   </ItemGroup>
 </Project>
