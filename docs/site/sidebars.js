@@ -51,6 +51,7 @@ const sidebars = {
       items: [
         'server/features/validation',
         'server/features/bulk-operations',
+        'server/features/ttl',
         'server/features/mcp-server',
         'server/features/subscriptions',
       ],

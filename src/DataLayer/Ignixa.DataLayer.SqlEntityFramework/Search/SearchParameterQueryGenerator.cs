@@ -643,14 +643,19 @@ public class SearchParameterQueryGenerator
         }
 
         // Handle :missing modifier (MissingSearchParameterExpression)
+        // Uses LEFT JOIN pattern for better query plan optimization at scale
         if (expr is MissingSearchParameterExpression missingExpr)
         {
             var query = missingExpr.IsMissing
                 ? from r in _context.Resources
+                  join ttl in _context.ResourceTtls
+                      on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                      into ttlGroup
+                  from ttl in ttlGroup.DefaultIfEmpty()
                   where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                       && !r.IsHistory
                       && !r.IsDeleted
-                      && !_context.ResourceTtls.Any(ttl => ttl.ResourceTypeId == r.ResourceTypeId && ttl.ResourceId == r.ResourceId)
+                      && ttl == null
                   select r
                 : from r in _context.Resources
                   join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }

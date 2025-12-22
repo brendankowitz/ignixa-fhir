@@ -35,9 +35,11 @@ TTL as a **server-managed database column**, not FHIR resource content. Set via 
 
 ### API: X-TTL Header
 
+Uses ISO 8601 duration format (e.g., `P30D` = 30 days, `PT1H` = 1 hour):
+
 ```http
 PUT /Patient/123
-X-TTL: 2027-01-01T00:00:00Z
+X-TTL: P30D
 Content-Type: application/fhir+json
 
 {"resourceType": "Patient", "id": "123", ...}
@@ -46,7 +48,8 @@ Content-Type: application/fhir+json
 | X-TTL Header | ExpiresAt Column | Behavior |
 |--------------|------------------|----------|
 | Not present | `NULL` | Lives forever |
-| `2027-01-01T00:00:00Z` | Value | Expires at specified time |
+| `P30D` | `now + 30 days` | Expires 30 days from request time |
+| `PT1H` | `now + 1 hour` | Expires 1 hour from request time |
 | `0` or empty | `NULL` | Clear existing TTL |
 
 ### Search: `_ttl` Built-In Parameter
