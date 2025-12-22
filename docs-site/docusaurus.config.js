@@ -56,7 +56,7 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
-      image: 'img/ignixa-social-card.png',
+      image: 'img/docusaurus-social-card.jpg',
       colorMode: {
         defaultMode: 'light',
         disableSwitch: false,
