@@ -1,0 +1,85 @@
+/**
+ * Ignixa FHIR Documentation Theme
+ * Custom CSS for the documentation site
+ */
+
+/* FHIR-inspired color palette */
+:root {
+  /* Primary: FHIR orange */
+  --ifm-color-primary: #e85d04;
+  --ifm-color-primary-dark: #d15403;
+  --ifm-color-primary-darker: #c54f03;
+  --ifm-color-primary-darkest: #a24102;
+  --ifm-color-primary-light: #f16718;
+  --ifm-color-primary-lighter: #f3722c;
+  --ifm-color-primary-lightest: #f48c50;
+  
+  /* Secondary accents */
+  --ifm-color-secondary: #023e8a;
+  --ifm-color-success: #2d6a4f;
+  
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(232, 93, 4, 0.1);
+  
+  /* Typography */
+  --ifm-heading-font-weight: 600;
+  --ifm-font-family-base: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ifm-font-family-monospace: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+}
+
+/* Dark mode adjustments */
+[data-theme='dark'] {
+  --ifm-color-primary: #f48c50;
+  --ifm-color-primary-dark: #f27730;
+  --ifm-color-primary-darker: #f16a20;
+  --ifm-color-primary-darkest: #d85504;
+  --ifm-color-primary-light: #f6a170;
+  --ifm-color-primary-lighter: #f8ab80;
+  --ifm-color-primary-lightest: #fbc4a8;
+  
+  --docusaurus-highlighted-code-line-bg: rgba(244, 140, 80, 0.2);
+}
+
+/* Hero section styling */
+.hero--primary {
+  background: linear-gradient(135deg, #023e8a 0%, #0077b6 50%, #00b4d8 100%);
+}
+
+.hero__title {
+  font-size: 3rem;
+}
+
+/* Code block enhancements */
+.prism-code {
+  border-radius: 8px;
+}
+
+/* Table styling */
+table {
+  display: table;
+  width: 100%;
+}
+
+th {
+  background-color: var(--ifm-color-emphasis-100);
+}
+
+/* Admonition customization */
+.admonition-heading h5 {
+  text-transform: none;
+}
+
+/* Navbar logo sizing */
+.navbar__logo {
+  height: 2rem;
+}
+
+/* Footer links */
+.footer__link-item:hover {
+  text-decoration: underline;
+}
+
+/* Sidebar category styling */
+.menu__link--sublist-caret::after {
+  background-size: 1.25rem 1.25rem;
+}
