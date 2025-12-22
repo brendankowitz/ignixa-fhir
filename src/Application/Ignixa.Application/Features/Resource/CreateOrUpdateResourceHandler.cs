@@ -276,7 +276,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             false) // isDeleted
         {
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
-            SearchIndices = searchIndices?.ToArray()
+            SearchIndices = searchIndices?.ToArray(),
+            ExpiresAt = command.ExpiresAt
         };
     }
 

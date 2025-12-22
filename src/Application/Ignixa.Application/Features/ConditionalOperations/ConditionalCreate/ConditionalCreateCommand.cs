@@ -20,10 +20,12 @@ namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
 /// <param name="IfNoneExist">Search query from If-None-Exist header.</param>
 /// <param name="JsonNode">Raw FHIR JSON resource to create.</param>
 /// <param name="RequestId">Optional request ID for logging correlation.</param>
+/// <param name="ExpiresAt">Optional expiration timestamp from X-TTL header. When provided, resource will be automatically deleted by background cleanup service after this timestamp. Null means resource lives forever.</param>
 public record ConditionalCreateCommand(
     int TenantId,
     string ResourceType,
     string IfNoneExist,
     ResourceJsonNode JsonNode,
     ProvenanceJsonNode? ProvenanceResource = null,
-    string? RequestId = null) : IRequest<ConditionalCreateResult>;
+    string? RequestId = null,
+    DateTimeOffset? ExpiresAt = null) : IRequest<ConditionalCreateResult>;

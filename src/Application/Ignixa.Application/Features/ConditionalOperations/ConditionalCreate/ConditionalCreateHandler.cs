@@ -124,6 +124,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
                 request.JsonNode,
                 request.TenantId,
                 request.ProvenanceResource,
+                request.ExpiresAt,
                 cancellationToken);
 
             return new ConditionalCreateResult(
@@ -160,6 +161,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
                     request.JsonNode,
                     request.TenantId,
                     request.ProvenanceResource,
+                    request.ExpiresAt,
                     cancellationToken);
 
                 return new ConditionalCreateResult(
@@ -201,6 +203,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         ResourceJsonNode jsonNode,
         int tenantId,
         ProvenanceJsonNode? provenanceResource,
+        DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {
         // Get FHIR request context to check for bundle-assigned IDs
@@ -230,7 +233,10 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
             JsonNode: jsonNode,
             HttpMethod: System.Net.Http.HttpMethod.Post,
             Coordinator: null, // No bundle context for conditional create
-            ProvenanceResource: provenanceResource);
+            IfMatch: null,
+            ValidationDepthOverride: null,
+            ProvenanceResource: provenanceResource,
+            ExpiresAt: expiresAt);
 
         var updateResult = await _mediator.SendAsync(createCommand, cancellationToken);
 

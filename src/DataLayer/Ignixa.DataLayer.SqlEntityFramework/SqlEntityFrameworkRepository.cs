@@ -177,6 +177,9 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             failureReason: null,
             cancellationToken: ct);
 
+        // Handle ResourceTtl writes (upsert or delete)
+        await UpsertResourceTtlAsync(resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, ct);
+
         _logger.LogInformation("Created/updated resource {ResourceType}/{ResourceId} version {Version} via merge", resource.ResourceType, resource.ResourceId, newVersion);
 
         // Return UpdateResult
@@ -288,6 +291,9 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         };
 
         _context.Resources.Add(deletedEntity);
+
+        // Delete ResourceTtl entry when resource is deleted (TTL no longer applies to tombstone)
+        await UpsertResourceTtlAsync(resourceTypeId, key.Id, null, transactionId?.Value, ct);
 
         // Save changes immediately if not part of a transaction
         if (!transactionId.HasValue)
@@ -915,6 +921,78 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             if (result != null)
             {
                 yield return result;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Upserts or deletes ResourceTtl entry based on ExpiresAt value.
+    /// - If ExpiresAt is provided: Upsert (insert or update) ResourceTtl entry
+    /// - If ExpiresAt is null: Delete ResourceTtl entry (clear TTL)
+    /// </summary>
+    private async Task UpsertResourceTtlAsync(
+        short resourceTypeId,
+        string resourceId,
+        DateTimeOffset? expiresAt,
+        long? transactionId,
+        CancellationToken ct)
+    {
+        if (expiresAt.HasValue)
+        {
+            // Upsert: Insert new entry or update existing entry
+            var existingTtl = await _context.ResourceTtls
+                .FirstOrDefaultAsync(
+                    ttl => ttl.ResourceTypeId == resourceTypeId && ttl.ResourceId == resourceId,
+                    ct);
+
+            if (existingTtl != null)
+            {
+                // Update existing TTL entry
+                existingTtl.ExpiresAt = expiresAt.Value;
+                existingTtl.TransactionId = transactionId;
+                _logger.LogDebug(
+                    "Updated ResourceTtl for ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}, ExpiresAt={ExpiresAt}, TransactionId={TransactionId}",
+                    resourceTypeId,
+                    resourceId,
+                    expiresAt.Value,
+                    transactionId);
+            }
+            else
+            {
+                // Insert new TTL entry
+                _context.ResourceTtls.Add(new ResourceTtlEntity
+                {
+                    ResourceTypeId = resourceTypeId,
+                    ResourceId = resourceId,
+                    ExpiresAt = expiresAt.Value,
+                    TransactionId = transactionId
+                });
+                _logger.LogDebug(
+                    "Created ResourceTtl for ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}, ExpiresAt={ExpiresAt}, TransactionId={TransactionId}",
+                    resourceTypeId,
+                    resourceId,
+                    expiresAt.Value,
+                    transactionId);
+            }
+
+            await _context.SaveChangesAsync(ct);
+        }
+        else
+        {
+            // Delete TTL entry (clear TTL - resource lives forever)
+            var ttlToDelete = await _context.ResourceTtls
+                .FirstOrDefaultAsync(
+                    ttl => ttl.ResourceTypeId == resourceTypeId && ttl.ResourceId == resourceId,
+                    ct);
+
+            if (ttlToDelete != null)
+            {
+                _context.ResourceTtls.Remove(ttlToDelete);
+                await _context.SaveChangesAsync(ct);
+                _logger.LogDebug(
+                    "Deleted ResourceTtl for ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
+                    resourceTypeId,
+                    resourceId);
             }
         }
     }

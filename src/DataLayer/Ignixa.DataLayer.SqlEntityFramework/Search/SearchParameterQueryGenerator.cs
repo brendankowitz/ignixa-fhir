@@ -85,6 +85,12 @@ public class SearchParameterQueryGenerator
                 return await ProcessResourceLastUpdatedExpressionAsync(resourceTypeId, expression.Expression, ct);
             }
 
+            if (expression.Parameter?.Code == "_ttl")
+            {
+                _logger.LogDebug("Processing _ttl parameter expression");
+                return await ProcessResourceTtlExpressionAsync(resourceTypeId, expression.Expression, ct);
+            }
+
             if (expression.Parameter?.Code == "_type")
             {
                 return await ProcessResourceTypeExpressionAsync(resourceTypeId, expression.Expression, ct);
@@ -560,6 +566,191 @@ public class SearchParameterQueryGenerator
             result = multiaryExpr.MultiaryOperation == MultiaryOperator.Or
                 ? result.Union(queries[i])
                 : result.Intersect(queries[i]);
+        }
+
+        return Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// Processes _ttl parameter expressions by querying the ResourceTtl table.
+    /// The _ttl parameter is a resource-level parameter that queries the ExpiresAt timestamp.
+    /// Supports comparison operators (>, >=, <, <=, =, !=) and :missing modifier.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceTtlExpressionAsync(
+        short? resourceTypeId,
+        Expression expr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing _ttl parameter expression");
+
+        // Handle binary expressions (comparison operators)
+        if (expr is BinaryExpression binaryExpr && binaryExpr.Value is DateTimeOffset dateTimeValue)
+        {
+            var query = binaryExpr.BinaryOperator switch
+            {
+                BinaryOperator.Equal =>
+                    from r in _context.Resources
+                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && ttl.ExpiresAt == dateTimeValue
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    select r,
+                BinaryOperator.GreaterThan =>
+                    from r in _context.Resources
+                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && ttl.ExpiresAt > dateTimeValue
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    select r,
+                BinaryOperator.GreaterThanOrEqual =>
+                    from r in _context.Resources
+                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && ttl.ExpiresAt >= dateTimeValue
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    select r,
+                BinaryOperator.LessThan =>
+                    from r in _context.Resources
+                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && ttl.ExpiresAt < dateTimeValue
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    select r,
+                BinaryOperator.LessThanOrEqual =>
+                    from r in _context.Resources
+                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && ttl.ExpiresAt <= dateTimeValue
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    select r,
+                BinaryOperator.NotEqual =>
+                    from r in _context.Resources
+                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && ttl.ExpiresAt != dateTimeValue
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    select r,
+                _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _ttl")
+            };
+
+            return await Task.FromResult(query.Select(r => r.ResourceSurrogateId));
+        }
+
+        // Handle :missing modifier (MissingSearchParameterExpression)
+        if (expr is MissingSearchParameterExpression missingExpr)
+        {
+            var query = missingExpr.IsMissing
+                ? from r in _context.Resources
+                  where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                      && !r.IsHistory
+                      && !r.IsDeleted
+                      && !_context.ResourceTtls.Any(ttl => ttl.ResourceTypeId == r.ResourceTypeId && ttl.ResourceId == r.ResourceId)
+                  select r
+                : from r in _context.Resources
+                  join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                  where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                      && !r.IsHistory
+                      && !r.IsDeleted
+                  select r;
+
+            return await Task.FromResult(query.Select(r => r.ResourceSurrogateId));
+        }
+
+        // Handle multiary expressions (e.g., multiple _ttl constraints with OR/AND)
+        if (expr is MultiaryExpression multiaryExpr)
+        {
+            return await ProcessResourceTtlMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
+        }
+
+        throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for _ttl parameter query generation");
+    }
+
+    /// <summary>
+    /// Processes multiary expressions (e.g., multiple _ttl constraints) for _ttl parameter.
+    /// </summary>
+    private Task<IQueryable<long>> ProcessResourceTtlMultiaryExpressionAsync(
+        short? resourceTypeId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        if (multiaryExpr.Expressions.Count == 0)
+        {
+            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+        }
+
+        var queries = new List<IQueryable<long>>();
+        foreach (var subExpr in multiaryExpr.Expressions)
+        {
+            if (subExpr is BinaryExpression binaryExpr && binaryExpr.Value is DateTimeOffset dateTimeValue)
+            {
+                var query = binaryExpr.BinaryOperator switch
+                {
+                    BinaryOperator.Equal =>
+                        (from r in _context.Resources
+                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                             && ttl.ExpiresAt == dateTimeValue
+                             && !r.IsHistory
+                             && !r.IsDeleted
+                         select r),
+                    BinaryOperator.GreaterThan =>
+                        (from r in _context.Resources
+                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                             && ttl.ExpiresAt > dateTimeValue
+                             && !r.IsHistory
+                             && !r.IsDeleted
+                         select r),
+                    BinaryOperator.GreaterThanOrEqual =>
+                        (from r in _context.Resources
+                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                             && ttl.ExpiresAt >= dateTimeValue
+                             && !r.IsHistory
+                             && !r.IsDeleted
+                         select r),
+                    BinaryOperator.LessThan =>
+                        (from r in _context.Resources
+                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                             && ttl.ExpiresAt < dateTimeValue
+                             && !r.IsHistory
+                             && !r.IsDeleted
+                         select r),
+                    BinaryOperator.LessThanOrEqual =>
+                        (from r in _context.Resources
+                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                             && ttl.ExpiresAt <= dateTimeValue
+                             && !r.IsHistory
+                             && !r.IsDeleted
+                         select r),
+                    BinaryOperator.NotEqual =>
+                        (from r in _context.Resources
+                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
+                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                             && ttl.ExpiresAt != dateTimeValue
+                             && !r.IsHistory
+                             && !r.IsDeleted
+                         select r),
+                    _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _ttl in multiary expression")
+                };
+
+                queries.Add(query.Select(r => r.ResourceSurrogateId));
+            }
+        }
+
+        // Combine queries using OR (Union)
+        var result = queries[0];
+        for (int i = 1; i < queries.Count; i++)
+        {
+            result = result.Union(queries[i]);
         }
 
         return Task.FromResult(result);

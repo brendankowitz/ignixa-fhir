@@ -32,4 +32,10 @@ public record ResourceWrapper(
     /// Used for search parameter indexing.
     /// </summary>
     public IReadOnlyList<object>? SearchIndices { get; init; }
+
+    /// <summary>
+    /// Optional: TTL expiration timestamp set via X-TTL header.
+    /// Null means resource lives forever, non-null means resource expires at this timestamp.
+    /// </summary>
+    public DateTimeOffset? ExpiresAt { get; init; }
 }

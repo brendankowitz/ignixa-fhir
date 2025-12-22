@@ -22,4 +22,5 @@ public record ConditionalUpdateCommand(
     string SearchCriteria,  // Query string parameters (e.g., "identifier=system|value")
     ResourceJsonNode JsonNode,  // Parsed FHIR resource (parsed at endpoint layer)
     ProvenanceJsonNode? ProvenanceResource = null,
-    string? RequestId = null) : IRequest<ConditionalUpdateResult>;
+    string? RequestId = null,
+    DateTimeOffset? ExpiresAt = null) : IRequest<ConditionalUpdateResult>;

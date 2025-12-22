@@ -109,6 +109,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 request.JsonNode,
                 request.TenantId,
                 request.ProvenanceResource,
+                request.ExpiresAt,
                 cancellationToken);
 
             return new ConditionalUpdateResult(
@@ -136,6 +137,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 request.JsonNode,
                 request.TenantId,
                 request.ProvenanceResource,
+                request.ExpiresAt,
                 cancellationToken);
 
             return new ConditionalUpdateResult(
@@ -170,6 +172,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         ResourceJsonNode jsonNode,
         int tenantId,
         ProvenanceJsonNode? provenanceResource,
+        DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {
         // Use client-provided ID if present, otherwise generate server-assigned ID
@@ -204,7 +207,8 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             JsonNode: jsonNode,
             HttpMethod: System.Net.Http.HttpMethod.Put,
             Coordinator: null, // No bundle context for conditional update
-            ProvenanceResource: provenanceResource);
+            ProvenanceResource: provenanceResource,
+            ExpiresAt: expiresAt);
 
         var updateResult = await _mediator.SendAsync(createCommand, cancellationToken);
 
@@ -237,6 +241,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         ResourceJsonNode jsonNode,
         int tenantId,
         ProvenanceJsonNode? provenanceResource,
+        DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {
         // FHIR Spec: If client provided ID differs from existing ID, return 400 BadRequest
@@ -269,7 +274,8 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             HttpMethod: System.Net.Http.HttpMethod.Put,
             Coordinator: null, // No bundle context for conditional update
             IfMatch: existingVersionId, // Pass version ID for optimistic concurrency control
-            ProvenanceResource: provenanceResource);
+            ProvenanceResource: provenanceResource,
+            ExpiresAt: expiresAt);
 
         var updateResult = await _mediator.SendAsync(updateCommand, cancellationToken);
 

@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
+using Ignixa.Api.BackgroundServices;
+using Ignixa.Api.Configuration;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Export;
@@ -44,6 +46,14 @@ public static class BackgroundServicesRegistration
         {
             services.AddHostedService<TerminologyImportBootstrapService>();
         }
+
+        // TTL cleanup service
+        services.Configure<TtlCleanupOptions>(configuration.GetSection(TtlCleanupOptions.SectionName));
+        services.AddHostedService<TtlCleanupSchedulerService>();
+
+        // Transaction watcher service
+        services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
+        services.AddHostedService<TransactionWatcherService>();
 
         // DurableTask framework
         services.AddDurableTask();

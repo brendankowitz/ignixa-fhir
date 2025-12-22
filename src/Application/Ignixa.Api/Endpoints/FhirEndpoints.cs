@@ -497,8 +497,11 @@ public static class FhirEndpoints
             logger,
             ct);
 
+        // Extract X-TTL header if present (TTL expiration timestamp)
+        var expiresAt = TtlHeaderHelper.TryParseTtlHeader(context.Request.Headers, logger);
+
         // Send generic command with optional coordinator and validation override
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, parsedIfMatch, validationOverride, provenanceResource);
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, parsedIfMatch, validationOverride, provenanceResource, expiresAt);
         UpdateResult result = await mediator.SendAsync(command, ct);
 
         // Add ETag, Last-Modified, and Preference-Applied headers
@@ -768,6 +771,9 @@ public static class FhirEndpoints
                 logger,
                 ct);
 
+            // Extract X-TTL header if present (TTL expiration timestamp)
+            var conditionalExpiresAt = TtlHeaderHelper.TryParseTtlHeader(context.Request.Headers, logger);
+
             // Validate Prefer header strictly (before executing command)
             var (returnPreferenceConditional, isPreferValid, preferErrorMessage) = PreferHeaderParser.ParseReturnPreferenceStrict(context.Request.Headers, logger);
             if (!isPreferValid)
@@ -782,7 +788,8 @@ public static class FhirEndpoints
                 IfNoneExist: ifNoneExist.ToString(),
                 JsonNode: conditionalJsonNode,
                 ProvenanceResource: conditionalProvenanceResource,
-                RequestId: context.TraceIdentifier);
+                RequestId: context.TraceIdentifier,
+                ExpiresAt: conditionalExpiresAt);
 
             var result = await mediator.SendAsync(command, ct);
 
@@ -951,8 +958,11 @@ public static class FhirEndpoints
             logger,
             ct);
 
+        // Extract X-TTL header if present (TTL expiration timestamp)
+        var expiresAt = TtlHeaderHelper.TryParseTtlHeader(context.Request.Headers, logger);
+
         // Send generic command with HTTP POST method
-        var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride, provenanceResource);
+        var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride, provenanceResource, expiresAt);
         UpdateResult createResult = await mediator.SendAsync(createCommand, ct);
 
         // Add ETag, Last-Modified, and Preference-Applied headers
@@ -1241,6 +1251,9 @@ public static class FhirEndpoints
             logger,
             ct);
 
+        // Extract X-TTL header if present (TTL expiration timestamp)
+        var expiresAt = TtlHeaderHelper.TryParseTtlHeader(context.Request.Headers, logger);
+
         // Execute conditional update via mediator
         var command = new Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateCommand(
             TenantId: tenantId,
@@ -1248,7 +1261,8 @@ public static class FhirEndpoints
             SearchCriteria: searchCriteria,
             JsonNode: jsonNode,
             ProvenanceResource: provenanceResource,
-            RequestId: context.TraceIdentifier);
+            RequestId: context.TraceIdentifier,
+            ExpiresAt: expiresAt);
 
         var result = await mediator.SendAsync(command, ct);
 

@@ -28,6 +28,7 @@ namespace Ignixa.Application.Features.Resource;
 /// <param name="IfMatch">Optional ETag for optimistic concurrency control. If specified, update only succeeds if resource version matches. Format: version ID (e.g., "5"), not weak ETag format.</param>
 /// <param name="ValidationDepthOverride">Optional validation depth override from Prefer header. When provided, overrides tenant configuration. Null means use tenant default.</param>
 /// <param name="ProvenanceResource">Optional Provenance resource from X-Provenance header. When provided, the handler will automatically fill the target reference and create the Provenance resource after the main resource is created/updated.</param>
+/// <param name="ExpiresAt">Optional expiration timestamp from X-TTL header. When provided, resource will be automatically deleted by background cleanup service after this timestamp. Null means resource lives forever.</param>
 public record CreateOrUpdateResourceCommand(
     string ResourceType,
     string Id,
@@ -36,7 +37,8 @@ public record CreateOrUpdateResourceCommand(
     DeferredWriteCoordinator? Coordinator = null,
     string? IfMatch = null,
     ValidationDepth? ValidationDepthOverride = null,
-    ProvenanceJsonNode? ProvenanceResource = null) : IRequest<UpdateResult>, IRequireCapability
+    ProvenanceJsonNode? ProvenanceResource = null,
+    DateTimeOffset? ExpiresAt = null) : IRequest<UpdateResult>, IRequireCapability
 {
     /// <summary>
     /// Returns FHIRPath expression to validate update capability for this resource type.

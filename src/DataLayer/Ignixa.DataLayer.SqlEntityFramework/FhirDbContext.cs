@@ -42,6 +42,11 @@ public class FhirDbContext : DbContext
     public DbSet<TransactionEntity> Transactions { get; set; } = null!;
 
     /// <summary>
+    /// Gets or sets the ResourceTtl table (TTL expiration tracking).
+    /// </summary>
+    public DbSet<ResourceTtlEntity> ResourceTtls { get; set; } = null!;
+
+    /// <summary>
     /// Gets or sets the SearchParam table (search parameter definitions).
     /// </summary>
     public DbSet<SearchParamEntity> SearchParams { get; set; } = null!;
@@ -206,6 +211,7 @@ public class FhirDbContext : DbContext
         ConfigureResourceEntity(modelBuilder);
         ConfigureResourceTypeEntity(modelBuilder);
         ConfigureTransactionEntity(modelBuilder);
+        ConfigureResourceTtlEntity(modelBuilder);
         ConfigureSearchParamEntity(modelBuilder);
         ConfigureSystemEntity(modelBuilder);
         ConfigureQuantityCodeEntity(modelBuilder);
@@ -316,6 +322,25 @@ public class FhirDbContext : DbContext
         entity.Property(t => t.VisibleDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
         entity.Property(t => t.HistoryMovedDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
         entity.Property(t => t.InvisibleHistoryRemovedDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
+    }
+
+    private static void ConfigureResourceTtlEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ResourceTtlEntity>();
+
+        // Composite primary key: (ResourceTypeId, ResourceId)
+        entity.HasKey(rt => new { rt.ResourceTypeId, rt.ResourceId })
+            .HasName("PK_ResourceTtl");
+
+        // Index on ExpiresAt for efficient cleanup queries
+        entity.HasIndex(rt => rt.ExpiresAt)
+            .HasDatabaseName("IX_ResourceTtl_ExpiresAt");
+
+        // Relationship to Transaction (no FK constraint, same pattern as Resource table)
+        entity.HasOne(rt => rt.Transaction)
+            .WithMany()
+            .HasForeignKey(rt => rt.TransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 
     private static void ConfigureSearchParamEntity(ModelBuilder modelBuilder)
