@@ -42,3 +42,31 @@ The `_ttl` search parameter follows the existing pattern of `_id` and `_lastUpda
 - **Header-only input**: Clients cannot set TTL via resource body or PATCH. This is intentional - TTL is server-managed infrastructure.
 
 - **Future option**: If FHIR visibility is later required, the column value can be projected into `meta.extension` on read (read-only, not stored in JSON).
+
+## Bundle Support
+
+The `X-TTL` header applies at the **bundle level** for transaction and batch bundles:
+
+```http
+POST /Bundle
+Content-Type: application/fhir+json
+X-TTL: P30D
+
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [...]
+}
+```
+
+**Behavior:**
+- The `X-TTL` header on the bundle request applies to **all entries** that create or update resources (POST, PUT)
+- GET and DELETE entries are unaffected (no resource created)
+- All resources in the bundle share the same TTL - this is intentional for the common use case of temporary data sets that expire together
+
+**Why bundle-level only (no per-entry TTL):**
+1. **Simplicity**: The FHIR `Bundle.entry.request` structure has no standard TTL element. Per-entry TTL would require a custom extension, adding parsing complexity.
+2. **Common use case**: Bundles typically represent cohesive data sets (e.g., a patient's test results, a batch import) where uniform expiration makes sense.
+3. **Workaround available**: If different TTLs are needed, submit resources in separate requests or separate bundles.
+
+**Implementation**: The bundle processor propagates the parent HTTP request's `X-TTL` header to each entry's mini-HttpContext, enabling transparent TTL handling through the existing single-resource code path.

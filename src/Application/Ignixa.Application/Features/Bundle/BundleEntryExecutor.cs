@@ -164,6 +164,18 @@ public class BundleEntryExecutor
                     entry.IfMatch);
             }
 
+            var parentHttpContext = _httpContextAccessor.HttpContext;
+            if (parentHttpContext is not null &&
+                parentHttpContext.Request.Headers.TryGetValue("X-TTL", out var ttlHeader) &&
+                entry.HttpVerb is "POST" or "PUT" or "PATCH")
+            {
+                httpContext.Request.Headers["X-TTL"] = ttlHeader;
+                _logger.LogDebug(
+                    "Propagated X-TTL header to entry {Index}: {TTL}",
+                    entry.Index,
+                    ttlHeader);
+            }
+
             // Serialize resource to request body (if present)
             if (entry.Resource != null)
             {

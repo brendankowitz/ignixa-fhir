@@ -260,6 +260,40 @@ POST /Basic
 X-TTL: P1D
 ```
 
+### Bundle Operations
+
+Set TTL for all resources in a transaction or batch bundle:
+
+```http
+POST /Bundle
+Content-Type: application/fhir+json
+X-TTL: P7D
+
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "resource": {"resourceType": "Patient", "name": [{"family": "Test"}]},
+      "request": {"method": "POST", "url": "Patient"}
+    },
+    {
+      "resource": {"resourceType": "Observation", "status": "final", "code": {"text": "Test"}},
+      "request": {"method": "POST", "url": "Observation"}
+    }
+  ]
+}
+```
+
+All resources created by the bundle will expire in 7 days. This is useful for:
+- Importing temporary test data sets
+- Batch processing with automatic cleanup
+- Loading data that should expire together
+
+:::note Bundle-level TTL Only
+TTL applies uniformly to all entries in the bundle. Per-entry TTL is not supported. If different expiration times are needed, submit resources in separate requests or bundles.
+:::
+
 ## Limitations
 
 - TTL is not visible when reading resources (by design)
