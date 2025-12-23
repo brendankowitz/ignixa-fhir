@@ -83,6 +83,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Agents", "Agents", "{C0A088
 		.claude\agents\fhir-agent.md = .claude\agents\fhir-agent.md
 		.claude\agents\fhir-coordinator.md = .claude\agents\fhir-coordinator.md
 		.claude\agents\ef.md = .claude\agents\ef.md
+		.claude\agents\documentation-agent.md = .claude\agents\documentation-agent.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.BackgroundOperations", "src\Application\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj", "{F450B9BC-9675-4940-A8F0-C8C75241091F}"

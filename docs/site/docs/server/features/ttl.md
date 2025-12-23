@@ -147,7 +147,7 @@ TTL is implemented as a server-managed database column, not FHIR resource conten
 
 ## Configuration
 
-TTL cleanup runs automatically as a background service. Configuration options:
+TTL cleanup runs automatically via a DurableTask orchestration. Configuration options:
 
 ```json
 {
@@ -166,6 +166,67 @@ TTL cleanup runs automatically as a background service. Configuration options:
 | `CheckIntervalMinutes` | `15` | How often to check for expired resources |
 | `BatchSize` | `500` | Resources to delete per batch |
 | `MaxConcurrentBatches` | `4` | Parallel deletion batches |
+
+## Audit Logging
+
+All TTL deletions are logged to the configured audit logger for compliance and tracking.
+
+### Audit Event Structure
+
+Each deletion generates an audit event with:
+
+| Field | Description |
+|-------|-------------|
+| `ResourceType` | Type of resource deleted (e.g., "Patient") |
+| `ResourceId` | Logical ID of the resource |
+| `VersionId` | Version deleted (all versions removed for TTL) |
+| `Action` | Always "Delete" |
+| `Reason` | "TTL Expired" |
+| `Timestamp` | When deletion occurred |
+| `TenantId` | Tenant partition |
+
+## Implementation Details
+
+### DurableTask Orchestration
+
+TTL cleanup uses the DurableTask Framework for reliable, fault-tolerant background processing:
+
+**Architecture:**
+```
+TtlCleanupOrchestration (coordinator)
+  ├─> TtlCleanupActivity (Tenant 1)
+  ├─> TtlCleanupActivity (Tenant 2)
+  └─> TtlCleanupActivity (Tenant N)
+```
+
+**Flow:**
+1. Orchestration starts automatically on server startup as an "eternal orchestration"
+2. Sleeps for configured interval (default: 15 minutes)
+3. Wakes up and queries all active tenants
+4. Spawns parallel activities - one per tenant
+5. Each activity:
+   - Queries `ResourceTtl` table for expired resources
+   - Deletes resources in batches (default: 500)
+   - Logs each deletion to audit trail
+   - Reports deleted count back to orchestration
+6. Orchestration aggregates results and repeats (eternal loop)
+
+**Benefits:**
+- **Fault tolerance** - If server crashes, orchestration resumes from last checkpoint
+- **Observability** - Query orchestration state via DurableTask APIs
+- **Scalability** - Parallel processing across multiple tenants
+- **Persistence** - State persisted to SQL, survives restarts
+
+### Hard Delete Process
+
+When a resource expires:
+
+1. **Delete resource data** - All versions removed from `Resources` table
+2. **Delete search indices** - All search parameter values removed from index tables
+3. **Delete TTL entry** - Row removed from `ResourceTtl` table
+4. **Audit log** - Event sent to configured audit logger
+
+This is a **hard delete**, not a soft delete. The resource is permanently removed and cannot be recovered.
 
 ## Use Cases
 

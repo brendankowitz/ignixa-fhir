@@ -332,6 +332,11 @@ public class FhirDbContext : DbContext
         entity.HasKey(rt => new { rt.ResourceTypeId, rt.ResourceId })
             .HasName("PK_ResourceTtl");
 
+        // ResourceId must use same collation as Resource.ResourceId for joins
+        entity.Property(rt => rt.ResourceId)
+            .HasColumnType("varchar(64)")
+            .UseCollation("Latin1_General_100_CS_AS");
+
         // Index on ExpiresAt for efficient cleanup queries
         entity.HasIndex(rt => rt.ExpiresAt)
             .HasDatabaseName("IX_ResourceTtl_ExpiresAt");

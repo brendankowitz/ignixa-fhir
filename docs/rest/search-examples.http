@@ -489,7 +489,7 @@ Prefer: validation=minimum
 ### Create Patient with 30-day TTL
 PUT {{hostname}}/Patient/ttl-test-patient
 Content-Type: application/fhir+json
-X-TTL: P30D
+X-TTL: PT1M
 
 {
   "resourceType": "Patient",
@@ -503,6 +503,11 @@ X-TTL: P30D
   ],
   "gender": "unknown"
 }
+
+###
+
+GET {{hostname}}/Patient/ttl-test-patient
+Content-Type: application/fhir+json
 
 ### Create Observation with 1-hour TTL (short-lived)
 POST {{hostname}}/Observation

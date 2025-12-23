@@ -7,6 +7,16 @@ namespace Ignixa.Application.BackgroundOperations.TtlCleanup.Models;
 
 /// <summary>
 /// Input for the TTL cleanup orchestration.
+/// Uses eternal orchestration pattern - runs forever with periodic cleanup cycles.
 /// </summary>
 /// <param name="BatchSize">Maximum number of expired resources to process per tenant in a single run.</param>
-public record TtlCleanupOrchestrationInput(int BatchSize = 100);
+/// <param name="ScanInterval">Time to wait between cleanup cycles. Default: 15 minutes.</param>
+public record TtlCleanupOrchestrationInput(
+    int BatchSize = 100,
+    TimeSpan? ScanInterval = null)
+{
+    /// <summary>
+    /// Gets the scan interval, defaulting to 15 minutes if not specified.
+    /// </summary>
+    public TimeSpan EffectiveScanInterval => ScanInterval ?? TimeSpan.FromMinutes(15);
+}

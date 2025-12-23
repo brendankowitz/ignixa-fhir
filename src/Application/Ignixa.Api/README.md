@@ -31,7 +31,8 @@ This package is distributed via the internal GitHub Packages feed and contains t
 ### Infrastructure
 - DurableTask configuration for background operations
 - Startup timing diagnostics
-- Background services for index loading and package preloading
+- Background services for index loading, package preloading, and eternal orchestrations
+- TTL (Time-To-Live) header processing
 
 ## Usage
 
@@ -141,10 +142,15 @@ Routes will require tenant ID: `/tenant/{tenantId}/Patient/123`
 
 ## Background Operations
 
-The API supports bulk $import and $export operations via DurableTask framework:
+The API supports long-running operations via DurableTask framework:
 
+### Bulk Data Operations
 - **$export** - Export resources to NDJSON or Parquet format in blob storage
 - **$import** - Import resources from NDJSON files
+
+### System Maintenance (Automatic)
+- **TTL Cleanup** - Removes expired resources based on time-to-live
+- **Transaction Watcher** - Monitors transaction allocation health
 
 Configure DurableTask in `appsettings.json`:
 
@@ -159,6 +165,63 @@ Configure DurableTask in `appsettings.json`:
   }
 }
 ```
+
+## Resource TTL (Time-To-Live)
+
+Set resource expiration using the `X-TTL` HTTP header:
+
+```http
+PUT /Patient/temp-patient
+Content-Type: application/fhir+json
+X-TTL: P30D
+
+{"resourceType": "Patient", "id": "temp-patient", "active": true}
+```
+
+### TTL Header Format
+
+Uses ISO 8601 duration format:
+- `PT1H` - 1 hour
+- `P1D` - 1 day  
+- `P30D` - 30 days
+- `P1Y` - 1 year
+
+### TTL Cleanup Configuration
+
+```json
+{
+  "TtlCleanup": {
+    "Enabled": true,
+    "CheckIntervalMinutes": 15,
+    "BatchSize": 500,
+    "MaxConcurrentBatches": 4
+  }
+}
+```
+
+Background cleanup runs automatically via DurableTask orchestration. Resources past their TTL are hard-deleted (all versions removed).
+
+### Audit Logging
+
+TTL deletions are logged to the configured audit logger:
+
+```json
+{
+  "AuditLogging": {
+    "Enabled": true,
+    "Provider": "Sidecar",
+    "Sidecar": {
+      "HttpEndpoint": "http://localhost:5002/audit"
+    }
+  }
+}
+```
+
+Audit events include:
+- Resource type, ID, and version
+- Deletion timestamp
+- Reason (TTL expired)
+- Tenant ID
 
 ## Support
 

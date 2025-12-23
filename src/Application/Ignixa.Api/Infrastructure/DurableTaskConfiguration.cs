@@ -8,11 +8,13 @@ using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
+using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Orchestrations;
 using Ignixa.DataLayer.FileSystem.DurableTask;
 using ExportCompleteJobActivity = Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity;
 using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activities;
 using TerminologyActivities = Ignixa.Application.BackgroundOperations.Terminology.Activities;
+using TransactionWatcherActivities = Ignixa.Application.BackgroundOperations.TransactionWatcher.Activities;
 using TtlCleanupActivities = Ignixa.Application.BackgroundOperations.TtlCleanup.Activities;
 
 namespace Ignixa.Api.Infrastructure;
@@ -48,11 +50,14 @@ public static class DurableTaskConfiguration
             var orchestrationService = sp.GetRequiredService<IOrchestrationService>();
             var worker = new TaskHubWorker(orchestrationService);
 
-            // Register orchestrations
+            // Register orchestrations (ones without DI dependencies)
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
             worker.AddTaskOrchestrations(typeof(ImportOrchestration));
             worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
-            worker.AddTaskOrchestrations(typeof(TtlCleanupOrchestration));
+
+            // Register orchestrations with DI dependencies
+            worker.AddTaskOrchestrationsFromInterface<TransactionWatcherOrchestration>(sp);
+            worker.AddTaskOrchestrationsFromInterface<TtlCleanupOrchestration>(sp);
 
             // Register Export activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<GetExportRangesActivity>(sp);
@@ -67,6 +72,9 @@ public static class DurableTaskConfiguration
 
             // Register Terminology activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<TerminologyActivities.ImportTerminologyResourceActivity>(sp);
+
+            // Register Transaction Watcher activities with service provider for DI
+            worker.AddTaskActivitiesFromInterface<TransactionWatcherActivities.TransactionWatcherActivity>(sp);
 
             // Register TTL Cleanup activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<TtlCleanupActivities.TtlCleanupActivity>(sp);
@@ -255,10 +263,21 @@ public static class DurableTaskConfiguration
 }
 
 /// <summary>
-/// Extension methods for registering activities with dependency injection.
+/// Extension methods for registering orchestrations and activities with dependency injection.
 /// </summary>
 internal static class TaskHubWorkerExtensions
 {
+    public static TaskHubWorker AddTaskOrchestrationsFromInterface<TOrchestration>(
+        this TaskHubWorker worker,
+        IServiceProvider serviceProvider)
+        where TOrchestration : TaskOrchestration
+    {
+        // Use ObjectCreator overload to enable dependency injection for orchestrations
+        var orchestrationCreator = new ServiceProviderObjectCreator<TaskOrchestration>(serviceProvider, typeof(TOrchestration));
+        worker.AddTaskOrchestrations(orchestrationCreator);
+        return worker;
+    }
+
     public static TaskHubWorker AddTaskActivitiesFromInterface<TActivity>(
         this TaskHubWorker worker,
         IServiceProvider serviceProvider)

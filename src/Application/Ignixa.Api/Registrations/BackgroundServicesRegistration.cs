@@ -47,13 +47,14 @@ public static class BackgroundServicesRegistration
             services.AddHostedService<TerminologyImportBootstrapService>();
         }
 
-        // TTL cleanup service
+        // TTL cleanup options
         services.Configure<TtlCleanupOptions>(configuration.GetSection(TtlCleanupOptions.SectionName));
-        services.AddHostedService<TtlCleanupSchedulerService>();
 
-        // Transaction watcher service
+        // Transaction watcher options (used by eternal orchestration)
         services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
-        services.AddHostedService<TransactionWatcherService>();
+
+        // Eternal orchestration starter (starts all periodic DurableTask orchestrations)
+        services.AddHostedService<EternalOrchestrationStarter>();
 
         // DurableTask framework
         services.AddDurableTask();
