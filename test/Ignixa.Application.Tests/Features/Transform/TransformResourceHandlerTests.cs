@@ -300,6 +300,149 @@ public class TransformResourceHandlerTests
 
     #endregion
 
+    #region StructureMap JSON Resource Tests
+
+    /// <summary>
+    /// Regression test for $transform with inline StructureMap resource (sourceMap parameter).
+    /// Bug: When using sourceMap (JSON StructureMap) instead of srcMap (FML text), the
+    /// transformation produces an empty Patient with only resourceType populated.
+    ///
+    /// The FML-based transform (src.id -> tgt.id) works correctly but the equivalent
+    /// JSON StructureMap structure[] and group[] parsing fails to produce working transforms.
+    /// </summary>
+    [Fact]
+    public async Task GivenStructureMapJsonResource_WhenTransforming_ThenCopiesFieldsToTarget()
+    {
+        // Arrange - Create source patient
+        var sourcePatientJson = """
+            {
+                "resourceType": "Patient",
+                "id": "inline-map-test",
+                "name": [{
+                    "family": "Smith",
+                    "given": ["Bob"]
+                }]
+            }
+            """;
+        var sourcePatient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(sourcePatientJson);
+
+        // Create inline StructureMap as JSON resource (same as user's failing request)
+        var structureMapJson = """
+            {
+                "resourceType": "StructureMap",
+                "id": "patient-name-copy",
+                "url": "http://example.org/StructureMap/PatientNameCopy",
+                "name": "PatientNameCopy",
+                "status": "draft",
+                "structure": [
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+                        "mode": "source",
+                        "alias": "Patient"
+                    },
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+                        "mode": "target",
+                        "alias": "PatientOut"
+                    }
+                ],
+                "group": [
+                    {
+                        "name": "Transform",
+                        "typeMode": "none",
+                        "input": [
+                            {
+                                "name": "src",
+                                "type": "Patient",
+                                "mode": "source"
+                            },
+                            {
+                                "name": "tgt",
+                                "type": "PatientOut",
+                                "mode": "target"
+                            }
+                        ],
+                        "rule": [
+                            {
+                                "name": "copyId",
+                                "source": [
+                                    {
+                                        "context": "src",
+                                        "element": "id",
+                                        "variable": "vid"
+                                    }
+                                ],
+                                "target": [
+                                    {
+                                        "context": "tgt",
+                                        "element": "id",
+                                        "transform": "copy",
+                                        "parameter": [
+                                            {
+                                                "valueId": "vid"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "copyName",
+                                "source": [
+                                    {
+                                        "context": "src",
+                                        "element": "name",
+                                        "variable": "vn"
+                                    }
+                                ],
+                                "target": [
+                                    {
+                                        "context": "tgt",
+                                        "element": "name",
+                                        "transform": "copy",
+                                        "parameter": [
+                                            {
+                                                "valueId": "vn"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+            """;
+        var structureMap = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(structureMapJson);
+
+        var command = new TransformResourceCommand(
+            Source: null,
+            SourceMap: structureMap,
+            SrcMaps: null,
+            SupportingMaps: null,
+            Content: sourcePatient);
+
+        // Act
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert - Verify the target resource was properly transformed
+        result.ShouldNotBeNull("transform should return a result");
+        result.ResourceType.ShouldBe("Patient", "target should be a Patient resource");
+
+        // These assertions fail due to the bug - StructureMap JSON parsing doesn't produce working transforms
+        result.MutableNode!["id"]?.GetValue<string>().ShouldBe("inline-map-test",
+            "id should be copied via StructureMap JSON transform - BUG: returns null");
+
+        result.MutableNode["name"].ShouldNotBeNull("name should be copied via StructureMap JSON transform - BUG: returns null");
+        var nameArray = result.MutableNode["name"]!.AsArray();
+        nameArray.Count.ShouldBe(1, "should have one name");
+
+        var name = nameArray[0]!.AsObject();
+        name["family"]?.GetValue<string>().ShouldBe("Smith", "name.family should be copied");
+        name["given"]!.AsArray()[0]?.GetValue<string>().ShouldBe("Bob", "name.given[0] should be copied");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     /// <summary>

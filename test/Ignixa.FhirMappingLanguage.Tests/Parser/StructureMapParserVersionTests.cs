@@ -466,6 +466,161 @@ public class StructureMapParserVersionTests
 
     #endregion
 
+    #region Target Transform Tests
+
+    [Fact]
+    public void GivenStructureMapWithCopyTransform_WhenParsing_ThenParsesTransformCorrectly()
+    {
+        // Arrange - StructureMap with copy transform and valueId parameter
+        var structureMapJson = new JsonObject
+        {
+            ["resourceType"] = "StructureMap",
+            ["url"] = "http://example.org/test-copy",
+            ["name"] = "TestCopyMap",
+            ["status"] = "draft",
+            ["group"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["name"] = "Transform",
+                    ["typeMode"] = "none",
+                    ["input"] = new JsonArray
+                    {
+                        new JsonObject { ["name"] = "src", ["mode"] = "source" },
+                        new JsonObject { ["name"] = "tgt", ["mode"] = "target" }
+                    },
+                    ["rule"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["name"] = "copyId",
+                            ["source"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["context"] = "src",
+                                    ["element"] = "id",
+                                    ["variable"] = "vid"
+                                }
+                            },
+                            ["target"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["context"] = "tgt",
+                                    ["element"] = "id",
+                                    ["transform"] = "copy",
+                                    ["parameter"] = new JsonArray
+                                    {
+                                        new JsonObject { ["valueId"] = "vid" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var structureMap = new StructureMapJsonNode(structureMapJson)
+        {
+            FhirVersion = FhirVersion.R4
+        };
+
+        // Act
+        var ast = _parser.Parse(structureMap);
+
+        // Assert
+        ast.ShouldNotBeNull();
+        ast.Groups.Count.ShouldBe(1);
+        ast.Groups[0].Rules.Count.ShouldBe(1);
+
+        var rule = ast.Groups[0].Rules[0];
+        rule.Name.ShouldBe("copyId");
+        rule.Targets.Count.ShouldBe(1);
+
+        var target = rule.Targets[0];
+        target.Transform.ShouldNotBeNull("Transform should be parsed");
+        target.Transform.ShouldBeOfType<TransformExpression>();
+
+        var transform = (TransformExpression)target.Transform!;
+        transform.FunctionName.ShouldBe("copy");
+        transform.Arguments.Count.ShouldBe(1, "copy transform should have 1 argument");
+        transform.Arguments[0].ShouldBeOfType<IdentifierExpression>();
+        ((IdentifierExpression)transform.Arguments[0]).Name.ShouldBe("vid");
+    }
+
+    [Fact]
+    public void GivenStructureMapWithCreateTransform_WhenParsing_ThenParsesTransformCorrectly()
+    {
+        // Arrange - StructureMap with create transform and valueString parameter
+        var structureMapJson = new JsonObject
+        {
+            ["resourceType"] = "StructureMap",
+            ["url"] = "http://example.org/test-create",
+            ["name"] = "TestCreateMap",
+            ["status"] = "draft",
+            ["group"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["name"] = "Transform",
+                    ["typeMode"] = "none",
+                    ["input"] = new JsonArray
+                    {
+                        new JsonObject { ["name"] = "src", ["mode"] = "source" },
+                        new JsonObject { ["name"] = "tgt", ["mode"] = "target" }
+                    },
+                    ["rule"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["name"] = "createName",
+                            ["source"] = new JsonArray
+                            {
+                                new JsonObject { ["context"] = "src" }
+                            },
+                            ["target"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["context"] = "tgt",
+                                    ["element"] = "name",
+                                    ["transform"] = "create",
+                                    ["parameter"] = new JsonArray
+                                    {
+                                        new JsonObject { ["valueString"] = "HumanName" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var structureMap = new StructureMapJsonNode(structureMapJson)
+        {
+            FhirVersion = FhirVersion.R4
+        };
+
+        // Act
+        var ast = _parser.Parse(structureMap);
+
+        // Assert
+        var target = ast.Groups[0].Rules[0].Targets[0];
+        target.Transform.ShouldNotBeNull();
+        target.Transform.ShouldBeOfType<TransformExpression>();
+
+        var transform = (TransformExpression)target.Transform!;
+        transform.FunctionName.ShouldBe("create");
+        transform.Arguments.Count.ShouldBe(1);
+        transform.Arguments[0].ShouldBeOfType<LiteralExpression>();
+        ((LiteralExpression)transform.Arguments[0]).Value.ShouldBe("HumanName");
+    }
+
+    #endregion
+
     #region Parser Constructor Version Tests
 
     [Fact]

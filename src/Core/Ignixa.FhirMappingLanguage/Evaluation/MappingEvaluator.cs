@@ -867,15 +867,16 @@ public class MappingEvaluator
                         // Set the result to the target context if specified
                         if (target.Context != null && transformResult is IElement element)
                         {
+                            // Set variable if specified (for rules with "as varname" on target)
                             if (target.Variable != null)
                             {
                                 context.SetVariable(target.Variable, element);
+                            }
 
-                                // Mutate target resource if mutator is available
-                                if (_mutator != null && target.Context != null)
-                                {
-                                    MutateTargetResource(target, element, context, location);
-                                }
+                            // Always mutate the target resource (variable is optional)
+                            if (_mutator != null)
+                            {
+                                MutateTargetResource(target, element, context, location);
                             }
                         }
                     }
