@@ -25,8 +25,11 @@ public static class ConformanceServicesRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Register the ConformanceState initializer as a hosted service
+        // Register the ConformanceState initializer as a hosted service (runs once at startup)
         services.AddHostedService<ConformanceStateInitializerService>();
+
+        // Register the ConformanceState sync service for multi-instance scenarios (polls periodically)
+        services.AddHostedService<ConformanceStateSyncService>();
 
         return services;
     }

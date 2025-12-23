@@ -1,4 +1,5 @@
 using Ignixa.Application.Events.Package;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.PackageManagement;
 using Ignixa.PackageManagement.Abstractions;
 using Medino;
@@ -10,31 +11,18 @@ namespace Ignixa.Application.Features.Admin;
 /// Handler for LoadPackageCommand.
 /// Loads a FHIR package from the NPM registry and imports to database.
 /// </summary>
-public class LoadPackageHandler : IRequestHandler<LoadPackageCommand, LoadPackageResult>
+public class LoadPackageHandler(
+    IImplementationGuideProvider provider,
+    IMediator mediator,
+    PackageActivationPipeline activationPipeline,
+    ILogger<LoadPackageHandler> logger)
+    : IRequestHandler<LoadPackageCommand, LoadPackageResult>
 {
-    private readonly IImplementationGuideProvider _provider;
-    private readonly IMediator _mediator;
-    private readonly ILogger<LoadPackageHandler> _logger;
+    private readonly IImplementationGuideProvider _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+    private readonly IMediator _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+    private readonly PackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
+    private readonly ILogger<LoadPackageHandler> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-    /// <summary>
-    /// Initializes a new instance of the LoadPackageHandler class.
-    /// </summary>
-    /// <param name="provider">Implementation guide provider</param>
-    /// <param name="mediator">Mediator for publishing events</param>
-    /// <param name="logger">Logger instance</param>
-    public LoadPackageHandler(
-        IImplementationGuideProvider provider,
-        IMediator mediator,
-        ILogger<LoadPackageHandler> logger)
-    {
-        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
-    /// <summary>
-    /// Handles the LoadPackageCommand.
-    /// </summary>
     public async Task<LoadPackageResult> HandleAsync(
         LoadPackageCommand request,
         CancellationToken cancellationToken)
@@ -87,6 +75,28 @@ public class LoadPackageHandler : IRequestHandler<LoadPackageCommand, LoadPackag
                 "Resources: {Count}, Duration: {Duration}ms",
                 result.PackageId, result.PackageVersion, result.ImportedResources,
                 result.DurationMilliseconds);
+
+            var activationResult = await _activationPipeline.ActivateAsync(
+                request.PackageId,
+                request.Version,
+                cancellationToken);
+
+            if (!activationResult.Success)
+            {
+                _logger.LogWarning(
+                    "Package {PackageId}@{Version} loaded but activation failed: {Issues}",
+                    request.PackageId,
+                    request.Version,
+                    string.Join(", ", activationResult.Issues.Select(i => i.Message)));
+            }
+            else if (activationResult.PendingReindex.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Package {PackageId}@{Version} activated. Pending reindex: {ResourceTypes}",
+                    request.PackageId,
+                    request.Version,
+                    string.Join(", ", activationResult.PendingReindex));
+            }
 
             // Publish PackageLoaded event for cache invalidation
             await _mediator.PublishAsync(

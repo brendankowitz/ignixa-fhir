@@ -13,6 +13,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IO;
 
 namespace Ignixa.Api.Registrations;
@@ -246,7 +247,7 @@ public static class DataLayerRegistration
 
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
-        // Package repository DbContext factory
+        // Package repository DbContext factory (also used by event store)
         builder.Register<PackageRepositoryDbContextFactory>(c =>
         {
             var tenantStore = c.Resolve<ITenantConfigurationStore>();
@@ -260,7 +261,10 @@ public static class DataLayerRegistration
             }
 
             return new PackageRepositoryDbContextFactory(tenantConfig.Storage.ConnectionString, loggerFactory);
-        }).SingleInstance();
+        })
+        .As<IDbContextFactory<FhirDbContext>>()
+        .AsSelf()
+        .SingleInstance();
 
         // SQL package resource repository
         builder.Register<IPackageResourceRepository>(c =>

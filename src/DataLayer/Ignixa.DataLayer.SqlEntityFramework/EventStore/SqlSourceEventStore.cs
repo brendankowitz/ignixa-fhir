@@ -108,15 +108,21 @@ public class SqlSourceEventStore(
     private SourceEvent DeserializeEvent(SourceEventEntity entity)
     {
         var dataType = GetEventDataType(entity.EventType);
-        var data = JsonSerializer.Deserialize(entity.EventData, dataType, JsonOptions)
-            ?? throw new InvalidOperationException($"Failed to deserialize event data for EventId {entity.EventId}");
-        
-        return new SourceEvent(
-            entity.EventId,
-            entity.StreamId,
-            entity.EventType,
-            data,
-            entity.Timestamp);
+
+        try
+        {
+            var data = JsonSerializer.Deserialize(entity.EventData, dataType, JsonOptions)
+                ?? throw new InvalidOperationException($"Deserialization returned null for EventId {entity.EventId}");
+
+            return new SourceEvent(entity.EventId, entity.StreamId, entity.EventType, data, entity.Timestamp);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Failed to deserialize event {EventId} of type {EventType}", entity.EventId, entity.EventType);
+            throw new InvalidOperationException(
+                $"Failed to deserialize event {entity.EventId} of type '{entity.EventType}'. " +
+                $"This may indicate database corruption or version mismatch.", ex);
+        }
     }
 
     private static Type GetEventDataType(string eventType) => eventType switch
@@ -132,6 +138,10 @@ public class SqlSourceEventStore(
         nameof(SearchParameterDeleted) => typeof(SearchParameterDeleted),
         nameof(StructureDefinitionActivated) => typeof(StructureDefinitionActivated),
         nameof(StructureDefinitionDeactivated) => typeof(StructureDefinitionDeactivated),
-        _ => typeof(object)
+        _ => throw new InvalidOperationException(
+            $"Unknown event type '{eventType}'. This may indicate database corruption or version mismatch. " +
+            $"Valid types: PackageUploaded, PackageActivated, PackageDeactivated, SearchParameterActivated, " +
+            $"SearchParameterReindexStarted, SearchParameterReindexCompleted, SearchParameterReindexFailed, " +
+            $"SearchParameterDeactivated, SearchParameterDeleted, StructureDefinitionActivated, StructureDefinitionDeactivated")
     };
 }

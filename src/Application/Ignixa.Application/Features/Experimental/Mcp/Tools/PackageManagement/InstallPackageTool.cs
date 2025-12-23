@@ -5,10 +5,12 @@
 
 using System.ComponentModel;
 using ModelContextProtocol.Server;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.Mcp.Tools.PackageManagement;
 
@@ -17,21 +19,19 @@ namespace Ignixa.Application.Features.Experimental.Mcp.Tools.PackageManagement;
 /// Downloads, extracts, and imports package resources into the tenant's database.
 /// </summary>
 [McpServerToolType]
-public class InstallPackageTool : TenantAwareMcpTool
+public class InstallPackageTool(
+    IFhirRequestContextAccessor fhirRequestContextAccessor,
+    ITenantConfigurationStore tenantStore,
+    IImplementationGuideProvider packageProvider,
+    INpmPackageSearchService searchService,
+    PackageActivationPipeline activationPipeline,
+    ILogger<InstallPackageTool> logger)
+    : TenantAwareMcpTool(fhirRequestContextAccessor, tenantStore)
 {
-    private readonly IImplementationGuideProvider _packageProvider;
-    private readonly INpmPackageSearchService _searchService;
-
-    public InstallPackageTool(
-        IFhirRequestContextAccessor fhirRequestContextAccessor,
-        ITenantConfigurationStore tenantStore,
-        IImplementationGuideProvider packageProvider,
-        INpmPackageSearchService searchService)
-        : base(fhirRequestContextAccessor, tenantStore)
-    {
-        _packageProvider = packageProvider ?? throw new ArgumentNullException(nameof(packageProvider));
-        _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
-    }
+    private readonly IImplementationGuideProvider _packageProvider = packageProvider ?? throw new ArgumentNullException(nameof(packageProvider));
+    private readonly INpmPackageSearchService _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
+    private readonly PackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
+    private readonly ILogger<InstallPackageTool> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     [McpServerTool(Name = "install_fhir_package")]
     [Description(@"Install a FHIR package from the NPM registry into the tenant's database.
@@ -91,6 +91,29 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             cancellationToken);
 
         var duration = DateTime.UtcNow - startTime;
+
+        // Activate package and emit events
+        var activationResult = await _activationPipeline.ActivateAsync(
+            packageId,
+            resolvedVersion,
+            cancellationToken);
+
+        if (!activationResult.Success)
+        {
+            _logger.LogWarning(
+                "Package {PackageId}@{Version} loaded but activation failed: {Issues}",
+                packageId,
+                resolvedVersion,
+                string.Join(", ", activationResult.Issues.Select(i => i.Message)));
+        }
+        else if (activationResult.PendingReindex.Count > 0)
+        {
+            _logger.LogInformation(
+                "Package {PackageId}@{Version} activated. Pending reindex: {ResourceTypes}",
+                packageId,
+                resolvedVersion,
+                string.Join(", ", activationResult.PendingReindex));
+        }
 
         // Map to DTO
         var resourcesByType = result.ResourcesByType

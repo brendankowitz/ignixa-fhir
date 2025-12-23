@@ -18,7 +18,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
 /// instance before a previous operation completed" errors.
 /// This factory ensures true isolation by creating fresh DbContext per operation.
 /// </summary>
-public class PackageRepositoryDbContextFactory
+public class PackageRepositoryDbContextFactory : IDbContextFactory<FhirDbContext>
 {
     private readonly string _connectionString;
     private readonly ILoggerFactory _loggerFactory;

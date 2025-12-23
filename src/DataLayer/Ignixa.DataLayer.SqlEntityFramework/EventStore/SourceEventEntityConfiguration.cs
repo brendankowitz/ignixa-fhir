@@ -36,5 +36,8 @@ public class SourceEventEntityConfiguration : IEntityTypeConfiguration<SourceEve
         
         builder.HasIndex(e => new { e.StreamId, e.EventId })
             .HasDatabaseName("IX_SourceEvents_StreamId_EventId");
+
+        builder.HasIndex(e => e.EventId)
+            .HasDatabaseName("IX_SourceEvents_EventId");
     }
 }

@@ -2,6 +2,7 @@ using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Conformance;
 
@@ -13,10 +14,20 @@ public sealed class ConformanceState : IDisposable
     private readonly Dictionary<string, string> _overrideChain = [];
     private readonly Dictionary<string, int> _canonicalToParamId = [];
     private readonly SemaphoreSlim _activationLock = new(1, 1);
+    private readonly ILogger<ConformanceState>? _logger;
 
     private int _nextSearchParamId = 1;
     private long _lastProcessedEventId;
     private volatile bool _isInitialized;
+
+    public ConformanceState()
+    {
+    }
+
+    public ConformanceState(ILogger<ConformanceState> logger)
+    {
+        _logger = logger;
+    }
 
     public long LastProcessedEventId => Interlocked.Read(ref _lastProcessedEventId);
     public bool IsInitialized => _isInitialized;
@@ -38,7 +49,7 @@ public sealed class ConformanceState : IDisposable
         if (_canonicalToParamId.TryGetValue(canonical, out var existing))
             return existing;
 
-        var newId = _nextSearchParamId++;
+        var newId = Interlocked.Increment(ref _nextSearchParamId) - 1;
         _canonicalToParamId[canonical] = newId;
         return newId;
     }
@@ -146,38 +157,55 @@ public sealed class ConformanceState : IDisposable
 
     public void Apply(SourceEvent evt)
     {
-        switch (evt.Data)
+        _logger?.LogDebug("Applying event {EventId} ({EventType}) from stream {StreamId}",
+            evt.EventId, evt.EventType, evt.StreamId);
+
+        try
         {
-            case SearchParameterActivated sp:
-                ApplySearchParameterActivated(sp, evt.Timestamp);
-                break;
-            case SearchParameterReindexStarted reindex:
-                ApplyReindexStarted(reindex);
-                break;
-            case SearchParameterReindexCompleted completed:
-                ApplyReindexCompleted(completed);
-                break;
-            case SearchParameterReindexFailed failed:
-                ApplyReindexFailed(failed);
-                break;
-            case SearchParameterDeactivated deactivated:
-                ApplyDeactivated(deactivated);
-                break;
-            case SearchParameterDeleted deleted:
-                ApplyDeleted(deleted);
-                break;
-            case StructureDefinitionActivated sd:
-                ApplyStructureDefinitionActivated(sd);
-                break;
-            case StructureDefinitionDeactivated sdDeactivated:
-                ApplyStructureDefinitionDeactivated(sdDeactivated);
-                break;
-            case PackageActivated pa:
-                ApplyPackageActivated(pa, evt.Timestamp);
-                break;
-            case PackageDeactivated pd:
-                ApplyPackageDeactivated(pd);
-                break;
+            switch (evt.Data)
+            {
+                case SearchParameterActivated sp:
+                    ApplySearchParameterActivated(sp, evt.Timestamp);
+                    break;
+                case SearchParameterReindexStarted reindex:
+                    ApplyReindexStarted(reindex);
+                    break;
+                case SearchParameterReindexCompleted completed:
+                    ApplyReindexCompleted(completed);
+                    break;
+                case SearchParameterReindexFailed failed:
+                    ApplyReindexFailed(failed);
+                    break;
+                case SearchParameterDeactivated deactivated:
+                    ApplyDeactivated(deactivated);
+                    break;
+                case SearchParameterDeleted deleted:
+                    ApplyDeleted(deleted);
+                    break;
+                case StructureDefinitionActivated sd:
+                    ApplyStructureDefinitionActivated(sd);
+                    break;
+                case StructureDefinitionDeactivated sdDeactivated:
+                    ApplyStructureDefinitionDeactivated(sdDeactivated);
+                    break;
+                case PackageActivated pa:
+                    ApplyPackageActivated(pa, evt.Timestamp);
+                    break;
+                case PackageDeactivated pd:
+                    ApplyPackageDeactivated(pd);
+                    break;
+                default:
+                    _logger?.LogWarning("Unknown event type {EventType} at EventId {EventId} - ignoring",
+                        evt.Data.GetType().Name, evt.EventId);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to apply event {EventId} ({EventType})",
+                evt.EventId, evt.EventType);
+            throw new InvalidOperationException(
+                $"Event replay failed at EventId {evt.EventId} ({evt.EventType})", ex);
         }
     }
 
