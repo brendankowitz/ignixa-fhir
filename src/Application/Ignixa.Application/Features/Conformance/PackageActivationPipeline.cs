@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -23,12 +24,14 @@ public class PackageActivationPipeline(
     IPackageResourceRepository packageRepo,
     ISourceEventStore eventStore,
     ConformanceState state,
+    IFhirVersionContext fhirVersionContext,
     IOptions<SearchParameterResolutionOptions> options,
     ILogger<PackageActivationPipeline> logger)
 {
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
     private readonly ISourceEventStore _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
     private readonly ConformanceState _state = state ?? throw new ArgumentNullException(nameof(state));
+    private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -44,10 +47,21 @@ public class PackageActivationPipeline(
         ArgumentNullException.ThrowIfNull(packageId);
         ArgumentNullException.ThrowIfNull(version);
 
-        _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
-
         // Acquire lock for entire activation to ensure thread safety
         using var _ = await _state.AcquireActivationLockAsync(cancellationToken);
+
+        // Check if package is already activated (idempotency)
+        var packageKey = $"{packageId}@{version}";
+        if (_state.Packages.ContainsKey(packageKey))
+        {
+            _logger.LogDebug(
+                "Package {PackageId}@{Version} already activated, skipping",
+                packageId,
+                version);
+            return ActivationResult.Succeeded([]);
+        }
+
+        _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
 
         // 1. Load package resources from repository
         var packageResources = await _packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
@@ -82,7 +96,10 @@ public class PackageActivationPipeline(
             _state.ApplyAndTrack(evt);
         }
 
-        // 6. Detect reindex requirements
+        // 6. Invalidate search parameter caches so new parameters are visible
+        _fhirVersionContext.InvalidateSearchParameterCaches();
+
+        // 7. Detect reindex requirements
         var reindexNeeded = DetectReindexRequirements(resources);
 
         _logger.LogInformation(
@@ -198,6 +215,9 @@ public class PackageActivationPipeline(
 
                 var searchParamId = _state.GetOrAllocateSearchParamId(sp.Canonical, existing);
 
+                var componentData = sp.Components?.Select(c =>
+                    new SearchParameterComponentData(c.DefinitionUrl, c.Expression)).ToList();
+
                 events.Add(new NewSourceEvent(
                     streamId,
                     nameof(SearchParameterActivated),
@@ -209,7 +229,11 @@ public class PackageActivationPipeline(
                         sp.Type,
                         packageKey,
                         overrides,
-                        searchParamId)));
+                        searchParamId,
+                        sp.TargetResourceTypes,
+                        componentData,
+                        sp.Name,
+                        sp.Description)));
             }
         }
 

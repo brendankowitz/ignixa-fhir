@@ -33,11 +33,17 @@ public class SourceEventEntityConfiguration : IEntityTypeConfiguration<SourceEve
         
         builder.Property(e => e.Timestamp)
             .HasDefaultValueSql("SYSUTCDATETIME()");
-        
+
+        builder.Property(e => e.TransactionId)
+            .HasDefaultValue(0L);
+
         builder.HasIndex(e => new { e.StreamId, e.EventId })
             .HasDatabaseName("IX_SourceEvents_StreamId_EventId");
 
         builder.HasIndex(e => e.EventId)
             .HasDatabaseName("IX_SourceEvents_EventId");
+
+        builder.HasIndex(e => e.TransactionId)
+            .HasDatabaseName("IX_SourceEvents_TransactionId");
     }
 }

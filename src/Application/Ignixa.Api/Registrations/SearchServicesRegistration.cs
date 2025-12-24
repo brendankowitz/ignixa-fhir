@@ -5,6 +5,7 @@
 
 using Autofac;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Domain.Abstractions;
@@ -63,7 +64,8 @@ public static class SearchServicesRegistration
                 options,
                 c.Resolve<IPackageResourceRepository>(),
                 c.Resolve<IPackageResourceProvider>(),
-                c.Resolve<ICompositeSchemaProviderRegistry>());
+                c.Resolve<ICompositeSchemaProviderRegistry>(),
+                c.Resolve<ConformanceState>());
         }).SingleInstance();
 
         // SearchOptionsBuilderFactory

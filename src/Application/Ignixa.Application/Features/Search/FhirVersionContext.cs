@@ -5,6 +5,7 @@
 
 using System.Collections.Concurrent;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Definition;
@@ -37,6 +38,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly IPackageResourceProvider? _packageResourceProvider;
     private readonly ICompositeSchemaProviderRegistry? _compositeProviderRegistry;
     private readonly SearchParameterResolutionOptions _searchParameterResolutionOptions;
+    private readonly ConformanceState? _conformanceState;
     private readonly ILogger<FhirVersionContext> _logger;
     private bool _disposed;
 
@@ -45,13 +47,15 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         SearchParameterResolutionOptions searchParameterResolutionOptions,
         IPackageResourceRepository? packageResourceRepository = null,
         IPackageResourceProvider? packageResourceProvider = null,
-        ICompositeSchemaProviderRegistry? compositeProviderRegistry = null)
+        ICompositeSchemaProviderRegistry? compositeProviderRegistry = null,
+        ConformanceState? conformanceState = null)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _searchParameterResolutionOptions = searchParameterResolutionOptions ?? throw new ArgumentNullException(nameof(searchParameterResolutionOptions));
         _packageResourceRepository = packageResourceRepository;
         _packageResourceProvider = packageResourceProvider;
         _compositeProviderRegistry = compositeProviderRegistry;
+        _conformanceState = conformanceState;
         _logger = _loggerFactory.CreateLogger<FhirVersionContext>();
     }
 
@@ -283,11 +287,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchParameterDefinitionManager(fhirVersion);
         }
 
-        // If package management dependencies not available, return base manager
-        if (_packageResourceRepository == null)
+        // If ConformanceState dependency not available, return base manager
+        if (_conformanceState is null)
         {
             _logger.LogTrace(
-                "Package management dependencies not available - returning base search parameter manager for {FhirVersion}",
+                "ConformanceState not available - returning base search parameter manager for {FhirVersion}",
                 fhirVersion);
             return GetSearchParameterDefinitionManager(fhirVersion);
         }
@@ -316,23 +320,13 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             // Get base manager for this FHIR version
             var baseManager = GetSearchParameterDefinitionManager(version);
 
-            // Get base schema provider for JSON parsing
-            var baseSchemaProvider = GetBaseSchemaProvider(version);
-
-            // Create conflict resolver with configured options
-            var conflictResolver = new SearchParameterConflictResolver(
-                _searchParameterResolutionOptions,
-                _loggerFactory.CreateLogger<SearchParameterConflictResolver>());
-
-            // Create composite manager that includes base spec + tenant packages
+            // Create composite manager using ConformanceState as source of truth
             var fhirVersionString = version.ToVersionString();
             var manager = new CompositeSearchParameterDefinitionManager(
                 baseManager,
-                _packageResourceRepository,
-                baseSchemaProvider,
+                _conformanceState,
                 fhirVersionString,
                 _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
-                conflictResolver,
                 _searchParameterResolutionOptions);
 
             // Initialize eagerly if configured
@@ -399,6 +393,25 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         {
             _compartmentLock.Release();
         }
+    }
+
+    /// <inheritdoc/>
+    public void InvalidateSearchParameterCaches()
+    {
+        _logger.LogInformation("Invalidating search parameter caches due to conformance state change");
+
+        // Clear and reload each composite search parameter manager
+        foreach (var manager in _compositeSearchParamManagers.Values)
+        {
+            manager.ReloadFromConformanceState();
+        }
+
+        // Clear tenant-aware search indexers (they depend on search param managers)
+        _tenantSearchIndexers.Clear();
+
+        _logger.LogDebug(
+            "Invalidated {ManagerCount} search parameter managers and cleared tenant indexer cache",
+            _compositeSearchParamManagers.Count);
     }
 
     /// <summary>

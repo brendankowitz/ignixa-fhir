@@ -19,6 +19,7 @@ When search parameters are added, modified, or disabled, existing FHIR resources
 | Investigation | Status | Summary |
 |--------------|--------|---------|
 | [durable-task-orchestration](investigations/durable-task-orchestration.md) | ✅ Recommended | Use DurableTask Framework with Orchestrator/Worker pattern (same as Export/Import). Handles 1M-1B+ rows via surrogate ID partitioning, built-in pause/resume/cancel, 24-48 parallel workers, fault-tolerant |
+| [event-driven-triggering](investigations/event-driven-triggering.md) | In Progress | Leverage event-sourced conformance to trigger reindex with precision: know exact SPs, exact resource types, and exact cutoff time (only resources BEFORE activation need reindexing) |
 | [background-service-simple](investigations/background-service-simple.md) | ❌ Not Recommended | Simple BackgroundService polling SQL. Good for <1M rows but no horizontal scale-out, manual checkpointing, inconsistent with existing patterns |
 | [sql-queue-state-machine](investigations/sql-queue-state-machine.md) | ⚠️ Acceptable | Custom SQL queue (src-old pattern). Scales well but high complexity, polling overhead, deprecated in favor of DurableTask |
 

@@ -18,7 +18,10 @@ public record SearchParameterInfo(
     SearchParamType Type,
     string? DerivedFrom,
     string SourcePackageId,
-    IReadOnlyList<CompositeComponent>? Components);
+    IReadOnlyList<CompositeComponent>? Components,
+    IReadOnlyList<string>? TargetResourceTypes,
+    string? Name,
+    string? Description);
 
 /// <summary>
 /// Component of a composite SearchParameter.

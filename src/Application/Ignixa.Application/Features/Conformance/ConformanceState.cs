@@ -223,6 +223,10 @@ public sealed class ConformanceState : IDisposable
             ParamType = sp.ParamType,
             SourcePackage = sp.SourcePackage,
             OverridesCanonical = sp.Overrides?.OverridesCanonical,
+            TargetResourceTypes = sp.TargetResourceTypes,
+            Components = sp.Components,
+            Name = sp.Name,
+            Description = sp.Description,
             Status = isBaseFhir ? SearchParameterStatus.Enabled : SearchParameterStatus.Pending
         };
 

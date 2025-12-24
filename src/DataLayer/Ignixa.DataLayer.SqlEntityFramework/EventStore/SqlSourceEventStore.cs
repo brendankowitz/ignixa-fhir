@@ -31,6 +31,12 @@ public class SqlSourceEventStore(
         var entities = new List<SourceEventEntity>(eventsList.Count);
         var timestamp = DateTimeOffset.UtcNow;
 
+        // Capture current max TransactionId for deterministic reindex cutoff
+        // Resources with TransactionId <= this value existed before these events
+        var currentTransactionId = await context.Transactions
+            .Where(t => t.IsVisible)
+            .MaxAsync(t => (long?)t.SurrogateIdRangeFirstValue, cancellationToken) ?? 0L;
+
         foreach (var evt in eventsList)
         {
             var entity = new SourceEventEntity
@@ -38,7 +44,8 @@ public class SqlSourceEventStore(
                 StreamId = evt.StreamId,
                 EventType = evt.EventType,
                 EventData = JsonSerializer.Serialize(evt.Data, JsonOptions),
-                Timestamp = timestamp
+                Timestamp = timestamp,
+                TransactionId = currentTransactionId
             };
 
             context.SourceEvents.Add(entity);
@@ -47,7 +54,10 @@ public class SqlSourceEventStore(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Appended {Count} events to event store", eventsList.Count);
+        logger.LogInformation(
+            "Appended {Count} events to event store (TransactionId cutoff: {TransactionId})",
+            eventsList.Count,
+            currentTransactionId);
 
         return entities.Select((e, i) => new SourceEvent(
             e.EventId,
@@ -114,7 +124,7 @@ public class SqlSourceEventStore(
             var data = JsonSerializer.Deserialize(entity.EventData, dataType, JsonOptions)
                 ?? throw new InvalidOperationException($"Deserialization returned null for EventId {entity.EventId}");
 
-            return new SourceEvent(entity.EventId, entity.StreamId, entity.EventType, data, entity.Timestamp);
+            return new SourceEvent(entity.EventId, entity.StreamId, entity.EventType, data, entity.Timestamp, entity.TransactionId);
         }
         catch (JsonException ex)
         {

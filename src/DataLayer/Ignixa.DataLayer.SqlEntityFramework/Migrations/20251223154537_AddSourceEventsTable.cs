@@ -22,7 +22,8 @@ public partial class AddSourceEventsTable : Migration
                 StreamId = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
                 EventType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                 EventData = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                Timestamp = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false, defaultValueSql: "SYSUTCDATETIME()")
+                Timestamp = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false, defaultValueSql: "SYSUTCDATETIME()"),
+                TransactionId = table.Column<long>(type: "bigint", nullable: false, defaultValue: 0L)
             },
             constraints: table =>
             {
@@ -38,6 +39,11 @@ public partial class AddSourceEventsTable : Migration
             name: "IX_SourceEvents_EventId",
             table: "SourceEvents",
             column: "EventId");
+
+        migrationBuilder.CreateIndex(
+            name: "IX_SourceEvents_TransactionId",
+            table: "SourceEvents",
+            column: "TransactionId");
     }
 
     /// <inheritdoc />

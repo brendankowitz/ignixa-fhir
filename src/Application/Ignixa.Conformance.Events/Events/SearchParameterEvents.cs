@@ -11,7 +11,15 @@ public record SearchParameterActivated(
     SearchParamType ParamType,
     string SourcePackage,
     OverrideInfo? Overrides,
-    int SearchParamId);
+    int SearchParamId,
+    IReadOnlyList<string>? TargetResourceTypes,
+    IReadOnlyList<SearchParameterComponentData>? Components,
+    string? Name,
+    string? Description);
+
+public record SearchParameterComponentData(
+    string DefinitionUrl,
+    string? Expression);
 
 public record SearchParameterReindexStarted(
     string Canonical,

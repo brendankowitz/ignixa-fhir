@@ -12,4 +12,11 @@ public class SourceEventEntity
     public string EventType { get; set; } = null!;
     public string EventData { get; set; } = null!;
     public DateTimeOffset Timestamp { get; set; }
+
+    /// <summary>
+    /// Transaction ID at the time this event was created.
+    /// Used for deterministic reindex cutoff - resources with TransactionId &lt;= this value
+    /// existed before this event and may need reindexing for new SearchParameters.
+    /// </summary>
+    public long TransactionId { get; set; }
 }

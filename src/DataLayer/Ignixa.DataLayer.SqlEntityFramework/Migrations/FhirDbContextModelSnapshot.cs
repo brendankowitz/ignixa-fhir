@@ -1536,10 +1536,18 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
+                    b.Property<long>("TransactionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L);
+
                     b.HasKey("EventId");
 
                     b.HasIndex("EventId")
                         .HasDatabaseName("IX_SourceEvents_EventId");
+
+                    b.HasIndex("TransactionId")
+                        .HasDatabaseName("IX_SourceEvents_TransactionId");
 
                     b.HasIndex("StreamId", "EventId")
                         .HasDatabaseName("IX_SourceEvents_StreamId_EventId");

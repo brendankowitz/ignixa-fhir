@@ -74,4 +74,10 @@ public interface IFhirVersionContext
     /// <param name="fhirVersion">FHIR version enum (e.g., FhirVersion.R4).</param>
     /// <returns>Compartment definition manager for the specified version.</returns>
     ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirVersion fhirVersion);
+
+    /// <summary>
+    /// Invalidates cached search parameter managers, forcing them to reload from ConformanceState.
+    /// Should be called when packages are activated/deactivated.
+    /// </summary>
+    void InvalidateSearchParameterCaches();
 }

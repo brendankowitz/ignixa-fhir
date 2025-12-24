@@ -5,7 +5,8 @@ public record SourceEvent(
     string StreamId,
     string EventType,
     object Data,
-    DateTimeOffset Timestamp);
+    DateTimeOffset Timestamp,
+    long TransactionId = 0);
 
 public record NewSourceEvent(
     string StreamId,

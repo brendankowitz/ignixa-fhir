@@ -99,6 +99,32 @@ public static class PackageResourceMapper
                 }
             }
 
+            List<string>? targetResourceTypes = null;
+            if (type == SearchParamType.Reference && root.TryGetProperty("target", out var targetArray))
+            {
+                targetResourceTypes = [];
+                foreach (var target in targetArray.EnumerateArray())
+                {
+                    var targetType = target.GetString();
+                    if (!string.IsNullOrEmpty(targetType))
+                    {
+                        targetResourceTypes.Add(targetType);
+                    }
+                }
+            }
+
+            string? name = null;
+            if (root.TryGetProperty("name", out var nameProp))
+            {
+                name = nameProp.GetString();
+            }
+
+            string? description = null;
+            if (root.TryGetProperty("description", out var descProp))
+            {
+                description = descProp.GetString();
+            }
+
             return new SearchParameterInfo(
                 resource.Canonical,
                 code,
@@ -107,7 +133,10 @@ public static class PackageResourceMapper
                 type,
                 derivedFrom,
                 resource.PackageId,
-                components);
+                components,
+                targetResourceTypes,
+                name,
+                description);
         }
         catch
         {
