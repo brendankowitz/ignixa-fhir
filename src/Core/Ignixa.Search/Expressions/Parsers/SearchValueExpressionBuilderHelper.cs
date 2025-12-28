@@ -240,7 +240,7 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
         switch (_modifier?.SearchModifierCode)
         {
             case null:
-                _outputExpression = Expression.StringEquals(FieldName.Uri, _componentIndex, uri.Uri, false);
+                _outputExpression = BuildCanonicalExpression(uri);
                 break;
             case SearchModifierCode.Above:
                 _outputExpression = Expression.And(
@@ -255,6 +255,29 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
             default:
                 ThrowModifierNotSupported();
                 break;
+        }
+
+        Expression BuildCanonicalExpression(UriSearchValue uriValue)
+        {
+            var expressions = new List<Expression>
+            {
+                Expression.StringEquals(FieldName.Uri, _componentIndex, uriValue.Uri, false)
+            };
+
+            if (!string.IsNullOrWhiteSpace(uriValue.Version))
+            {
+                expressions.Add(Expression.StringEquals(FieldName.UriVersion, _componentIndex, uriValue.Version, false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(uriValue.Fragment))
+            {
+                expressions.Add(Expression.StringEquals(FieldName.UriFragment, _componentIndex, uriValue.Fragment, false));
+            }
+
+            if (expressions.Count == 1)
+                return expressions[0];
+            else
+                return Expression.And(expressions.ToArray());
         }
     }
 

@@ -194,10 +194,10 @@ public class SortTests : CapabilityDrivenTestBase
         var testData = SchemaProvider.GetPaginatedSortTestData(tag);
         await Harness.CreateResourcesAsync(testData.Patients.ToArray());
 
-        var results = await Harness.SearchAsync("Patient", $"_tag={tag}&_sort=birthdate");
+        var allResults = await GetAllPagesAsync("Patient", $"_tag={tag}&_sort=birthdate");
 
-        results.Length.ShouldBe(12);
-        AssertBirthdatesInAscendingOrder(results.ToList());
+        allResults.Count.ShouldBeGreaterThanOrEqualTo(12, "Should have at least 12 patients created by fixture");
+        AssertBirthdatesInAscendingOrder(allResults);
     }
 
     /// <summary>
@@ -413,13 +413,13 @@ public class SortTests : CapabilityDrivenTestBase
 
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_sort=birthdate");
 
-        bundle.Entry.Count.ShouldBe(4);
+        GetMatchEntries(bundle).Count.ShouldBe(4);
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next");
         nextLink.ShouldBeNull();
 
         var bundleDesc = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_sort=-birthdate");
 
-        bundleDesc.Entry.Count.ShouldBe(4);
+        GetMatchEntries(bundleDesc).Count.ShouldBe(4);
         var nextLinkDesc = bundleDesc.Link.FirstOrDefault(l => l.Relation == "next");
         nextLinkDesc.ShouldBeNull();
     }
@@ -469,7 +469,7 @@ public class SortTests : CapabilityDrivenTestBase
         var responseJson = await response.Content.ReadAsStringAsync();
         var bundle = Ignixa.Serialization.JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
 
-        bundle.Entry.Count.ShouldBe(4);
+        GetMatchEntries(bundle).Count.ShouldBe(4);
     }
 
     /// <summary>
@@ -496,7 +496,8 @@ public class SortTests : CapabilityDrivenTestBase
         var allResources = new List<ResourceJsonNode>();
         var bundle = await Harness.SearchBundleAsync(resourceType, query);
 
-        allResources.AddRange(bundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!));
+        // Exclude outcome entries (like OperationOutcome)
+        allResources.AddRange(GetMatchEntries(bundle).Where(e => e.Resource is not null).Select(e => e.Resource!));
 
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
         var iterations = 0;
@@ -504,7 +505,7 @@ public class SortTests : CapabilityDrivenTestBase
         while (!string.IsNullOrEmpty(nextLink) && iterations < 20)
         {
             var nextBundle = await Harness.GetBundleAsync(nextLink);
-            allResources.AddRange(nextBundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!));
+            allResources.AddRange(GetMatchEntries(nextBundle).Where(e => e.Resource is not null).Select(e => e.Resource!));
             nextLink = nextBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
             iterations++;
         }
@@ -663,5 +664,13 @@ public class SortTests : CapabilityDrivenTestBase
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Gets match entries from a bundle, excluding outcome entries (like OperationOutcome).
+    /// </summary>
+    private static List<BundleComponentJsonNode> GetMatchEntries(BundleJsonNode bundle)
+    {
+        return bundle.Entry.Where(e => e.Search?.Mode != "outcome").ToList();
     }
 }

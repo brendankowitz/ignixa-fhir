@@ -143,7 +143,7 @@ public class CompositeSearchFixture : IAsyncLifetime
             ObservationBuilder.Create(schemaProvider)
                 .WithTag(Tag)
                 .WithCode("eye-color", "http://example.org")
-                .WithCodedValue("blue", "http://example.org/eye-color", null, "blue-eyed")
+                .WithStringValue("blue-eyed")
                 .WithSubject(PatientId)
                 .WithStatus("final")
                 .Build(),
@@ -152,7 +152,7 @@ public class CompositeSearchFixture : IAsyncLifetime
             ObservationBuilder.Create(schemaProvider)
                 .WithTag(Tag)
                 .WithCode("eye-color", "http://example.org")
-                .WithCodedValue("hazel", "http://example.org/eye-color", null, "hazel eyes with a long descriptive text that exceeds normal length")
+                .WithStringValue("hazel eyes with a long descriptive text that exceeds normal length")
                 .WithSubject(PatientId)
                 .WithStatus("final")
                 .Build()

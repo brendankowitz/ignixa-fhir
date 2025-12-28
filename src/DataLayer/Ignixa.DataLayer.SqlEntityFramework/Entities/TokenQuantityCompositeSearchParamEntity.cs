@@ -58,20 +58,24 @@ public class TokenQuantityCompositeSearchParamEntity
     /// Gets or sets the quantity code identifier.
     /// References the QuantityCode table for unit code lookup.
     /// </summary>
+    [Column("QuantityCodeId2")]
     public int? QuantityCodeId { get; set; }
 
     /// <summary>
-    /// Gets or sets the single low value for quantity comparison.
+    /// Gets or sets the single value for quantity comparison.
     /// </summary>
+    [Column("SingleValue2")]
     public decimal? SingleValue { get; set; }
 
     /// <summary>
     /// Gets or sets the low value for quantity range comparison.
     /// </summary>
+    [Column("LowValue2")]
     public decimal? LowValue { get; set; }
 
     /// <summary>
     /// Gets or sets the high value for quantity range comparison.
     /// </summary>
+    [Column("HighValue2")]
     public decimal? HighValue { get; set; }
 }

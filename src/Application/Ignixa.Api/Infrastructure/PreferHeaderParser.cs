@@ -230,6 +230,45 @@ public static class PreferHeaderParser
     }
 
     /// <summary>
+    /// Parses the Prefer header to extract handling preference (strict vs lenient).
+    /// </summary>
+    /// <param name="headers">HTTP request headers.</param>
+    /// <returns>True if handling=strict, false if handling=lenient or not specified.</returns>
+    /// <remarks>
+    /// Supported format: Prefer: handling=strict|lenient
+    /// Examples:
+    ///   - Prefer: handling=strict → true
+    ///   - Prefer: handling=lenient → false
+    ///   - No Prefer header → false (default to lenient)
+    /// Also supports multiple preferences: Prefer: handling=strict, return=representation
+    /// </remarks>
+    public static bool IsStrictHandling(IHeaderDictionary headers)
+    {
+        if (!headers.TryGetValue("Prefer", out var preferHeader))
+        {
+            return false;
+        }
+
+        var preferValue = preferHeader.ToString();
+        if (string.IsNullOrWhiteSpace(preferValue))
+        {
+            return false;
+        }
+
+        foreach (var preference in preferValue.Split(','))
+        {
+            var trimmedPref = preference.Trim();
+            if (trimmedPref.StartsWith("handling=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = trimmedPref.Substring("handling=".Length).Trim();
+                return value.Equals("strict", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Parses a single validation level value.
     /// </summary>
     private static ValidationDepth? ParseValidationLevelValue(string value, ILogger? logger)

@@ -24,6 +24,22 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
     private const decimal DefaultLowValue = -999999999999999999m;
     private const decimal DefaultHighValue = 999999999999999999m;
 
+    private readonly IReadOnlyDictionary<string, int> _systemMappings;
+    private readonly IReadOnlyDictionary<string, int> _quantityCodeMappings;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="QuantitySearchParameterRowGenerator"/> class.
+    /// </summary>
+    /// <param name="systemMappings">Mapping of system URIs to their database IDs.</param>
+    /// <param name="quantityCodeMappings">Mapping of quantity codes (units) to their database IDs.</param>
+    public QuantitySearchParameterRowGenerator(
+        IReadOnlyDictionary<string, int> systemMappings,
+        IReadOnlyDictionary<string, int> quantityCodeMappings)
+    {
+        _systemMappings = systemMappings ?? throw new ArgumentNullException(nameof(systemMappings));
+        _quantityCodeMappings = quantityCodeMappings ?? throw new ArgumentNullException(nameof(quantityCodeMappings));
+    }
+
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -67,9 +83,36 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
-                // Calculate values for this row
-                var systemId = string.IsNullOrEmpty(quantityValue.System) ? 0 : quantityValue.System.GetHashCode(StringComparison.Ordinal);
-                var quantityCodeId = string.IsNullOrEmpty(quantityValue.Code) ? 0 : quantityValue.Code.GetHashCode(StringComparison.Ordinal);
+                // Calculate values for this row - use system mappings
+                int systemId;
+                if (string.IsNullOrEmpty(quantityValue.System))
+                {
+                    systemId = 0; // Will be set to DBNull below
+                }
+                else if (_systemMappings.TryGetValue(quantityValue.System, out var sysId))
+                {
+                    systemId = sysId;
+                }
+                else
+                {
+                    // System not found in cache - skip this record
+                    continue;
+                }
+
+                int quantityCodeId;
+                if (string.IsNullOrEmpty(quantityValue.Code))
+                {
+                    quantityCodeId = 0; // Will be set to DBNull below
+                }
+                else if (_quantityCodeMappings.TryGetValue(quantityValue.Code, out var codeId))
+                {
+                    quantityCodeId = codeId;
+                }
+                else
+                {
+                    // Quantity code not found in cache - skip this record
+                    continue;
+                }
 
                 decimal? singleValue;
                 decimal lowValue;
@@ -99,8 +142,18 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
-                record.SetInt32(3, systemId);
-                record.SetInt32(4, quantityCodeId);
+
+                // Set SystemId - use DBNull for null/empty systems
+                if (string.IsNullOrEmpty(quantityValue.System))
+                    record.SetDBNull(3);
+                else
+                    record.SetInt32(3, systemId);
+
+                // Set QuantityCodeId - use DBNull for null/empty codes
+                if (string.IsNullOrEmpty(quantityValue.Code))
+                    record.SetDBNull(4);
+                else
+                    record.SetInt32(4, quantityCodeId);
 
                 if (singleValue.HasValue)
                 {

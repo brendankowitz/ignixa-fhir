@@ -39,11 +39,30 @@ public class UriSearchParamEntity
     /// <summary>
     /// URI value (up to 256 characters).
     /// Case-sensitive.
+    /// For canonical URIs, this is the base URI without version or fragment.
     /// </summary>
     [Required]
     [Column("Uri")]
     [MaxLength(256)]
     public string Uri { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Canonical version (e.g., "2" from "http://example.org/profile|2").
+    /// Null for non-canonical URIs or canonical URIs without version.
+    /// Case-sensitive.
+    /// </summary>
+    [Column("Version")]
+    [MaxLength(64)]
+    public string? Version { get; set; }
+
+    /// <summary>
+    /// Canonical fragment (e.g., "section" from "http://example.org/profile#section").
+    /// Null for non-canonical URIs or canonical URIs without fragment.
+    /// Case-sensitive.
+    /// </summary>
+    [Column("Fragment")]
+    [MaxLength(128)]
+    public string? Fragment { get; set; }
 
     // Navigation properties
 

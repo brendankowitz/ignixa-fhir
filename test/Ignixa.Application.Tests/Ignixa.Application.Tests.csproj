@@ -6,7 +6,7 @@
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
     <!-- Suppress test-specific code analysis warnings -->
-    <NoWarn>$(NoWarn);CA1707;CA1849;CA2000;CA2012;CS8604;CS8625</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA1849;CA2000;CA2012;CS8604;CS8625;CA1303</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +27,9 @@
     <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\src\Application\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirFakes\Ignixa.FhirFakes.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
 </Project>

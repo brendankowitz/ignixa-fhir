@@ -55,6 +55,8 @@ public record QueryParameter(string Name, string Value)
             // Search parameters (filter resources)
             "_id" => ParameterCategory.Search,
             "_tag" => ParameterCategory.Search,
+            "_profile" => ParameterCategory.Search,
+            "_security" => ParameterCategory.Search,
             "_lastUpdated" => ParameterCategory.Search,
             "_filter" => ParameterCategory.Search,
             "_list" => ParameterCategory.Search,

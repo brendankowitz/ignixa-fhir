@@ -85,6 +85,10 @@ GET /Observation?code=http://loinc.org|
 GET /Observation?code:text=body%20weight
 ```
 
+:::info Token Value Size Limits
+Token values exceeding database column limits (typically 450 characters) are automatically handled with overflow indexing. Long identifiers, system URIs, and codes remain fully searchable regardless of length.
+:::
+
 ### Reference
 
 Resource references:
@@ -143,6 +147,30 @@ GET /ValueSet?url=http://example.org/ValueSet/my-codes
 GET /ValueSet?url:below=http://example.org/
 ```
 
+#### Canonical URI Search
+
+Canonical URIs (used for conformance resources like ValueSet, StructureDefinition) support version-aware matching:
+
+```bash
+# Match any version of this canonical URL
+GET /ValueSet?url=http://example.org/ValueSet/my-codes
+
+# Match specific version only
+GET /ValueSet?url=http://example.org/ValueSet/my-codes|1.0.0
+
+# Match versions starting with "1" (prefix match)
+GET /ValueSet?url:below=http://example.org/ValueSet/my-codes|1
+```
+
+Canonical search follows FHIR R4 rules:
+- Query `url=http://example.org/vs` matches resources with that URL (any version) - returns latest
+- Query `url=http://example.org/vs|1.0` matches only business version 1.0
+- Query `url:below=http://example.org/vs|1` matches versions 1.0, 1.1, 1.2.3, etc.
+
+:::note
+The version in canonical URIs refers to the resource's **business version** (`ValueSet.version`), not the server-assigned `meta.versionId`.
+:::
+
 ## Search Modifiers
 
 ### Common Modifiers
@@ -173,6 +201,22 @@ GET /Observation?subject.organization.name=Hospital
 # Reverse chain
 GET /Patient?_has:Observation:subject:code=29463-7
 ```
+
+### Combining Chaining with Sorting
+
+Chained search filters can be combined with `_sort` to order results by a field on the primary resource:
+
+```bash
+# Search by chained filter, sort by local field
+GET /Observation?subject.name=Smith&_sort=date
+
+# Filter by organization tag, sort by patient family name
+GET /Patient?organization._tag=test&_sort=family
+```
+
+:::note
+Sorting by chained parameters (e.g., `_sort=subject.birthdate`) is not currently supported. The `_sort` parameter only accepts fields on the primary resource type.
+:::
 
 ## Include/Revinclude
 

@@ -1156,15 +1156,19 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 .Select(rsp => new { rsp.ReferenceResourceTypeId, rsp.ReferenceResourceId })
                 .Distinct();
 
-            // Get actual resources for these references using subquery join
+            // Get actual resources for these references using JOIN instead of .Any()
+            // This avoids correlated subquery performance issues
             // CRITICAL: Exclude resources that are already in the main result set
             // When a resource references itself (e.g., Location.partOf = self), it should appear
             // only once with search.mode="match", not twice (once as match, once as include)
             // FHIR spec: "match" mode takes precedence over "include" mode
             return _context.Resources
                 .Where(r => !r.IsHistory && !r.IsDeleted &&
-                            referencedTypeAndIds.Any(x => x.ReferenceResourceTypeId == r.ResourceTypeId && x.ReferenceResourceId == r.ResourceId) &&
                             !mainResultSurrogateIds.Contains(r.ResourceSurrogateId))
+                .Join(referencedTypeAndIds,
+                    r => new { ResourceTypeId = r.ResourceTypeId, ResourceId = r.ResourceId },
+                    x => new { ResourceTypeId = x.ReferenceResourceTypeId ?? (short)0, ResourceId = x.ReferenceResourceId },
+                    (r, x) => r)
                 .Include(r => r.Transaction)
                 .Include(r => r.ResourceType)
                 .Distinct()
@@ -1192,9 +1196,8 @@ public class SqlEntityFrameworkSearchService : ISearchService
         IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: true, forIncludeProcessing: true)
             .GetAwaiter().GetResult();
 
-        // Extract resource type and ID pairs from the base query BEFORE using in .Any()
-        // This prevents EF Core from generating complex subqueries with sorting in EXISTS clauses
-        // which can cause translation errors or performance issues
+        // Extract resource type and ID pairs from the base query using a server-side subquery
+        // that doesn't include the complex sorting logic. This is used for JOIN operations.
         var mainResultIdentifiers = baseQuery
             .Select(r => new { r.ResourceTypeId, r.ResourceId })
             .Distinct();
@@ -1215,9 +1218,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
             // This is the most inclusive pattern - no filtering by source resource type or search parameter
             _logger.LogDebug("Building wildcard source revinclude query (*:*) for main results");
 
+            // Use JOIN pattern instead of .Any() to avoid correlated subquery performance issues
+            // The JOIN tells SQL Server exactly how to combine the tables efficiently
             referencingRsps = _context.ReferenceSearchParams
-                .Where(rsp => mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
-                .Select(rsp => rsp.ResourceSurrogateId)
+                .Join(mainResultIdentifiers,
+                    rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
+                    mr => new { mr.ResourceTypeId, mr.ResourceId },
+                    (rsp, mr) => rsp.ResourceSurrogateId)
                 .Distinct();
         }
         else
@@ -1237,10 +1244,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 // using ANY reference search parameter
                 _logger.LogDebug("Building wildcard param revinclude query for source type {SourceType}", revIncludeExpr.SourceResourceType);
 
+                // Use JOIN pattern instead of .Any() to avoid correlated subquery performance issues
                 referencingRsps = _context.ReferenceSearchParams
-                    .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
-                                  mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
-                    .Select(rsp => rsp.ResourceSurrogateId)
+                    .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value)
+                    .Join(mainResultIdentifiers,
+                        rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
+                        mr => new { mr.ResourceTypeId, mr.ResourceId },
+                        (rsp, mr) => rsp.ResourceSurrogateId)
                     .Distinct();
             }
             else
@@ -1254,14 +1264,16 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     return _context.Resources.Where(r => false);  // Return empty
                 }
 
-                // Find resources that reference these main results using a subquery
-                // Filter by source resource type (e.g., Encounter), search parameter, and reference target
-                // This keeps everything in the database query (no client-side materialization)
+                // Use JOIN pattern instead of .Any() to avoid correlated subquery performance issues
+                // The JOIN approach tells SQL Server to use a hash or merge join instead of
+                // a correlated EXISTS with the complex sorted base query nested inside
                 referencingRsps = _context.ReferenceSearchParams
                     .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
-                                  rsp.SearchParamId == searchParamId &&
-                                  mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
-                    .Select(rsp => rsp.ResourceSurrogateId)
+                                  rsp.SearchParamId == searchParamId)
+                    .Join(mainResultIdentifiers,
+                        rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
+                        mr => new { mr.ResourceTypeId, mr.ResourceId },
+                        (rsp, mr) => rsp.ResourceSurrogateId)
                     .Distinct();
             }
         }

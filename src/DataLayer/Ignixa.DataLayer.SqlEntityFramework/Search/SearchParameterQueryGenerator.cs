@@ -111,11 +111,10 @@ public class SearchParameterQueryGenerator
             }
 
             // Handle composite search parameters
-            // TEMPORARILY DISABLED: Testing if this causes stack overflow
-            //if (expression.Parameter?.Type == SearchParamType.Composite && searchParamId.HasValue)
-            //{
-            //    return await ProcessCompositeExpressionAsync(resourceTypeId, searchParamId.Value, expression.Parameter, expression.Expression, ct);
-            //}
+            if (expression.Parameter?.Type == SearchParamType.Composite && searchParamId.HasValue)
+            {
+                return await ProcessCompositeExpressionAsync(resourceTypeId, searchParamId.Value, expression.Parameter, expression.Expression, ct);
+            }
 
             // Process the inner expression based on its type, with SearchParamId for proper filtering
             return await ProcessExpressionAsync(resourceTypeId, searchParamId, expression.Expression, ct);
@@ -205,6 +204,9 @@ public class SearchParameterQueryGenerator
     /// </summary>
     private List<Expression> ExtractComponentExpressions(Expression expr)
     {
+        _logger.LogDebug("ExtractComponentExpressions: Input expression type = {Type}", expr.GetType().Name);
+        LogExpressionTree(expr, 0);
+
         var componentsByIndex = new Dictionary<int, List<Expression>>();
 
         void CollectByComponentIndex(Expression e)
@@ -222,19 +224,14 @@ public class SearchParameterQueryGenerator
             else if (e is MultiaryExpression multiary)
             {
                 // Check if all child expressions have the same ComponentIndex
-                // If so, this is a composite component expression
+                // If so, this is a composite component expression.
+                // Need to recursively get component indices from nested expressions.
                 var childComponentIndices = new HashSet<int?>();
-                foreach (var child in multiary.Expressions)
-                {
-                    if (child is IFieldExpression childField && childField.ComponentIndex.HasValue)
-                    {
-                        childComponentIndices.Add(childField.ComponentIndex);
-                    }
-                }
+                CollectComponentIndices(multiary, childComponentIndices);
 
                 if (childComponentIndices.Count == 1 && childComponentIndices.First().HasValue)
                 {
-                    // All children have the same ComponentIndex - this is a complete component expression
+                    // All descendants have the same ComponentIndex - this is a complete component expression
                     int index = childComponentIndices.First()!.Value;
                     if (!componentsByIndex.ContainsKey(index))
                     {
@@ -255,6 +252,22 @@ public class SearchParameterQueryGenerator
             else if (e is NotExpression notExpr)
             {
                 CollectByComponentIndex(notExpr.Expression);
+            }
+        }
+
+        // Helper to recursively collect all ComponentIndex values from an expression tree
+        void CollectComponentIndices(Expression e, HashSet<int?> indices)
+        {
+            if (e is IFieldExpression fieldExpr && fieldExpr.ComponentIndex.HasValue)
+            {
+                indices.Add(fieldExpr.ComponentIndex);
+            }
+            else if (e is MultiaryExpression multiary)
+            {
+                foreach (var child in multiary.Expressions)
+                {
+                    CollectComponentIndices(child, indices);
+                }
             }
         }
 
@@ -279,6 +292,33 @@ public class SearchParameterQueryGenerator
         }
 
         return result;
+    }
+
+    private void LogExpressionTree(Expression expr, int depth)
+    {
+        var indent = new string(' ', depth * 2);
+        switch (expr)
+        {
+            case MultiaryExpression multiary:
+                _logger.LogDebug("{Indent}{Kind}(", indent, multiary.MultiaryOperation);
+                foreach (var child in multiary.Expressions)
+                {
+                    LogExpressionTree(child, depth + 1);
+                }
+                _logger.LogDebug("{Indent})", indent);
+                break;
+            case BinaryExpression binary:
+                _logger.LogDebug("{Indent}Binary({Field}, {Op}, {Value}, CI={CI})",
+                    indent, binary.FieldName, binary.BinaryOperator, binary.Value, binary.ComponentIndex);
+                break;
+            case StringExpression stringExpr:
+                _logger.LogDebug("{Indent}String({Field}, {Op}, '{Value}', CI={CI})",
+                    indent, stringExpr.FieldName, stringExpr.StringOperator, stringExpr.Value, stringExpr.ComponentIndex);
+                break;
+            default:
+                _logger.LogDebug("{Indent}{Type}", indent, expr.GetType().Name);
+                break;
+        }
     }
 
     /// <summary>
@@ -1376,21 +1416,28 @@ public class SearchParameterQueryGenerator
             query = query.Where(sp => sp.SystemId == null);
         }
 
-        // Add code filter if specified
-        // FHIR Spec: Token searches are case-insensitive for the code portion.
-        // Use case-insensitive collation since the Code column uses Latin1_General_100_CS_AS (case-sensitive).
-        if (!string.IsNullOrEmpty(code))
-        {
-            query = query.Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code);
-        }
-
         _logger.LogDebug(
             "Token AND query: System={System}, Code={Code}, RequireMissingSystem={RequireMissingSystem}",
             system,
             code,
             requireMissingSystem);
 
-        return query.Select(sp => sp.ResourceSurrogateId);
+        if (string.IsNullOrEmpty(code))
+        {
+            return query.Select(sp => sp.ResourceSurrogateId);
+        }
+
+        if (code.Length > 128)
+        {
+            return query
+                .Where(sp => sp.CodeOverflow != null &&
+                    EF.Functions.Collate(sp.Code + sp.CodeOverflow, "Latin1_General_100_CI_AS") == code)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+
+        return query
+            .Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
+            .Select(sp => sp.ResourceSurrogateId);
     }
 
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
@@ -1404,6 +1451,8 @@ public class SearchParameterQueryGenerator
         {
             FieldName.String => await GenerateStringQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator, stringExpr.IgnoreCase, ct),
             FieldName.Uri => GenerateUriQuery(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator),
+            FieldName.UriVersion => GenerateUriVersionQuery(resourceTypeId, searchParamId, stringExpr.Value),
+            FieldName.UriFragment => GenerateUriFragmentQuery(resourceTypeId, searchParamId, stringExpr.Value),
             FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, null, stringExpr.Value, ct),
             FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, null, ct),
             FieldName.TokenText => GenerateTokenTextQuery(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator),
@@ -1582,16 +1631,31 @@ public class SearchParameterQueryGenerator
             systemId = await _cache.GetOrCreateSystemIdAsync(system);
         }
 
-        // When resourceTypeId is null (system-wide search), don't filter by resource type
-        // Filter by SearchParamId to only match values indexed for this specific parameter (e.g., _tag, identifier, etc.)
-        // FHIR Spec: Token searches are case-insensitive for the code portion.
-        // Use case-insensitive collation since the Code column uses Latin1_General_100_CS_AS (case-sensitive).
-        var query = _context.TokenSearchParams
+        var baseQuery = _context.TokenSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
-                && (code == null || EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
-                && (systemId == null || sp.SystemId == systemId))
-            .Select(sp => sp.ResourceSurrogateId);
+                && (systemId == null || sp.SystemId == systemId));
+
+        if (code == null)
+        {
+            return baseQuery.Select(sp => sp.ResourceSurrogateId);
+        }
+
+        IQueryable<long> query;
+
+        if (code.Length > 128)
+        {
+            query = baseQuery
+                .Where(sp => sp.CodeOverflow != null &&
+                    EF.Functions.Collate(sp.Code + sp.CodeOverflow, "Latin1_General_100_CI_AS") == code)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+        else
+        {
+            query = baseQuery
+                .Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
 
         return query;
     }
@@ -1879,6 +1943,11 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
+        // FHIR URI search is CASE-SENSITIVE per spec (https://www.hl7.org/fhir/references.html#literal)
+        // "URLs are always considered to be case-sensitive"
+        // Use Latin1_General_100_BIN2 binary collation for exact byte-for-byte comparison
+        var collation = "Latin1_General_100_BIN2";
+
         // Apply the appropriate URI matching based on the StringOperator
         // FHIR URI search modifiers:
         //   - No modifier (Equals): Exact match
@@ -1887,10 +1956,10 @@ public class SearchParameterQueryGenerator
         //   - NotStartsWith: Used in combination expressions to exclude certain URI schemes (e.g., urn:)
         query = stringOperator switch
         {
-            StringOperator.Equals => query.Where(sp => sp.Uri == uri),
-            StringOperator.LeftSideStartsWith => query.Where(sp => uri.StartsWith(sp.Uri)),
-            StringOperator.StartsWith => query.Where(sp => sp.Uri.StartsWith(uri)),
-            StringOperator.NotStartsWith => query.Where(sp => !sp.Uri.StartsWith(uri)),
+            StringOperator.Equals => query.Where(sp => EF.Functions.Collate(sp.Uri, collation) == uri),
+            StringOperator.LeftSideStartsWith => query.Where(sp => EF.Functions.Like(EF.Functions.Collate(uri, collation), EF.Functions.Collate(sp.Uri, collation) + "%")),
+            StringOperator.StartsWith => query.Where(sp => EF.Functions.Like(EF.Functions.Collate(sp.Uri, collation), uri + "%")),
+            StringOperator.NotStartsWith => query.Where(sp => !EF.Functions.Like(EF.Functions.Collate(sp.Uri, collation), uri + "%")),
             _ => throw new NotSupportedException($"StringOperator {stringOperator} is not supported for URI search")
         };
 
@@ -1979,5 +2048,33 @@ public class SearchParameterQueryGenerator
                     select r.ResourceSurrogateId;
 
         return query;
+    }
+
+    private IQueryable<long> GenerateUriVersionQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        string version)
+    {
+        // TODO: Implement version filtering when schema includes Version column
+        // Currently returns empty results as Version column doesn't exist in schema
+        var query = _context.UriSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        return query.Select(sp => sp.ResourceSurrogateId);
+    }
+
+    private IQueryable<long> GenerateUriFragmentQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        string fragment)
+    {
+        // TODO: Implement fragment filtering when schema includes Fragment column
+        // Currently returns empty results as Fragment column doesn't exist in schema
+        var query = _context.UriSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        return query.Select(sp => sp.ResourceSurrogateId);
     }
 }

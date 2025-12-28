@@ -55,7 +55,9 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
-                record.SetString(3, uriValue.Uri);
+                // Store the full URI including version/fragment to support exact matching
+                // Future: Add Version/Fragment columns when schema migration is applied
+                record.SetString(3, uriValue.ToString());
 
                 yield return record;
             }

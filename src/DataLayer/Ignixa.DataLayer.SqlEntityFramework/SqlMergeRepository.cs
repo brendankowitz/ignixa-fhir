@@ -72,16 +72,16 @@ public class SqlMergeRepository
         _referenceRowGenerator = new ReferenceSearchParameterRowGenerator();
         _stringRowGenerator = new StringSearchParameterRowGenerator();
         _numberRowGenerator = new NumberSearchParameterRowGenerator();
-        _quantityRowGenerator = new QuantitySearchParameterRowGenerator();
+        _quantityRowGenerator = new QuantitySearchParameterRowGenerator(referenceDataCache.SystemMappings, referenceDataCache.QuantityCodeMappings);
         _dateTimeRowGenerator = new DateTimeSearchParameterRowGenerator();
         _uriRowGenerator = new UriSearchParameterRowGenerator();
         _tokenTextRowGenerator = new TokenTextRowGenerator();
-        _refTokenCompositeRowGenerator = new RefTokenCompositeRowGenerator();
-        _tokenTokenCompositeRowGenerator = new TokenTokenCompositeRowGenerator();
-        _tokenDateTimeCompositeRowGenerator = new TokenDateTimeCompositeRowGenerator();
-        _tokenQuantityCompositeRowGenerator = new TokenQuantityCompositeRowGenerator();
-        _tokenStringCompositeRowGenerator = new TokenStringCompositeRowGenerator();
-        _tokenNumberNumberCompositeRowGenerator = new TokenNumberNumberCompositeRowGenerator();
+        _refTokenCompositeRowGenerator = new RefTokenCompositeRowGenerator(referenceDataCache.SystemMappings);
+        _tokenTokenCompositeRowGenerator = new TokenTokenCompositeRowGenerator(referenceDataCache.SystemMappings);
+        _tokenDateTimeCompositeRowGenerator = new TokenDateTimeCompositeRowGenerator(referenceDataCache.SystemMappings);
+        _tokenQuantityCompositeRowGenerator = new TokenQuantityCompositeRowGenerator(referenceDataCache.SystemMappings, referenceDataCache.QuantityCodeMappings);
+        _tokenStringCompositeRowGenerator = new TokenStringCompositeRowGenerator(referenceDataCache.SystemMappings);
+        _tokenNumberNumberCompositeRowGenerator = new TokenNumberNumberCompositeRowGenerator(referenceDataCache.SystemMappings);
     }
 
     /// <summary>

@@ -333,4 +333,62 @@ public class ChoiceTypeDebugTest
             _output.WriteLine("NOT FOUND");
         }
     }
+
+    [Fact]
+    public void GivenObservationWithValueQuantity_WhenUsingAsQuantity_ThenShouldMatch()
+    {
+        // This tests the exact scenario failing in composite search indexing
+        var json = @"{
+  ""resourceType"" : ""Observation"",
+  ""id"" : ""test-obs"",
+  ""status"" : ""final"",
+  ""code"" : {
+    ""coding"" : [{
+      ""system"" : ""http://loinc.org"",
+      ""code"" : ""9272-6""
+    }]
+  },
+  ""valueQuantity"" : {
+    ""value"" : 10,
+    ""unit"" : ""{score}"",
+    ""system"" : ""http://unitsofmeasure.org""
+  }
+}";
+
+        // Parse and create typed element
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNavigator();
+        IElement observation = sourceNode.ToElement(_ourProvider);
+
+        _output.WriteLine($"Observation InstanceType: {observation.InstanceType}");
+
+        // First, check what Children("value") returns
+        var valueChildren = observation.Children("value").ToArray();
+        _output.WriteLine($"\nChildren('value') returned {valueChildren.Length} elements:");
+        foreach (var child in valueChildren)
+        {
+            _output.WriteLine($"  - Name={child.Name}, InstanceType={child.InstanceType ?? "NULL"}");
+        }
+
+        // Now check what value.as(Quantity) returns
+        var asQuantityResult = observation.Select("value.as(Quantity)").ToArray();
+        _output.WriteLine($"\nvalue.as(Quantity) returned {asQuantityResult.Length} elements:");
+        foreach (var elem in asQuantityResult)
+        {
+            _output.WriteLine($"  - Name={elem.Name}, InstanceType={elem.InstanceType ?? "NULL"}");
+        }
+
+        // Also try ofType(Quantity) for comparison
+        var ofTypeResult = observation.Select("value.ofType(Quantity)").ToArray();
+        _output.WriteLine($"\nvalue.ofType(Quantity) returned {ofTypeResult.Length} elements:");
+        foreach (var elem in ofTypeResult)
+        {
+            _output.WriteLine($"  - Name={elem.Name}, InstanceType={elem.InstanceType ?? "NULL"}");
+        }
+
+        // Assert that we should find the valueQuantity
+        Assert.Single(valueChildren);
+        Assert.Equal("valueQuantity", valueChildren[0].Name);
+        Assert.Equal("Quantity", valueChildren[0].InstanceType);
+        Assert.Single(asQuantityResult);
+    }
 }

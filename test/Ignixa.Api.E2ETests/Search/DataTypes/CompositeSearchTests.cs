@@ -177,9 +177,12 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
         // Exact match
         new object[] { "code-value-string", "http://example.org|eye-color$blue-eyed", new[] { 6 } },
 
-        // Partial match (string contains)
+        // Prefix match (FHIR default string search is StartsWith, not Contains)
+        // "hazel eyes..." starts with "hazel" so it matches
         new object[] { "code-value-string", "http://example.org|eye-color$hazel", new[] { 7 } },
-        new object[] { "code-value-string", "http://example.org|eye-color$eyes", new[] { 7 } },
+        // Note: FHIR composite search doesn't support modifiers, so :contains is not available
+        // "hazel eyes..." doesn't start with "eyes" so it shouldn't match
+        new object[] { "code-value-string", "http://example.org|eye-color$eyes", Array.Empty<int>() },
 
         // Code without system
         new object[] { "code-value-string", "eye-color$blue-eyed", new[] { 6 } },
@@ -228,15 +231,19 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
     /// </remarks>
     public static readonly object[][] ReferenceTokenData =
     [
-        // Exact match with relatesTo code and reference
-        new object[] { "relationship", "replaces$DocumentReference/document1", new[] { 0 } },
-        new object[] { "relationship", "transforms$DocumentReference/document2", new[] { 1 } },
+        // The "relationship" search parameter has components: relatesto (Reference), relation (Token)
+        // Query format must be: Reference$Token (e.g., DocumentReference/document1$replaces)
+        // NOT Token$Reference - the component order must match the search parameter definition
+
+        // Exact match with relatesTo reference and relation code
+        new object[] { "relationship", "DocumentReference/document1$replaces", new[] { 0 } },
+        new object[] { "relationship", "DocumentReference/document2$transforms", new[] { 1 } },
 
         // No match - wrong code
-        new object[] { "relationship", "appends$DocumentReference/document1", Array.Empty<int>() },
+        new object[] { "relationship", "DocumentReference/document1$appends", Array.Empty<int>() },
 
         // No match - wrong reference
-        new object[] { "relationship", "replaces$DocumentReference/wrong-document", Array.Empty<int>() },
+        new object[] { "relationship", "DocumentReference/wrong-document$replaces", Array.Empty<int>() },
     ];
 
     [Theory]

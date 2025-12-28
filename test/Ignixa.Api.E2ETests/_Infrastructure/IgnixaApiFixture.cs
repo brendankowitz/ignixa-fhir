@@ -154,6 +154,9 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // Enable EF Core SQL logging for debugging
                 ["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] = "Information",
 
+                // Enable debug logging for composite search debugging
+                ["Logging:LogLevel:Ignixa.DataLayer.SqlEntityFramework.Search"] = "Debug",
+
                 // Set test environment
                 ["ASPNETCORE_ENVIRONMENT"] = "Test"
             };

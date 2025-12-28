@@ -47,12 +47,19 @@ public class CompositeSearchParameterQueryGenerator
     {
         if (searchParam.Component == null || searchParam.Component.Count < 2)
         {
+            _logger.LogDebug("DetermineCompositeType: {Code} has null or <2 components", searchParam.Code);
             return CompositeType.Unknown;
         }
 
         var types = searchParam.Component
             .Select(c => c.ResolvedSearchParameter?.Type)
             .ToList();
+
+        _logger.LogDebug(
+            "DetermineCompositeType: {Code} has components [{Types}], ResolvedParams=[{Resolved}]",
+            searchParam.Code,
+            string.Join(", ", types.Select(t => t?.ToString() ?? "null")),
+            string.Join(", ", searchParam.Component.Select(c => c.ResolvedSearchParameter?.Code ?? "null")));
 
         // Token|Token (combo-code-value-concept)
         if (types.Count == 2 &&
@@ -306,11 +313,43 @@ public class CompositeSearchParameterQueryGenerator
     {
         _logger.LogDebug("Generating Reference|Token composite query for SearchParamId={SearchParamId}", searchParamId);
 
-        // Extract reference from first component
-        var reference = ExtractReferenceValue(component0);
+        // Detect actual component types from the expressions to handle FHIR spec inconsistencies
+        // (e.g., DocumentReference "relationship" parameter has swapped component definitions)
+        var comp0IsReference = IsReferenceExpression(component0);
+        var comp0IsToken = IsTokenExpression(component0);
+        var comp1IsReference = IsReferenceExpression(component1);
+        var comp1IsToken = IsTokenExpression(component1);
 
-        // Extract token from second component
-        var token = ExtractTokenValues(component1);
+        // Determine which component is the reference and which is the token
+        Expression referenceExpr;
+        Expression tokenExpr;
+
+        if (comp0IsReference && comp1IsToken)
+        {
+            // Expected order: Reference first, Token second
+            referenceExpr = component0;
+            tokenExpr = component1;
+        }
+        else if (comp0IsToken && comp1IsReference)
+        {
+            // Swapped order: Token first, Reference second (e.g., DocumentReference relationship)
+            _logger.LogDebug("Detected swapped component order for SearchParamId={SearchParamId}: Token in position 0, Reference in position 1", searchParamId);
+            referenceExpr = component1;
+            tokenExpr = component0;
+        }
+        else
+        {
+            // Fallback to original assumption if we can't determine types
+            _logger.LogWarning("Unable to determine component types for Reference|Token composite SearchParamId={SearchParamId}, using assumed order", searchParamId);
+            referenceExpr = component0;
+            tokenExpr = component1;
+        }
+
+        // Extract reference value
+        var reference = ExtractReferenceValue(referenceExpr);
+
+        // Extract token value
+        var token = ExtractTokenValues(tokenExpr);
         int? systemId2 = null;
 
         if (!string.IsNullOrEmpty(token.System))
@@ -349,6 +388,47 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         return query.Select(r => r.ResourceSurrogateId);
+    }
+
+    /// <summary>
+    /// Determines if an expression contains reference fields.
+    /// </summary>
+    private bool IsReferenceExpression(Expression expression)
+    {
+        if (expression is StringExpression stringExpr)
+        {
+            return stringExpr.FieldName is FieldName.ReferenceResourceType or FieldName.ReferenceResourceId or FieldName.ReferenceBaseUri;
+        }
+
+        if (expression is MultiaryExpression multiary)
+        {
+            return multiary.Expressions.Any(IsReferenceExpression);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines if an expression contains token fields.
+    /// </summary>
+    private bool IsTokenExpression(Expression expression)
+    {
+        if (expression is StringExpression stringExpr)
+        {
+            return stringExpr.FieldName is FieldName.TokenCode or FieldName.TokenSystem or FieldName.TokenText;
+        }
+
+        if (expression is MissingFieldExpression missingExpr)
+        {
+            return missingExpr.FieldName is FieldName.TokenSystem;
+        }
+
+        if (expression is MultiaryExpression multiary)
+        {
+            return multiary.Expressions.Any(IsTokenExpression);
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -510,17 +590,21 @@ public class CompositeSearchParameterQueryGenerator
         CancellationToken cancellationToken)
     {
         // Extract quantity components (value, system, code)
-        decimal? quantityValue = null;
+        // For equality comparisons, the expression builder creates a range with two BinaryExpressions:
+        // - GreaterThanOrEqual with lowerBound
+        // - LessThanOrEqual with upperBound
+        // For single comparators (ge, le, gt, lt), only ONE expression is created.
+        // We need to count BinaryExpressions to distinguish between range (eq) and single (ge/le).
         string? quantitySystem = null;
         string? quantityCode = null;
-        BinaryOperator? binaryOp = null;
+        var quantityBinaryExpressions = new List<(BinaryOperator Op, decimal Value)>();
 
         void ProcessExpression(Expression expr)
         {
             if (expr is BinaryExpression binaryExpr && binaryExpr.FieldName == FieldName.Quantity)
             {
-                quantityValue = Convert.ToDecimal(binaryExpr.Value);
-                binaryOp = binaryExpr.BinaryOperator;
+                var value = Convert.ToDecimal(binaryExpr.Value);
+                quantityBinaryExpressions.Add((binaryExpr.BinaryOperator, value));
             }
             else if (expr is StringExpression stringExpr)
             {
@@ -544,6 +628,17 @@ public class CompositeSearchParameterQueryGenerator
 
         ProcessExpression(expression);
 
+        _logger.LogDebug(
+            "ApplyQuantityFilterAsync: Found {Count} binary expressions, System={System}, Code={Code}",
+            quantityBinaryExpressions.Count,
+            quantitySystem ?? "<null>",
+            quantityCode ?? "<null>");
+
+        foreach (var (op, val) in quantityBinaryExpressions)
+        {
+            _logger.LogDebug("  BinaryExpression: Op={Op}, Value={Value}", op, val);
+        }
+
         // Apply system filter
         if (!string.IsNullOrEmpty(quantitySystem))
         {
@@ -564,17 +659,34 @@ public class CompositeSearchParameterQueryGenerator
             }
         }
 
-        // Apply value filter
-        if (quantityValue.HasValue)
+        // Apply value filter based on what was extracted:
+        // - Two BinaryExpressions (eq/ap): Range query - stored range must overlap search range
+        // - One BinaryExpression: Single comparator (ge, le, gt, lt)
+        if (quantityBinaryExpressions.Count == 2)
         {
-            var value = quantityValue.Value;
-            query = (binaryOp ?? BinaryOperator.Equal) switch
+            // Range query (equality/approximate): both GreaterThanOrEqual and LessThanOrEqual present
+            var lowerBound = quantityBinaryExpressions.FirstOrDefault(e => e.Op == BinaryOperator.GreaterThanOrEqual).Value;
+            var upperBound = quantityBinaryExpressions.FirstOrDefault(e => e.Op == BinaryOperator.LessThanOrEqual).Value;
+
+            // Range overlap: stored range must overlap with search range
+            // For exact match with stored value X: lowerBound <= X <= upperBound
+            query = query.Where(q => q.LowValue <= upperBound && q.HighValue >= lowerBound);
+        }
+        else if (quantityBinaryExpressions.Count == 1)
+        {
+            // Single comparator
+            var (op, value) = quantityBinaryExpressions[0];
+            query = op switch
             {
-                BinaryOperator.Equal => query.Where(q => q.LowValue <= value && q.HighValue >= value),
+                // ge: stored value must be >= search value (check HighValue for range overlap)
+                BinaryOperator.GreaterThanOrEqual => query.Where(q => q.HighValue >= value),
+                // le: stored value must be <= search value (check LowValue for range overlap)
+                BinaryOperator.LessThanOrEqual => query.Where(q => q.LowValue <= value),
+                // gt: stored value must be > search value
                 BinaryOperator.GreaterThan => query.Where(q => q.LowValue > value),
-                BinaryOperator.GreaterThanOrEqual => query.Where(q => q.LowValue >= value),
+                // lt: stored value must be < search value
                 BinaryOperator.LessThan => query.Where(q => q.HighValue < value),
-                BinaryOperator.LessThanOrEqual => query.Where(q => q.HighValue <= value),
+                // ne: stored value must not equal search value
                 BinaryOperator.NotEqual => query.Where(q => q.HighValue < value || q.LowValue > value),
                 _ => query
             };

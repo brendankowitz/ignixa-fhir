@@ -37,6 +37,9 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         TargetResourceTypes = targetResourceTypes ?? Array.Empty<string>();
         BaseResourceTypes = baseResourceTypes ?? Array.Empty<string>();
         Description = description ?? string.Empty;
+
+        // Enable sorting for sortable parameter types by default
+        SortStatus = IsSortableType(searchParamType) ? SortParameterStatus.Enabled : SortParameterStatus.Disabled;
     }
 
     public SearchParameterInfo(string name, string code)
@@ -73,12 +76,31 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         TargetResourceTypes = wrapper.Target;
         BaseResourceTypes = wrapper.Base;
 
+        // Enable sorting for sortable parameter types by default
+        SortStatus = IsSortableType(searchParamType) ? SortParameterStatus.Enabled : SortParameterStatus.Disabled;
+
         string GetComponentDefinition(IElement component)
         {
             // In Stu3 the Url is under 'definition.reference'
             return component.Scalar("definition.reference")?.ToString() ??
                    component.Scalar("definition")?.ToString();
         }
+    }
+
+    /// <summary>
+    /// Determines if a search parameter type is sortable.
+    /// </summary>
+    private static bool IsSortableType(SearchParamType type)
+    {
+        // These parameter types support sorting per FHIR spec and are commonly used for sorting
+        // Note: Reference type is not included as sorting by reference ID is not typically useful
+        // and can be enabled explicitly if needed via SortStatus configuration
+        return type is SearchParamType.Date
+            or SearchParamType.Number
+            or SearchParamType.Quantity
+            or SearchParamType.String
+            or SearchParamType.Token
+            or SearchParamType.Uri;
     }
 
     public string Name { get; }

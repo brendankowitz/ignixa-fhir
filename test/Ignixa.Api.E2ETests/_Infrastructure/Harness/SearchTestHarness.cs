@@ -188,9 +188,10 @@ public sealed class SearchTestHarness
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
 
-        // Extract resources from bundle entries
+        // Extract only match entries from bundle (exclude outcome entries like OperationOutcome)
+        // In FHIR searchset bundles, search.mode indicates: "match", "include", or "outcome"
         return bundle.Entry
-            .Where(e => e.Resource is not null)
+            .Where(e => e.Resource is not null && e.Search?.Mode != "outcome")
             .Select(e => e.Resource!)
             .ToArray();
     }

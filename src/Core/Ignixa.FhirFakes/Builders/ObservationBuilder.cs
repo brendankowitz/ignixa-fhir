@@ -89,6 +89,9 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
     private string? _valueCodeableConceptText;
     private bool _emptyValueCodeableConcept;
 
+    // Value - String variant (mutually exclusive with quantity and codeable concept)
+    private string? _valueString;
+
     // Category
     private string? _categoryCode;
     private string? _categorySystem;
@@ -179,7 +182,7 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
     /// <summary>
     /// Sets the observation value as a quantity (valueQuantity).
     /// Use this for numeric observations like weight, height, blood pressure.
-    /// Mutually exclusive with <see cref="WithCodedValue"/>.
+    /// Mutually exclusive with <see cref="WithCodedValue"/> and <see cref="WithStringValue"/>.
     /// </summary>
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The unit of measure (e.g., "kg", "[lb_av]", "mmHg").</param>
@@ -201,10 +204,11 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
         _valueQuantityUnit = unit;
         _valueQuantitySystem = system ?? "http://unitsofmeasure.org";
 
-        // Clear coded value variant (mutually exclusive)
+        // Clear other value variants (mutually exclusive)
         _valueCodeableConceptCodings.Clear();
         _valueCodeableConceptText = null;
         _emptyValueCodeableConcept = false;
+        _valueString = null;
 
         return this;
     }
@@ -212,7 +216,7 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
     /// <summary>
     /// Sets the observation value as a codeable concept (valueCodeableConcept).
     /// Use this for categorical observations like blood type, smoking status.
-    /// Mutually exclusive with <see cref="WithQuantityValue"/>.
+    /// Mutually exclusive with <see cref="WithQuantityValue"/> and <see cref="WithStringValue"/>.
     /// Can be called multiple times to add multiple codings to the same valueCodeableConcept.
     /// </summary>
     /// <param name="code">The code value.</param>
@@ -240,11 +244,12 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
             _valueCodeableConceptText = text;
         }
 
-        // Clear quantity variant and empty flag (mutually exclusive)
+        // Clear other value variants (mutually exclusive)
         _valueQuantity = null;
         _valueQuantityUnit = null;
         _valueQuantitySystem = null;
         _emptyValueCodeableConcept = false;
+        _valueString = null;
 
         return this;
     }
@@ -252,7 +257,7 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
     /// <summary>
     /// Sets the valueCodeableConcept text field without any codings.
     /// Use this for text-only coded values (no system or code).
-    /// Mutually exclusive with <see cref="WithQuantityValue"/>.
+    /// Mutually exclusive with <see cref="WithQuantityValue"/> and <see cref="WithStringValue"/>.
     /// </summary>
     /// <param name="text">The text-only representation.</param>
     /// <returns>This builder for method chaining.</returns>
@@ -269,17 +274,18 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
         _valueCodeableConceptCodings.Clear();
         _emptyValueCodeableConcept = false;
 
-        // Clear quantity variant (mutually exclusive)
+        // Clear other value variants (mutually exclusive)
         _valueQuantity = null;
         _valueQuantityUnit = null;
         _valueQuantitySystem = null;
+        _valueString = null;
 
         return this;
     }
 
     /// <summary>
     /// Sets an empty valueCodeableConcept (for testing :not modifier over missing values).
-    /// Mutually exclusive with <see cref="WithQuantityValue"/> and <see cref="WithCodedValue"/>.
+    /// Mutually exclusive with <see cref="WithQuantityValue"/>, <see cref="WithCodedValue"/>, and <see cref="WithStringValue"/>.
     /// </summary>
     /// <returns>This builder for method chaining.</returns>
     /// <example>
@@ -295,10 +301,41 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
         _valueCodeableConceptCodings.Clear();
         _valueCodeableConceptText = null;
 
-        // Clear quantity variant (mutually exclusive)
+        // Clear other value variants (mutually exclusive)
         _valueQuantity = null;
         _valueQuantityUnit = null;
         _valueQuantitySystem = null;
+        _valueString = null;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the observation value as a plain string (valueString).
+    /// Use this for simple text observations like eye color.
+    /// Mutually exclusive with <see cref="WithQuantityValue"/>, <see cref="WithCodedValue"/>, and <see cref="WithTextOnlyCodedValue"/>.
+    /// </summary>
+    /// <param name="value">The string value.</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// // Simple string value
+    /// .WithStringValue("blue-eyed")
+    /// .WithStringValue("hazel eyes with a long descriptive text")
+    /// </code>
+    /// </example>
+    public ObservationBuilder WithStringValue(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        _valueString = value;
+
+        // Clear other value variants (mutually exclusive)
+        _valueQuantity = null;
+        _valueQuantityUnit = null;
+        _valueQuantitySystem = null;
+        _valueCodeableConceptCodings.Clear();
+        _valueCodeableConceptText = null;
+        _emptyValueCodeableConcept = false;
 
         return this;
     }
@@ -537,6 +574,11 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
                 ["system"] = _valueQuantitySystem,
                 ["code"] = _valueQuantityUnit
             };
+        }
+        else if (_valueString is not null)
+        {
+            // String value
+            obsJson["valueString"] = _valueString;
         }
 
         // Identifiers

@@ -152,7 +152,7 @@ public static class FhirPathGrammar
         from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
         select (Expression)new EmptyExpression(CreatePosition(lbrace, rbrace));
 
-    // Type specifier: bare identifier (used in ofType() arguments)
+    // Type specifier: bare identifier (used in ofType() and as() arguments)
     // Per FHIRPath spec, type specifiers are identifiers that represent type names
     private static readonly TokenListParser<FhirPathTokenKind, Expression> TypeSpecifierArgument =
         Token.EqualTo(FhirPathTokenKind.Identifier)
@@ -160,6 +160,15 @@ public static class FhirPathGrammar
             .Select(t => (Expression)new IdentifierExpression(
                 UnescapeIdentifier(t.ToStringValue()),
                 CreatePosition(t)));
+
+    // Helper: check if a function name takes type specifier arguments (instead of expressions)
+    // ofType() and as() take type names as arguments, not expressions
+    private static bool IsTypeSpecifierFunction(string functionName)
+    {
+        var unescaped = UnescapeIdentifier(functionName);
+        return unescaped.Equals("oftype", StringComparison.OrdinalIgnoreCase) ||
+               unescaped.Equals("as", StringComparison.OrdinalIgnoreCase);
+    }
 
     // Helper: identifier that could be function(args) or bare identifier
     // Bare identifiers at root level are treated as function calls (e.g., "Patient" = "Patient()")
@@ -174,7 +183,7 @@ public static class FhirPathGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.In)) // Allow "in" as function/property name
         from maybeArgs in (
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
-            from args in (UnescapeIdentifier(nameToken.ToStringValue()).Equals("oftype", StringComparison.OrdinalIgnoreCase)
+            from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
                 ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
                 : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
@@ -188,7 +197,7 @@ public static class FhirPathGrammar
 
     // Function call: identifier(args) - used by DotInvocation
     // NOTE: Keywords can be used as function names in certain contexts
-    // SPECIAL CASE: ofType() arguments are type specifiers, not expressions
+    // SPECIAL CASE: ofType() and as() arguments are type specifiers, not expressions
     private static TokenListParser<FhirPathTokenKind, FunctionCallExpression> FunctionCall(Expression? focus) =>
         from nameToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
@@ -197,7 +206,7 @@ public static class FhirPathGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.Is)) // Allow "is" as function name
             .Or(Token.EqualTo(FhirPathTokenKind.In)) // Allow "in" as function name
         from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
-        from args in (UnescapeIdentifier(nameToken.ToStringValue()).Equals("oftype", StringComparison.OrdinalIgnoreCase)
+        from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
             ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
             : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
         from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
@@ -229,7 +238,7 @@ public static class FhirPathGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.In)) // Allow "in" as property/function name
         from maybeFunction in (
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
-            from args in (UnescapeIdentifier(nameToken.ToStringValue()).Equals("oftype", StringComparison.OrdinalIgnoreCase)
+            from args in (IsTypeSpecifierFunction(nameToken.ToStringValue())
                 ? TypeSpecifierArgument.ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
                 : Parse.Ref(() => Expression!).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma)))
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)

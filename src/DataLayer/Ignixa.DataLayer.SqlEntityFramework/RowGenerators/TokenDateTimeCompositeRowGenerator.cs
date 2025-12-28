@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -17,6 +17,17 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class TokenDateTimeCompositeRowGenerator : ISearchParameterRowGenerator
 {
+    private readonly IReadOnlyDictionary<string, int> _systemMappings;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TokenDateTimeCompositeRowGenerator"/> class.
+    /// </summary>
+    /// <param name="systemMappings">Mapping of system URIs to their database IDs.</param>
+    public TokenDateTimeCompositeRowGenerator(IReadOnlyDictionary<string, int> systemMappings)
+    {
+        _systemMappings = systemMappings ?? throw new ArgumentNullException(nameof(systemMappings));
+    }
+
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -55,52 +66,62 @@ public class TokenDateTimeCompositeRowGenerator : ISearchParameterRowGenerator
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
-                foreach (var componentGroup in compositeValue.Components)
+                if (compositeValue.Components.Count < 2)
+                    continue;
+
+                var tokenComponents = compositeValue.Components[0].OfType<TokenSearchValue>().ToList();
+                var dateTimeComponents = compositeValue.Components[1].OfType<DateTimeSearchValue>().ToList();
+
+                if (tokenComponents.Count == 0 || dateTimeComponents.Count == 0)
+                    continue;
+
+                foreach (var tokenComponent in tokenComponents)
                 {
-                    TokenSearchValue? tokenComponent = null;
-                    DateTimeSearchValue? dateTimeComponent = null;
-
-                    foreach (var component in componentGroup)
+                    foreach (var dateTimeComponent in dateTimeComponents)
                     {
-                        if (component is TokenSearchValue tokenVal && tokenComponent == null)
-                            tokenComponent = tokenVal;
-                        else if (component is DateTimeSearchValue dateTimeVal && dateTimeComponent == null)
-                            dateTimeComponent = dateTimeVal;
-                    }
+                        var record = new SqlDataRecord(metadata);
+                        record.SetInt16(0, resourceTypeId);
+                        record.SetInt64(1, surrogateId);
+                        record.SetInt16(2, searchParamId);
 
-                    if (tokenComponent == null || dateTimeComponent == null)
-                        continue;
-
-                    var record = new SqlDataRecord(metadata);
-                    record.SetInt16(0, resourceTypeId);
-                    record.SetInt64(1, surrogateId);
-                    record.SetInt16(2, searchParamId);
-
-                    // Token component (component 1)
-                    record.SetInt32(3, string.IsNullOrEmpty(tokenComponent.System) ? 0 : tokenComponent.System.GetHashCode(StringComparison.Ordinal));
-
-                    if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
-                    {
-                        record.SetString(4, tokenComponent.Code.Substring(0, 128));
-                        record.SetString(5, tokenComponent.Code.Substring(128));
-                    }
-                    else
-                    {
-                        if (tokenComponent.Code != null)
-                            record.SetString(4, tokenComponent.Code);
+                        // Token component - use system mappings
+                        if (string.IsNullOrEmpty(tokenComponent.System))
+                        {
+                            record.SetDBNull(3);
+                        }
+                        else if (_systemMappings.TryGetValue(tokenComponent.System, out var systemId))
+                        {
+                            record.SetInt32(3, systemId);
+                        }
                         else
-                            record.SetDBNull(4);
-                        record.SetDBNull(5);
+                        {
+                            // System not found in cache - skip this record
+                            continue;
+                        }
+
+                        if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
+                        {
+                            record.SetString(4, tokenComponent.Code.Substring(0, 128));
+                            record.SetString(5, tokenComponent.Code.Substring(128));
+                        }
+                        else
+                        {
+                            if (tokenComponent.Code != null)
+                                record.SetString(4, tokenComponent.Code);
+                            else
+                                record.SetDBNull(4);
+                            record.SetDBNull(5);
+                        }
+
+                        // DateTime component
+                        record.SetDateTime(6, dateTimeComponent.Start.UtcDateTime);
+                        record.SetDateTime(7, dateTimeComponent.End.UtcDateTime);
+
+                        var duration = dateTimeComponent.End - dateTimeComponent.Start;
+                        record.SetBoolean(8, duration.TotalDays > 1);
+
+                        yield return record;
                     }
-
-                    // DateTime component (component 2)
-                    record.SetDateTime(6, dateTimeComponent.Start.UtcDateTime);
-                    record.SetDateTime(7, dateTimeComponent.End.UtcDateTime);
-
-                    var duration = dateTimeComponent.End - dateTimeComponent.Start;
-                    record.SetBoolean(8, duration.TotalDays > 1);
-
-                    yield return record;
                 }
             }
         }

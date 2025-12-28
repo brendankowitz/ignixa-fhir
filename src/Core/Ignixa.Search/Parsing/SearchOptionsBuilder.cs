@@ -388,6 +388,15 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         continue;
                     }
 
+                    // Check if the parameter is sortable
+                    if (searchParameter.SortStatus != SortParameterStatus.Enabled)
+                    {
+                        // Parameter exists but is not sortable
+                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not sortable (SortStatus: {searchParameter.SortStatus})");
+                        unsupportedParameters.Add($"_sort={fieldName}");
+                        continue;
+                    }
+
                     sortExpressions.Add(new SortExpression(searchParameter, sortOrder));
                     System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {searchParameter.Code} ({searchParameter.Type}) {sortOrder}");
                 }

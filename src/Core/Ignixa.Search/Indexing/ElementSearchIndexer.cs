@@ -124,7 +124,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
                     break;
                 }
 
-                IReadOnlyList<ISearchValue> extractedComponentValues = ExtractSearchValues(
+                IReadOnlyList<ISearchValue> extractedComponentValues = ExtractCompositeComponentSearchValues(
                     componentSearchParameterDefinition.Url.ToString(),
                     componentSearchParameterDefinition.Type,
                     componentSearchParameterDefinition.TargetResourceTypes,
@@ -174,6 +174,104 @@ public partial class ElementSearchIndexer : ISearchIndexer
                      searchParameter.Expression,
                      context))
             yield return new SearchIndexEntry(searchParameterInfo, searchValue);
+    }
+
+    private IReadOnlyList<ISearchValue> ExtractCompositeComponentSearchValues(
+        string searchParameterDefinitionUrl,
+        SearchParamType? componentDefinitionType,
+        IReadOnlyList<string> allowedReferenceResourceTypes,
+        IElement element,
+        string fhirPathExpression,
+        EvaluationContext context)
+    {
+        // Use the component definition type to determine the search value type.
+        // This ensures consistency between indexing and querying.
+        // Only fall back to type inference if the definition type doesn't work.
+
+        var results = new List<ISearchValue>();
+
+        IEnumerable<IElement> extractedValues = Enumerable.Empty<IElement>();
+
+        try
+        {
+            extractedValues = element.Select(fhirPathExpression, context);
+        }
+        catch (Exception ex)
+        {
+            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl);
+        }
+
+        Debug.Assert(extractedValues != null, "The extracted values should not be null.");
+
+        foreach (IElement extractedValue in extractedValues)
+        {
+            if (string.IsNullOrEmpty(extractedValue.InstanceType))
+            {
+                Log.SkippingElementNullOrEmptyInstanceType(_logger);
+                continue;
+            }
+
+            // First, try using the component definition type (preferred approach)
+            SearchParamType? effectiveType = componentDefinitionType;
+            IElementToSearchValueConverter converter = null;
+
+            if (effectiveType.HasValue)
+            {
+                _fhirElementTypeConverterManager.TryGetConverter(
+                    extractedValue.InstanceType,
+                    GetSearchValueTypeForSearchParamType(effectiveType),
+                    out converter);
+            }
+
+            // If the definition type didn't work, fall back to type inference
+            // This handles edge cases like DocumentReference "relationship" parameter
+            if (converter == null)
+            {
+                effectiveType = InferSearchParamTypeFromFhirType(extractedValue.InstanceType);
+
+                if (!effectiveType.HasValue)
+                {
+                    Log.CannotInferSearchParamType(_logger, extractedValue.InstanceType, searchParameterDefinitionUrl);
+                    continue;
+                }
+
+                if (!_fhirElementTypeConverterManager.TryGetConverter(
+                    extractedValue.InstanceType,
+                    GetSearchValueTypeForSearchParamType(effectiveType),
+                    out converter))
+                {
+                    Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType);
+                    continue;
+                }
+            }
+
+            IEnumerable<ISearchValue> searchValues = converter.ConvertTo(extractedValue);
+
+            if (searchValues != null)
+            {
+                // For reference components with a single allowed resource type, set the type if not specified
+                if (effectiveType == SearchParamType.Reference && allowedReferenceResourceTypes?.Count == 1)
+                {
+                    string singleAllowedResourceType = allowedReferenceResourceTypes[0];
+                    foreach (ISearchValue searchValue in searchValues)
+                    {
+                        if (searchValue == null)
+                            continue;
+
+                        if (searchValue is ReferenceSearchValue rsr && string.IsNullOrEmpty(rsr.ResourceType))
+                            results.Add(new ReferenceSearchValue(rsr.Kind, rsr.BaseUri, singleAllowedResourceType, rsr.ResourceId));
+                        else
+                            results.Add(searchValue);
+                    }
+                }
+                else
+                {
+                    results.AddRange(searchValues.Where(sv => sv != null));
+                }
+            }
+        }
+
+        return results;
     }
 
     private IReadOnlyList<ISearchValue> ExtractSearchValues(
@@ -278,6 +376,46 @@ public partial class ElementSearchIndexer : ISearchIndexer
         return results;
     }
 
+    /// <summary>
+    /// Infers the appropriate SearchParamType from a FHIR element type.
+    /// This is used for composite components where the component definition's type may not match
+    /// the actual extracted value's type due to FHIR spec inconsistencies.
+    /// </summary>
+    internal static SearchParamType? InferSearchParamTypeFromFhirType(string fhirType)
+    {
+        return fhirType switch
+        {
+            // Reference types
+            "Reference" or "ResourceReference" => SearchParamType.Reference,
+
+            // Token types
+            "code" or "codeOfT" or "System.Code" or "Coding" or "CodeableConcept" or "Identifier"
+                or "ContactPoint" or "boolean" or "id" => SearchParamType.Token,
+
+            // String types
+            "string" or "HumanName" or "Address" or "markdown" => SearchParamType.String,
+
+            // Number types
+            "integer" or "decimal" => SearchParamType.Number,
+
+            // Date types
+            "date" or "dateTime" or "instant" or "Period" => SearchParamType.Date,
+
+            // Quantity types
+            "Quantity" or "Money" or "Range" => SearchParamType.Quantity,
+
+            // Uri types
+            "uri" or "url" or "canonical" or "oid" => SearchParamType.Uri,
+
+            // CodeableReference can be either token or reference depending on context
+            // Default to token for composite components as it's more common
+            "CodeableReference" => SearchParamType.Token,
+
+            // Unknown type - return null to indicate we can't infer
+            _ => null
+        };
+    }
+
     internal static Type GetSearchValueTypeForSearchParamType(SearchParamType? searchParamType)
     {
         switch (searchParamType)
@@ -321,5 +459,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot infer SearchParamType from FHIR element type '{FhirElementType}' for composite component of search parameter '{SearchParameterUrl}'. Skipping this value.")]
+        public static partial void CannotInferSearchParamType(ILogger logger, string fhirElementType, string searchParameterUrl);
     }
 }
