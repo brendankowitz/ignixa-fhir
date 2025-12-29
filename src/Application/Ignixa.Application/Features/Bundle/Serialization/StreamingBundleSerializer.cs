@@ -132,7 +132,16 @@ public static class StreamingBundleSerializer
 
         int? includesMaxCount = searchOptions.IncludesMaxItemCount;
         int includesCount = 0;
+        int includesOffset = 0;
         bool hasMoreIncludes = false;
+
+        if (!string.IsNullOrWhiteSpace(searchOptions.IncludesContinuationToken))
+        {
+            if (IncludesContinuationToken.TryDecode(searchOptions.IncludesContinuationToken, out int tokenOffset, out _))
+            {
+                includesOffset = tokenOffset;
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
         {
@@ -212,10 +221,13 @@ public static class StreamingBundleSerializer
         string? relatedLink = null;
         if (hasMoreIncludes && includesMaxCount.HasValue)
         {
-            string includesContinuationToken = IncludesContinuationToken.Encode(includesCount, includesMaxCount.Value);
+            int nextIncludesOffset = includesOffset + includesCount;
+            string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
 
             string resourceType = searchOptions.ResourceType ?? "Resource";
-            string includesBaseUrl = baseUrl.Replace($"/{resourceType}", $"/{resourceType}/$includes", StringComparison.Ordinal);
+            string includesBaseUrl = baseUrl.Contains("/$includes", StringComparison.Ordinal)
+                ? baseUrl
+                : baseUrl.Replace($"/{resourceType}", $"/{resourceType}/$includes", StringComparison.Ordinal);
 
             var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
             parsedQuery["_includesContinuationToken"] = includesContinuationToken;

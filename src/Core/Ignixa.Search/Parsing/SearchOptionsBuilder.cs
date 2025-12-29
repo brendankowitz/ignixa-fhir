@@ -188,7 +188,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                                 $"The '_includesCount' parameter value must be a non-negative integer.");
                         }
 
-                        options.IncludesMaxItemCount = Math.Min(Math.Max(1, includesCount), MaxAllowedItemCount);
+                        options.IncludesMaxItemCount = Math.Min(Math.Max(0, includesCount), MaxAllowedItemCount);
                         break;
 
                     case ParameterCategory.IncludesContinuationToken:

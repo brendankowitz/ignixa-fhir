@@ -212,7 +212,7 @@ public static class OperationEndpoints
         // For system-level validation, determine tenant from context
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/$validate"));
@@ -235,7 +235,7 @@ public static class OperationEndpoints
         // For agnostic route, determine tenant from context
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/$validate"));
@@ -275,7 +275,7 @@ public static class OperationEndpoints
         // For agnostic route, determine tenant from context
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/{id}/$validate"));
@@ -303,7 +303,7 @@ public static class OperationEndpoints
 
         if (memoryStream.Length == 0)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "Request body must contain a FHIR resource to validate"));
@@ -317,7 +317,7 @@ public static class OperationEndpoints
         }
         catch
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Invalid,
                 "Request body must be valid JSON"));
@@ -361,7 +361,7 @@ public static class OperationEndpoints
             var normalizedMode = mode.ToUpperInvariant();
             if ((normalizedMode == "UPDATE" || normalizedMode == "DELETE") && string.IsNullOrEmpty(instanceId))
             {
-                return Results.BadRequest(CreateOperationOutcome(
+                return FhirResults.BadRequest(CreateOperationOutcome(
                     OperationOutcomeJsonNode.IssueSeverity.Error,
                     OperationOutcomeJsonNode.IssueType.Invalid,
                     $"Validation mode '{mode}' requires instance-level endpoint: [base]/{{resourceType}}/{{id}}/$validate"));
@@ -542,7 +542,7 @@ public static class OperationEndpoints
         }
         catch
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Invalid,
                 "Request body must be a valid FHIR Parameters resource"));
@@ -550,7 +550,7 @@ public static class OperationEndpoints
 
         if (parameters == null)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "Request body must contain a FHIR Parameters resource"));
@@ -565,7 +565,7 @@ public static class OperationEndpoints
         // Validate required parameters
         if (memberPatient == null)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "Required parameter 'MemberPatient' is missing"));
@@ -573,7 +573,7 @@ public static class OperationEndpoints
 
         if (coverageToMatch == null)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "Required parameter 'CoverageToMatch' is missing"));
@@ -619,7 +619,7 @@ public static class OperationEndpoints
         // For agnostic route, determine tenant from context
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/Patient/$member-match"));
@@ -650,7 +650,7 @@ public static class OperationEndpoints
         var includesContinuationToken = context.Request.Query["_includesContinuationToken"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(includesContinuationToken))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "The _includesContinuationToken parameter is required for the $includes operation"));
@@ -724,7 +724,7 @@ public static class OperationEndpoints
         var fhirContext = fhirContextAccessor.RequestContext;
         if (fhirContext == null)
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeJsonNode.IssueSeverity.Error,
                 OperationOutcomeJsonNode.IssueType.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/$includes"));

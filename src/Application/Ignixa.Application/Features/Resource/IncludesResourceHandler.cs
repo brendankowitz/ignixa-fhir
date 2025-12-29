@@ -31,7 +31,7 @@ public class IncludesResourceHandler(
     IFhirRequestContextAccessor contextAccessor,
     ILogger<IncludesResourceHandler> logger) : IRequestHandler<IncludesResourceQuery, SearchResourcesResult>
 {
-    public async Task<SearchResourcesResult> HandleAsync(
+    public Task<SearchResourcesResult> HandleAsync(
         IncludesResourceQuery request,
         CancellationToken cancellationToken)
     {
@@ -105,7 +105,7 @@ public class IncludesResourceHandler(
             HasMore: false,
             SearchOptions: request.SearchOptions);
 
-        return result;
+        return Task.FromResult(result);
     }
 
     private static async IAsyncEnumerable<SearchEntryResult> FilterIncludesWithPaginationAsync(

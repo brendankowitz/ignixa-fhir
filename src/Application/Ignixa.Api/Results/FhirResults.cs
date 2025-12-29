@@ -142,4 +142,26 @@ public static class FhirResults
             return new FhirResult(StatusCodes.Status201Created, resourceBytes, location, httpContext: httpContext);
         }
     }
+
+    /// <summary>
+    /// Creates a 400 Bad Request response with a FHIR OperationOutcome resource.
+    /// </summary>
+    /// <param name="operationOutcome">The OperationOutcome resource describing the error</param>
+    public static FhirResult BadRequest(ResourceJsonNode operationOutcome)
+    {
+        var bytes = operationOutcome.SerializeToBytes(false);
+        return new FhirResult(StatusCodes.Status400BadRequest, bytes);
+    }
+
+    /// <summary>
+    /// Creates a 400 Bad Request response with a FHIR OperationOutcome resource, applying _pretty formatting.
+    /// </summary>
+    /// <param name="operationOutcome">The OperationOutcome resource describing the error</param>
+    /// <param name="httpContext">The HTTP context (used to extract _pretty parameter)</param>
+    public static FhirResult BadRequest(ResourceJsonNode operationOutcome, HttpContext httpContext)
+    {
+        bool pretty = httpContext.Request.Query.GetPrettyParameter();
+        var bytes = operationOutcome.SerializeToBytes(pretty);
+        return new FhirResult(StatusCodes.Status400BadRequest, bytes, httpContext: httpContext);
+    }
 }
