@@ -36,6 +36,7 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class OperationEndpoints
 {
+    private const int DefaultIncludesPageSize = 100;
     /// <summary>
     /// Registers FHIR operation endpoints.
     ///
@@ -680,7 +681,7 @@ public static class OperationEndpoints
         }
         else
         {
-            searchOptions.IncludesMaxItemCount = searchOptions.MaxItemCount;
+            searchOptions.IncludesMaxItemCount = DefaultIncludesPageSize;
         }
 
         var query = new IncludesResourceQuery(resourceType, searchOptions);

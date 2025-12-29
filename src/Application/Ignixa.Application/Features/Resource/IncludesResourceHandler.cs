@@ -31,6 +31,9 @@ public class IncludesResourceHandler(
     IFhirRequestContextAccessor contextAccessor,
     ILogger<IncludesResourceHandler> logger) : IRequestHandler<IncludesResourceQuery, SearchResourcesResult>
 {
+    private const int IncludesSearchMultiplier = 10;
+    private const int MaxIncludesSearchLimit = 10000;
+
     public Task<SearchResourcesResult> HandleAsync(
         IncludesResourceQuery request,
         CancellationToken cancellationToken)
@@ -69,7 +72,7 @@ public class IncludesResourceHandler(
 
         var searchOptionsWithoutLimit = new SearchOptions
         {
-            MaxItemCount = Math.Min(request.SearchOptions.MaxItemCount * 10, 10000),
+            MaxItemCount = Math.Min(request.SearchOptions.MaxItemCount * IncludesSearchMultiplier, MaxIncludesSearchLimit),
             ContinuationToken = null,
             Expression = request.SearchOptions.Expression,
             Sort = request.SearchOptions.Sort,

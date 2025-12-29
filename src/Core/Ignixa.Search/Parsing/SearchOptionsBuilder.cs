@@ -176,6 +176,12 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.IncludesCount:
+                        if (resourceType == null)
+                        {
+                            throw new BadSearchRequestException(
+                                "The '_includesCount' parameter is not supported for system-level searches.");
+                        }
+
                         if (!int.TryParse(param.Value, out int includesCount))
                         {
                             throw new BadSearchRequestException(
