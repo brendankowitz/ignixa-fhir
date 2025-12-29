@@ -93,6 +93,11 @@ public abstract class ExpressionRewriter<TContext> : IExpressionVisitor<TContext
         return ReferenceEquals(rewrittenExpressions, expression.Expressions) ? expression : new UnionExpression(expression.Operator, rewrittenExpressions);
     }
 
+    public virtual Expression VisitNotReferenced(NotReferencedExpression expression, TContext context)
+    {
+        return expression;
+    }
+
     protected IReadOnlyList<TExpression> VisitArray<TExpression>(IReadOnlyList<TExpression> inputArray, TContext context)
         where TExpression : Expression
     {

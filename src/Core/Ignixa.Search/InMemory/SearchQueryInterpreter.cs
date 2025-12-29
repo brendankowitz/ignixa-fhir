@@ -270,6 +270,14 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
             .Aggregate((x, y) => p => x(p).Union(y(p)));
     }
 
+    public SearchPredicate VisitNotReferenced(NotReferencedExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        throw new SearchOperationNotSupportedException("_not-referenced is not supported in in-memory search.");
+    }
+
     /// <summary>
     /// Context that is passed through the visit.
     /// </summary>

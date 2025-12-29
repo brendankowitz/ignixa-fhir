@@ -1896,4 +1896,88 @@ public class SearchParameterQueryGenerator
 
         return query.Select(sp => sp.ResourceSurrogateId);
     }
+
+    /// <summary>
+    /// Generates a query for _not-referenced expressions.
+    /// Finds resources not referenced by any other resource via reference search parameters.
+    /// Uses LEFT ANTI-JOIN pattern for optimal performance.
+    /// </summary>
+    /// <param name="resourceTypeId">The target resource type being searched for orphans, or null for system-wide search.</param>
+    /// <param name="expression">The NotReferencedExpression specifying source type and path filters.</param>
+    /// <param name="searchParamInfo">Optional search parameter info when a specific path is specified.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A queryable of ResourceSurrogateIds for orphaned resources.</returns>
+    public async Task<IQueryable<long>> GenerateNotReferencedQueryAsync(
+        short? resourceTypeId,
+        NotReferencedExpression expression,
+        SearchParameterInfo? searchParamInfo,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Generating _not-referenced query: SourceType={SourceType}, Path={Path}",
+            expression.SourceResourceType ?? "*",
+            expression.ReferencePath ?? "*");
+
+        short? sourceTypeId = null;
+        if (expression.SourceResourceType is not null)
+        {
+            sourceTypeId = await _cache.GetResourceTypeIdAsync(expression.SourceResourceType);
+            if (!sourceTypeId.HasValue)
+            {
+                _logger.LogWarning("Source resource type not found: {Type}", expression.SourceResourceType);
+                return Enumerable.Empty<long>().AsQueryable();
+            }
+        }
+
+        short? searchParamId = null;
+        if (searchParamInfo is not null)
+        {
+            searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo);
+            if (!searchParamId.HasValue)
+            {
+                _logger.LogDebug("Search parameter not found for {Type}.{Path}, using path-agnostic query",
+                    expression.SourceResourceType, expression.ReferencePath);
+            }
+        }
+
+        // Build the anti-join query using LEFT JOIN with NULL check pattern
+        // This finds resources of the target type that are NOT in the ReferenceResourceId of any matching reference
+        //
+        // Query pattern:
+        // SELECT r.ResourceSurrogateId FROM Resource r
+        // LEFT JOIN (
+        //     SELECT * FROM ReferenceSearchParam
+        //     WHERE (@sourceTypeId IS NULL OR ResourceTypeId = @sourceTypeId)
+        //       AND (@searchParamId IS NULL OR SearchParamId = @searchParamId)
+        // ) ref ON ref.ReferenceResourceId = r.ResourceId AND ref.ReferenceResourceTypeId = r.ResourceTypeId
+        // WHERE r.ResourceTypeId = @resourceTypeId AND !r.IsHistory AND !r.IsDeleted
+        //     AND ref.ResourceSurrogateId IS NULL
+        //
+        // Pre-filtering ReferenceSearchParams before the join improves performance on large tables
+
+        var filteredRefs = from rp in _context.ReferenceSearchParams
+                           where (!sourceTypeId.HasValue || rp.ResourceTypeId == sourceTypeId.Value)
+                               && (!searchParamId.HasValue || rp.SearchParamId == searchParamId.Value)
+                           select rp;
+
+        var query = from r in _context.Resources
+                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && !r.IsHistory
+                        && !r.IsDeleted
+                    join refParam in filteredRefs
+                        on new
+                        {
+                            ReferenceResourceId = r.ResourceId,
+                            ReferenceResourceTypeId = (short?)r.ResourceTypeId
+                        } equals new
+                        {
+                            refParam.ReferenceResourceId,
+                            refParam.ReferenceResourceTypeId
+                        }
+                        into refGroup
+                    from refParam in refGroup.DefaultIfEmpty()
+                    where refParam == null
+                    select r.ResourceSurrogateId;
+
+        return await Task.FromResult(query);
+    }
 }

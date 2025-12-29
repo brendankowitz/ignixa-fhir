@@ -342,6 +342,17 @@ public abstract class Expression
         return new PatientEverythingExpression(patientId, startDate, endDate, sinceDate, filteredResourceTypes, includeReferencedResources);
     }
 
+    /// <summary>
+    /// Creates a <see cref="NotReferencedExpression"/> that represents a _not-referenced search for orphaned resources.
+    /// </summary>
+    /// <param name="sourceResourceType">The resource type that might reference the target, or null for wildcard (*).</param>
+    /// <param name="referencePath">The search parameter code for the reference path, or null for wildcard (*).</param>
+    /// <returns>A <see cref="NotReferencedExpression"/> for finding orphaned resources.</returns>
+    public static NotReferencedExpression NotReferenced(string sourceResourceType, string referencePath)
+    {
+        return new NotReferencedExpression(sourceResourceType, referencePath);
+    }
+
     public abstract TOutput AcceptVisitor<TContext, TOutput>(IExpressionVisitor<TContext, TOutput> visitor, TContext context);
 
     /// <inheritdoc />

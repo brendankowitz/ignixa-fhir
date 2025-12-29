@@ -390,6 +390,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 chainedExpressionProcessor,
                 compartmentQueryGenerator,
                 patientEverythingQueryGenerator,
+                parameterManager,
                 _loggerFactory.CreateLogger<Search.SearchExpressionQueryBuilder>());
 
             var includeProcessor = new Search.IncludeProcessor(

@@ -237,6 +237,55 @@ Multiple values in conjunction:
 GET /Observation?component-code-value-quantity=http://loinc.org|8480-6$gt100
 ```
 
+## Special Search Parameters
+
+### `_not-referenced` - Finding Orphaned Resources
+
+The `_not-referenced` parameter finds resources that are not referenced by any other resource. This is useful for:
+- Data cleanup workflows
+- Identifying orphaned resources after deletions
+- Data quality audits
+- Compliance reporting
+
+**Syntax:**
+
+```bash
+# Find all patients not referenced by any resource
+GET /Patient?_not-referenced=*:*
+
+# Find patients not referenced by any Observation
+GET /Patient?_not-referenced=Observation:*
+
+# Find patients not referenced by Observation.subject specifically
+GET /Patient?_not-referenced=Observation:subject
+```
+
+**Patterns:**
+
+| Pattern | Meaning |
+|---------|---------|
+| `*:*` | Not referenced by any resource via any reference path |
+| `{ResourceType}:*` | Not referenced by the specified resource type via any path |
+| `{ResourceType}:{path}` | Not referenced via the specific reference path |
+
+**Implementation Notes:**
+- Uses LEFT ANTI-JOIN SQL pattern for optimal performance
+- Only available with SQL storage provider (not in-memory)
+- Compatible with Microsoft FHIR Server syntax
+
+**Example Use Cases:**
+
+```bash
+# Find patients without any observations
+GET /Patient?_not-referenced=Observation:subject
+
+# Find practitioners not assigned to any organization
+GET /Practitioner?_not-referenced=Organization:*
+
+# Find all completely orphaned diagnostic reports
+GET /DiagnosticReport?_not-referenced=*:*
+```
+
 ## Batch Search
 
 Search via POST with `_search`:

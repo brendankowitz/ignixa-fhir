@@ -54,6 +54,7 @@ public record QueryParameter(string Name, string Value)
             "_lastUpdated" => ParameterCategory.Search,
             "_filter" => ParameterCategory.Search,
             "_list" => ParameterCategory.Search,
+            "_not-referenced" => ParameterCategory.Search,
             _ when baseName.StartsWith("_has", StringComparison.Ordinal) => ParameterCategory.Search,
 
             // Other underscore parameters are control parameters

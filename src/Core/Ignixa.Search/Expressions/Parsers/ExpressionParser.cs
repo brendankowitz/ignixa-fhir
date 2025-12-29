@@ -152,6 +152,11 @@ public class ExpressionParser : IExpressionParser
 
     private Expression ParseImpl(string[] resourceTypes, ReadOnlySpan<char> key, string value)
     {
+        if (key.Equals("_not-referenced".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseNotReferencedExpression(resourceTypes, value);
+        }
+
         if (TryConsume(ReverseChainParameter.AsSpan(), ref key))
         {
             if (!TrySplit(SearchSplitChar, ref key, out ReadOnlySpan<char> type)) throw new InvalidSearchOperationException(Resources.ReverseChainMissingType);
@@ -331,5 +336,44 @@ public class ExpressionParser : IExpressionParser
             input = input.Slice(to);
         else
             input = ReadOnlySpan<char>.Empty;
+    }
+
+    private Expression ParseNotReferencedExpression(string[] resourceTypes, string value)
+    {
+        var colonIndex = value.IndexOf(':', StringComparison.Ordinal);
+        if (colonIndex < 0)
+        {
+            throw new InvalidSearchOperationException(
+                "_not-referenced value must be in format 'ResourceType:path', 'ResourceType:*', or '*:*'");
+        }
+
+        var sourceType = value.Substring(0, colonIndex);
+        var path = value.Substring(colonIndex + 1);
+
+        string sourceResourceType = sourceType == "*" ? null : sourceType;
+        string referencePath = path == "*" ? null : path;
+
+        if (sourceResourceType is not null && !_schemaProvider.ResourceTypeNames.Contains(sourceResourceType))
+        {
+            throw new InvalidSearchOperationException(
+                $"Invalid resource type in _not-referenced: '{sourceResourceType}'");
+        }
+
+        if (referencePath is not null)
+        {
+            if (string.IsNullOrWhiteSpace(referencePath))
+            {
+                throw new InvalidSearchOperationException(
+                    "_not-referenced path cannot be empty. Use '*' for wildcard.");
+            }
+
+            if (!System.Text.RegularExpressions.Regex.IsMatch(referencePath, @"^[a-zA-Z][a-zA-Z0-9_-]*$"))
+            {
+                throw new InvalidSearchOperationException(
+                    $"Invalid reference path in _not-referenced: '{referencePath}'. Path must start with a letter and contain only alphanumeric characters, hyphens, and underscores.");
+            }
+        }
+
+        return Expression.NotReferenced(sourceResourceType, referencePath);
     }
 }

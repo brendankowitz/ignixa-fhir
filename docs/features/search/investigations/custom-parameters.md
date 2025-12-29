@@ -1244,3 +1244,36 @@ public async ValueTask MigrateCustomParametersAsync(string legacyJsonPath, Cance
 - Import to V2 system: 2 hours
 - Reindex all custom parameters: 2-8 hours (dataset dependent)
 - **Total**: ~1 day for typical deployment
+
+## Blocked Tests
+
+The following E2E tests are blocked until custom SearchParameter support is implemented. These tests require creating custom composite search parameters that are NOT in the base FHIR R4 specification.
+
+### TokenOverflowTests (5 tests)
+
+| Test | Custom SearchParameter Required | Components |
+|------|--------------------------------|------------|
+| `GivenTokenOverflowAndToken_WhenBothOverflow` | `CompositeCustomTokenOverflowTokenSearchParameter` | token (identifier) + token (telecom) |
+| `GivenTokenAndTokenOverflow_WhenFirstNormalSecondOverflow` | `CompositeCustomTokenTokenOverflowSearchParameter` | token (telecom) + token (identifier) |
+| `GivenReferenceAndTokenOverflow_WhenCompositeSearched` | `CompositeCustomReferenceTokenSearchParameter` | reference (managingOrganization) + token (identifier) |
+| `GivenTokenOverflowAndQuantity_WhenCompositeSearched` | `CompositeCustomTokenQuantitySearchParameter` | token (identifier) + quantity - on ChargeItem |
+| `GivenTokenOverflowAndNumberAndNumber_WhenCompositeSearched` | `CompositeCustomTokenNumberNumberSearchParameter` | token (identifier) + number + number - on RiskAssessment |
+
+### Microsoft FHIR Server Dependency
+
+These tests are ported from Microsoft FHIR Server's `TokenOverflowTests.cs`. The original tests:
+1. POST a custom SearchParameter resource
+2. Trigger `$reindex` operation to index existing resources
+3. Execute composite search with the new parameter
+
+**Note**: Even in Microsoft's CI, these tests are marked `Skip = "Reindexing is failing CI"`, indicating the complexity of this feature.
+
+### Unblocking Criteria
+
+To enable these tests, implement:
+1. `POST /SearchParameter` endpoint (create custom parameter)
+2. `$reindex` operation (index resources with new parameter)
+3. Status-based lifecycle (Supported → Reindexing → Enabled)
+4. Composite search with mixed component types (reference+token, token+quantity, token+number+number)
+
+See test file: `test/Ignixa.Api.E2ETests/Search/DataTypes/TokenOverflowTests.cs`

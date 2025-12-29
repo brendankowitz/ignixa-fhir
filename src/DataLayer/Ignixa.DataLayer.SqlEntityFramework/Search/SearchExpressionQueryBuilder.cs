@@ -6,7 +6,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -23,6 +25,7 @@ public class SearchExpressionQueryBuilder
     private readonly ChainedExpressionProcessor _chainedExpressionProcessor;
     private readonly CompartmentSearchQueryGenerator _compartmentQueryGenerator;
     private readonly PatientEverythingQueryGenerator _patientEverythingQueryGenerator;
+    private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager;
     private readonly ILogger<SearchExpressionQueryBuilder> _logger;
 
     /// <summary>
@@ -33,6 +36,7 @@ public class SearchExpressionQueryBuilder
     /// <param name="chainedExpressionProcessor">The chained expression processor.</param>
     /// <param name="compartmentQueryGenerator">The compartment query generator.</param>
     /// <param name="patientEverythingQueryGenerator">The patient everything query generator.</param>
+    /// <param name="searchParameterDefinitionManager">The search parameter definition manager.</param>
     /// <param name="logger">Logger instance.</param>
     public SearchExpressionQueryBuilder(
         FhirDbContext context,
@@ -40,6 +44,7 @@ public class SearchExpressionQueryBuilder
         ChainedExpressionProcessor chainedExpressionProcessor,
         CompartmentSearchQueryGenerator compartmentQueryGenerator,
         PatientEverythingQueryGenerator patientEverythingQueryGenerator,
+        ISearchParameterDefinitionManager searchParameterDefinitionManager,
         ILogger<SearchExpressionQueryBuilder> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -47,6 +52,7 @@ public class SearchExpressionQueryBuilder
         _chainedExpressionProcessor = chainedExpressionProcessor ?? throw new ArgumentNullException(nameof(chainedExpressionProcessor));
         _compartmentQueryGenerator = compartmentQueryGenerator ?? throw new ArgumentNullException(nameof(compartmentQueryGenerator));
         _patientEverythingQueryGenerator = patientEverythingQueryGenerator ?? throw new ArgumentNullException(nameof(patientEverythingQueryGenerator));
+        _searchParameterDefinitionManager = searchParameterDefinitionManager ?? throw new ArgumentNullException(nameof(searchParameterDefinitionManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -81,6 +87,7 @@ public class SearchExpressionQueryBuilder
             UnionExpression unionExpr => await ApplyUnionExpressionAsync(baseQuery, resourceTypeId, unionExpr, ct),
             NotExpression notExpr => await ApplyNotExpressionAsync(baseQuery, resourceTypeId, notExpr, ct),
             MissingSearchParameterExpression missingExpr => await ApplyMissingSearchParameterExpressionAsync(baseQuery, resourceTypeId, missingExpr, ct),
+            NotReferencedExpression notReferencedExpr => await ApplyNotReferencedExpressionAsync(baseQuery, resourceTypeId, notReferencedExpr, ct),
             _ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported")
         };
     }
@@ -391,5 +398,56 @@ public class SearchExpressionQueryBuilder
         // This provides the same OR semantics (deduplicated union) with better performance.
         var result = queries.Aggregate((current, next) => current.Concat(next));
         return result.Distinct();
+    }
+
+    private async Task<IQueryable<ResourceEntity>> ApplyNotReferencedExpressionAsync(
+        IQueryable<ResourceEntity> baseQuery,
+        short? resourceTypeId,
+        NotReferencedExpression expression,
+        CancellationToken ct)
+    {
+        _logger.LogDebug(
+            "Processing _not-referenced expression: SourceType={SourceType}, Path={Path}",
+            expression.SourceResourceType ?? "*",
+            expression.ReferencePath ?? "*");
+
+        SearchParameterInfo? searchParamInfo = null;
+        if (expression.SourceResourceType is not null && expression.ReferencePath is not null)
+        {
+            try
+            {
+                var param = _searchParameterDefinitionManager.GetSearchParameter(
+                    expression.SourceResourceType,
+                    expression.ReferencePath);
+
+                if (param.Type != SearchParamType.Reference)
+                {
+                    _logger.LogWarning(
+                        "Search parameter {Path} on {Type} is not a reference type (Type={ActualType}), ignoring path filter",
+                        expression.ReferencePath,
+                        expression.SourceResourceType,
+                        param.Type);
+                }
+                else
+                {
+                    searchParamInfo = param;
+                }
+            }
+            catch (SearchParameterNotSupportedException)
+            {
+                _logger.LogDebug(
+                    "Search parameter {Path} not found on {Type}, using path-agnostic query",
+                    expression.ReferencePath,
+                    expression.SourceResourceType);
+            }
+        }
+
+        var matchingResourceIds = await _parameterQueryGenerator.GenerateNotReferencedQueryAsync(
+            resourceTypeId,
+            expression,
+            searchParamInfo,
+            ct);
+
+        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 }

@@ -28,6 +28,8 @@ FHIR search is a complex domain requiring support for compartment searches, wild
 | [composite-provider](investigations/composite-provider.md) | Viable | Search parameter composite provider pattern for IG-defined parameters |
 | [custom-parameter-architecture-comparison](investigations/custom-parameter-architecture-comparison.md) | In Progress | Comparison of 3 architectural approaches for custom search parameter indexing (Microsoft/HAPI/LinuxForHealth analysis) |
 | [event-sourced-conformance](investigations/event-sourced-conformance.md) | Viable | Event-sourced architecture for package/conformance management - replaces 6 classes with 3, eliminates caches, atomic activation |
+| [includes-operation](investigations/includes-operation.md) | In Progress | `$includes` operation for paginated include/revinclude results with `_includesCount` parameter |
+| [not-referenced-search](investigations/not-referenced-search.md) | **Implemented** | `_not-referenced` parameter to find orphaned resources not referenced by others (SQL only) |
 
 ## Related ADRs
 

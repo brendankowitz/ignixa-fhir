@@ -113,4 +113,9 @@ internal abstract class DefaultExpressionVisitor<TContext, TOutput> : IExpressio
     {
         return default;
     }
+
+    public virtual TOutput VisitNotReferenced(NotReferencedExpression expression, TContext context)
+    {
+        return default;
+    }
 }
