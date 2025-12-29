@@ -295,6 +295,11 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         // Delete ResourceTtl entry when resource is deleted (TTL no longer applies to tombstone)
         await UpsertResourceTtlAsync(resourceTypeId, key.Id, null, transactionId?.Value, ct);
 
+        // Clean up search index entries for the current version being deleted
+        // This ensures _not-referenced searches return correct results
+        // (deleted resources should not have any references in the index)
+        await DeleteSearchIndexEntriesAsync(currentEntity.ResourceSurrogateId, ct);
+
         // Save changes immediately if not part of a transaction
         if (!transactionId.HasValue)
         {
@@ -1084,5 +1089,43 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                     resourceId);
             }
         }
+    }
+
+    /// <summary>
+    /// Deletes all search index entries for a specific resource version.
+    /// Used during soft delete to clean up indices for the version being superseded.
+    /// This ensures _not-referenced and other searches return correct results after deletion.
+    /// </summary>
+    /// <param name="resourceSurrogateId">The surrogate ID of the resource version whose indices should be deleted.</param>
+    /// <param name="ct">Cancellation token.</param>
+    private async Task DeleteSearchIndexEntriesAsync(long resourceSurrogateId, CancellationToken ct)
+    {
+        _logger.LogDebug(
+            "Deleting search index entries for ResourceSurrogateId={ResourceSurrogateId}",
+            resourceSurrogateId);
+
+        // Delete all search parameter indexes for this specific resource version
+        // Uses raw SQL for efficiency (same approach as HardDeleteResourceAsync)
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $@"DELETE FROM dbo.ReferenceSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenText WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.StringSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.NumberSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.QuantitySearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.DateTimeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.ReferenceTokenCompositeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenTokenCompositeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenDateTimeCompositeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenQuantityCompositeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenStringCompositeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.TokenNumberNumberCompositeSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId};
+               DELETE FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resourceSurrogateId};",
+            ct);
+
+        _logger.LogDebug(
+            "Successfully deleted search index entries for ResourceSurrogateId={ResourceSurrogateId}",
+            resourceSurrogateId);
     }
 }
