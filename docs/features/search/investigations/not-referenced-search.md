@@ -182,18 +182,22 @@ The `_not-referenced` search parameter enables finding orphaned FHIR resources t
 
 ### Query Pattern
 
+Pre-filtering `ReferenceSearchParams` before the join improves performance on large tables:
+
 ```csharp
+var filteredRefs = from rp in _context.ReferenceSearchParams
+                   where (!sourceTypeId.HasValue || rp.ResourceTypeId == sourceTypeId.Value)
+                       && (!searchParamId.HasValue || rp.SearchParamId == searchParamId.Value)
+                   select rp;
+
 var query = from r in _context.Resources
             where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                 && !r.IsHistory && !r.IsDeleted
-            join refParam in _context.ReferenceSearchParams
+            join refParam in filteredRefs
                 on new { ReferenceResourceId = r.ResourceId, ReferenceResourceTypeId = (short?)r.ResourceTypeId }
                 equals new { refParam.ReferenceResourceId, refParam.ReferenceResourceTypeId }
                 into refGroup
-            from refParam in refGroup
-                .Where(rp => (!sourceTypeId.HasValue || rp.ResourceTypeId == sourceTypeId.Value)
-                    && (!searchParamId.HasValue || rp.SearchParamId == searchParamId.Value))
-                .DefaultIfEmpty()
+            from refParam in refGroup.DefaultIfEmpty()
             where refParam == null
             select r.ResourceSurrogateId;
 ```

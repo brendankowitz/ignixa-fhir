@@ -31,6 +31,9 @@ public class ExpressionParser : IExpressionParser
             e => e,
             StringComparer.Ordinal);
 
+    private static readonly System.Text.RegularExpressions.Regex ReferencePathRegex =
+        new(@"^[a-zA-Z][a-zA-Z0-9_-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly IFhirSchemaProvider _schemaProvider;
 
     private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager;
@@ -367,7 +370,7 @@ public class ExpressionParser : IExpressionParser
                     "_not-referenced path cannot be empty. Use '*' for wildcard.");
             }
 
-            if (!System.Text.RegularExpressions.Regex.IsMatch(referencePath, @"^[a-zA-Z][a-zA-Z0-9_-]*$"))
+            if (!ReferencePathRegex.IsMatch(referencePath))
             {
                 throw new InvalidSearchOperationException(
                     $"Invalid reference path in _not-referenced: '{referencePath}'. Path must start with a letter and contain only alphanumeric characters, hyphens, and underscores.");

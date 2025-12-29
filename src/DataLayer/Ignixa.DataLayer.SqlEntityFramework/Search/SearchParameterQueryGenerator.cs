@@ -1978,6 +1978,6 @@ public class SearchParameterQueryGenerator
                     where refParam == null
                     select r.ResourceSurrogateId;
 
-        return await Task.FromResult(query);
+        return query;
     }
 }
