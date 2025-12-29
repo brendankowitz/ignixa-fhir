@@ -189,6 +189,33 @@ GET /Observation?_include:iterate=Observation:subject
 GET /Patient?_revinclude=Observation:subject
 ```
 
+### Paginated Includes
+
+Control the number of included resources returned separately from primary matches:
+
+```bash
+# Limit primary results to 10, includes to 50
+GET /Patient?_include=Patient:organization&_count=10&_includesCount=50
+
+# Response contains:
+# - Up to 10 patients (primary matches)
+# - Up to 50 organizations (included resources)
+# - "related" link with _includesContinuationToken if more includes exist
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `_includesCount` | Maximum number of included resources per page (separate from `_count`) |
+| `_includesContinuationToken` | Continuation token for fetching additional included resources |
+
+When `_includesCount` is specified:
+- The Bundle will contain up to `_count` primary matches
+- The Bundle will contain up to `_includesCount` included resources
+- If more includes exist, a "related" link is added with `_includesContinuationToken`
+- Use the `$includes` operation to fetch additional included resources
+
+See [$includes operation](/docs/server/fhir/operations#includes) for details on fetching additional included resources.
+
 ## Result Modifiers
 
 ### Sorting

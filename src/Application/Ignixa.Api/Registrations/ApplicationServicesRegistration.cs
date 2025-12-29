@@ -147,6 +147,10 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<SearchResourcesQuery, SearchResourcesResult>>()
             .InstancePerDependency();
 
+        builder.RegisterType<IncludesResourceHandler>()
+            .As<IRequestHandler<IncludesResourceQuery, SearchResourcesResult>>()
+            .InstancePerDependency();
+
         builder.RegisterType<SearchCompartmentHandler>()
             .As<IRequestHandler<SearchCompartmentQuery, SearchResourcesResult>>()
             .InstancePerDependency();
@@ -403,6 +407,11 @@ public static class ApplicationServicesRegistration
 
         // Package feature (bulk data export)
         builder.RegisterType<BulkDataExportFeature>()
+            .As<IPackageFeature>()
+            .SingleInstance();
+
+        // Package feature ($includes operation for independent pagination of _include/_revinclude results)
+        builder.RegisterType<IncludesOperationFeature>()
             .As<IPackageFeature>()
             .SingleInstance();
     }

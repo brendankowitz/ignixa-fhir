@@ -174,6 +174,30 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         // Unknown control parameter (starts with _ but not recognized)
                         unsupportedParameters.Add(param.Name);
                         break;
+
+                    case ParameterCategory.IncludesCount:
+                        if (!int.TryParse(param.Value, out int includesCount))
+                        {
+                            throw new BadSearchRequestException(
+                                $"The '_includesCount' parameter value '{param.Value}' is not a valid integer.");
+                        }
+
+                        if (includesCount < 0)
+                        {
+                            throw new BadSearchRequestException(
+                                $"The '_includesCount' parameter value must be a non-negative integer.");
+                        }
+
+                        options.IncludesMaxItemCount = Math.Min(Math.Max(1, includesCount), MaxAllowedItemCount);
+                        break;
+
+                    case ParameterCategory.IncludesContinuationToken:
+                        options.IncludesContinuationToken = param.Value;
+                        break;
+
+                    case ParameterCategory.Formatting:
+                        // Formatting parameters are handled by the API layer
+                        break;
                 }
             }
             catch (SearchParameterNotSupportedException)

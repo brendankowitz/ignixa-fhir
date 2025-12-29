@@ -167,6 +167,64 @@ Returns `202 Accepted` with `Content-Location` header to poll job status.
 
 See [Bulk Operations](/docs/server/features/bulk-operations) for detailed usage, parameters, and configuration.
 
+## Search Operations
+
+### $includes
+
+Fetch additional included resources from a search with independent pagination. When using `_include` or `_revinclude`, large result sets can cause performance issues. The `$includes` operation allows clients to paginate through included resources separately from primary search matches.
+
+```bash
+# Initial search with limited includes
+GET /Patient?_include=Patient:organization&_count=10&_includesCount=50
+
+# Response includes:
+# - Up to 10 patients (primary matches)
+# - Up to 50 organizations (included resources)
+# - "related" link if more organizations exist
+
+# Follow "related" link for more includes
+GET /Patient/$includes?_includesContinuationToken=xyz123&_include=Patient:organization
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_includesContinuationToken` | string | **Required**. Continuation token from previous search "related" link |
+| `_include` | string | Include parameters (inherited from original search) |
+| `_revinclude` | string | Reverse include parameters (inherited from original search) |
+| `_includesCount` | integer | Maximum number of included resources per page (optional) |
+
+#### Behavior
+
+The `$includes` operation:
+- Returns a Bundle with **only** included resources (no primary matches)
+- Uses standard "next" link for additional pages of includes
+- Requires `_includesContinuationToken` parameter from initial search
+- Re-executes the search but filters to include entries only
+
+#### Use Cases
+
+1. **Large include sets**: When a search has many primary matches, each with related resources
+2. **Progressive loading**: Load primary results first, then fetch related resources on demand
+3. **Performance optimization**: Prevent response size explosion from large include sets
+
+#### Example Flow
+
+```bash
+# 1. Initial search with _includesCount
+GET /Observation?subject=Patient/123&_include=Observation:performer&_includesCount=25
+# Returns: 100 observations + 25 practitioners (if more practitioners exist, includes "related" link)
+
+# 2. Fetch next page of practitioners
+GET /Observation/$includes?_includesContinuationToken=abc...&_include=Observation:performer
+# Returns: Next 25 practitioners (no observations)
+
+# 3. Continue until no "next" link
+GET /Observation/$includes?_includesContinuationToken=def...&_include=Observation:performer
+# Returns: Remaining practitioners
+```
+
 ## Experimental Operations
 
 These operations are available when experimental features are enabled.

@@ -6,6 +6,7 @@
 using System.Text;
 using System.Text.Json;
 using EnsureThat;
+using Ignixa.Application.Features.Resource;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
@@ -129,7 +130,10 @@ public static class StreamingBundleSerializer
         int currentOffset = 0;
         var fhirVersion = schemaProvider != null ? (FhirVersion)schemaProvider.Version : FhirVersion.R4;
 
-        // Parse current offset from existing continuation token
+        int? includesMaxCount = searchOptions.IncludesMaxItemCount;
+        int includesCount = 0;
+        bool hasMoreIncludes = false;
+
         if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
         {
             if (ContinuationToken.TryDecode(searchOptions.ContinuationToken, out int tokenOffset, out _))
@@ -138,70 +142,58 @@ public static class StreamingBundleSerializer
             }
         }
 
-        // Write bundle header
         WriteBundleHeader(writer, bundleType, total);
 
-        // Filter unsupported parameters from query string for self link
         string filteredQueryString = FilterUnsupportedParams(queryString, searchOptions.UnsupportedParams);
 
-        // Build self link (always available)
         string selfLink = $"{baseUrl}{filteredQueryString}";
 
-        // Write entry array
         writer.WriteStartArray("entry");
 
-        // For R4/R4B/Stu3, write issues as a Bundle entry with search.mode="outcome" (pre-R5 format)
-        // R5+ will write Bundle.issues property at the end instead
         WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
 
-        // Write buffered entries
-        // Note: Entries stream in phases: Match results (pageSize+1), then Include, then RevInclude
-        // The +1 Match result is used to detect if there are more pages (hasMore flag)
         await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
         {
-            // For Match entries: check if we've reached the pageSize limit
-            // The database returns pageSize+1 results to detect pagination
             if (resource.SearchMode == SearchEntryMode.Match)
             {
                 if (entryCount >= pageSize)
                 {
-                    // We've found the +1 indicator: set hasMore flag but skip rendering
-                    // Continue processing Include/RevInclude results that follow
                     hasMore = true;
                     continue;
                 }
 
-                // Within limit: we'll render this Match entry
                 entryCount++;
             }
+            else if (resource.SearchMode == SearchEntryMode.Include)
+            {
+                if (includesMaxCount.HasValue && includesCount >= includesMaxCount.Value)
+                {
+                    hasMoreIncludes = true;
+                    continue;
+                }
 
-            // Write entry (all Include/RevInclude entries and Match entries within pageSize)
+                includesCount++;
+            }
+
             writer.WriteStartObject();
 
-            // Write fullUrl
             string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
             writer.WriteString("fullUrl", fullUrl);
 
-            // Write resource using helper (with optional element filtering)
             WriteResourceBytes(writer, resource, searchOptions, schemaProvider);
 
-            // Write search metadata
 #pragma warning disable CA1308
             writer.WriteObject("search", w => w
                 .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
 #pragma warning restore CA1308
 
-            writer.WriteEndObject(); // end entry
+            writer.WriteEndObject();
         }
 
-        // End entry array
         writer.WriteEndArray();
 
-        // Write Bundle issues if present (e.g., unsupported search parameters)
-        // NOTE: Bundle.issues only exists in FHIR R5+, not in R4/R4B/Stu3
         WriteBundleIssues(writer, searchOptions.BundleIssues, fhirVersion);
 
-        // Generate continuation token if there are more results
         string? continuationToken = null;
         if (hasMore)
         {
@@ -209,7 +201,6 @@ public static class StreamingBundleSerializer
             continuationToken = ContinuationToken.Encode(nextOffset, pageSize);
         }
 
-        // Generate next link if there are more results
         string? nextLink = null;
         if (hasMore && !string.IsNullOrWhiteSpace(continuationToken))
         {
@@ -218,11 +209,22 @@ public static class StreamingBundleSerializer
             nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
         }
 
-        // Write links (now that we know if there's a next link)
-        WriteBundleLinksFromStrings(writer, selfLink, nextLink);
+        string? relatedLink = null;
+        if (hasMoreIncludes && includesMaxCount.HasValue)
+        {
+            string includesContinuationToken = IncludesContinuationToken.Encode(includesCount, includesMaxCount.Value);
 
-        // Write bundle footer
-        writer.WriteEndObject(); // end bundle
+            string resourceType = searchOptions.ResourceType ?? "Resource";
+            string includesBaseUrl = baseUrl.Replace($"/{resourceType}", $"/{resourceType}/$includes", StringComparison.Ordinal);
+
+            var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
+            parsedQuery["_includesContinuationToken"] = includesContinuationToken;
+            relatedLink = $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
+        }
+
+        WriteBundleLinksFromStrings(writer, selfLink, nextLink, relatedLink);
+
+        writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken);
     }
 
@@ -515,9 +517,9 @@ public static class StreamingBundleSerializer
     /// Writes bundle links from simple self/next string URLs.
     /// Converts to BundleLinkJsonNode format internally.
     /// </summary>
-    private static void WriteBundleLinksFromStrings(FhirJsonWriter writer, string? selfLink, string? nextLink)
+    private static void WriteBundleLinksFromStrings(FhirJsonWriter writer, string? selfLink, string? nextLink, string? relatedLink = null)
     {
-        if (string.IsNullOrEmpty(selfLink) && string.IsNullOrEmpty(nextLink))
+        if (string.IsNullOrEmpty(selfLink) && string.IsNullOrEmpty(nextLink) && string.IsNullOrEmpty(relatedLink))
         {
             return;
         }
@@ -539,6 +541,15 @@ public static class StreamingBundleSerializer
             {
                 Relation = "next",
                 Url = nextLink
+            });
+        }
+
+        if (!string.IsNullOrEmpty(relatedLink))
+        {
+            links.Add(new BundleLinkJsonNode(new JsonObject(), null)
+            {
+                Relation = "related",
+                Url = relatedLink
             });
         }
 

@@ -1,8 +1,9 @@
 # Investigation: $includes Operation (Paginated Includes)
 
 **Feature**: search
-**Status**: In Progress
+**Status**: Implemented
 **Created**: 2025-12-27
+**Implemented**: 2025-12-28
 
 ## Problem Statement
 
@@ -125,6 +126,89 @@ Continuation token handling in:
 2. **graphql-includes** - GraphQL-style field selection instead of FHIR includes
 3. **include-caching** - Cache include results for faster pagination
 
+## Decision
+
+**Implemented Option C (Two-Phase Search)** - The implementation follows the two-phase pattern with encoding/decoding of continuation tokens for include pagination.
+
+## Implementation Details
+
+### Architecture
+
+The implementation consists of three main components:
+
+1. **Query Parameters** (`SearchOptions`):
+   - `IncludesMaxItemCount` - Maximum number of included resources to return per page
+   - `IncludesContinuationToken` - Base64-encoded token containing pagination state
+
+2. **Handler** (`IncludesResourceHandler`):
+   - Decodes continuation token to extract offset and page size
+   - Re-executes the original search with include resolution
+   - Filters results to only Include entries (skips Match entries)
+   - Applies pagination based on offset and page size
+   - Returns Bundle with only included resources
+
+3. **Endpoint** (`OperationEndpoints`):
+   - `GET /{resourceType}/$includes?_includesContinuationToken=...`
+   - Supports both tenant-explicit and tenant-agnostic routes
+   - Validates required `_includesContinuationToken` parameter
+
+### Continuation Token Format
+
+The `IncludesContinuationToken` class handles encoding/decoding:
+
+```csharp
+// Token encodes:
+{
+  "IncludesOffset": 50,    // Number of includes already returned
+  "PageSize": 50            // Page size for this request
+}
+```
+
+Encoded as Base64 JSON for transmission in URLs.
+
+### Flow
+
+1. **Initial search with `_includesCount`**:
+   ```
+   GET /Patient?_include=Patient:organization&_count=10&_includesCount=50
+   ```
+   - Returns up to 10 patients (primary matches)
+   - Returns up to 50 organizations (includes)
+   - If more includes exist, adds "related" link with `_includesContinuationToken`
+
+2. **Follow-up request via $includes**:
+   ```
+   GET /Patient/$includes?_includesContinuationToken=xyz123&_include=Patient:organization
+   ```
+   - Returns Bundle with only Include entries
+   - Uses standard "next" link for additional pages
+   - No Match entries in response
+
+### Key Design Decisions
+
+1. **Filter-based approach**: Re-executes search and filters to Include entries only
+   - Simpler than maintaining separate state
+   - Consistent with existing include resolution logic
+   - Trades computation for state management complexity
+
+2. **Streaming serialization**: Uses `StreamingBundleSerializer` for memory efficiency
+   - Handles large include sets without loading all into memory
+   - Consistent with other search operations
+
+3. **Continuation token validation**: Validates token presence at endpoint
+   - Clear error message when missing required parameter
+   - Prevents invalid requests early in pipeline
+
+### Testing
+
+The implementation is tested in:
+- `IncludesOperationTests.cs` - Integration tests for $includes operation
+- `ContinuationTokenTests.cs` - Unit tests for token encoding/decoding
+
 ## Verdict
 
-*Pending evaluation* - Recommend Option C (Two-Phase Search) for consistency with existing patterns. Need to assess continuation token storage impact for large include sets.
+**ACCEPTED** - Successfully implemented. The two-phase search pattern provides:
+- Independent pagination for included resources
+- Consistency with existing continuation token infrastructure
+- Memory-efficient streaming for large result sets
+- Clear separation between Match and Include entries in paginated results

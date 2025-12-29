@@ -48,6 +48,10 @@ public record QueryParameter(string Name, string Value)
             "_format" or "_pretty" => ParameterCategory.Formatting,
             "_contained" or "_containedType" => ParameterCategory.Control,
 
+            // Includes pagination parameters
+            "_includesCount" => ParameterCategory.IncludesCount,
+            "_includesContinuationToken" => ParameterCategory.IncludesContinuationToken,
+
             // Search parameters (filter resources)
             "_id" => ParameterCategory.Search,
             "_tag" => ParameterCategory.Search,
@@ -130,4 +134,14 @@ public enum ParameterCategory
     /// Other control parameters (start with underscore but not recognized).
     /// </summary>
     Control,
+
+    /// <summary>
+    /// Includes count parameter (_includesCount) - maximum number of included resources per page.
+    /// </summary>
+    IncludesCount,
+
+    /// <summary>
+    /// Includes continuation token parameter (_includesContinuationToken) - pagination for included resources.
+    /// </summary>
+    IncludesContinuationToken,
 }

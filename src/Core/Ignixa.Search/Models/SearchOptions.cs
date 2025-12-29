@@ -93,6 +93,19 @@ public class SearchOptions
     /// Must be set together with StartSurrogateId to take effect.
     /// </summary>
     public long? EndSurrogateId { get; set; }
+
+    /// <summary>
+    /// Maximum number of included resources to return (_includesCount parameter).
+    /// When set, limits the number of _include/_revinclude results per page.
+    /// If null, includes are not limited separately from primary results.
+    /// </summary>
+    public int? IncludesMaxItemCount { get; set; }
+
+    /// <summary>
+    /// Continuation token for pagination of included resources (_includesContinuationToken).
+    /// Used by the $includes operation to fetch additional included resources.
+    /// </summary>
+    public string IncludesContinuationToken { get; set; }
 }
 
 /// <summary>
