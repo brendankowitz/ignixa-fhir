@@ -283,12 +283,10 @@ public class NotReferencedSearchTests : IncludeTestBase
 
     /// <summary>
     /// Tests that _not-referenced respects deleted resources.
-    /// Note: This test is skipped because soft-deleted resources may retain their reference index entries
-    /// depending on the storage implementation. The current SQL implementation does not clean up
-    /// ReferenceSearchParam entries on soft-delete, which is valid behavior (references are cleaned
-    /// only on hard delete/purge).
+    /// When a resource is soft-deleted, its search index entries (including ReferenceSearchParam)
+    /// are cleaned up, so referenced resources become orphaned.
     /// </summary>
-    [Fact(Skip = "Soft-deleted resources retain reference index entries - see ADR for cleanup policies")]
+    [Fact]
     public async Task GivenDeletedObservation_WhenSearchingNotReferenced_ThenTreatsPatientAsOrphaned()
     {
         // Arrange
