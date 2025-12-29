@@ -72,6 +72,13 @@ internal class ComparisonValueVisitor : ISearchValueVisitor
         AddComparison(_expressionBinaryOperator, token.Text, token.System, token.Code);
     }
 
+
+    public void Visit(OfTypeTokenSearchValue ofTypeToken)
+    {
+        EnsureThat.EnsureArg.IsNotNull(ofTypeToken, nameof(ofTypeToken));
+        AddComparison(_expressionBinaryOperator, ofTypeToken.IdentifierValue, ofTypeToken.TypeCode, ofTypeToken.TypeSystem ?? string.Empty);
+    }
+
     public void Visit(UriSearchValue uri)
     {
         EnsureArg.IsNotNull(uri, nameof(uri));

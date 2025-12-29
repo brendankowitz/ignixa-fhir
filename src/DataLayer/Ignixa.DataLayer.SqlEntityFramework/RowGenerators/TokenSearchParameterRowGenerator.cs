@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -43,6 +43,8 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("SystemId", SqlDbType.Int),
             new SqlMetaData("Code", SqlDbType.VarChar, 256),
             new SqlMetaData("CodeOverflow", SqlDbType.VarChar, -1),
+            new SqlMetaData("IdentifierTypeSystemId", SqlDbType.Int),
+            new SqlMetaData("IdentifierTypeCode", SqlDbType.VarChar, 256),
         };
 
         foreach (var resource in resources)
@@ -92,7 +94,7 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 }
 
                 // Handle code overflow for very long codes
-                // Code is guaranteed to be non-null here due to guard at line 55
+                // Code is guaranteed to be non-null here due to guard at line 66
                 if (tokenValue.Code.Length > 128)
                 {
                     record.SetString(4, tokenValue.Code.Substring(0, 128));
@@ -102,6 +104,30 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 {
                     record.SetString(4, tokenValue.Code);
                     record.SetDBNull(5);
+                }
+
+                // Handle identifier type columns for :of-type search modifier support
+                if (string.IsNullOrEmpty(tokenValue.IdentifierTypeSystem))
+                {
+                    record.SetDBNull(6);
+                }
+                else if (_systemMappings.TryGetValue(tokenValue.IdentifierTypeSystem, out var identifierTypeSystemId))
+                {
+                    record.SetInt32(6, identifierTypeSystemId);
+                }
+                else
+                {
+                    // Identifier type system not found - set to null
+                    record.SetDBNull(6);
+                }
+
+                if (string.IsNullOrEmpty(tokenValue.IdentifierTypeCode))
+                {
+                    record.SetDBNull(7);
+                }
+                else
+                {
+                    record.SetString(7, tokenValue.IdentifierTypeCode);
                 }
 
                 yield return record;

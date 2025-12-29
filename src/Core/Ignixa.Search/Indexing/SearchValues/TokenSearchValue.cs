@@ -1,7 +1,9 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+
+#nullable enable
 
 using System.Diagnostics.CodeAnalysis;
 using EnsureThat;
@@ -19,7 +21,20 @@ public class TokenSearchValue : ISearchValue
     /// <param name="system">The token system value.</param>
     /// <param name="code">The token code value.</param>
     /// <param name="text">The display text.</param>
-    public TokenSearchValue(string system, string code, string text)
+    public TokenSearchValue(string? system, string? code, string? text)
+        : this(system, code, text, null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TokenSearchValue"/> class with identifier type information.
+    /// </summary>
+    /// <param name="system">The token system value (Identifier.system).</param>
+    /// <param name="code">The token code value (Identifier.value).</param>
+    /// <param name="text">The display text (Identifier.type.text).</param>
+    /// <param name="identifierTypeSystem">The identifier type system (Identifier.type.coding[0].system).</param>
+    /// <param name="identifierTypeCode">The identifier type code (Identifier.type.coding[0].code).</param>
+    public TokenSearchValue(string? system, string? code, string? text, string? identifierTypeSystem, string? identifierTypeCode)
     {
         // Either system or code has to exist.
         EnsureArg.IsTrue(
@@ -30,22 +45,36 @@ public class TokenSearchValue : ISearchValue
         System = system;
         Code = code;
         Text = text;
+        IdentifierTypeSystem = identifierTypeSystem;
+        IdentifierTypeCode = identifierTypeCode;
     }
 
     /// <summary>
     /// Gets the token system value.
     /// </summary>
-    public string System { get; }
+    public string? System { get; }
 
     /// <summary>
     /// Gets the token code value.
     /// </summary>
-    public string Code { get; }
+    public string? Code { get; }
 
     /// <summary>
     /// Gets the display text.
     /// </summary>
-    public string Text { get; }
+    public string? Text { get; }
+
+    /// <summary>
+    /// Gets the identifier type system (from Identifier.type.coding[0].system).
+    /// Used for :of-type modifier search.
+    /// </summary>
+    public string? IdentifierTypeSystem { get; }
+
+    /// <summary>
+    /// Gets the identifier type code (from Identifier.type.coding[0].code).
+    /// Used for :of-type modifier search.
+    /// </summary>
+    public string? IdentifierTypeCode { get; }
 
     /// <inheritdoc />
     public bool IsValidAsCompositeComponent =>
@@ -61,15 +90,13 @@ public class TokenSearchValue : ISearchValue
 
     public bool Equals([AllowNull] ISearchValue other)
     {
-        if (other == null) return false;
+        if (other is not TokenSearchValue tokenSearchValueOther) return false;
 
-        var tokenSearchValueOther = other as TokenSearchValue;
-
-        if (tokenSearchValueOther == null) return false;
-
-        return System.Equals(tokenSearchValueOther.System, StringComparison.OrdinalIgnoreCase) &&
-               Code.Equals(tokenSearchValueOther.Code, StringComparison.OrdinalIgnoreCase) &&
-               Text.Equals(tokenSearchValueOther.Text, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(System, tokenSearchValueOther.System, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(Code, tokenSearchValueOther.Code, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(Text, tokenSearchValueOther.Text, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(IdentifierTypeSystem, tokenSearchValueOther.IdentifierTypeSystem, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(IdentifierTypeCode, tokenSearchValueOther.IdentifierTypeCode, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -101,8 +128,8 @@ public class TokenSearchValue : ISearchValue
     /// <inheritdoc />
     public override string ToString()
     {
-        if (System == null) return Code.EscapeSearchParameterValue();
+        if (System == null) return Code?.EscapeSearchParameterValue() ?? string.Empty;
 
-        return $"{System.EscapeSearchParameterValue()}|{Code.EscapeSearchParameterValue()}";
+        return string.Format("{0}|{1}", System.EscapeSearchParameterValue(), Code?.EscapeSearchParameterValue() ?? string.Empty);
     }
 }

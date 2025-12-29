@@ -247,6 +247,13 @@ public class CompactSearchValueWriter : ISearchValueVisitor
     }
 
     /// <inheritdoc />
+
+    /// <inheritdoc />
+    public void Visit(OfTypeTokenSearchValue ofTypeToken)
+    {
+        throw new NotSupportedException("OfTypeTokenSearchValue is for search queries only and should not be serialized.");
+    }
+
     public void Visit(UriSearchValue uri)
     {
         _writer.WriteString(

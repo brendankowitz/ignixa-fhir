@@ -43,7 +43,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests basic identifier:of-type search with Medical Record Number (MR).
     /// Format: identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MR|12345
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenPatientsWithTypedIdentifiers_WhenSearchingByOfTypeMedicalRecord_ThenReturnsOnlyMatchingPatient()
     {
         // Capability check
@@ -103,7 +103,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests that identifier:of-type search does NOT match when type is different but value matches.
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenPatientsWithSameValueDifferentType_WhenSearchingByOfType_ThenReturnsOnlyMatchingType()
     {
         // Capability check
@@ -149,7 +149,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests that identifier:of-type search does NOT match when type matches but value is different.
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenPatientsWithSameTypeDifferentValue_WhenSearchingByOfType_ThenReturnsOnlyMatchingValue()
     {
         // Capability check
@@ -200,7 +200,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests patient with multiple typed identifiers (MR, SSN, DL).
     /// Search should match only when BOTH type and value match.
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenPatientWithMultipleTypedIdentifiers_WhenSearchingByOfType_ThenReturnsCorrectMatches()
     {
         // Capability check
@@ -267,7 +267,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests OR logic with multiple identifier:of-type values.
     /// Format: identifier:of-type=system|code1|value1,system|code2|value2
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenMultipleOfTypeValues_WhenSearchingWithORLogic_ThenReturnsAllMatches()
     {
         // Capability check
@@ -322,7 +322,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests OR logic with different identifier types.
     /// Search for MR|12345 OR SS|67890
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenMultipleOfTypeValuesWithDifferentTypes_WhenSearchingWithORLogic_ThenReturnsAllMatches()
     {
         // Capability check
@@ -373,7 +373,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests identifier:of-type with missing type system (just code|value).
     /// Per FHIR spec, system can be omitted: identifier:of-type=|MR|12345
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenOfTypeSearchWithoutTypeSystem_WhenSearching_ThenMatchesOnCodeAndValueOnly()
     {
         // Capability check
@@ -424,7 +424,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests common identifier types from FHIR v2-0203 code system.
     /// MR = Medical Record, SS = Social Security, DL = Driver's License, PPN = Passport, EN = Employer Number
     /// </summary>
-    [Theory(Skip = "Not implemented")]
+    [Theory]
     [InlineData("MR", "Medical Record", "MRN-12345")]
     [InlineData("SS", "Social Security Number", "123-45-6789")]
     [InlineData("DL", "Driver's License", "DL-ABC123")]
@@ -487,7 +487,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests that patient with no typed identifiers is NOT returned.
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenPatientWithoutTypedIdentifiers_WhenSearchingByOfType_ThenPatientNotReturned()
     {
         // Capability check
@@ -536,7 +536,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     /// Tests case sensitivity of identifier value matching.
     /// Per FHIR spec, token values are case-sensitive.
     /// </summary>
-    [Fact(Skip = "Not implemented")]
+    [Fact]
     public async Task GivenIdentifierWithDifferentCase_WhenSearchingByOfType_ThenSearchIsCaseSensitive()
     {
         // Capability check

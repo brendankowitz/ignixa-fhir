@@ -17,7 +17,6 @@ namespace Ignixa.Api.E2ETests.Search.DataTypes;
 /// and exact matching on canonical URLs.
 /// Ported from: Microsoft.Health.Fhir.Tests.E2E.Rest.Search.UriSearchTests
 /// </summary>
-/// <remarks>
 /// URI search semantics per FHIR spec:
 /// - No modifier: exact match on the URI value
 /// - :below: hierarchical search where the resource URI starts with the search parameter (prefix matching)
@@ -147,11 +146,7 @@ public class UriSearchTests : CapabilityDrivenTestBase, IClassFixture<UriSearchF
     /// Tests :below modifier with broad prefix that matches multiple resources.
     /// Verifies hierarchical URI matching works correctly for common prefixes.
     /// </summary>
-    /// <remarks>
-    /// SKIPPED: :below modifier not implemented yet in Ignixa.
-    /// This test is preserved to document expected behavior for future implementation.
-    /// </remarks>
-    [Fact(Skip = ":below modifier not implemented")]
+    [Fact]
     public async Task GivenAUriSearchParamWithBelowModifier_WhenSearchedWithBroadPrefix_ThenCorrectBundleShouldBeReturned()
     {
         // Capability check
@@ -179,11 +174,7 @@ public class UriSearchTests : CapabilityDrivenTestBase, IClassFixture<UriSearchF
     /// Tests that URN OID schemes are distinct from HTTP URLs.
     /// URN searches should not match HTTP URLs and vice versa.
     /// </summary>
-    /// <remarks>
-    /// SKIPPED: :below modifier not implemented yet in Ignixa.
-    /// This test is preserved to document expected behavior for future implementation.
-    /// </remarks>
-    [Fact(Skip = ":below modifier not implemented")]
+    [Fact]
     public async Task GivenAUriSearchParam_WhenSearchingDifferentSchemes_ThenSchemesAreDistinct()
     {
         // Capability check

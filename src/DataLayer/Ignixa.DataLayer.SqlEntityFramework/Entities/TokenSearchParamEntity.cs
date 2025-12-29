@@ -59,11 +59,28 @@ public class TokenSearchParamEntity
     [Column("CodeOverflow")]
     public string? CodeOverflow { get; set; }
 
+    /// <summary>
+    /// System ID for the identifier type (FK to System.SystemId).
+    /// Used for identifier:of-type searches.
+    /// Null if no identifier type is specified or not an Identifier search param.
+    /// </summary>
+    [Column("IdentifierTypeSystemId")]
+    public int? IdentifierTypeSystemId { get; set; }
+
+    /// <summary>
+    /// Code value for the identifier type (up to 256 characters).
+    /// Used for identifier:of-type searches.
+    /// Null if no identifier type is specified or not an Identifier search param.
+    /// </summary>
+    [Column("IdentifierTypeCode")]
+    [MaxLength(256)]
+    public string? IdentifierTypeCode { get; set; }
+
     // Navigation properties
 
     /// <summary>
     /// Navigation to Resource entity.
     /// </summary>
-    [ForeignKey($"{nameof(ResourceTypeId)},{nameof(ResourceSurrogateId)}")]
+    [ForeignKey("{nameof(ResourceTypeId)},{nameof(ResourceSurrogateId)}")]
     public ResourceEntity? Resource { get; set; }
 }

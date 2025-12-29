@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -48,6 +48,12 @@ public interface ISearchValueVisitor
     /// </summary>
     /// <param name="token">The token search value to visit.</param>
     void Visit(TokenSearchValue token);
+
+    /// <summary>
+    /// Visits the <see cref="OfTypeTokenSearchValue"/>.
+    /// </summary>
+    /// <param name="ofTypeToken">The of-type token search value to visit.</param>
+    void Visit(OfTypeTokenSearchValue ofTypeToken);
 
     /// <summary>
     /// Visits the <see cref="UriSearchValue"/>.

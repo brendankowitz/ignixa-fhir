@@ -233,6 +233,26 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
         }
     }
 
+
+    void ISearchValueVisitor.Visit(OfTypeTokenSearchValue ofTypeToken)
+    {
+        EnsureArg.IsNotNull(ofTypeToken, nameof(ofTypeToken));
+
+        EnsureOnlyEqualComparatorIsSupported();
+
+        var expressions = new List<Expression>();
+
+        if (ofTypeToken.TypeSystem != null)
+        {
+            expressions.Add(Expression.StringEquals(FieldName.IdentifierTypeSystem, _componentIndex, ofTypeToken.TypeSystem, false));
+        }
+
+        expressions.Add(Expression.StringEquals(FieldName.IdentifierTypeCode, _componentIndex, ofTypeToken.TypeCode, false));
+        expressions.Add(Expression.StringEquals(FieldName.TokenCode, _componentIndex, ofTypeToken.IdentifierValue, false));
+
+        _outputExpression = Expression.And(expressions.ToArray());
+    }
+
     void ISearchValueVisitor.Visit(UriSearchValue uri)
     {
         EnsureArg.IsNotNull(uri, nameof(uri));
@@ -248,9 +268,7 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
                     Expression.NotStartsWith(FieldName.Uri, _componentIndex, KnownUriSchemes.Urn, false));
                 break;
             case SearchModifierCode.Below:
-                _outputExpression = Expression.And(
-                    Expression.StartsWith(FieldName.Uri, _componentIndex, uri.Uri, false),
-                    Expression.NotStartsWith(FieldName.Uri, _componentIndex, KnownUriSchemes.Urn, false));
+                _outputExpression = Expression.StartsWith(FieldName.Uri, _componentIndex, uri.Uri, false);
                 break;
             default:
                 ThrowModifierNotSupported();

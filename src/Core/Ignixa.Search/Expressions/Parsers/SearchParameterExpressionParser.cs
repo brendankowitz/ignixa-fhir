@@ -80,6 +80,19 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
 
             outputExpression = Expression.StartsWith(FieldName.TokenText, null, value, true);
         }
+        else if (modifier?.SearchModifierCode == SearchModifierCode.OfType)
+        {
+            // The :of-type modifier is used to search identifiers by their type.
+            // Format: identifier:of-type=system|code|value
+            // Where system is the Identifier.type.coding.system
+            //       code is the Identifier.type.coding.code
+            //       value is the Identifier.value
+            if (searchParameter.Type != SearchParamType.Token)
+                throw new InvalidSearchOperationException(
+                    string.Format(CultureInfo.InvariantCulture, Resources.ModifierNotSupported, modifier, searchParameter.Code));
+
+            outputExpression = BuildOfTypeExpression(searchParameter, value);
+        }
         else
         {
             // Build the expression for based on the search value.
@@ -314,6 +327,39 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
     /// Returns null when the type cannot be confidently determined, allowing
     /// the component definition type to be used instead.
     /// </summary>
+
+    private Expression BuildOfTypeExpression(SearchParameterInfo searchParameter, string value)
+    {
+        IReadOnlyList<string> parts = value.SplitByOrSeparator();
+        var helper = new SearchValueExpressionBuilderHelper();
+
+        if (parts.Count == 1)
+        {
+            var searchValue = OfTypeTokenSearchValue.Parse(value);
+            return helper.Build(
+                searchParameter.Code,
+                null,
+                SearchComparator.Eq,
+                null,
+                searchValue);
+        }
+        else
+        {
+            var expressions = parts.Select(part =>
+            {
+                var searchValue = OfTypeTokenSearchValue.Parse(part);
+                return helper.Build(
+                    searchParameter.Code,
+                    null,
+                    SearchComparator.Eq,
+                    null,
+                    searchValue);
+            }).ToArray();
+
+            return Expression.Or(expressions);
+        }
+    }
+
     private static SearchParamType? InferSearchParamTypeFromValue(string value)
     {
         if (string.IsNullOrEmpty(value))

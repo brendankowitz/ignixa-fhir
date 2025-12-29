@@ -1,7 +1,9 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+
+#nullable enable
 
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Abstractions;
@@ -21,14 +23,19 @@ public class IdentifierToTokenSearchValueConverter : FhirElementToSearchValueCon
 
     protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        string stringValue = value.Scalar("value") as string;
-        string system = value.Scalar("system") as string;
-        string type = value.Scalar("type.text") as string;
+        string? stringValue = value.Scalar("value") as string;
+        string? system = value.Scalar("system") as string;
+        string? type = value.Scalar("type.text") as string;
 
         if (string.IsNullOrEmpty(stringValue)) yield break;
 
+        // Extract identifier type information for :of-type search modifier
+        // Identifier.type.coding[0].system and Identifier.type.coding[0].code
+        string? identifierTypeSystem = value.Scalar("type.coding.first().system") as string;
+        string? identifierTypeCode = value.Scalar("type.coding.first().code") as string;
+
         // Based on spec: http://hl7.org/fhir/search.html#token,
         // the text for identifier is specified by Identifier.type.text.
-        yield return new TokenSearchValue(system, stringValue, type);
+        yield return new TokenSearchValue(system, stringValue, type, identifierTypeSystem, identifierTypeCode);
     }
 }

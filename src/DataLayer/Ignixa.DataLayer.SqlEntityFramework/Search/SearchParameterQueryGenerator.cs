@@ -1349,7 +1349,7 @@ public class SearchParameterQueryGenerator
         // - StringExpression with FieldName.TokenCode
         // - MissingFieldExpression with FieldName.TokenSystem (for |code pattern)
         return multiaryExpr.Expressions.Any(e =>
-            (e is StringExpression se && (se.FieldName == FieldName.TokenSystem || se.FieldName == FieldName.TokenCode)) ||
+            (e is StringExpression se && (se.FieldName == FieldName.TokenSystem || se.FieldName == FieldName.TokenCode || se.FieldName == FieldName.IdentifierTypeSystem || se.FieldName == FieldName.IdentifierTypeCode)) ||
             (e is MissingFieldExpression mfe && mfe.FieldName == FieldName.TokenSystem));
     }
 
@@ -1360,6 +1360,7 @@ public class SearchParameterQueryGenerator
     /// - "|code" (empty system): MissingFieldExpression(TokenSystem) AND StringExpression(TokenCode)
     /// - "system|code" (full token): StringExpression(TokenSystem) AND StringExpression(TokenCode)
     /// </summary>
+
     private async Task<IQueryable<long>> GenerateTokenAndQueryAsync(
         short? resourceTypeId,
         short? searchParamId,
@@ -1372,6 +1373,8 @@ public class SearchParameterQueryGenerator
         string? system = null;
         string? code = null;
         bool requireMissingSystem = false;
+        string? identifierTypeSystem = null;
+        string? identifierTypeCode = null;
 
         foreach (var expr in multiaryExpr.Expressions)
         {
@@ -1384,6 +1387,12 @@ public class SearchParameterQueryGenerator
                         break;
                     case FieldName.TokenCode:
                         code = stringExpr.Value;
+                        break;
+                    case FieldName.IdentifierTypeSystem:
+                        identifierTypeSystem = stringExpr.Value;
+                        break;
+                    case FieldName.IdentifierTypeCode:
+                        identifierTypeCode = stringExpr.Value;
                         break;
                 }
             }
@@ -1416,11 +1425,30 @@ public class SearchParameterQueryGenerator
             query = query.Where(sp => sp.SystemId == null);
         }
 
+        // Handle identifier type for :of-type modifier
+        if (!string.IsNullOrEmpty(identifierTypeSystem))
+        {
+            var identifierTypeSystemId = await _cache.GetOrCreateSystemIdAsync(identifierTypeSystem);
+            if (!identifierTypeSystemId.HasValue)
+            {
+                _logger.LogDebug("Identifier type system not found: {System}", identifierTypeSystem);
+                return Enumerable.Empty<long>().AsQueryable();
+            }
+            query = query.Where(sp => sp.IdentifierTypeSystemId == identifierTypeSystemId.Value);
+        }
+
+        if (!string.IsNullOrEmpty(identifierTypeCode))
+        {
+            query = query.Where(sp => EF.Functions.Collate(sp.IdentifierTypeCode, "Latin1_General_100_CI_AS") == identifierTypeCode);
+        }
+
         _logger.LogDebug(
-            "Token AND query: System={System}, Code={Code}, RequireMissingSystem={RequireMissingSystem}",
+            "Token AND query: System={System}, Code={Code}, RequireMissingSystem={RequireMissingSystem}, IdentifierTypeSystem={IdentifierTypeSystem}, IdentifierTypeCode={IdentifierTypeCode}",
             system,
             code,
-            requireMissingSystem);
+            requireMissingSystem,
+            identifierTypeSystem,
+            identifierTypeCode);
 
         if (string.IsNullOrEmpty(code))
         {
@@ -1439,6 +1467,7 @@ public class SearchParameterQueryGenerator
             .Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
             .Select(sp => sp.ResourceSurrogateId);
     }
+
 
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
         short? resourceTypeId,
