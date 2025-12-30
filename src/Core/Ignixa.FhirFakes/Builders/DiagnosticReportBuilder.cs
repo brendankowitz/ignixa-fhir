@@ -272,8 +272,7 @@ public sealed class DiagnosticReportBuilder : FhirResourceBuilder<DiagnosticRepo
             reportJson["result"] = BuildResults();
         }
 
-        var json = reportJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(reportJson);
     }
 
     private JsonArray BuildResults()

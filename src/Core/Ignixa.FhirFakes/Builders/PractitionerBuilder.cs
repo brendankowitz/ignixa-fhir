@@ -193,8 +193,7 @@ public sealed class PractitionerBuilder : FhirResourceBuilder<PractitionerBuilde
             practitionerJson["qualification"] = BuildQualifications();
         }
 
-        var json = practitionerJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(practitionerJson);
     }
 
     private JsonArray BuildName()

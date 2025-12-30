@@ -186,7 +186,6 @@ public sealed class ValueSetBuilder : FhirResourceBuilder<ValueSetBuilder>
             valueSetJson["publisher"] = _publisher;
         }
 
-        var json = valueSetJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(valueSetJson);
     }
 }

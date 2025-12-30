@@ -705,8 +705,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
             patientJson["identifier"] = BuildIdentifiers();
         }
 
-        var json = patientJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(patientJson);
     }
 
     // === Private Helper Methods ===

@@ -229,8 +229,7 @@ public sealed class LocationBuilder : FhirResourceBuilder<LocationBuilder>
             locationJson["address"] = BuildAddress();
         }
 
-        var json = locationJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(locationJson);
     }
 
     private bool HasAddress()

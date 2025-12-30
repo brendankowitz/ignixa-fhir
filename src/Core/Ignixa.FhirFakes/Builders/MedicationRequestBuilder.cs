@@ -296,7 +296,6 @@ public sealed class MedicationRequestBuilder : FhirResourceBuilder<MedicationReq
             requestJson["authoredOn"] = _authoredOn;
         }
 
-        var json = requestJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(requestJson);
     }
 }

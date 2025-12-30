@@ -593,8 +593,7 @@ public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
             obsJson["performer"] = BuildPerformers();
         }
 
-        var json = obsJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(obsJson);
     }
 
     private static JsonObject CreateReference(string reference)

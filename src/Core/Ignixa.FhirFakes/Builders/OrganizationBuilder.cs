@@ -236,8 +236,7 @@ public sealed class OrganizationBuilder : FhirResourceBuilder<OrganizationBuilde
             };
         }
 
-        var json = orgJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(orgJson);
     }
 
     private JsonArray BuildIdentifiers()

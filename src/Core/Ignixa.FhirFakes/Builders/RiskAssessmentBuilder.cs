@@ -123,7 +123,6 @@ public sealed class RiskAssessmentBuilder : FhirResourceBuilder<RiskAssessmentBu
             riskAssessmentJson["prediction"] = new JsonArray { prediction };
         }
 
-        var json = riskAssessmentJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(riskAssessmentJson);
     }
 }

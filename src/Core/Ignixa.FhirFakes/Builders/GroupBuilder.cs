@@ -305,7 +305,6 @@ public sealed class GroupBuilder : FhirResourceBuilder<GroupBuilder>
             groupJson["member"] = membersArray;
         }
 
-        var json = groupJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(groupJson);
     }
 }

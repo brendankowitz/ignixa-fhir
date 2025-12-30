@@ -269,8 +269,7 @@ public sealed class CareTeamBuilder : FhirResourceBuilder<CareTeamBuilder>
             careTeamJson["participant"] = BuildParticipants();
         }
 
-        var json = careTeamJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(careTeamJson);
     }
 
     private JsonArray BuildParticipants()

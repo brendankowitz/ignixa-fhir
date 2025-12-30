@@ -314,8 +314,7 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
             dispenseJson["whenHandedOver"] = _whenHandedOver;
         }
 
-        var json = dispenseJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(dispenseJson);
     }
 
     private JsonArray BuildAuthorizingPrescriptions()
