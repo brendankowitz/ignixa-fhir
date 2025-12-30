@@ -14,7 +14,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// <summary>
 /// Generates UriSearchParamList TVP SqlDataRecord rows from URI search values.
 /// URI search parameters store canonical URIs (case-sensitive comparison).
-/// May include version and fragment information parsed from canonical URIs.
+/// Note: The TVP only includes core columns (4 columns). Extension data (Version, Fragment)
+/// is collected separately and updated via EF Core after MergeResources completes.
 /// </summary>
 public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
@@ -24,6 +25,8 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
+        // TVP schema matches original 97.sql definition (4 columns only)
+        // Version/Fragment columns are updated post-merge via EF Core
         var metadata = new[]
         {
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
@@ -55,12 +58,68 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
-                // Store the full URI including version/fragment to support exact matching
-                // Future: Add Version/Fragment columns when schema migration is applied
-                record.SetString(3, uriValue.ToString());
+                // Store just the base URI (without version/fragment) for TVP
+                // This matches the PK constraint in the TVP
+                record.SetString(3, uriValue.Uri);
 
                 yield return record;
             }
         }
     }
+
+    /// <summary>
+    /// Extracts extension data (Version, Fragment columns) for post-merge EF update.
+    /// Returns records that have non-null Version or Fragment data.
+    /// </summary>
+    public IEnumerable<UriSearchParamExtensionData> ExtractExtensionData(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        foreach (var resource in resources)
+        {
+            if (resource.SearchIndices == null || resource.SearchIndices.Count == 0)
+                continue;
+
+            if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
+                continue;
+
+            if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
+                continue;
+
+            foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
+            {
+                if (searchIndex.Value is not UriSearchValue uriValue)
+                    continue;
+
+                // Only yield if there's Version or Fragment data to update
+                if (string.IsNullOrEmpty(uriValue.Version) && string.IsNullOrEmpty(uriValue.Fragment))
+                    continue;
+
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
+                    continue;
+
+                yield return new UriSearchParamExtensionData(
+                    resourceTypeId,
+                    surrogateId,
+                    searchParamId,
+                    uriValue.Uri,
+                    uriValue.Version,
+                    uriValue.Fragment);
+            }
+        }
+    }
 }
+
+/// <summary>
+/// Extension data for UriSearchParam that cannot be passed through the TVP.
+/// Used for post-merge EF Core update of Version and Fragment columns.
+/// </summary>
+public record UriSearchParamExtensionData(
+    short ResourceTypeId,
+    long ResourceSurrogateId,
+    short SearchParamId,
+    string Uri,
+    string? Version,
+    string? Fragment);

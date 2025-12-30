@@ -32,7 +32,9 @@ public class SqlMergeRepositoryTests : TestBase
         _repository = new SqlMergeRepository(
             Context,
             _compressor,
-            new NullLogger<SqlMergeRepository>());
+            new NullLogger<SqlMergeRepository>(),
+            Cache,
+            new NullLogger<PostMergeExtensionUpdater>());
 
         SeedLookupData();
     }

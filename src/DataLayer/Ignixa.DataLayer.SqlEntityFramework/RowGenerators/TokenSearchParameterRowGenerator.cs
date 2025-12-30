@@ -15,6 +15,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// <summary>
 /// Generates TokenSearchParamList TVP SqlDataRecord rows from token search values.
 /// Token search parameters use a System|Code format (e.g., "http://system|code").
+/// Note: The TVP only includes core columns (6 columns). Extension data (IdentifierType*)
+/// is collected separately and updated via EF Core after MergeResources completes.
 /// </summary>
 public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
@@ -35,6 +37,8 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
+        // TVP schema matches original 97.sql definition (6 columns only)
+        // IdentifierType columns are updated post-merge via EF Core
         var metadata = new[]
         {
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
@@ -43,8 +47,6 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("SystemId", SqlDbType.Int),
             new SqlMetaData("Code", SqlDbType.VarChar, 256),
             new SqlMetaData("CodeOverflow", SqlDbType.VarChar, -1),
-            new SqlMetaData("IdentifierTypeSystemId", SqlDbType.Int),
-            new SqlMetaData("IdentifierTypeCode", SqlDbType.VarChar, 256),
         };
 
         foreach (var resource in resources)
@@ -94,11 +96,11 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 }
 
                 // Handle code overflow for very long codes
-                // Code is guaranteed to be non-null here due to guard at line 66
+                // Code is guaranteed to be non-null here due to guard above
                 if (tokenValue.Code.Length > 128)
                 {
-                    record.SetString(4, tokenValue.Code.Substring(0, 128));
-                    record.SetString(5, tokenValue.Code.Substring(128));
+                    record.SetString(4, tokenValue.Code[..128]);
+                    record.SetString(5, tokenValue.Code[128..]);
                 }
                 else
                 {
@@ -106,32 +108,87 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                     record.SetDBNull(5);
                 }
 
-                // Handle identifier type columns for :of-type search modifier support
-                if (string.IsNullOrEmpty(tokenValue.IdentifierTypeSystem))
-                {
-                    record.SetDBNull(6);
-                }
-                else if (_systemMappings.TryGetValue(tokenValue.IdentifierTypeSystem, out var identifierTypeSystemId))
-                {
-                    record.SetInt32(6, identifierTypeSystemId);
-                }
-                else
-                {
-                    // Identifier type system not found - set to null
-                    record.SetDBNull(6);
-                }
-
-                if (string.IsNullOrEmpty(tokenValue.IdentifierTypeCode))
-                {
-                    record.SetDBNull(7);
-                }
-                else
-                {
-                    record.SetString(7, tokenValue.IdentifierTypeCode);
-                }
-
                 yield return record;
             }
         }
     }
+
+    /// <summary>
+    /// Extracts extension data (IdentifierType columns) for post-merge EF update.
+    /// Returns records that have non-null IdentifierType data.
+    /// </summary>
+    public IEnumerable<TokenSearchParamExtensionData> ExtractExtensionData(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        foreach (var resource in resources)
+        {
+            if (resource.SearchIndices == null || resource.SearchIndices.Count == 0)
+                continue;
+
+            if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
+                continue;
+
+            if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
+                continue;
+
+            foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
+            {
+                if (searchIndex.Value is not TokenSearchValue tokenValue)
+                    continue;
+
+                if (string.IsNullOrEmpty(tokenValue.Code))
+                    continue;
+
+                // Only yield if there's IdentifierType data to update
+                if (string.IsNullOrEmpty(tokenValue.IdentifierTypeSystem) &&
+                    string.IsNullOrEmpty(tokenValue.IdentifierTypeCode))
+                    continue;
+
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
+                    continue;
+
+                int? identifierTypeSystemId = null;
+                if (!string.IsNullOrEmpty(tokenValue.IdentifierTypeSystem) &&
+                    _systemMappings.TryGetValue(tokenValue.IdentifierTypeSystem, out var sysId))
+                {
+                    identifierTypeSystemId = sysId;
+                }
+
+                // Truncate code to 128 chars to match the key used in the main table
+                var code = tokenValue.Code.Length > 128 ? tokenValue.Code[..128] : tokenValue.Code;
+
+                int? systemId = null;
+                if (!string.IsNullOrEmpty(tokenValue.System) &&
+                    _systemMappings.TryGetValue(tokenValue.System, out var tokenSystemId))
+                {
+                    systemId = tokenSystemId;
+                }
+
+                yield return new TokenSearchParamExtensionData(
+                    resourceTypeId,
+                    surrogateId,
+                    searchParamId,
+                    systemId,
+                    code,
+                    identifierTypeSystemId,
+                    tokenValue.IdentifierTypeCode);
+            }
+        }
+    }
 }
+
+/// <summary>
+/// Extension data for TokenSearchParam that cannot be passed through the TVP.
+/// Used for post-merge EF Core update of IdentifierType columns.
+/// </summary>
+public record TokenSearchParamExtensionData(
+    short ResourceTypeId,
+    long ResourceSurrogateId,
+    short SearchParamId,
+    int? SystemId,
+    string Code,
+    int? IdentifierTypeSystemId,
+    string? IdentifierTypeCode);

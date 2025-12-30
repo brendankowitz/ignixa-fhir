@@ -340,7 +340,8 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 dbContext,
                 compressor,
                 _loggerFactory.CreateLogger<SqlMergeRepository>(),
-                searchIndexCache);
+                searchIndexCache,
+                _loggerFactory.CreateLogger<PostMergeExtensionUpdater>());
 
             return new SqlEntityFrameworkRepository(
                 dbContext,

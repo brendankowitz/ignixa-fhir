@@ -23,6 +23,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework;
 /// High-performance repository for bulk resource merging using stored procedures and TVPs.
 /// Provides 10-100x performance improvement over EF Core for batch operations.
 /// Uses tenant-specific SearchIndexReferenceDataCache for all reference data lookups.
+/// Extension columns (IdentifierType*, Version, Fragment) are updated via EF after merge.
 /// </summary>
 public class SqlMergeRepository
 {
@@ -30,15 +31,16 @@ public class SqlMergeRepository
     private readonly GzipResourceCompressor _compressor;
     private readonly ILogger<SqlMergeRepository> _logger;
     private readonly SearchIndexReferenceDataCache _referenceDataCache;
+    private readonly PostMergeExtensionUpdater _extensionUpdater;
     private readonly ResourceRowGenerator _resourceRowGenerator;
     private readonly ResourceWriteClaimRowGenerator _resourceWriteClaimRowGenerator;
-    private readonly ISearchParameterRowGenerator _tokenRowGenerator;
+    private readonly TokenSearchParameterRowGenerator _tokenRowGenerator;
     private readonly ISearchParameterRowGenerator _referenceRowGenerator;
     private readonly ISearchParameterRowGenerator _stringRowGenerator;
     private readonly ISearchParameterRowGenerator _numberRowGenerator;
     private readonly ISearchParameterRowGenerator _quantityRowGenerator;
     private readonly ISearchParameterRowGenerator _dateTimeRowGenerator;
-    private readonly ISearchParameterRowGenerator _uriRowGenerator;
+    private readonly UriSearchParameterRowGenerator _uriRowGenerator;
     private readonly ISearchParameterRowGenerator _tokenTextRowGenerator;
     private readonly ISearchParameterRowGenerator _refTokenCompositeRowGenerator;
     private readonly ISearchParameterRowGenerator _tokenTokenCompositeRowGenerator;
@@ -54,16 +56,19 @@ public class SqlMergeRepository
     /// <param name="compressor">The Gzip resource compressor.</param>
     /// <param name="logger">The logger instance.</param>
     /// <param name="referenceDataCache">The search index reference data cache.</param>
+    /// <param name="extensionUpdaterLogger">Logger for the extension updater.</param>
     public SqlMergeRepository(
         FhirDbContext context,
         GzipResourceCompressor compressor,
         ILogger<SqlMergeRepository> logger,
-        SearchIndexReferenceDataCache referenceDataCache)
+        SearchIndexReferenceDataCache referenceDataCache,
+        ILogger<PostMergeExtensionUpdater> extensionUpdaterLogger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _referenceDataCache = referenceDataCache ?? throw new ArgumentNullException(nameof(referenceDataCache));
+        _extensionUpdater = new PostMergeExtensionUpdater(context, extensionUpdaterLogger);
 
         // Initialize row generators (will be injected in Phase 3 via DI container)
         _resourceRowGenerator = new ResourceRowGenerator(compressor);
@@ -316,6 +321,12 @@ public class SqlMergeRepository
             }
         };
 
+        // Extract extension data before calling the SP (needed for post-merge update)
+        var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
+            resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap).ToList();
+        var uriExtensions = _uriRowGenerator.ExtractExtensionData(
+            resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap).ToList();
+
         try
         {
             // Execute merge stored procedure
@@ -343,6 +354,21 @@ public class SqlMergeRepository
             "Merged {ResourceCount} resources, {AffectedRows} rows affected",
             resources.Count,
             affectedRows);
+
+        // Update extension columns that couldn't be passed through TVPs
+        // This runs after MergeResources so the rows exist in the tables
+        if (tokenExtensions.Count > 0 || uriExtensions.Count > 0)
+        {
+            _logger.LogDebug(
+                "Updating extension columns: {TokenCount} token, {UriCount} uri",
+                tokenExtensions.Count,
+                uriExtensions.Count);
+
+            await _extensionUpdater.UpdateAllExtensionsAsync(
+                tokenExtensions,
+                uriExtensions,
+                cancellationToken);
+        }
 
         return affectedRows;
     }
