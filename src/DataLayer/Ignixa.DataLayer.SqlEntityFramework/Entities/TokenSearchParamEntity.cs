@@ -81,6 +81,6 @@ public class TokenSearchParamEntity
     /// <summary>
     /// Navigation to Resource entity.
     /// </summary>
-    [ForeignKey("{nameof(ResourceTypeId)},{nameof(ResourceSurrogateId)}")]
+    [ForeignKey("ResourceTypeId,ResourceSurrogateId")]
     public ResourceEntity? Resource { get; set; }
 }
