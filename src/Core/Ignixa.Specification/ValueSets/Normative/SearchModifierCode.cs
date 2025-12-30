@@ -43,7 +43,7 @@ public enum SearchModifierCode
     [EnumLiteral("not-in", "http://hl7.org/fhir/search-modifier-code")]
     NotIn,
     /// <summary>Of Type</summary>
-    [EnumLiteral("ofType", "http://hl7.org/fhir/search-modifier-code")]
+    [EnumLiteral("of-type", "http://hl7.org/fhir/search-modifier-code")]
     OfType,
     /// <summary>Text</summary>
     [EnumLiteral("text", "http://hl7.org/fhir/search-modifier-code")]
