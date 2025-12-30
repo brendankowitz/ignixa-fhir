@@ -74,7 +74,7 @@ runs:
         if [ -n "${{ inputs.test-filter }}" ]; then
           FILTER_ARG="--filter \"${{ inputs.test-filter }}\""
         fi
-        dotnet test "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-build --verbosity minimal --logger "trx;LogFileName=test-results.trx" $FILTER_ARG
+        dotnet test "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-build --verbosity minimal --logger "trx;LogFileName=test-results.trx;verbosity=minimal" $FILTER_ARG
       shell: bash
 
     - name: Upload test results
@@ -93,3 +93,4 @@ runs:
         files: '**/test-results.trx'
         check_name: 'Test Results'
         comment_mode: 'off'
+        large_files: true
