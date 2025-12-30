@@ -2084,11 +2084,13 @@ public class SearchParameterQueryGenerator
         short? searchParamId,
         string version)
     {
-        // TODO: Implement version filtering when schema includes Version column
-        // Currently returns empty results as Version column doesn't exist in schema
         var query = _context.UriSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        var collation = "Latin1_General_100_BIN2";
+        query = query.Where(sp => sp.Version != null &&
+            EF.Functions.Collate(sp.Version, collation) == version);
 
         return query.Select(sp => sp.ResourceSurrogateId);
     }
@@ -2098,11 +2100,13 @@ public class SearchParameterQueryGenerator
         short? searchParamId,
         string fragment)
     {
-        // TODO: Implement fragment filtering when schema includes Fragment column
-        // Currently returns empty results as Fragment column doesn't exist in schema
         var query = _context.UriSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        var collation = "Latin1_General_100_BIN2";
+        query = query.Where(sp => sp.Fragment != null &&
+            EF.Functions.Collate(sp.Fragment, collation) == fragment);
 
         return query.Select(sp => sp.ResourceSurrogateId);
     }

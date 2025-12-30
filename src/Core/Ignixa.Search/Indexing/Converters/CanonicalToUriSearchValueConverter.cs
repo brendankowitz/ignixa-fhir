@@ -29,11 +29,13 @@ public class CanonicalToUriSearchValueConverter : FhirElementToSearchValueConver
          * and SHOULD support automatically detecting a |[version] portion as part of the search parameter, and interpreting that
          * portion as a search on the version"
          *
-         * Note: Using separateCanonicalComponents=false to store the full URI in the Uri column.
-         * Full canonical version/fragment search requires schema migration to add separate columns.
-         * Until then, exact matching on the full URI is supported.
+         * When separateCanonicalComponents=true, the URI is parsed to extract:
+         * - Base URI (without version/fragment) stored in Uri column
+         * - Version (after |) stored in Version column
+         * - Fragment (after #) stored in Fragment column
+         * This enables :below modifier search on canonical URIs.
          */
 
-        yield return new UriSearchValue(value.Value.ToString(), false);
+        yield return new UriSearchValue(value.Value.ToString(), separateCanonicalComponents: true);
     }
 }
