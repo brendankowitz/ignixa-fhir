@@ -117,7 +117,15 @@ public sealed class DebounceInvalidationStrategy : IDisposable
 #pragma warning disable CA1849 // Synchronous cleanup during reset is acceptable
         existing.Timer?.Dispose();
 #pragma warning restore CA1849
-        existing.CancellationTokenSource?.Cancel();
+        try
+        {
+            existing.CancellationTokenSource?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS was already disposed by another thread - safe to ignore
+        }
+
         existing.CancellationTokenSource?.Dispose();
 
         // Create new timer with reset window
@@ -200,7 +208,15 @@ public sealed class DebounceInvalidationStrategy : IDisposable
 #pragma warning disable CA1849 // Timer doesn't have async dispose in all contexts
             state.Timer?.Dispose();
 #pragma warning restore CA1849
-            state.CancellationTokenSource?.Cancel();
+            try
+            {
+                state.CancellationTokenSource?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // CTS was already disposed by another thread - safe to ignore
+            }
+
             state.CancellationTokenSource?.Dispose();
         }
 
