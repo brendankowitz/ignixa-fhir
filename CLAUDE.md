@@ -189,6 +189,38 @@ public class MyHandler : IRequestHandler<MyQuery, MyResult> {
 - `meta.versionId` - Server auto-manages
 - `meta.lastUpdated` - Server auto-manages
 
+### 5. Transaction Model & MergeResources Pattern
+
+**Application-Level Transactions** (NOT SQL Server transactions):
+- Transactions are tracked via `dbo.Transactions` table
+- `MergeResourcesBeginTransaction` SP creates a transaction record
+- `MergeResources` SP internally calls `MergeResourcesCommitTransaction` when `@TransactionId IS NOT NULL`
+- This is an application-level visibility mechanism, not ACID transaction boundaries
+
+**PostMerge Extension Updates**:
+```
+MergeResources (TVP) → commits core data → PostMergeExtensionUpdater → updates extension columns
+```
+
+The `PostMergeExtensionUpdater` pattern updates nullable extension columns (e.g., `IdentifierTypeSystemId`, `IdentifierTypeCode`, `Version`, `Fragment`) AFTER `MergeResources` has already committed the core search parameter rows.
+
+**Why this is NOT a transaction boundary issue**:
+- Core resource data commits successfully via `MergeResources`
+- Extension columns are nullable and optional (for advanced search modifiers like `:of-type`, `:above`, `:below`)
+- If extension update fails, nullable columns remain NULL
+- This is an **acceptable degraded state** - basic search works, modifier searches may miss data
+
+**Do NOT**:
+- ❌ Wrap `MergeResources` + `PostMergeExtensionUpdater` in a SQL transaction
+- ❌ Treat extension update failure as a critical error requiring rollback
+- ❌ Modify the original `MergeResources` SP or its TVP definitions
+
+**Do**:
+- ✅ Keep TVP schemas unchanged (6 columns for TokenSearchParamList, original schema for others)
+- ✅ Use EF Core `ExecuteSqlRawAsync` with parameterized SQL for extension updates
+- ✅ Batch extension updates (e.g., 100 per SQL command) to avoid N+1 patterns
+- ✅ Log extension update failures for monitoring, but don't fail the request
+
 ---
 
 ## Common Development Tasks

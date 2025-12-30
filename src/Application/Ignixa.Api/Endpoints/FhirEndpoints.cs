@@ -606,25 +606,10 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Check for unsupported parameters with handling=strict
-        if (PreferHeaderParser.IsStrictHandling(context.Request.Headers) &&
-            searchOptions.UnsupportedParams.Count > 0)
+        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        if (strictResult is not null)
         {
-            logger.LogWarning(
-                "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
-                string.Join(", ", searchOptions.UnsupportedParams));
-
-            var operationOutcome = new Ignixa.Serialization.Models.OperationOutcomeJsonNode();
-            foreach (var param in searchOptions.UnsupportedParams)
-            {
-                operationOutcome.Issue.Add(new Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueType.NotSupported,
-                    Diagnostics = $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                });
-            }
-
-            return Results.BadRequest(operationOutcome.MutableNode);
+            return strictResult;
         }
 
         // Send search query
@@ -712,25 +697,10 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Check for unsupported parameters with handling=strict
-        if (PreferHeaderParser.IsStrictHandling(context.Request.Headers) &&
-            searchOptions.UnsupportedParams.Count > 0)
+        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        if (strictResult is not null)
         {
-            logger.LogWarning(
-                "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
-                string.Join(", ", searchOptions.UnsupportedParams));
-
-            var operationOutcome = new Ignixa.Serialization.Models.OperationOutcomeJsonNode();
-            foreach (var param in searchOptions.UnsupportedParams)
-            {
-                operationOutcome.Issue.Add(new Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueType.NotSupported,
-                    Diagnostics = $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                });
-            }
-
-            return Results.BadRequest(operationOutcome.MutableNode);
+            return strictResult;
         }
 
         // Send search query
@@ -1529,25 +1499,10 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported parameters with handling=strict
-        if (PreferHeaderParser.IsStrictHandling(context.Request.Headers) &&
-            searchOptions.UnsupportedParams.Count > 0)
+        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        if (strictResult is not null)
         {
-            logger.LogWarning(
-                "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
-                string.Join(", ", searchOptions.UnsupportedParams));
-
-            var operationOutcome = new Ignixa.Serialization.Models.OperationOutcomeJsonNode();
-            foreach (var param in searchOptions.UnsupportedParams)
-            {
-                operationOutcome.Issue.Add(new Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueType.NotSupported,
-                    Diagnostics = $"Search parameter '{param}' is not supported"
-                });
-            }
-
-            return Results.BadRequest(operationOutcome.MutableNode);
+            return strictResult;
         }
 
         // Send search query for base-level search (null resourceType means search all types)
@@ -1633,25 +1588,10 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported parameters with handling=strict
-        if (PreferHeaderParser.IsStrictHandling(context.Request.Headers) &&
-            searchOptions.UnsupportedParams.Count > 0)
+        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        if (strictResult is not null)
         {
-            logger.LogWarning(
-                "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
-                string.Join(", ", searchOptions.UnsupportedParams));
-
-            var operationOutcome = new Ignixa.Serialization.Models.OperationOutcomeJsonNode();
-            foreach (var param in searchOptions.UnsupportedParams)
-            {
-                operationOutcome.Issue.Add(new Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = Ignixa.Serialization.Models.OperationOutcomeJsonNode.IssueType.NotSupported,
-                    Diagnostics = $"Search parameter '{param}' is not supported"
-                });
-            }
-
-            return Results.BadRequest(operationOutcome.MutableNode);
+            return strictResult;
         }
 
         // Send search query for base-level search (null resourceType means search all types)
@@ -1746,6 +1686,49 @@ public static class FhirEndpoints
             Diagnostics = message
         });
         return outcome;
+    }
+
+    /// <summary>
+    /// Checks for unsupported search parameters when strict handling is requested.
+    /// Returns a BadRequest result if strict handling is enabled and unsupported parameters exist.
+    /// </summary>
+    /// <param name="context">The HTTP context.</param>
+    /// <param name="searchOptions">The search options containing unsupported params.</param>
+    /// <param name="resourceType">Optional resource type for error message context.</param>
+    /// <param name="logger">Logger for warnings.</param>
+    /// <returns>BadRequest result if strict handling fails, null otherwise.</returns>
+    private static IResult? CheckStrictHandling(
+        HttpContext context,
+        SearchOptions searchOptions,
+        string? resourceType,
+        ILogger logger)
+    {
+        if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
+            searchOptions.UnsupportedParams.Count == 0)
+        {
+            return null;
+        }
+
+        logger.LogWarning(
+            "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
+            string.Join(", ", searchOptions.UnsupportedParams));
+
+        var operationOutcome = new OperationOutcomeJsonNode();
+        foreach (var param in searchOptions.UnsupportedParams)
+        {
+            var diagnostics = resourceType is not null
+                ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
+                : $"Search parameter '{param}' is not supported";
+
+            operationOutcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+                Diagnostics = diagnostics
+            });
+        }
+
+        return Results.BadRequest(operationOutcome.MutableNode);
     }
 
     /// <summary>
