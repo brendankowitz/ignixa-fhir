@@ -1709,9 +1709,14 @@ public static class FhirEndpoints
             return null;
         }
 
+        // Sanitize user input to prevent log forging (remove newlines and control characters)
+        var sanitizedParams = searchOptions.UnsupportedParams
+            .Select(p => p.Replace("\r", "", StringComparison.Ordinal)
+                          .Replace("\n", "", StringComparison.Ordinal)
+                          .Replace("\t", " ", StringComparison.Ordinal));
         logger.LogWarning(
             "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
-            string.Join(", ", searchOptions.UnsupportedParams));
+            string.Join(", ", sanitizedParams));
 
         var operationOutcome = new OperationOutcomeJsonNode();
         foreach (var param in searchOptions.UnsupportedParams)
