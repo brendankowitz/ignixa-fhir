@@ -8,6 +8,7 @@
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using FhirPathExtensions = Ignixa.FhirPath.Evaluation.TypedElementExtensions;
 
 namespace Ignixa.Search.Indexing.Converters;
 
@@ -23,16 +24,20 @@ public class IdentifierToTokenSearchValueConverter : FhirElementToSearchValueCon
 
     protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
+        // Simple property access (immediate children) - use local Scalar
         string? stringValue = value.Scalar("value") as string;
         string? system = value.Scalar("system") as string;
-        string? type = value.Scalar("type.text") as string;
 
         if (string.IsNullOrEmpty(stringValue)) yield break;
 
+        // FHIRPath expressions for nested paths - must use FhirPathExtensions.Scalar
+        // The local ElementExtensions.Scalar only accesses immediate children by name
+        string? type = FhirPathExtensions.Scalar(value, "type.text") as string;
+
         // Extract identifier type information for :of-type search modifier
         // Identifier.type.coding[0].system and Identifier.type.coding[0].code
-        string? identifierTypeSystem = value.Scalar("type.coding.first().system") as string;
-        string? identifierTypeCode = value.Scalar("type.coding.first().code") as string;
+        string? identifierTypeSystem = FhirPathExtensions.Scalar(value, "type.coding.first().system") as string;
+        string? identifierTypeCode = FhirPathExtensions.Scalar(value, "type.coding.first().code") as string;
 
         // Based on spec: http://hl7.org/fhir/search.html#token,
         // the text for identifier is specified by Identifier.type.text.
