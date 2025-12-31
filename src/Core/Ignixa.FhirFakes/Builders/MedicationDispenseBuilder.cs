@@ -23,8 +23,8 @@ namespace Ignixa.FhirFakes.Builders;
 /// <item><description>Medication as CodeableConcept or Reference (mutually exclusive)</description></item>
 /// <item><description>Subject reference (typically Patient)</description></item>
 /// <item><description>Authorizing prescription references (MedicationRequest)</description></item>
-/// <item><description>Performer references (Practitioner, Organization)</description></item>
-/// <item><description>Timing (whenHandedOver)</description></item>
+/// <item><description>Performer references (Practitioner, Organization) with optional function codes</description></item>
+/// <item><description>Timing (whenPrepared, whenHandedOver)</description></item>
 /// </list>
 /// <para><strong>Example Usage - Basic Dispense with CodeableConcept:</strong></para>
 /// <code>
@@ -43,15 +43,27 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .WithMedicationReference(medicationId)
 ///     .Build();
 /// </code>
-/// <para><strong>Example Usage - Complete Dispense with Prescription:</strong></para>
+/// <para><strong>Example Usage - Complete Dispense with Prescription and Performer:</strong></para>
 /// <code>
 /// var dispense = MedicationDispenseBuilder.Create(schemaProvider)
 ///     .WithStatus("completed")
 ///     .WithSubject(patientId)
 ///     .WithMedicationCodeableConcept("197361", "http://www.nlm.nih.gov/research/umls/rxnorm", "Lisinopril")
 ///     .WithAuthorizingPrescription(medicationRequestId)
-///     .WithPerformer(practitionerId)
+///     .WithPractitionerPerformer(practitionerId, "dispenser")
+///     .WithWhenPrepared("2024-01-15T10:00:00Z")
 ///     .WithWhenHandedOver("2024-01-15T10:30:00Z")
+///     .Build();
+/// </code>
+/// <para><strong>Example Usage - Multiple Prescriptions and Organization Performer:</strong></para>
+/// <code>
+/// var dispense = MedicationDispenseBuilder.Create(schemaProvider)
+///     .WithStatus("completed")
+///     .WithSubject(patientId)
+///     .WithMedicationCodeableConcept("312615", "http://www.nlm.nih.gov/research/umls/rxnorm", "Metformin")
+///     .WithAuthorizingPrescriptions(request1Id, request2Id)
+///     .WithOrganizationPerformer(pharmacyOrgId)
+///     .WithWhenHandedOver("2024-01-15T14:30:00Z")
 ///     .Build();
 /// </code>
 /// </remarks>
@@ -73,9 +85,10 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
     private readonly List<string> _authorizingPrescriptionIds = [];
 
     // Performer
-    private readonly List<(string ResourceType, string Id)> _performers = [];
+    private readonly List<(string ResourceType, string Id, string? Function)> _performers = [];
 
     // Timing
+    private string? _whenPrepared;
     private string? _whenHandedOver;
 
     private MedicationDispenseBuilder(IFhirSchemaProvider schemaProvider)
@@ -211,21 +224,100 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
     }
 
     /// <summary>
-    /// Adds a performer reference (who performed the dispense).
-    /// Can be called multiple times for multiple performers.
+    /// Adds multiple authorizing prescription references (MedicationRequest).
+    /// This is a convenience method for adding all prescriptions at once.
     /// </summary>
-    /// <param name="practitionerId">The Practitioner resource ID.</param>
+    /// <param name="medicationRequestIds">Array of MedicationRequest resource IDs.</param>
     /// <returns>This builder for method chaining.</returns>
     /// <example>
     /// <code>
-    /// .WithPerformer(practitioner.Id!)
-    /// // Generates: "performer": [{ "actor": { "reference": "Practitioner/{id}" } }]
+    /// .WithAuthorizingPrescriptions(request1Id, request2Id, request3Id)
     /// </code>
     /// </example>
-    public MedicationDispenseBuilder WithPerformer(string practitionerId)
+    public MedicationDispenseBuilder WithAuthorizingPrescriptions(params string[] medicationRequestIds)
     {
-        ArgumentNullException.ThrowIfNull(practitionerId);
-        _performers.Add(("Practitioner", practitionerId));
+        ArgumentNullException.ThrowIfNull(medicationRequestIds);
+
+        foreach (var id in medicationRequestIds)
+        {
+            ArgumentNullException.ThrowIfNull(id);
+            _authorizingPrescriptionIds.Add(id);
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a performer reference (who performed the dispense).
+    /// Can be called multiple times for multiple performers.
+    /// </summary>
+    /// <param name="resourceType">The resource type (e.g., "Practitioner", "Organization").</param>
+    /// <param name="id">The resource ID.</param>
+    /// <param name="function">Optional function code describing the performer's role (e.g., "dispenser", "packager").</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// .WithPerformer("Practitioner", practitionerId, "dispenser")
+    /// .WithPerformer("Organization", pharmacyOrgId)
+    /// </code>
+    /// </example>
+    public MedicationDispenseBuilder WithPerformer(string resourceType, string id, string? function = null)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(id);
+        _performers.Add((resourceType, id, function));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Practitioner performer (convenience method).
+    /// Equivalent to WithPerformer("Practitioner", practitionerId, function).
+    /// </summary>
+    /// <param name="practitionerId">The practitioner resource ID.</param>
+    /// <param name="function">Optional function code describing the performer's role (e.g., "dispenser", "packager").</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// .WithPractitionerPerformer(practitioner.Id!, "dispenser")
+    /// .WithPractitionerPerformer(practitioner.Id!)
+    /// </code>
+    /// </example>
+    public MedicationDispenseBuilder WithPractitionerPerformer(string practitionerId, string? function = null)
+    {
+        return WithPerformer("Practitioner", practitionerId, function);
+    }
+
+    /// <summary>
+    /// Adds an Organization performer (convenience method).
+    /// Equivalent to WithPerformer("Organization", organizationId, function).
+    /// </summary>
+    /// <param name="organizationId">The organization resource ID.</param>
+    /// <param name="function">Optional function code describing the performer's role.</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// .WithOrganizationPerformer(pharmacy.Id!)
+    /// </code>
+    /// </example>
+    public MedicationDispenseBuilder WithOrganizationPerformer(string organizationId, string? function = null)
+    {
+        return WithPerformer("Organization", organizationId, function);
+    }
+
+    /// <summary>
+    /// Sets the whenPrepared timestamp (when the medication was prepared).
+    /// </summary>
+    /// <param name="dateTime">ISO 8601 date/time string (e.g., "2024-01-15T10:00:00Z").</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// .WithWhenPrepared("2024-01-15T10:00:00Z")
+    /// </code>
+    /// </example>
+    public MedicationDispenseBuilder WithWhenPrepared(string dateTime)
+    {
+        ArgumentNullException.ThrowIfNull(dateTime);
+        _whenPrepared = dateTime;
         return this;
     }
 
@@ -262,18 +354,23 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
     /// </example>
     public override ResourceJsonNode Build()
     {
+        if (_subjectId is null)
+        {
+            throw new InvalidOperationException(
+                "MedicationDispense subject is required. Call WithSubject() before Build().");
+        }
+
         var dispenseJson = new JsonObject
         {
             ["resourceType"] = "MedicationDispense",
             ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
-            ["status"] = _status
+            ["status"] = _status,
+            ["subject"] = CreateReference("Patient", _subjectId)
         };
 
-        // Medication is required (either CodeableConcept or Reference)
         if (_medicationCode is not null && _medicationSystem is not null)
         {
-            // medicationCodeableConcept variant
             dispenseJson["medicationCodeableConcept"] = CreateCodeableConcept(
                 _medicationCode,
                 _medicationSystem,
@@ -281,19 +378,12 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
         }
         else if (_medicationReferenceId is not null)
         {
-            // medicationReference variant
             dispenseJson["medicationReference"] = CreateReference("Medication", _medicationReferenceId);
         }
         else
         {
             throw new InvalidOperationException(
                 "Medication is required. Call WithMedicationCodeableConcept() or WithMedicationReference() before Build().");
-        }
-
-        // Subject
-        if (_subjectId is not null)
-        {
-            dispenseJson["subject"] = CreateReference("Patient", _subjectId);
         }
 
         // Authorizing prescriptions
@@ -309,6 +399,11 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
         }
 
         // Timing
+        if (_whenPrepared is not null)
+        {
+            dispenseJson["whenPrepared"] = _whenPrepared;
+        }
+
         if (_whenHandedOver is not null)
         {
             dispenseJson["whenHandedOver"] = _whenHandedOver;
@@ -333,12 +428,22 @@ public sealed class MedicationDispenseBuilder : FhirResourceBuilder<MedicationDi
     {
         var performers = new JsonArray();
 
-        foreach (var (resourceType, id) in _performers)
+        foreach (var (resourceType, id, function) in _performers)
         {
-            performers.Add(new JsonObject
+            var performer = new JsonObject
             {
                 ["actor"] = CreateReference(resourceType, id)
-            });
+            };
+
+            if (function is not null)
+            {
+                performer["function"] = CreateCodeableConcept(
+                    function,
+                    "http://terminology.hl7.org/CodeSystem/medicationdispense-performer-function",
+                    null);
+            }
+
+            performers.Add(performer);
         }
 
         return performers;

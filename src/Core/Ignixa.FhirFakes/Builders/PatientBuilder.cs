@@ -75,10 +75,13 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
     // Reference configuration
     private string? _managingOrganizationId;
-    private readonly List<string> _generalPractitionerIds = [];
+    private readonly List<GeneralPractitionerReference> _generalPractitioners = [];
 
     // Identifier configuration
     private readonly List<IdentifierConfig> _identifiers = [];
+
+    // Additional names (beyond the primary official name)
+    private readonly List<AdditionalName> _additionalNames = [];
 
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
@@ -308,6 +311,33 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     }
 
     /// <summary>
+    /// Adds an additional name to the patient (e.g., nickname, maiden name).
+    /// The primary name is set via WithGivenName/WithFamilyName. This method adds secondary names.
+    /// </summary>
+    /// <param name="family">The family (last) name for this additional name.</param>
+    /// <param name="given">The given (first) name for this additional name.</param>
+    /// <param name="use">The name use (e.g., "nickname", "maiden", "old"). Defaults to "nickname".</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithGivenName("John")
+    ///     .WithFamilyName("Smith")
+    ///     .AddName("Johnny", "Smith", "nickname")
+    ///     .AddName("Smithson", "John", "maiden")
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder AddName(string family, string given, string use = "nickname")
+    {
+        ArgumentNullException.ThrowIfNull(family);
+        ArgumentNullException.ThrowIfNull(given);
+        ArgumentNullException.ThrowIfNull(use);
+        _additionalNames.Add(new AdditionalName(family, given, use));
+        return this;
+    }
+
+    /// <summary>
     /// Sets a profile-specific attribute.
     /// Use this for country-specific demographics not covered by dedicated methods.
     /// </summary>
@@ -495,7 +525,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     }
 
     /// <summary>
-    /// Adds a general practitioner reference.
+    /// Adds a general practitioner reference (defaults to Practitioner resource type).
     /// </summary>
     /// <param name="practitionerId">The ID of the practitioner.</param>
     /// <returns>This builder for method chaining</returns>
@@ -509,7 +539,28 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     public PatientBuilder WithGeneralPractitioner(string practitionerId)
     {
         ArgumentNullException.ThrowIfNull(practitionerId);
-        _generalPractitionerIds.Add(practitionerId);
+        return WithGeneralPractitioner("Practitioner", practitionerId);
+    }
+
+    /// <summary>
+    /// Adds a general practitioner reference with explicit resource type.
+    /// </summary>
+    /// <param name="resourceType">The resource type (e.g., "Practitioner", "Organization").</param>
+    /// <param name="id">The resource ID.</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithGeneralPractitioner("Practitioner", practitioner.Id!)
+    ///     .WithGeneralPractitioner("Organization", organization.Id!)
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithGeneralPractitioner(string resourceType, string id)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(id);
+        _generalPractitioners.Add(new GeneralPractitionerReference(resourceType, id));
         return this;
     }
 
@@ -678,14 +729,14 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
             };
         }
 
-        if (_generalPractitionerIds.Count > 0)
+        if (_generalPractitioners.Count > 0)
         {
             var gpArray = new JsonArray();
-            foreach (var practitionerId in _generalPractitionerIds)
+            foreach (var gp in _generalPractitioners)
             {
                 gpArray.Add(new JsonObject
                 {
-                    ["reference"] = $"Practitioner/{practitionerId}"
+                    ["reference"] = $"{gp.ResourceType}/{gp.Id}"
                 });
             }
             patientJson["generalPractitioner"] = gpArray;
@@ -765,15 +816,27 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
     private JsonArray BuildName()
     {
-        return
-        [
+        var names = new JsonArray
+        {
             new JsonObject
             {
                 ["use"] = "official",
                 ["family"] = _familyName ?? _faker.Name.LastName(),
                 ["given"] = new JsonArray(JsonValue.Create(_givenName ?? _faker.Name.FirstName()))
             }
-        ];
+        };
+
+        foreach (var additionalName in _additionalNames)
+        {
+            names.Add(new JsonObject
+            {
+                ["use"] = additionalName.Use,
+                ["family"] = additionalName.Family,
+                ["given"] = new JsonArray(JsonValue.Create(additionalName.Given))
+            });
+        }
+
+        return names;
     }
 
     private bool HasAddress()
@@ -1052,4 +1115,14 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         public string? TypeDisplay { get; init; }
         public string? IdentifierSystem { get; init; }
     }
+
+    /// <summary>
+    /// Configuration for an additional name (beyond the primary official name).
+    /// </summary>
+    private readonly record struct AdditionalName(string Family, string Given, string Use);
+
+    /// <summary>
+    /// Configuration for a general practitioner reference.
+    /// </summary>
+    private readonly record struct GeneralPractitionerReference(string ResourceType, string Id);
 }

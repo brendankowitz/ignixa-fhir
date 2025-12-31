@@ -236,27 +236,19 @@ public static class SortTestScenario
 
         for (var i = 0; i < nameConfigs.Length; i++)
         {
-            var patient = new PatientBuilder(schemaProvider)
+            var builder = new PatientBuilder(schemaProvider)
                 .WithTag(tag)
                 .WithFamilyName(nameConfigs[i][0])
                 .WithGivenName($"MultiName{i:D2}")
                 .WithBirthDate(1970 + i, 1, 15)
-                .WithGender(i % 2 == 0 ? g => g.Male : g => g.Female)
-                .Build();
+                .WithGender(i % 2 == 0 ? g => g.Male : g => g.Female);
 
-            var namesArray = patient.MutableNode["name"] as System.Text.Json.Nodes.JsonArray;
-            if (namesArray is not null)
+            for (var j = 1; j < nameConfigs[i].Length; j++)
             {
-                for (var j = 1; j < nameConfigs[i].Length; j++)
-                {
-                    namesArray.Add(new System.Text.Json.Nodes.JsonObject
-                    {
-                        ["use"] = "nickname",
-                        ["family"] = nameConfigs[i][j],
-                        ["given"] = new System.Text.Json.Nodes.JsonArray(System.Text.Json.Nodes.JsonValue.Create($"Alt{j}"))
-                    });
-                }
+                builder.AddName(nameConfigs[i][j], $"Alt{j}");
             }
+
+            var patient = builder.Build();
 
             data.Patients.Add(patient);
             data.FamilyNames.Add(nameConfigs[i].ToList());

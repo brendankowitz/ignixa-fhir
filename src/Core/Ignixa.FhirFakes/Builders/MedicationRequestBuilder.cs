@@ -71,6 +71,7 @@ public sealed class MedicationRequestBuilder : FhirResourceBuilder<MedicationReq
     private string? _medicationReferenceId;
 
     // Requester
+    private string? _requesterResourceType;
     private string? _requesterId;
 
     // Temporal
@@ -204,7 +205,29 @@ public sealed class MedicationRequestBuilder : FhirResourceBuilder<MedicationReq
     }
 
     /// <summary>
-    /// Sets the requester reference (typically a Practitioner).
+    /// Sets the requester reference (who is requesting/ordering the medication).
+    /// </summary>
+    /// <param name="resourceType">The requester resource type (e.g., "Practitioner", "Organization", "Patient", "PractitionerRole", "RelatedPerson", "Device").</param>
+    /// <param name="id">The resource ID (not the full reference path).</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// .WithRequester("Practitioner", practitionerId)
+    /// .WithRequester("Organization", organizationId)
+    /// </code>
+    /// </example>
+    public MedicationRequestBuilder WithRequester(string resourceType, string id)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(id);
+        _requesterResourceType = resourceType;
+        _requesterId = id;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the requester as a Practitioner (convenience method).
+    /// Equivalent to WithRequester("Practitioner", practitionerId).
     /// </summary>
     /// <param name="practitionerId">The practitioner resource ID.</param>
     /// <returns>This builder for method chaining.</returns>
@@ -216,9 +239,23 @@ public sealed class MedicationRequestBuilder : FhirResourceBuilder<MedicationReq
     /// </example>
     public MedicationRequestBuilder WithRequester(string practitionerId)
     {
-        ArgumentNullException.ThrowIfNull(practitionerId);
-        _requesterId = practitionerId;
-        return this;
+        return WithRequester("Practitioner", practitionerId);
+    }
+
+    /// <summary>
+    /// Sets the requester as an Organization (convenience method).
+    /// Equivalent to WithRequester("Organization", organizationId).
+    /// </summary>
+    /// <param name="organizationId">The organization resource ID.</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <example>
+    /// <code>
+    /// .WithRequesterOrganization(organization.Id!)
+    /// </code>
+    /// </example>
+    public MedicationRequestBuilder WithRequesterOrganization(string organizationId)
+    {
+        return WithRequester("Organization", organizationId);
     }
 
     /// <summary>
@@ -286,9 +323,9 @@ public sealed class MedicationRequestBuilder : FhirResourceBuilder<MedicationReq
         }
 
         // Optional fields
-        if (_requesterId is not null)
+        if (_requesterResourceType is not null && _requesterId is not null)
         {
-            requestJson["requester"] = CreateReference("Practitioner", _requesterId);
+            requestJson["requester"] = CreateReference(_requesterResourceType, _requesterId);
         }
 
         if (_authoredOn is not null)

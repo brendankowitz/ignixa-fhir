@@ -332,6 +332,46 @@ public class MedicationRequestBuilderTests
         request.MutableNode["requester"].ShouldBeNull();
     }
 
+    [Fact]
+    public void GivenBuilder_WhenSettingRequesterWithResourceType_ThenIncludesCorrectRequesterReference()
+    {
+        // Arrange
+        var patientId = "patient-123";
+        var organizationId = "org-789";
+
+        // Act
+        var request = MedicationRequestBuilder.Create(_schemaProvider)
+            .WithSubject(patientId)
+            .WithMedicationCodeableConcept("aspirin", "http://example.org")
+            .WithRequester("Organization", organizationId)
+            .Build();
+
+        // Assert
+        request.MutableNode["requester"].ShouldNotBeNull();
+        var requester = request.MutableNode["requester"]?.AsObject();
+        requester?["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
+    }
+
+    [Fact]
+    public void GivenBuilder_WhenUsingRequesterOrganizationConvenienceMethod_ThenIncludesOrganizationRequester()
+    {
+        // Arrange
+        var patientId = "patient-123";
+        var organizationId = "org-456";
+
+        // Act
+        var request = MedicationRequestBuilder.Create(_schemaProvider)
+            .WithSubject(patientId)
+            .WithMedicationCodeableConcept("aspirin", "http://example.org")
+            .WithRequesterOrganization(organizationId)
+            .Build();
+
+        // Assert
+        request.MutableNode["requester"].ShouldNotBeNull();
+        var requester = request.MutableNode["requester"]?.AsObject();
+        requester?["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
+    }
+
     #endregion
 
     #region AuthoredOn Tests

@@ -373,25 +373,16 @@ public class SortTests : CapabilityDrivenTestBase
         var childOrg1 = OrganizationBuilder.Create(SchemaProvider)
             .WithTag(tag)
             .WithName("Alpha Department")
+            .WithPartOf(parentOrg.Id!)
             .Build();
 
         var childOrg2 = OrganizationBuilder.Create(SchemaProvider)
             .WithTag(tag)
             .WithName("Beta Department")
+            .WithPartOf(parentOrg.Id!)
             .Build();
 
-        await Harness.CreateResourcesAsync([parentOrg]);
-
-        childOrg1.MutableNode["partOf"] = new System.Text.Json.Nodes.JsonObject
-        {
-            ["reference"] = $"Organization/{parentOrg.Id}"
-        };
-        childOrg2.MutableNode["partOf"] = new System.Text.Json.Nodes.JsonObject
-        {
-            ["reference"] = $"Organization/{parentOrg.Id}"
-        };
-
-        await Harness.CreateResourcesAsync([childOrg1, childOrg2]);
+        await Harness.CreateResourcesAsync([parentOrg, childOrg1, childOrg2]);
 
         var results = await Harness.SearchAsync("Organization", $"partof={parentOrg.Id}&_sort=name");
 

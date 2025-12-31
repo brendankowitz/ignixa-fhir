@@ -447,21 +447,15 @@ public class BasicSearchTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithGender(g => g.Female)
             .WithTag(tag)
+            .WithManagingOrganization("123")
             .Build();
-        patient1.MutableNode["managingOrganization"] = new JsonObject
-        {
-            ["reference"] = "Organization/123"
-        };
 
         var patient2 = CreatePatient()
             .FromCity(KnownCities.Boston)
             .WithGender(g => g.Female)
             .WithTag(tag)
+            .WithManagingOrganization("234")
             .Build();
-        patient2.MutableNode["managingOrganization"] = new JsonObject
-        {
-            ["reference"] = "Organization/234"
-        };
 
         var createdResources = await Harness.CreateResourcesAsync([patient1, patient2]);
         var patient1Id = createdResources[0].Id;

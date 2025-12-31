@@ -1234,6 +1234,60 @@ public class PatientBuilderTests
     }
     */
 
+    [Fact]
+    public void GivenPatientWithPractitionerGP_WhenBuilt_ThenIncludesPractitionerReference()
+    {
+        var practitionerId = Guid.NewGuid().ToString();
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithGivenName("John")
+            .WithFamilyName("Doe")
+            .WithGeneralPractitioner(practitionerId)
+            .Build();
+
+        patient.ShouldNotBeNull();
+        var gpArray = patient.MutableNode["generalPractitioner"]?.AsArray();
+        gpArray.ShouldNotBeNull();
+        gpArray!.Count.ShouldBe(1);
+        gpArray[0]?["reference"]?.GetValue<string>().ShouldBe($"Practitioner/{practitionerId}");
+    }
+
+    [Fact]
+    public void GivenPatientWithOrganizationGP_WhenBuilt_ThenIncludesOrganizationReference()
+    {
+        var organizationId = Guid.NewGuid().ToString();
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithGivenName("Jane")
+            .WithFamilyName("Smith")
+            .WithGeneralPractitioner("Organization", organizationId)
+            .Build();
+
+        patient.ShouldNotBeNull();
+        var gpArray = patient.MutableNode["generalPractitioner"]?.AsArray();
+        gpArray.ShouldNotBeNull();
+        gpArray!.Count.ShouldBe(1);
+        gpArray[0]?["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
+    }
+
+    [Fact]
+    public void GivenPatientWithMultipleGPs_WhenBuilt_ThenIncludesAllReferences()
+    {
+        var practitionerId = Guid.NewGuid().ToString();
+        var organizationId = Guid.NewGuid().ToString();
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithGivenName("Alice")
+            .WithFamilyName("Johnson")
+            .WithGeneralPractitioner(practitionerId)
+            .WithGeneralPractitioner("Organization", organizationId)
+            .Build();
+
+        patient.ShouldNotBeNull();
+        var gpArray = patient.MutableNode["generalPractitioner"]?.AsArray();
+        gpArray.ShouldNotBeNull();
+        gpArray!.Count.ShouldBe(2);
+        gpArray[0]?["reference"]?.GetValue<string>().ShouldBe($"Practitioner/{practitionerId}");
+        gpArray[1]?["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
+    }
+
     #endregion
 }
 

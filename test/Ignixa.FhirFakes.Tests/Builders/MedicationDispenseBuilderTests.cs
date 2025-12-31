@@ -323,7 +323,7 @@ public class MedicationDispenseBuilderTests
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
-            .WithPerformer(practitionerId)
+            .WithPractitionerPerformer(practitionerId)
             .Build();
 
         // Assert
@@ -345,8 +345,8 @@ public class MedicationDispenseBuilderTests
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
-            .WithPerformer(practitioner1)
-            .WithPerformer(practitioner2)
+            .WithPractitionerPerformer(practitioner1)
+            .WithPractitionerPerformer(practitioner2)
             .Build();
 
         // Assert
@@ -425,7 +425,7 @@ public class MedicationDispenseBuilderTests
             .WithSubject(patientId)
             .WithMedicationCodeableConcept("197361", "http://www.nlm.nih.gov/research/umls/rxnorm", "Lisinopril")
             .WithAuthorizingPrescription(prescriptionId)
-            .WithPerformer(practitionerId)
+            .WithPractitionerPerformer(practitionerId)
             .WithWhenHandedOver(timestamp)
             .WithTag(tag)
             .Build();
