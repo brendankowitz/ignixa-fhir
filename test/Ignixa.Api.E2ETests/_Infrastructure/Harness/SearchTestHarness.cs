@@ -285,4 +285,107 @@ public sealed class SearchTestHarness
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(responseJson);
     }
+
+    /// <summary>
+    /// Puts a resource with query string (for conditional update operations).
+    /// Returns the raw HttpResponseMessage for status code and header inspection.
+    /// </summary>
+    /// <param name="resource">The resource to update.</param>
+    /// <param name="queryString">Query string with search parameters (e.g., "identifier=system|value").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>HttpResponseMessage with status code, Location header (if created), and resource body.</returns>
+    /// <remarks>
+    /// This method supports conditional update as defined in FHIR R4 Section 3.1.0.6.
+    /// Expected response codes:
+    /// - 200 OK: One match found, resource updated successfully
+    /// - 201 Created: No matches found, new resource created
+    /// - 412 Precondition Failed: Multiple matches found
+    /// - 400 Bad Request: No search criteria or invalid resource type (e.g., Bundle)
+    /// </remarks>
+    public async Task<HttpResponseMessage> PutResourceWithQueryAsync(
+        ResourceJsonNode resource,
+        string queryString,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        var resourceType = resource.ResourceType;
+        var json = resource.MutableNode.ToJsonString();
+
+        var url = string.IsNullOrEmpty(queryString)
+            ? $"/{resourceType}"
+            : $"/{resourceType}?{queryString}";
+
+        var request = new HttpRequestMessage(HttpMethod.Put, url)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/fhir+json")
+        };
+
+        return await _client.SendAsync(request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a conditional delete via DELETE request with query string.
+    /// Returns the raw HttpResponseMessage for status code and response inspection.
+    /// </summary>
+    /// <param name="resourceType">The resource type to delete (e.g., "Patient").</param>
+    /// <param name="queryString">Query string with search parameters (e.g., "identifier=system|value&_count=10").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>HttpResponseMessage with status code and optional body.</returns>
+    public async Task<HttpResponseMessage> DeleteWithQueryAsync(
+        string resourceType,
+        string queryString,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+
+        var url = string.IsNullOrEmpty(queryString)
+            ? $"/{resourceType}"
+            : $"/{resourceType}?{queryString}";
+
+        var request = new HttpRequestMessage(HttpMethod.Delete, url);
+        return await _client.SendAsync(request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a conditional patch via PATCH request with query string.
+    /// Returns the raw HttpResponseMessage for status code and response inspection.
+    /// </summary>
+    /// <param name="resourceType">The resource type to patch (e.g., "Patient").</param>
+    /// <param name="queryString">Query string with search parameters (e.g., "identifier=system|value").</param>
+    /// <param name="patchDocument">The FHIRPath Patch document (Parameters resource).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>HttpResponseMessage with status code and patched resource body (if successful).</returns>
+    /// <remarks>
+    /// This method supports FHIRPath Patch (Parameters resource) as defined in FHIR R4 Section 3.1.0.7.1.
+    /// JSON Patch (RFC 6902) is NOT supported by this server.
+    ///
+    /// Expected response codes:
+    /// - 200 OK: One match found, resource patched successfully
+    /// - 404 Not Found: No matches found for search criteria
+    /// - 412 Precondition Failed: Multiple matches or no search criteria
+    /// - 400 Bad Request: Invalid resource type (e.g., Bundle)
+    /// </remarks>
+    public async Task<HttpResponseMessage> PatchWithQueryAsync(
+        string resourceType,
+        string queryString,
+        ResourceJsonNode patchDocument,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(patchDocument);
+
+        var url = string.IsNullOrEmpty(queryString)
+            ? $"/{resourceType}"
+            : $"/{resourceType}?{queryString}";
+
+        var json = patchDocument.MutableNode.ToJsonString();
+
+        var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/fhir+json")
+        };
+
+        return await _client.SendAsync(request, cancellationToken);
+    }
 }

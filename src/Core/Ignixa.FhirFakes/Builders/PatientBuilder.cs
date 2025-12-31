@@ -1013,6 +1013,35 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     // === Identifier Support ===
 
     /// <summary>
+    /// Adds a simple identifier to the patient with system and value.
+    /// Use this for basic identifiers without type coding (e.g., MRN, SSN as simple values).
+    /// </summary>
+    /// <param name="system">The identifier system URI (e.g., "http://hospital.example.org/mrn")</param>
+    /// <param name="value">The identifier value (e.g., "12345")</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithIdentifier("http://hospital.example.org/mrn", "12345")
+    ///     .WithIdentifier("http://hl7.org/fhir/sid/us-ssn", "123-45-6789")
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithIdentifier(string system, string value)
+    {
+        ArgumentNullException.ThrowIfNull(system);
+        ArgumentNullException.ThrowIfNull(value);
+
+        _identifiers.Add(new IdentifierConfig
+        {
+            Value = value,
+            IdentifierSystem = system
+        });
+
+        return this;
+    }
+
+    /// <summary>
     /// Adds a typed identifier to the patient.
     /// Creates an identifier with a type code from the FHIR v2-0203 code system.
     /// </summary>
@@ -1071,31 +1100,34 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         {
             var identifier = new JsonObject
             {
-                ["type"] = new JsonObject
-                {
-                    ["coding"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["system"] = config.TypeSystem,
-                            ["code"] = config.TypeCode
-                        }
-                    }
-                },
                 ["value"] = config.Value
             };
-
-            // Add type display if provided
-            if (!string.IsNullOrEmpty(config.TypeDisplay))
-            {
-                var typeCoding = identifier["type"]!["coding"]!.AsArray()[0]!.AsObject();
-                typeCoding["display"] = config.TypeDisplay;
-            }
 
             // Add identifier system if provided
             if (!string.IsNullOrEmpty(config.IdentifierSystem))
             {
                 identifier["system"] = config.IdentifierSystem;
+            }
+
+            // Add type coding if this is a typed identifier
+            if (config.HasTypeCoding)
+            {
+                var typeCoding = new JsonObject
+                {
+                    ["system"] = config.TypeSystem,
+                    ["code"] = config.TypeCode
+                };
+
+                // Add type display if provided
+                if (!string.IsNullOrEmpty(config.TypeDisplay))
+                {
+                    typeCoding["display"] = config.TypeDisplay;
+                }
+
+                identifier["type"] = new JsonObject
+                {
+                    ["coding"] = new JsonArray { typeCoding }
+                };
             }
 
             identifierArray.Add(identifier);
@@ -1105,15 +1137,22 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     }
 
     /// <summary>
-    /// Configuration for a typed identifier.
+    /// Configuration for an identifier.
+    /// For simple identifiers: only Value and IdentifierSystem are set.
+    /// For typed identifiers: TypeSystem and TypeCode are also set.
     /// </summary>
     private sealed class IdentifierConfig
     {
         public required string Value { get; init; }
-        public required string TypeSystem { get; init; }
-        public required string TypeCode { get; init; }
+        public string? TypeSystem { get; init; }
+        public string? TypeCode { get; init; }
         public string? TypeDisplay { get; init; }
         public string? IdentifierSystem { get; init; }
+
+        /// <summary>
+        /// Returns true if this is a typed identifier (has type coding).
+        /// </summary>
+        public bool HasTypeCoding => !string.IsNullOrEmpty(TypeSystem) && !string.IsNullOrEmpty(TypeCode);
     }
 
     /// <summary>

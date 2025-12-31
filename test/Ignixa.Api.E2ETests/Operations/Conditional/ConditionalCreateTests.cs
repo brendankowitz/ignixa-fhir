@@ -34,9 +34,9 @@ namespace Ignixa.Api.E2ETests.Operations.Conditional;
 /// - docs/investigations/ADR-2525-conditional-operations.md
 /// - http://hl7.org/fhir/R4/http.html#ccreate
 /// </remarks>
-public class ConditionalOperationTests : CapabilityDrivenTestBase
+public class ConditionalCreateTests : CapabilityDrivenTestBase
 {
-    public ConditionalOperationTests(IgnixaApiFixture fixture) : base(fixture)
+    public ConditionalCreateTests(IgnixaApiFixture fixture) : base(fixture)
     {
     }
 
@@ -61,17 +61,8 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             .WithTag(tag)
             .WithFamilyName("NoMatchTest")
             .WithGivenName("Alice")
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
             .Build();
-
-        // Add a unique identifier that won't match any existing resource
-        patient.MutableNode["identifier"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["system"] = "http://hospital.example.org/mrn",
-                ["value"] = uniqueIdentifier
-            }
-        };
 
         // Act - POST with If-None-Exist header using identifier search
         var response = await Harness.PostResourceWithHeadersAsync(
@@ -85,6 +76,9 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Created, "server should create new resource when search returns 0 matches");
         response.Headers.Location.ShouldNotBeNull("Location header should be present");
         response.Headers.Location!.ToString().ShouldContain("Patient/");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+        response.Headers.ETag!.Tag.ShouldStartWith("W/\"");
+        response.Content.Headers.LastModified.ShouldNotBeNull("Last-Modified header should be present");
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
         createdPatient.ResourceType.ShouldBe("Patient");
@@ -127,7 +121,9 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
-        response.Headers.Location.ShouldNotBeNull();
+        response.Headers.Location.ShouldNotBeNull("Location header should be present");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+        response.Content.Headers.LastModified.ShouldNotBeNull("Last-Modified header should be present");
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
         createdPatient.Id.ShouldNotBe(nonExistentId, "server should assign new ID, not use the search parameter ID");
@@ -157,16 +153,8 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             .WithTag(tag)
             .WithFamilyName("Jones")
             .WithGivenName("Charlie")
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
             .Build();
-
-        existingPatient.MutableNode["identifier"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["system"] = "http://hospital.example.org/mrn",
-                ["value"] = uniqueIdentifier
-            }
-        };
 
         var createdResources = await Harness.CreateResourcesAsync([existingPatient]);
         var existingId = createdResources[0].Id;
@@ -177,16 +165,8 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             .WithTag(tag)
             .WithFamilyName("Jones")
             .WithGivenName("David") // Different given name
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier) // Same identifier
             .Build();
-
-        duplicatePatient.MutableNode["identifier"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["system"] = "http://hospital.example.org/mrn",
-                ["value"] = uniqueIdentifier // Same identifier
-            }
-        };
 
         // Act - POST with If-None-Exist using the same identifier
         var response = await Harness.PostResourceWithHeadersAsync(
@@ -198,6 +178,9 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK, "server should return 200 OK when search returns 1 match (idempotent)");
+        response.Headers.Location.ShouldNotBeNull("Location header should be present for matched resource");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+        response.Content.Headers.LastModified.ShouldNotBeNull("Last-Modified header should be present");
 
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
         returnedPatient.Id.ShouldBe(existingId, "server should return the existing resource ID");
@@ -249,6 +232,8 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.Location.ShouldNotBeNull("Location header should be present for matched resource");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
 
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
         returnedPatient.Id.ShouldBe(existingId);
@@ -470,6 +455,210 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
 
     #endregion
 
+    #region Conditional Create - Invalid Requests
+
+    /// <summary>
+    /// Tests conditional create with empty If-None-Exist header.
+    /// Expected: Returns 400 Bad Request (not selective enough).
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 Section 3.1.0.5: The search criteria must be selective enough to avoid
+    /// unintended matches. An empty search is too broad and should be rejected.
+    /// </remarks>
+    [Fact]
+    public async Task GivenConditionalCreate_WhenEmptyIfNoneExistHeader_ThenReturnsBadRequest()
+    {
+        // Arrange
+        var tag = Guid.NewGuid().ToString();
+
+        var patient = CreatePatient()
+            .WithTag(tag)
+            .WithFamilyName("EmptyHeaderTest")
+            .WithGivenName("Nina")
+            .Build();
+
+        // Act - POST with empty If-None-Exist header
+        var response = await Harness.PostResourceWithHeadersAsync(
+            patient,
+            new Dictionary<string, string>
+            {
+                ["If-None-Exist"] = ""
+            });
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "empty If-None-Exist header should return 400 Bad Request");
+
+        // Verify OperationOutcome is returned with appropriate error message
+        var responseJson = await response.Content.ReadAsStringAsync();
+        responseJson!.ShouldContain("OperationOutcome", customMessage: "error response should include OperationOutcome");
+    }
+
+    #endregion
+
+    #region Conditional Create - Prefer Header
+
+    /// <summary>
+    /// Tests conditional create with Prefer: return=minimal header.
+    /// Expected: Returns minimal response body (no full resource) for both create (201) and match (200).
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 Section 3.1.0.5.1: The Prefer header controls response verbosity.
+    /// return=minimal should return minimal response with Location and ETag headers but no body.
+    /// </remarks>
+    [Fact]
+    public async Task GivenConditionalCreate_WhenPreferMinimal_ThenReturnsMinimalBody()
+    {
+        // Arrange
+        var tag = Guid.NewGuid().ToString();
+        var uniqueIdentifier = Guid.NewGuid().ToString();
+
+        var patient = CreatePatient()
+            .WithTag(tag)
+            .WithFamilyName("MinimalTest")
+            .WithGivenName("Oliver")
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
+            .Build();
+
+        // Act - First POST with Prefer: return=minimal (should create)
+        var createResponse = await Harness.PostResourceWithHeadersAsync(
+            patient,
+            new Dictionary<string, string>
+            {
+                ["If-None-Exist"] = $"identifier=http://hospital.example.org/mrn|{uniqueIdentifier}",
+                ["Prefer"] = "return=minimal"
+            });
+
+        // Assert - Created with minimal response
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        createResponse.Headers.Location.ShouldNotBeNull("Location header should be present for created resource");
+        createResponse.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+
+        var createBody = await createResponse.Content.ReadAsStringAsync();
+        createBody.ShouldBeNullOrEmpty("response body should be minimal (empty) when Prefer: return=minimal");
+
+        // Act - Second POST with same identifier and Prefer: return=minimal (should match existing)
+        var matchResponse = await Harness.PostResourceWithHeadersAsync(
+            patient,
+            new Dictionary<string, string>
+            {
+                ["If-None-Exist"] = $"identifier=http://hospital.example.org/mrn|{uniqueIdentifier}",
+                ["Prefer"] = "return=minimal"
+            });
+
+        // Assert - Matched with minimal response
+        matchResponse.StatusCode.ShouldBe(HttpStatusCode.OK, "should return 200 OK when matching existing resource");
+        matchResponse.Headers.Location.ShouldNotBeNull("Location header should be present for matched resource");
+        matchResponse.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+
+        var matchBody = await matchResponse.Content.ReadAsStringAsync();
+        matchBody.ShouldBeNullOrEmpty("response body should be minimal (empty) when Prefer: return=minimal");
+    }
+
+    /// <summary>
+    /// Tests conditional create with Prefer: return=representation header.
+    /// Expected: Returns full resource body with ETag and Last-Modified headers.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 Section 3.1.0.5.1: return=representation should return the full resource
+    /// in the response body along with standard headers.
+    /// </remarks>
+    [Fact]
+    public async Task GivenConditionalCreate_WhenPreferRepresentation_ThenReturnsFullResource()
+    {
+        // Arrange
+        var tag = Guid.NewGuid().ToString();
+        var uniqueIdentifier = Guid.NewGuid().ToString();
+
+        var patient = CreatePatient()
+            .WithTag(tag)
+            .WithFamilyName("RepresentationTest")
+            .WithGivenName("Penny")
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
+            .Build();
+
+        // Act - POST with Prefer: return=representation
+        var response = await Harness.PostResourceWithHeadersAsync(
+            patient,
+            new Dictionary<string, string>
+            {
+                ["If-None-Exist"] = $"identifier=http://hospital.example.org/mrn|{uniqueIdentifier}",
+                ["Prefer"] = "return=representation"
+            });
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        response.Headers.Location.ShouldNotBeNull("Location header should be present");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+        response.Headers.ETag!.Tag.ShouldStartWith("W/\"");
+        response.Content.Headers.LastModified.ShouldNotBeNull("Last-Modified header should be present");
+
+        // Verify full resource is returned
+        var returnedPatient = await Harness.ParseResourceResponseAsync(response);
+        returnedPatient.ResourceType.ShouldBe("Patient");
+        returnedPatient.Id.ShouldNotBeNullOrEmpty();
+        returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+
+        // Verify content matches
+        var familyName = returnedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        familyName.ShouldBe("RepresentationTest");
+
+        // Verify ETag matches versionId
+        var versionId = returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>();
+        response.Headers.ETag!.Tag.ShouldBe($"W/\"{versionId}\"");
+    }
+
+    /// <summary>
+    /// Tests conditional create with Prefer: return=OperationOutcome header.
+    /// Expected: Returns OperationOutcome with informational message.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 Section 3.1.0.5.1: return=OperationOutcome should return an OperationOutcome
+    /// instead of the resource, with information about the operation result.
+    /// </remarks>
+    [Fact]
+    public async Task GivenConditionalCreate_WhenPreferOperationOutcome_ThenReturnsOutcome()
+    {
+        // Arrange
+        var tag = Guid.NewGuid().ToString();
+        var uniqueIdentifier = Guid.NewGuid().ToString();
+
+        var patient = CreatePatient()
+            .WithTag(tag)
+            .WithFamilyName("OperationOutcomeTest")
+            .WithGivenName("Quinn")
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
+            .Build();
+
+        // Act - POST with Prefer: return=OperationOutcome
+        var response = await Harness.PostResourceWithHeadersAsync(
+            patient,
+            new Dictionary<string, string>
+            {
+                ["If-None-Exist"] = $"identifier=http://hospital.example.org/mrn|{uniqueIdentifier}",
+                ["Prefer"] = "return=OperationOutcome"
+            });
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        response.Headers.Location.ShouldNotBeNull("Location header should be present");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
+
+        // Verify OperationOutcome is returned
+        var responseJson = await response.Content.ReadAsStringAsync();
+        responseJson.ShouldContain("OperationOutcome", customMessage: "response should contain OperationOutcome");
+
+        var responseNode = JsonNode.Parse(responseJson);
+        responseNode.ShouldNotBeNull();
+        responseNode!["resourceType"]?.GetValue<string>().ShouldBe("OperationOutcome");
+
+        // OperationOutcome should have informational issue about the operation
+        var issue = responseNode["issue"]?.AsArray();
+        issue.ShouldNotBeNull();
+        issue!.Count.ShouldBeGreaterThan(0, "OperationOutcome should contain at least one issue");
+    }
+
+    #endregion
+
     #region Conditional Create - Edge Cases
 
     /// <summary>
@@ -515,18 +704,9 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             .WithTag(tag)
             .WithFamilyName("ContentTest")
             .WithGivenName("Maria")
+            .WithBirthDate(1990, 5, 15)
+            .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
             .Build();
-
-        // Add birthDate and identifier
-        patient.MutableNode["birthDate"] = birthDate;
-        patient.MutableNode["identifier"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["system"] = "http://hospital.example.org/mrn",
-                ["value"] = uniqueIdentifier
-            }
-        };
 
         // Act - POST with If-None-Exist (no match, will create)
         var response = await Harness.PostResourceWithHeadersAsync(
