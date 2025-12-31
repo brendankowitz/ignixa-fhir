@@ -199,10 +199,48 @@ public static class PatchEndpoints
             return Results.NotFound();
         }
 
+        // Extract return preference from Prefer header (RFC 7240)
+        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
+
+        // Determine actual return preference: default to representation (FHIR spec)
+        var actualReturnPreference = returnPreference == ReturnPreference.Unspecified
+            ? ReturnPreference.Representation
+            : returnPreference;
+
+        // Add Preference-Applied header for return preference
+        if (returnPreference != ReturnPreference.Unspecified)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
+        }
+
         logger.LogInformation("Patched {ResourceType}/{Id} (version {VersionId})", resourceType, id, result.VersionId);
-        return FhirResults.Ok(result.Resource, context)
-            .WithETag(result.VersionId)
-            .WithLastModified(result.LastModified);
+
+        if (actualReturnPreference == ReturnPreference.Minimal)
+        {
+            // return=minimal - return headers only, no body (FHIR spec compliant)
+            return new FhirResult(StatusCodes.Status200OK)
+                .WithETag(result.VersionId)
+                .WithLastModified(result.LastModified);
+        }
+        else if (actualReturnPreference == ReturnPreference.OperationOutcome)
+        {
+            // return=OperationOutcome - return OperationOutcome with success message
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                Diagnostics = $"Successfully patched {resourceType}/{id}"
+            });
+            return FhirResults.Ok(outcome, context);
+        }
+        else
+        {
+            // return=representation - return full resource
+            return FhirResults.Ok(result.Resource, context)
+                .WithETag(result.VersionId)
+                .WithLastModified(result.LastModified);
+        }
     }
 
     /// <summary>
@@ -249,7 +287,8 @@ public static class PatchEndpoints
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {
-            throw new Domain.Exceptions.PreconditionFailedException("Conditional patch requires search parameters in query string");
+            // Return 400 Bad Request for missing search criteria (consistent with conditional update/delete)
+            throw new Domain.Exceptions.BadRequestException("Conditional patch requires search parameters in query string");
         }
 
         // Remove leading '?'
@@ -296,8 +335,12 @@ public static class PatchEndpoints
 
         var result = await mediator.SendAsync(command, cancellationToken);
 
+        // Create logger for Prefer header parsing
+        var loggerFactory = context.RequestServices.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger(typeof(PatchEndpoints).FullName!);
+
         // Extract return preference from Prefer header (RFC 7240)
-        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers);
+        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
 
         // Determine actual return preference: default to representation (FHIR spec)
         var actualReturnPreference = returnPreference == ReturnPreference.Unspecified
@@ -312,11 +355,10 @@ public static class PatchEndpoints
 
         if (actualReturnPreference == ReturnPreference.Minimal)
         {
-            // return=minimal - return minimal body
-            return FhirResults.Ok(result.Resource.Resource, context)
+            // return=minimal - return headers only, no body (FHIR spec compliant)
+            return new FhirResult(StatusCodes.Status200OK)
                 .WithETag(result.Resource.VersionId)
-                .WithLastModified(result.Resource.LastModified)
-                .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
+                .WithLastModified(result.Resource.LastModified);
         }
         else if (actualReturnPreference == ReturnPreference.OperationOutcome)
         {

@@ -175,14 +175,15 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
 
     /// <summary>
     /// Tests conditional patch with no search criteria in query string.
-    /// Expected: Returns 412 Precondition Failed.
+    /// Expected: Returns 400 Bad Request (consistent with conditional update/delete).
     /// </summary>
     /// <remarks>
     /// FHIR R4 Section 3.1.0.7: Conditional patch requires search parameters in the query string.
     /// Patching without conditions is not allowed (would be ambiguous/dangerous).
+    /// Missing search criteria is a malformed request, hence 400 Bad Request (not 412 Precondition Failed).
     /// </remarks>
     [Fact]
-    public async Task GivenConditionalPatch_WhenNoSearchCriteria_ThenReturnsPreconditionFailed()
+    public async Task GivenConditionalPatch_WhenNoSearchCriteria_ThenReturnsBadRequest()
     {
         // Arrange
         var patchDocument = CreateGenderPatchDocument("female");
@@ -193,8 +194,8 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
             string.Empty,
             patchDocument);
 
-        // Assert
-        response.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed, "server should return 412 when no search criteria provided");
+        // Assert - 400 Bad Request (consistent with conditional update/delete)
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should return 400 when no search criteria provided");
 
         // Verify OperationOutcome is returned
         var responseJson = await response.Content.ReadAsStringAsync();

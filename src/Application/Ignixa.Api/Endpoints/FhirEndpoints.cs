@@ -540,11 +540,10 @@ public static class FhirEndpoints
                     .WithLastModified(result.LastModified);
             }
 
-            // Prefer: return=minimal - return minimal body
+            // Prefer: return=minimal - return headers only, no body (FHIR spec compliant)
             return FhirResults.Created(location)
                 .WithETag(result.Key.VersionId!)
-                .WithLastModified(result.LastModified)
-                .WithMinimalBody(resourceType, result.Key.Id, result.Key.VersionId!, result.LastModified);
+                .WithLastModified(result.LastModified);
         }
 
         logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
@@ -557,11 +556,10 @@ public static class FhirEndpoints
                 .WithLastModified(result.LastModified);
         }
 
-        // Prefer: return=minimal - return minimal body
-        return FhirResults.Ok(result.ResourceBytes, context)
+        // Prefer: return=minimal - return headers only, no body (FHIR spec compliant)
+        return new FhirResult(StatusCodes.Status200OK)
             .WithETag(result.Key.VersionId!)
-            .WithLastModified(result.LastModified)
-            .WithMinimalBody(resourceType, result.Key.Id, result.Key.VersionId!, result.LastModified);
+            .WithLastModified(result.LastModified);
     }
 
     /// <summary>
@@ -761,7 +759,10 @@ public static class FhirEndpoints
         logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}", tenantId, resourceType);
 
         // Check for If-None-Exist header (conditional create)
-        if (context.Request.Headers.TryGetValue("If-None-Exist", out var ifNoneExist))
+        // Note: Empty or whitespace-only header values are treated as no header (normal create)
+        // This is valid FHIR behavior - servers MAY choose to process empty If-None-Exist as normal create
+        if (context.Request.Headers.TryGetValue("If-None-Exist", out var ifNoneExist)
+            && !string.IsNullOrWhiteSpace(ifNoneExist.ToString()))
         {
             logger.LogInformation(
                 "Conditional create detected for {ResourceType} with search criteria: {SearchCriteria}",
@@ -839,22 +840,18 @@ public static class FhirEndpoints
 
                 if (actualReturnPreferenceConditional == ReturnPreference.Minimal)
                 {
-                    // return=minimal - return minimal body
+                    // return=minimal - return headers only, no body (FHIR spec compliant)
                     return FhirResults.Created(location)
                         .WithETag(result.Resource.VersionId)
-                        .WithLastModified(result.Resource.LastModified)
-                        .WithMinimalBody(
-                            result.Resource.ResourceType,
-                            result.Resource.ResourceId,
-                            result.Resource.VersionId,
-                            result.Resource.LastModified);
+                        .WithLastModified(result.Resource.LastModified);
                 }
                 else if (actualReturnPreferenceConditional == ReturnPreference.OperationOutcome)
                 {
                     // return=OperationOutcome - return OperationOutcome with success message
                     var outcome = CreateSuccessOperationOutcome($"Successfully created {resourceType}/{result.Resource.ResourceId}");
-                    context.Response.StatusCode = StatusCodes.Status201Created;
-                    return FhirResults.Ok(outcome, context);
+                    return FhirResults.Created(location, outcome, context)
+                        .WithETag(result.Resource.VersionId)
+                        .WithLastModified(result.Resource.LastModified);
                 }
                 else
                 {
@@ -1021,11 +1018,10 @@ public static class FhirEndpoints
                 .WithLastModified(createResult.LastModified);
         }
 
-        // Prefer: return=minimal - return minimal body
+        // Prefer: return=minimal - return headers only, no body (FHIR spec compliant)
         return FhirResults.Created(createLocation)
             .WithETag(createResult.Key.VersionId!)
-            .WithLastModified(createResult.LastModified)
-            .WithMinimalBody(resourceType, createResult.Key.Id, createResult.Key.VersionId!, createResult.LastModified);
+            .WithLastModified(createResult.LastModified);
     }
 
     /// <summary>
@@ -1303,18 +1299,18 @@ public static class FhirEndpoints
 
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
-                // return=minimal - return minimal body
+                // return=minimal - return headers only, no body (FHIR spec compliant)
                 return FhirResults.Created(location)
                     .WithETag(result.Resource.VersionId)
-                    .WithLastModified(result.Resource.LastModified)
-                    .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
+                    .WithLastModified(result.Resource.LastModified);
             }
             else if (actualReturnPreference == ReturnPreference.OperationOutcome)
             {
                 // return=OperationOutcome - return OperationOutcome with success message
                 var outcome = CreateSuccessOperationOutcome($"Successfully created {resourceType}/{result.Resource.ResourceId}");
-                context.Response.StatusCode = StatusCodes.Status201Created;
-                return FhirResults.Ok(outcome, context);
+                return FhirResults.Created(location, outcome, context)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified);
             }
             else
             {
@@ -1329,11 +1325,10 @@ public static class FhirEndpoints
             // 200 OK
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
-                // return=minimal - return minimal body
-                return FhirResults.Ok(resourceBytes)
+                // return=minimal - return headers only, no body (FHIR spec compliant)
+                return new FhirResult(StatusCodes.Status200OK)
                     .WithETag(result.Resource.VersionId)
-                    .WithLastModified(result.Resource.LastModified)
-                    .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
+                    .WithLastModified(result.Resource.LastModified);
             }
             else if (actualReturnPreference == ReturnPreference.OperationOutcome)
             {

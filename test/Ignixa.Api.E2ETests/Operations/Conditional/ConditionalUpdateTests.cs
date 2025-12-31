@@ -159,6 +159,9 @@ public class ConditionalUpdateTests : CapabilityDrivenTestBase
             .WithIdentifier("http://hospital.example.org/mrn", uniqueIdentifier)
             .Build();
 
+        // Clear the auto-generated ID so server uses the matched resource's ID
+        updatedPatient.Id = string.Empty;
+
         // Act - PUT /{resourceType}?identifier=... (should update existing)
         var response = await Harness.PutResourceWithQueryAsync(
             updatedPatient,
@@ -319,6 +322,9 @@ public class ConditionalUpdateTests : CapabilityDrivenTestBase
             .WithFamilyName(sharedFamilyName)
             .WithGivenName("Updated")
             .Build();
+
+        // Clear the auto-generated ID so server determines outcome from search results
+        updatedPatient.Id = string.Empty;
 
         // Act - PUT /{resourceType}?family=...&_tag=... (matches 2 resources within this test's tag)
         var response = await Harness.PutResourceWithQueryAsync(

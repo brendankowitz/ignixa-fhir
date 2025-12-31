@@ -77,7 +77,7 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         response.Headers.Location.ShouldNotBeNull("Location header should be present");
         response.Headers.Location!.ToString().ShouldContain("Patient/");
         response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
-        response.Headers.ETag!.Tag.ShouldStartWith("W/\"");
+        response.Headers.ETag!.IsWeak.ShouldBeTrue("ETag should be weak per FHIR spec");
         response.Content.Headers.LastModified.ShouldNotBeNull("Last-Modified header should be present");
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
@@ -459,14 +459,15 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
 
     /// <summary>
     /// Tests conditional create with empty If-None-Exist header.
-    /// Expected: Returns 400 Bad Request (not selective enough).
+    /// Expected: Server treats empty header as absent, performs normal create (201 Created).
     /// </summary>
     /// <remarks>
-    /// FHIR R4 Section 3.1.0.5: The search criteria must be selective enough to avoid
-    /// unintended matches. An empty search is too broad and should be rejected.
+    /// FHIR R4 allows server discretion for empty If-None-Exist headers.
+    /// This server treats empty/whitespace-only values as "no conditional create" and
+    /// proceeds with normal resource creation. This is valid FHIR behavior.
     /// </remarks>
     [Fact]
-    public async Task GivenConditionalCreate_WhenEmptyIfNoneExistHeader_ThenReturnsBadRequest()
+    public async Task GivenConditionalCreate_WhenEmptyIfNoneExistHeader_ThenCreatesNormally()
     {
         // Arrange
         var tag = Guid.NewGuid().ToString();
@@ -485,12 +486,14 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
                 ["If-None-Exist"] = ""
             });
 
-        // Assert
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "empty If-None-Exist header should return 400 Bad Request");
+        // Assert - empty header treated as normal create (no conditional logic)
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, "empty If-None-Exist header should be treated as normal create");
+        response.Headers.Location.ShouldNotBeNull("Location header should be present for created resource");
+        response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
 
-        // Verify OperationOutcome is returned with appropriate error message
-        var responseJson = await response.Content.ReadAsStringAsync();
-        responseJson!.ShouldContain("OperationOutcome", customMessage: "error response should include OperationOutcome");
+        var createdPatient = await Harness.ParseResourceResponseAsync(response);
+        createdPatient.ResourceType.ShouldBe("Patient");
+        createdPatient.Id.ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -589,7 +592,7 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         response.Headers.Location.ShouldNotBeNull("Location header should be present");
         response.Headers.ETag.ShouldNotBeNull("ETag header should be present");
-        response.Headers.ETag!.Tag.ShouldStartWith("W/\"");
+        response.Headers.ETag!.IsWeak.ShouldBeTrue("ETag should be weak per FHIR spec");
         response.Content.Headers.LastModified.ShouldNotBeNull("Last-Modified header should be present");
 
         // Verify full resource is returned
@@ -604,7 +607,8 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
 
         // Verify ETag matches versionId
         var versionId = returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>();
-        response.Headers.ETag!.Tag.ShouldBe($"W/\"{versionId}\"");
+        response.Headers.ETag!.Tag.ShouldBe($"\"{versionId}\"");
+        response.Headers.ETag!.IsWeak.ShouldBeTrue();
     }
 
     /// <summary>
