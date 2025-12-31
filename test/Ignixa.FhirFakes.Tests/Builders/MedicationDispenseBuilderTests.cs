@@ -26,6 +26,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct", "Aspirin")
             .Build();
 
@@ -51,6 +52,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationReference(medicationId)
             .Build();
 
@@ -66,7 +68,8 @@ public class MedicationDispenseBuilderTests
     public void GivenMedicationDispenseBuilder_WhenBuildingWithoutMedication_ThenThrowsException()
     {
         // Arrange
-        var builder = MedicationDispenseBuilder.Create(_schemaProvider);
+        var builder = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient");
 
         // Act
         var act = () => builder.Build();
@@ -84,6 +87,7 @@ public class MedicationDispenseBuilderTests
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
             .WithId(expectedId)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -99,6 +103,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .WithTag(tag)
             .Build();
@@ -122,6 +127,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -134,6 +140,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithStatus("in-progress")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
@@ -151,6 +158,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithStatus(status)
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
@@ -171,6 +179,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct", "Aspirin")
             .WithMedicationReference(medicationId) // Switch to reference
             .Build();
@@ -189,6 +198,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationReference(medicationId)
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct", "Aspirin") // Switch to CodeableConcept
             .Build();
@@ -205,6 +215,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("197361", "http://www.nlm.nih.gov/research/umls/rxnorm", "Lisinopril")
             .Build();
 
@@ -238,15 +249,17 @@ public class MedicationDispenseBuilderTests
     }
 
     [Fact]
-    public void GivenMedicationDispenseBuilder_WhenBuildingWithoutSubject_ThenDoesNotIncludeSubject()
+    public void GivenMedicationDispenseBuilder_WhenBuildingWithoutSubject_ThenThrowsException()
     {
-        // Arrange & Act
-        var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
-            .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
-            .Build();
+        // Arrange
+        var builder = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct");
+
+        // Act
+        var act = () => builder.Build();
 
         // Assert
-        dispense.MutableNode.TryGetPropertyValue("subject", out _).ShouldBeFalse();
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Subject is required");
     }
 
     #endregion
@@ -261,6 +274,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .WithAuthorizingPrescription(prescriptionId)
             .Build();
@@ -282,6 +296,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .WithAuthorizingPrescription(prescription1)
             .WithAuthorizingPrescription(prescription2)
@@ -303,6 +318,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -322,6 +338,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .WithPractitionerPerformer(practitionerId)
             .Build();
@@ -344,6 +361,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .WithPractitionerPerformer(practitioner1)
             .WithPractitionerPerformer(practitioner2)
@@ -365,6 +383,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -384,6 +403,7 @@ public class MedicationDispenseBuilderTests
 
         // Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .WithWhenHandedOver(timestamp)
             .Build();
@@ -397,6 +417,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -459,10 +480,12 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense1 = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
         var dispense2 = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -517,6 +540,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
@@ -536,6 +560,7 @@ public class MedicationDispenseBuilderTests
     {
         // Arrange & Act
         var dispense = MedicationDispenseBuilder.Create(_schemaProvider)
+            .WithSubject("test-patient")
             .WithMedicationCodeableConcept("108505002", "http://snomed.info/sct")
             .Build();
 
