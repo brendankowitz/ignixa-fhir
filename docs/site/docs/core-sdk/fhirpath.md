@@ -158,6 +158,85 @@ context.Environment["today"] = new[] { todayElement };
 var result = element.Select("birthDate < %today", context);
 ```
 
+### Element Resolver
+
+The `FhirEvaluationContext` supports configuring an `ElementResolver` to enable the `resolve()` function in FHIRPath expressions. This allows following references from one resource to another.
+
+```csharp
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
+
+// Create a FHIR evaluation context
+var context = new FhirEvaluationContext();
+
+// Configure the ElementResolver to resolve references
+context.ElementResolver = (reference) =>
+{
+    // reference will be a string like "Patient/123" or "Practitioner/456"
+    
+    // Example: fetch from a data store
+    var resourceJson = FetchResourceFromDataStore(reference);
+    if (resourceJson == null)
+        return null; // Return null if resource not found
+    
+    // Parse and return as IElement
+    var sourceNode = JsonSourceNavigator.Parse(resourceJson);
+    return sourceNode.ToElement(schemaProvider);
+};
+
+// Now resolve() works in FHIRPath expressions
+var encounterJson = """
+{
+  "resourceType": "Encounter",
+  "id": "enc1",
+  "participant": [
+    {
+      "individual": {
+        "reference": "Practitioner/dr-smith"
+      }
+    }
+  ]
+}
+""";
+
+var encounter = JsonSourceNavigator.Parse(encounterJson).ToElement(schemaProvider);
+
+// Use resolve() to follow the reference and check the practitioner type
+var practitioners = encounter.Select(
+    "participant.individual.where(resolve() is Practitioner)", 
+    context);
+
+// Access properties of resolved resources
+var practitionerNames = encounter.Select(
+    "participant.individual.resolve().name.family",
+    context);
+```
+
+**Common use cases:**
+
+```csharp
+// Check if a reference resolves to a specific resource type
+"subject.resolve() is Patient"
+
+// Access properties through references
+"performer.resolve().name.family"
+
+// Filter by resolved resource properties  
+"participant.individual.where(resolve().active = true)"
+
+// Chain multiple references
+"encounter.resolve().serviceProvider.resolve().name"
+```
+
+:::note
+The `resolve()` function returns an empty collection if:
+- No `ElementResolver` is configured
+- The reference cannot be resolved
+- An error occurs during resolution
+
+This follows FHIR's propagation semantics - `resolve()` never throws exceptions.
+:::
+
 ## Error Handling
 
 ### Parse Errors
