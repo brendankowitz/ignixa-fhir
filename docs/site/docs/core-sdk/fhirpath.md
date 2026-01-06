@@ -165,18 +165,22 @@ The `FhirEvaluationContext` supports configuring an `ElementResolver` to enable 
 ```csharp
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
+
+// Obtain a schema provider for your FHIR version
+// Example: var schemaProvider = new R4CoreSchemaProvider();
+IFhirSchemaProvider schemaProvider = GetSchemaProvider();
 
 // Create a FHIR evaluation context
 var context = new FhirEvaluationContext();
 
 // Configure the ElementResolver to resolve references
-// NOTE: schemaProvider must be an IFhirSchemaProvider instance (e.g., R4CoreSchemaProvider)
 context.ElementResolver = (reference) =>
 {
     // reference will be a string like "Patient/123" or "Practitioner/456"
     
     // Fetch from your data store (database, API, cache, etc.)
-    // This is application-specific - implement based on your storage
+    // This method should return the resource JSON or null if not found
     string? resourceJson = GetResourceByReference(reference); 
     if (resourceJson == null)
         return null; // Return null if resource not found
@@ -185,6 +189,17 @@ context.ElementResolver = (reference) =>
     var sourceNode = JsonSourceNavigator.Parse(resourceJson);
     return sourceNode.ToElement(schemaProvider);
 };
+
+// Example implementation of GetResourceByReference:
+// string? GetResourceByReference(string reference)
+// {
+//     // Parse reference (e.g., "Patient/123" -> type="Patient", id="123")
+//     var parts = reference.Split('/', 2);
+//     if (parts.Length != 2) return null;
+//     
+//     // Fetch from database, cache, or other data source
+//     return FetchFromDatabase(parts[0], parts[1]);
+// }
 
 // Now resolve() works in FHIRPath expressions
 var encounterJson = """
