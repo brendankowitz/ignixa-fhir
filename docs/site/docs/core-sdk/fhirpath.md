@@ -170,12 +170,14 @@ using Ignixa.Serialization.SourceNodes;
 var context = new FhirEvaluationContext();
 
 // Configure the ElementResolver to resolve references
+// NOTE: schemaProvider must be an IFhirSchemaProvider instance (e.g., R4CoreSchemaProvider)
 context.ElementResolver = (reference) =>
 {
     // reference will be a string like "Patient/123" or "Practitioner/456"
     
-    // Example: fetch from a data store
-    var resourceJson = FetchResourceFromDataStore(reference);
+    // Fetch from your data store (database, API, cache, etc.)
+    // This is application-specific - implement based on your storage
+    string? resourceJson = GetResourceByReference(reference); 
     if (resourceJson == null)
         return null; // Return null if resource not found
     
@@ -234,7 +236,7 @@ The `resolve()` function returns an empty collection if:
 - The reference cannot be resolved
 - An error occurs during resolution
 
-This follows FHIR's propagation semantics - `resolve()` never throws exceptions.
+This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions. This allows FHIRPath expressions to continue evaluating even when references can't be resolved.
 :::
 
 ## Error Handling
