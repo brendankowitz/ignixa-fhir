@@ -74,8 +74,8 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
             return null;
         }
 
-        // Build schema using builder, passing terminology service for binding validation and valid resource types
-        return _builder.BuildSchema(typeDefinition, _schema, terminologyService: _terminologyService, validResourceTypes: _validResourceTypes);
+        // Build schema using builder, passing terminology service for binding validation, valid resource types, and this resolver for contained resources
+        return _builder.BuildSchema(typeDefinition, _schema, terminologyService: _terminologyService, validResourceTypes: _validResourceTypes, validationSchemaResolver: this);
     }
 
     /// <summary>

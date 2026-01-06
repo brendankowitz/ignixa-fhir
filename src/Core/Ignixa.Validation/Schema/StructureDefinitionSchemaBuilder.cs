@@ -37,13 +37,15 @@ public class StructureDefinitionSchemaBuilder
     /// <param name="schema">The schema used to resolve type references and build nested schemas.</param>
     /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
     /// <param name="validResourceTypes">Optional set of valid FHIR resource type names for resourceType validation. If provided, a ResourceTypeValidationCheck is added.</param>
+    /// <param name="validationSchemaResolver">Optional validation schema resolver for contained resource validation. If provided, a ContainedResourceCheck is added for resources.</param>
     /// <returns>A ValidationSchema with checks derived from the type definition metadata.</returns>
     /// <exception cref="ArgumentNullException">Thrown if typeDefinition or schema is null.</exception>
     public ValidationSchema BuildSchema(
         IType typeDefinition,
         ISchema schema,
         ITerminologyService? terminologyService = null,
-        IReadOnlySet<string>? validResourceTypes = null)
+        IReadOnlySet<string>? validResourceTypes = null,
+        IValidationSchemaResolver? validationSchemaResolver = null)
     {
         ArgumentNullException.ThrowIfNull(typeDefinition);
         ArgumentNullException.ThrowIfNull(schema);
@@ -209,7 +211,14 @@ public class StructureDefinitionSchemaBuilder
             .Distinct()
             .ToArray();
 
-        specChecks.Add(new UnknownPropertyCheck(allPropertyNames, choiceElementBases));
+        specChecks.Add(new UnknownPropertyCheck(allPropertyNames, choiceElementBases, typeDefinition.Info.Name));
+
+        // Add contained resource check for resources (requires schema resolver)
+        // Contained resources must be validated against their own StructureDefinition, not the parent's
+        if (typeDefinition.Info.IsResource && validationSchemaResolver is not null)
+        {
+            specChecks.Add(new ContainedResourceCheck(validationSchemaResolver));
+        }
 
         // Tier 3 (Profile): Advanced checks - FHIRPath invariants, slicing, advanced terminology
         var profileChecks = new List<IValidationCheck>();
@@ -344,7 +353,8 @@ public class StructureDefinitionSchemaBuilder
 
             // Skip special types that have dedicated checks
             // Also skip xhtml - it's a primitive that stores content directly, not in child elements
-            if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml")
+            // Skip "Resource" type - this is used for contained resources, which are handled by ContainedResourceCheck
+            if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource")
             {
                 continue;
             }

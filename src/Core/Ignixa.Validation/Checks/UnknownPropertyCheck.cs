@@ -24,6 +24,7 @@ public class UnknownPropertyCheck : IValidationCheck
 {
     private readonly HashSet<string> _allowedPropertyNames;
     private readonly HashSet<string> _choiceElementBases; // Base names of choice elements (e.g., "value", "effective")
+    private readonly string? _resourceTypeName;
     private static readonly HashSet<string> UniversalProperties = new(StringComparer.Ordinal)
     {
         "id", "resourceType", "meta", "implicitRules", "language", "text", "contained"
@@ -34,9 +35,11 @@ public class UnknownPropertyCheck : IValidationCheck
     /// </summary>
     /// <param name="allowedPropertyNames">The collection of allowed property names from the StructureDefinition.</param>
     /// <param name="choiceElementBases">Optional: explicitly provided choice element base names (e.g., "value", "effective").</param>
-    public UnknownPropertyCheck(IEnumerable<string> allowedPropertyNames, IEnumerable<string>? choiceElementBases = null)
+    /// <param name="resourceTypeName">Optional: resource type name for better error messages (e.g., "Patient", "Observation").</param>
+    public UnknownPropertyCheck(IEnumerable<string> allowedPropertyNames, IEnumerable<string>? choiceElementBases = null, string? resourceTypeName = null)
     {
         _allowedPropertyNames = new HashSet<string>(allowedPropertyNames, StringComparer.Ordinal);
+        _resourceTypeName = resourceTypeName;
 
         // Use provided choice element bases, or extract from property names
         if (choiceElementBases != null)
@@ -99,11 +102,14 @@ public class UnknownPropertyCheck : IValidationCheck
                 // Check if this might be a choice type property (e.g., "valueQuantity" where "value[x]" is allowed)
                 if (!IsChoiceTypeProperty(property))
                 {
+                    var message = string.IsNullOrEmpty(_resourceTypeName)
+                        ? $"Property '{property}' is not defined in the FHIR StructureDefinition for this resource type"
+                        : $"Property '{property}' is not defined in the FHIR StructureDefinition for {_resourceTypeName}";
                     issues.Add(new ValidationIssue(
                         IssueSeverity.Error,
                         "unknown-property",
                         $"{location}.{property}",
-                        $"Property '{property}' is not defined in the FHIR StructureDefinition for this resource type"));
+                        message));
                 }
             }
         }
