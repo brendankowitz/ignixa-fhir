@@ -164,7 +164,7 @@ The `FhirEvaluationContext` supports configuring an `ElementResolver` to enable 
 
 ```csharp
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 
 // Obtain a schema provider for your FHIR version
@@ -186,7 +186,7 @@ context.ElementResolver = (reference) =>
         return null; // Return null if resource not found
     
     // Parse and return as IElement
-    var sourceNode = JsonSourceNavigator.Parse(resourceJson);
+    var sourceNode = JsonSourceNodeFactory.Parse(resourceJson);
     return sourceNode.ToElement(schemaProvider);
 };
 
@@ -216,7 +216,7 @@ var encounterJson = """
 }
 """;
 
-var encounter = JsonSourceNavigator.Parse(encounterJson).ToElement(schemaProvider);
+var encounter = JsonSourceNodeFactory.Parse(encounterJson).ToElement(schemaProvider);
 
 // Use resolve() to follow the reference and check the practitioner type
 var practitioners = encounter.Select(
