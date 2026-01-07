@@ -23,5 +23,12 @@ public enum ValidationDepth
     /// <summary>
     /// Full validation: structure + required and extensible bindings, display checks, invariants/slicing.
     /// </summary>
-    Full = 2
+    Full = 2,
+
+    /// <summary>
+    /// Compatibility validation: matches Microsoft FHIR Server validation behavior.
+    /// More lenient than Spec - accepts resources that pass in Microsoft FHIR Server.
+    /// Use for migration scenarios and E2E test compatibility.
+    /// </summary>
+    Compatibility = 3
 }

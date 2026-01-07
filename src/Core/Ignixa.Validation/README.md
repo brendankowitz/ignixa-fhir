@@ -1,16 +1,17 @@
 # Ignixa.Validation
 
-FHIR validation system with three-tier architecture.
+FHIR validation system with four validation depth levels.
 
 ## Architecture
 
-**Three-Tier Validation Pipeline** (ADR-2527):
+**Four Validation Depth Levels** (ADR-2527):
 
-| Tier | Checks | Use Case |
+| Depth | Checks | Use Case |
 |------|--------|----------|
-| **Fast** | JSON structure, required fields | CREATE/UPDATE (blocking) |
-| **Spec** | + Cardinality, types, FHIRPath invariants | CREATE/UPDATE (blocking) |
-| **Profile** | + Custom profiles, slicing, terminology | $validate (async) |
+| **Minimal** | JSON structure, required fields | CREATE/UPDATE (blocking), bulk ingestion |
+| **Compatibility** | + Cardinality, types (lenient URIs) | Microsoft FHIR Server migration |
+| **Spec** | + Required terminology, absolute URIs | CREATE/UPDATE (blocking) |
+| **Full** | + FHIRPath invariants, all bindings | $validate (async), compliance testing |
 
 ## Quick Start
 
@@ -36,7 +37,10 @@ var json = "{\"resourceType\":\"Patient\",\"id\":\"123\"}";
 var sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 var element = sourceNode.ToElement(fhirSchema);
 
-var result = validationSchema.Validate(element);
+// 5. Choose validation depth
+var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+var state = new ValidationState();
+var result = validationSchema.Validate(element, settings, state);
 
 if (!result.IsValid)
 {
@@ -63,6 +67,41 @@ var observationJson = "{\"resourceType\":\"Observation\",\"status\":\"final\",\"
 var sourceNode = JsonSourceNodeFactory.Parse(observationJson).ToSourceNode();
 var result = observationSchema.Validate(sourceNode.ToElement(fhirSchema));
 ```
+
+## Validation Depth Guide
+
+### Minimal
+Fastest validation for high-throughput scenarios:
+```csharp
+var settings = new ValidationSettings { Depth = ValidationDepth.Minimal };
+```
+
+### Compatibility
+For migrating from Microsoft FHIR Server (Firely SDK validation):
+```csharp
+var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
+```
+- Accepts relative URIs in `Coding.system` (e.g., `"internal-tags"`)
+- Same checks as Spec, but more lenient for migration scenarios
+- Use when running Microsoft FHIR Server E2E test suite
+
+### Spec
+Standard FHIR specification compliance:
+```csharp
+var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+```
+- Enforces absolute URIs in `Coding.system`
+- Required terminology bindings
+- Recommended for production API operations
+
+### Full
+Complete FHIR profile validation:
+```csharp
+var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+```
+- All Spec checks plus FHIRPath invariants
+- Extensible terminology bindings
+- Use for compliance testing and profile conformance
 
 ## What Gets Validated
 

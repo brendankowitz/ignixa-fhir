@@ -47,13 +47,13 @@ public class CodingStructureCheck : IValidationCheck
                 // This is a CodeableConcept - validate each Coding in the array
                 foreach (var coding in codingChildren)
                 {
-                    ValidateSingleCoding($"{_fieldName}.coding", coding, issues);
+                    ValidateSingleCoding($"{_fieldName}.coding", coding, issues, settings);
                 }
             }
             else
             {
                 // This is a Coding directly
-                ValidateSingleCoding(_fieldName, fieldNode, issues);
+                ValidateSingleCoding(_fieldName, fieldNode, issues, settings);
             }
         }
 
@@ -68,7 +68,8 @@ public class CodingStructureCheck : IValidationCheck
     private static void ValidateSingleCoding(
         string path,
         IElement codingNode,
-        List<ValidationIssue> issues)
+        List<ValidationIssue> issues,
+        ValidationSettings settings)
     {
         bool hasSystem = codingNode.Children("system").Any();
         bool hasCode = codingNode.Children("code").Any();
@@ -83,17 +84,21 @@ public class CodingStructureCheck : IValidationCheck
         }
 
         // Validate that Coding.system is an absolute URI if present
-        var systemChildren = codingNode.Children("system");
-        if (systemChildren.Count > 0)
+        // Skip this check in Compatibility mode (matches Microsoft FHIR Server behavior)
+        if (settings.Depth != ValidationDepth.Compatibility)
         {
-            var systemNode = systemChildren[0];
-            string? systemValue = systemNode.Value?.ToString();
-            if (!string.IsNullOrEmpty(systemValue) && !IsAbsoluteUri(systemValue))
+            var systemChildren = codingNode.Children("system");
+            if (systemChildren.Count > 0)
             {
-                issues.Add(ValidationIssue.InvariantFailure(
-                    "coding-system-absolute",
-                    "Coding.system must be an absolute reference, not a local reference",
-                    systemNode.Location ?? $"{path}.system"));
+                var systemNode = systemChildren[0];
+                string? systemValue = systemNode.Value?.ToString();
+                if (!string.IsNullOrEmpty(systemValue) && !IsAbsoluteUri(systemValue))
+                {
+                    issues.Add(ValidationIssue.InvariantFailure(
+                        "coding-system-absolute",
+                        "Coding.system must be an absolute reference, not a local reference",
+                        systemNode.Location ?? $"{path}.system"));
+                }
             }
         }
     }

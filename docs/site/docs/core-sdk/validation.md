@@ -84,6 +84,30 @@ Checks (includes Minimal, plus):
 - Required terminology bindings
 - Fixed value constraints
 - Pattern constraints
+- Coding.system must be absolute URI
+
+### Compatibility
+
+Microsoft FHIR Server compatibility mode for migration scenarios:
+
+```csharp
+var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
+```
+
+Checks (similar to Spec, but more lenient):
+- All Minimal checks
+- Cardinality constraints
+- Type checking
+- Reference format validation
+- Required terminology bindings
+- **Accepts relative URIs in Coding.system** (e.g., `"internal-tags"`)
+- No FHIRPath invariants
+- No extensible binding validation
+
+Use when:
+- Migrating from Microsoft FHIR Server (Firely SDK validation)
+- Running Microsoft's FHIR Server E2E test suite
+- Gradually improving data quality over time
 
 ### Full
 
@@ -420,11 +444,102 @@ ignixa-validator stu3 --input patient.json --console
 | `--out <file>` | Output file for OperationOutcome JSON |
 | `--console` | Display formatted results in console |
 
+## Migration from Microsoft FHIR Server
+
+The `Compatibility` validation depth is specifically designed for migration scenarios from Microsoft FHIR Server (which uses Firely SDK validation).
+
+### Validation Depth Comparison
+
+| Validation Depth | Coding.system Absolute URI | Terminology Bindings | FHIRPath Invariants | Use Case |
+|-----------------|---------------------------|---------------------|---------------------|----------|
+| `Minimal` | Not checked | Not checked | Not checked | Bulk ingestion, high throughput |
+| `Compatibility` | **Not enforced** (accepts relative URIs) | Required only | Not checked | **Microsoft FHIR Server migration** |
+| `Spec` | **Enforced** (absolute URI required) | Required only | Not checked | Standard API operations |
+| `Full` | **Enforced** (absolute URI required) | All bindings | Checked | Compliance testing, IG validation |
+
+### Key Differences: Compatibility vs Spec
+
+The `Compatibility` depth is more lenient than `Spec` in these areas:
+
+**Coding.system URIs:**
+- `Compatibility`: Accepts relative or local references (e.g., `"internal-tags"`, `"local-system"`)
+- `Spec`: Requires absolute URIs (e.g., `"http://terminology.hl7.org/CodeSystem/v3-ActCode"`)
+
+This is common in `meta.tag` fields used for internal categorization.
+
+### Example: Compatibility Mode
+
+```csharp
+var settings = new ValidationSettings
+{
+    Depth = ValidationDepth.Compatibility
+};
+
+var result = schema.Validate(element, settings, state);
+// Accepts resources with relative URIs in Coding.system
+```
+
+**Resource that passes at Compatibility but fails at Spec:**
+
+```json
+{
+  "resourceType": "Medication",
+  "meta": {
+    "tag": [{
+      "system": "internal-tags",
+      "code": "test-medication"
+    }]
+  },
+  "code": {
+    "coding": [{
+      "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+      "code": "1234",
+      "display": "Test Med"
+    }]
+  }
+}
+```
+
+- ✅ Accepted at `Compatibility` depth
+- ❌ Rejected at `Spec` and `Full` depths (due to `"system": "internal-tags"`)
+
+### Migration Path
+
+Follow this path to gradually improve data quality:
+
+1. **Start with Compatibility**: Validate existing data with `ValidationDepth.Compatibility`
+   ```csharp
+   var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
+   ```
+
+2. **Identify Issues**: Review resources that would fail at `Spec` depth
+   ```csharp
+   // Test against Spec to find issues
+   var specSettings = new ValidationSettings { Depth = ValidationDepth.Spec };
+   var specResult = schema.Validate(element, specSettings, state);
+   // Log issues for data cleanup
+   ```
+
+3. **Fix Data Quality**: Gradually update relative URIs to absolute URIs
+   - Replace `"internal-tags"` with `"http://your-organization.com/fhir/CodeSystem/internal-tags"`
+   - Document your internal code systems with CodeSystem resources
+
+4. **Upgrade to Spec**: Once data is compliant, switch to `ValidationDepth.Spec`
+   ```csharp
+   var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+   ```
+
+5. **Full Validation**: Eventually enable `ValidationDepth.Full` for complete FHIR compliance
+   ```csharp
+   var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+   ```
+
 ## Usage Guidelines
 
 | Depth | Use Case |
 |-------|----------|
 | Minimal | Bulk ingestion, high throughput scenarios |
+| Compatibility | **Microsoft FHIR Server migration**, E2E test compatibility |
 | Spec | Standard API operations, general-purpose validation |
 | Full | Compliance testing, IG validation, profile conformance |
 

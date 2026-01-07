@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Tests.TestHelpers;
 using Xunit;
@@ -141,5 +142,84 @@ public class CodingStructureCheckTests
         Assert.Single(result.Issues);
         Assert.Equal("coding-1", result.Issues[0].Code);
         Assert.Equal(IssueSeverity.Warning, result.Issues[0].Severity);
+    }
+
+    [Fact]
+    public void GivenRelativeSystemUri_WhenValidatingAtCompatibilityDepth_ThenAccepts()
+    {
+        // Arrange - Encounter with relative system URI (non-absolute)
+        var json = JsonNode.Parse(
+            "{\"resourceType\":\"Encounter\",\"class\":{\"coding\":[{\"system\":\"local-system\",\"code\":\"test\"}]}}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new CodingStructureCheck("class");
+        var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenRelativeSystemUri_WhenValidatingAtSpecDepth_ThenRejects()
+    {
+        // Arrange - Encounter with relative system URI (non-absolute)
+        var json = JsonNode.Parse(
+            "{\"resourceType\":\"Encounter\",\"class\":{\"coding\":[{\"system\":\"local-system\",\"code\":\"test\"}]}}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new CodingStructureCheck("class");
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Single(result.Issues);
+        Assert.Contains(result.Issues, i => i.Code == "coding-system-absolute");
+    }
+
+    [Fact]
+    public void GivenMedicationWithRelativeTagSystem_WhenValidatingAtCompatibilityDepth_ThenAccepts()
+    {
+        // Arrange - Medication with relative URI in meta.tag (common in Microsoft FHIR Server)
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Medication"",
+            ""meta"": {
+                ""tag"": [{
+                    ""system"": ""internal-tags"",
+                    ""code"": ""test-medication""
+                }]
+            },
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://www.nlm.nih.gov/research/umls/rxnorm"",
+                    ""code"": ""123456""
+                }]
+            }
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+
+        // Navigate to meta.tag element
+        var metaChildren = element.Children("meta");
+        var meta = metaChildren[0];
+        var tagChildren = meta.Children("tag");
+        var tag = tagChildren[0];
+
+        var check = new CodingStructureCheck("tag");
+        var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(tag, settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
     }
 }
