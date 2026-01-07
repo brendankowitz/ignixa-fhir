@@ -34,8 +34,7 @@ public class ContainedResourceValidationTests
         var json = JsonNode.Parse(resourceJson);
         var sourceNode = JsonNodeSourceNode.Create(json!);
         var resourceType = sourceNode.ResourceType ?? sourceNode.Name;
-        var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
-        var schema = _schemaResolver.GetSchema(canonicalUrl);
+        var schema = _schemaResolver.GetSchema(resourceType);
 
         if (schema == null)
         {

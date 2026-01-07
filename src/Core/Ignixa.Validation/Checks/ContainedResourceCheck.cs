@@ -65,10 +65,12 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
             if (string.IsNullOrEmpty(resourceType) || resourceType == "Resource")
             {
                 // Try to get resourceType from children (if InstanceType not properly set)
-                var resourceTypeChildren = containedElement.Children("resourceType").ToList();
-                if (resourceTypeChildren.Count > 0)
+#pragma warning disable CA1826 // Children() returns IEnumerable, not an indexable collection
+                var resourceTypeChild = containedElement.Children("resourceType").FirstOrDefault();
+#pragma warning restore CA1826
+                if (resourceTypeChild is not null)
                 {
-                    resourceType = resourceTypeChildren[0].Value?.ToString();
+                    resourceType = resourceTypeChild.Value?.ToString();
                 }
             }
 
@@ -83,9 +85,8 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
                 continue;
             }
 
-            // Resolve schema for the contained resource type
-            var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
-            var containedSchema = _schemaResolver.GetSchema(canonicalUrl);
+            // Resolve schema for the contained resource type (resolver accepts resource type name directly)
+            var containedSchema = _schemaResolver.GetSchema(resourceType);
 
             if (containedSchema is null)
             {
