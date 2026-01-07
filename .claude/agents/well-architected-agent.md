@@ -557,7 +557,7 @@ Bash: "metrics command"
 
    Recommended:
    var policy = Policy
-       .Handle<Exception>()
+       .Handle<HttpRequestException>()
        .CircuitBreakerAsync(5, TimeSpan.FromMinutes(1));
 
    var response = await policy.ExecuteAsync(() =>
