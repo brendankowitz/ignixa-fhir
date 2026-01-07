@@ -1,6 +1,6 @@
 # Well-Architected Reliability Review
 
-Conduct a focused reliability assessment based on the Azure Well-Architected Framework Reliability pillar:
+Conduct a focused reliability assessment based on the Well-Architected Framework Reliability pillar:
 
 **Reliability Pillar Focus Areas:**
 - Resilience Patterns (error handling, retry logic, circuit breakers)

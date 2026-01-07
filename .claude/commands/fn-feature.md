@@ -22,7 +22,7 @@ Initialize a new feature area for exploration and decision-making.
 {Describe what problem this feature solves}
 
 ## Constraints
-{Technical, organizational, or FHIR spec constraints that shape the solution}
+{Technical, organizational, or domain constraints that shape the solution}
 
 ## Investigations
 | Investigation | Status | Summary |
@@ -36,4 +36,4 @@ Initialize a new feature area for exploration and decision-making.
 
 ## Naming Convention
 
-Use kebab-case for feature names: `bulk-import`, `smart-on-fhir`, `subscription-engine`
+Use kebab-case for feature names: `bulk-import`, `auth-module`, `subscription-engine`

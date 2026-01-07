@@ -1,6 +1,6 @@
 # Well-Architected Security Review
 
-Conduct a focused security audit based on the Azure Well-Architected Framework Security pillar:
+Conduct a focused security audit based on the Well-Architected Framework Security pillar:
 
 **Security Pillar Focus Areas:**
 - Authentication & Authorization (identity management, RBAC)

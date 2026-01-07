@@ -1,12 +1,12 @@
 # Well-Architected Performance Review
 
-Conduct a focused performance analysis based on the Azure Well-Architected Framework Performance Efficiency pillar:
+Conduct a focused performance analysis based on the Well-Architected Framework Performance Efficiency pillar:
 
 **Performance Pillar Focus Areas:**
 - Scalability (horizontal scaling, async operations)
 - Data Access (N+1 queries, connection pooling, indexing)
 - Caching Strategy (memory/distributed caching, invalidation)
-- Algorithm Efficiency (time/space complexity, LINQ optimization)
+- Algorithm Efficiency (time/space complexity, Query optimization)
 - Network & I/O (batching, compression, streaming)
 - Resource Management (memory leaks, GC pressure, thread pool)
 

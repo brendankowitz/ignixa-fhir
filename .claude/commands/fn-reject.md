@@ -13,11 +13,11 @@ Mark an investigation as rejected with documented rationale.
    - Fill in the Verdict section with clear rejection rationale
 
 3. **Common rejection reasons** (be specific):
-   - Layer violation: "Requires DataLayer to call API layer"
+   - Layer violation: "Violates architectural layering (e.g., Data layer calling API layer)"
    - Complexity: "Adds 500+ lines for marginal benefit"
    - Performance: "O(n^2) scaling with resource count"
-   - F5 violation: "Requires external service to run locally"
-   - Spec non-compliance: "Violates FHIR R4 Section X.Y.Z"
+   - DevEx violation: "Requires external service to run locally"
+   - Spec non-compliance: "Violates specification"
    - Superseded: "Approach B solves this more elegantly"
 
 4. **Update `readme.md`**: Change investigation status in table to "Rejected"

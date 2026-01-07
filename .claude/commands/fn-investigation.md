@@ -28,13 +28,13 @@ Add an investigation exploring one approach within a feature area.
 
 ## Alignment
 
-- [ ] Follows layer rules (API -> App -> Domain -> Data)
-- [ ] F5 Developer Experience (works with minimal setup)
-- [ ] FHIR spec compliance (if applicable)
+- [ ] Follows architectural layering rules
+- [ ] Developer Experience (works with minimal setup)
+- [ ] Specification compliance (if applicable)
 - [ ] Consistent with existing patterns
 
 ## Evidence
-{Research findings, code exploration, prior art from other FHIR servers, relevant specs}
+{Research findings, code exploration, prior art from similar systems, relevant specs}
 
 ## Verdict
 *Pending evaluation*
@@ -43,7 +43,7 @@ Add an investigation exploring one approach within a feature area.
 3. **Research the approach**:
    - Search codebase for related patterns
    - Check existing ADRs for relevant decisions
-   - Look for prior art in FHIR ecosystem if applicable
+   - Look for prior art in similar systems if applicable
    - Document findings in Evidence section
 
 4. **Generate alternatives** (quint-style): If this is the first investigation for a feature, briefly note 2-3 other approaches worth investigating. These become future `/fn-investigation` candidates.

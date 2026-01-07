@@ -1,6 +1,6 @@
 # Well-Architected Framework Review
 
-Conduct a comprehensive architecture and code review based on the Azure Well-Architected Framework's five pillars:
+Conduct a comprehensive architecture and code review based on the Well-Architected Framework's five pillars:
 
 1. **Reliability** - Resiliency, availability, recovery
 2. **Security** - Data protection, threat detection, mitigation
