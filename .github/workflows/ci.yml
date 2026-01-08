@@ -237,6 +237,7 @@ jobs:
           files: '**/e2e-test-results.trx'
           check_name: 'E2E Test Results'
           comment_mode: 'off'
+          large_files: true
 
       - name: Capture SQL Server logs on failure
         if: failure()
