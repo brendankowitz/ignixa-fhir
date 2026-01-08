@@ -43,10 +43,10 @@ public class TypedElementAdapter : ITypedElement
             // For choice elements, ToPoco() expects the base name (e.g., "effective")
             // not the suffixed name (e.g., "effectiveDateTime") for POCO property mapping.
             // The element name in data is "effectiveDateTime", but the POCO property is "Effective".
-            if (_coreElement.Type?.Info.IsChoiceElement == true)
+            if (_coreElement.Type is { Info.IsChoiceElement: true } type)
             {
                 // Return the base name from schema (e.g., "effective" not "effectiveDateTime")
-                return _coreElement.Type.Info.Name;
+                return type.Info.Name;
             }
 
             // For non-choice elements, return the actual element name

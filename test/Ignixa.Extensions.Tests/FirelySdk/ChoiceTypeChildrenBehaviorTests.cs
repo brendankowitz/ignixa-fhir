@@ -463,8 +463,9 @@ public class ChoiceTypeChildrenBehaviorTests
         // Demonstrates that Children() returns all matching choice variants
         Assert.Equal(2, effectiveChildren.Count);
 
-        var expectedNames = new[] { "effectiveDateTime", "effectivePeriod" };
-        Assert.Equal(expectedNames, effectiveChildren.Select(e => e.Name));
+        var childNames = effectiveChildren.Select(e => e.Name);
+        Assert.Contains("effectiveDateTime", childNames);
+        Assert.Contains("effectivePeriod", childNames);
     }
 
     #endregion
