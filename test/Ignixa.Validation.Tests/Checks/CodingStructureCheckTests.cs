@@ -205,18 +205,16 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
 
-        // Navigate to meta.tag element
+        // Navigate to meta element
         var metaChildren = element.Children("meta");
         var meta = metaChildren[0];
-        var tagChildren = meta.Children("tag");
-        var tag = tagChildren[0];
 
         var check = new CodingStructureCheck("tag");
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(tag, settings, state);
+        var result = check.Validate(meta, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
