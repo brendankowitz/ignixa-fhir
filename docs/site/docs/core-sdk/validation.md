@@ -40,14 +40,83 @@ var element = sourceNode.ToElement(schemaProvider);
 
 // Validate the resource
 var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-var state = new ValidationState();
-var result = schema.Validate(element, settings, state);
+
+// ValidationState is optional - omit for simple scenarios
+var result = schema.Validate(element, settings);
+
+// Or provide your own state for advanced scenarios (tracking, caching, etc.)
+// var state = new ValidationState();
+// var result = schema.Validate(element, settings, state);
 
 if (!result.IsValid)
 {
     foreach (var issue in result.Issues)
     {
         Console.WriteLine($"{issue.Severity}: {issue.Message}");
+    }
+}
+```
+
+## Validation State
+
+The `ValidationState` parameter is optional and can be omitted for simple scenarios. A default state will be created automatically.
+
+### When to Provide ValidationState
+
+Provide your own `ValidationState` when you need:
+
+1. **Shared cache across validations** - Reuse expensive computations (e.g., compiled FHIRPath expressions)
+2. **Resource tracking** - Track which resources have been validated in a batch operation
+3. **Context information** - Pass resource type, ID, and location context through nested validations
+
+```csharp
+// Create state with shared cache for multiple validations
+var state = new ValidationState();
+
+// Validate multiple resources with shared state
+foreach (var resource in resources)
+{
+    var element = resource.ToElement(schemaProvider);
+    var result = schema.Validate(element, settings, state);
+
+    // Expensive FHIRPath expressions are cached in state.Global.Cache
+    // state.Global.ResourcesValidated is automatically incremented
+}
+
+Console.WriteLine($"Validated {state.Global.ResourcesValidated} resources");
+```
+
+### State Levels
+
+ValidationState has three context levels:
+
+| Level | Purpose | Example Use |
+|-------|---------|-------------|
+| `Global` | Shared across entire validation run | Cache, resource counter |
+| `Instance` | Current resource being validated | Resource type, ID |
+| `Location` | Current element path | FHIRPath location, definition path |
+
+```csharp
+// Access state information in custom checks
+public class CustomCheck : IValidationCheck
+{
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
+    {
+        // Access global cache
+        if (!state.Global.Cache.TryGetValue("myKey", out var cached))
+        {
+            cached = ExpensiveComputation();
+            state.Global.Cache["myKey"] = cached;
+        }
+
+        // Access current resource info
+        var resourceType = state.Instance.ResourceType;
+        var resourceId = state.Instance.ResourceId;
+
+        // Access current location
+        var path = state.Location.InstancePath;
+
+        return ValidationResult.Success();
     }
 }
 ```
@@ -96,13 +165,14 @@ var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
 
 Checks (similar to Spec, but more lenient):
 - All Minimal checks
-- Cardinality constraints
+- Cardinality constraints (min/max)
 - Type checking
 - Reference format validation
+- Choice element validation
 - Required terminology bindings
-- **Accepts relative URIs in Coding.system** (e.g., `"internal-tags"`)
-- No FHIRPath invariants
-- No extensible binding validation
+- Fixed value constraints
+- Pattern constraints
+- **Accepts relative URIs in Coding.system** (e.g., `"internal-tags"`) - relaxed from Spec
 
 Use when:
 - Migrating from Microsoft FHIR Server (Firely SDK validation)
@@ -190,8 +260,7 @@ var schema = cachedResolver.GetSchema(profileUrl);
 
 // Validate against the profile
 var settings = new ValidationSettings { Depth = ValidationDepth.Full };
-var state = new ValidationState();
-var result = schema.Validate(element, settings, state);
+var result = schema.Validate(element, settings);
 ```
 
 ### Using Custom Schema Resolvers
@@ -372,8 +441,7 @@ await Parallel.ForEachAsync(resources, async (resourceNode, ct) =>
 
     if (schema != null)
     {
-        var state = new ValidationState();
-        var result = schema.Validate(element, settings, state);
+        var result = schema.Validate(element, settings);
         results.Add(result);
     }
 });
@@ -389,7 +457,7 @@ var bundleSchema = schemaResolver.GetSchema(
 var bundleElement = JsonNodeSourceNode.Create(bundle.MutableNode)
     .ToElement(schemaProvider);
 
-var bundleResult = bundleSchema.Validate(bundleElement, settings, new ValidationState());
+var bundleResult = bundleSchema.Validate(bundleElement, settings);
 
 // Validate each entry resource individually
 if (bundle.Entry != null)
@@ -402,7 +470,7 @@ if (bundle.Entry != null)
                 .ToElement(schemaProvider);
             var entrySchema = schemaResolver.GetSchema(
                 $"http://hl7.org/fhir/StructureDefinition/{entry.Resource.ResourceType}");
-            var entryResult = entrySchema?.Validate(entryElement, settings, new ValidationState());
+            var entryResult = entrySchema?.Validate(entryElement, settings);
         }
     }
 }
@@ -475,7 +543,7 @@ var settings = new ValidationSettings
     Depth = ValidationDepth.Compatibility
 };
 
-var result = schema.Validate(element, settings, state);
+var result = schema.Validate(element, settings);
 // Accepts resources with relative URIs in Coding.system
 ```
 
@@ -516,7 +584,7 @@ Follow this path to gradually improve data quality:
    ```csharp
    // Test against Spec to find issues
    var specSettings = new ValidationSettings { Depth = ValidationDepth.Spec };
-   var specResult = schema.Validate(element, specSettings, state);
+   var specResult = schema.Validate(element, specSettings);
    // Log issues for data cleanup
    ```
 

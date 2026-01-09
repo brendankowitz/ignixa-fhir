@@ -76,8 +76,8 @@ export default function Home() {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
-      title="Enterprise FHIR Server for .NET"
-      description="Ignixa is a high-performance, multi-tenant, cloud-native FHIR server built on .NET 9. Features comprehensive FHIR R4/R5 support, three-tier validation, streaming serialization, and modular Core SDK packages.">
+      title="High-Performance, Multi-Tenant, Cloud-Native FHIR Server for .NET"
+      description="Ignixa is a high-performance, multi-tenant, cloud-native FHIR server built on .NET. Features comprehensive FHIR R4/R5 support, three-tier validation, streaming serialization, and modular Core SDK packages.">
       <HomepageHeader />
       <main>
         <HomepageFeatures />
