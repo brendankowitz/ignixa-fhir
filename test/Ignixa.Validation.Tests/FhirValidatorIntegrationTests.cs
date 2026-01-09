@@ -221,6 +221,78 @@ public class FhirValidatorIntegrationTests
 
     #endregion
 
+    #region Null State Handling
+
+    [Fact]
+    public void GivenOmittedValidationState_WhenValidating_ThenUsesDefaultState()
+    {
+        // Arrange
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""active"": true
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json!);
+        var schema = _schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+
+        // Act - Omit optional ValidationState parameter
+        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings);
+
+        // Assert - Should use default state internally
+        result.ShouldNotBeNull();
+        result.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenNullValidationState_WhenValidating_ThenCreatesDefaultState()
+    {
+        // Arrange
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""active"": true
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json!);
+        var schema = _schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+
+        // Act - Explicitly pass null for ValidationState
+        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, null);
+
+        // Assert - Should not throw NullReferenceException
+        result.ShouldNotBeNull();
+        result.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenNullValidationStateWithNestedTypes_WhenValidating_ThenSucceeds()
+    {
+        // Arrange - Patient with nested address (complex type)
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""active"": true,
+            ""address"": [{
+                ""use"": ""home"",
+                ""line"": [""123 Main St""],
+                ""city"": ""Springfield""
+            }]
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json!);
+        var schema = _schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+
+        // Act - Pass null for ValidationState (should handle nested complex types)
+        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, null);
+
+        // Assert - Should not throw NullReferenceException in NestedComplexTypeCheck
+        result.ShouldNotBeNull();
+        result.IsValid.ShouldBeTrue();
+    }
+
+    #endregion
+
     #region Performance
 
     [Fact]

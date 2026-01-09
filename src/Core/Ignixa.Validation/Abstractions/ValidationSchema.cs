@@ -66,10 +66,11 @@ public sealed class ValidationSchema
     /// </summary>
     /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings (including depth).</param>
-    /// <param name="state">Current validation state.</param>
+    /// <param name="state">Current validation state. Optional - a default state will be used if not provided.</param>
     /// <returns>Combined validation result from all checks.</returns>
-    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState? state = null)
     {
+        state ??= new ValidationState();
         var results = new List<ValidationResult>();
 
         // Depth.Minimal+: Run universal checks
