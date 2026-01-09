@@ -153,7 +153,7 @@ public sealed class PractitionerState : ScenarioState
         }
 
         // Set gender
-        var gender = Gender ?? _faker.PickRandom("male", "female");
+        var gender = Gender ?? _faker.PickRandom(PatientBuilderConstants.Gender.BinaryOnly);
         node["gender"] = gender;
 
         // Set telecom (phone and email)

@@ -633,7 +633,7 @@ public class SchemaBasedFhirResourceFaker
         if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
         {
             // administrative-gender is stable across all FHIR versions
-            return JsonValue.Create(_faker.PickRandom("male", "female"));
+            return JsonValue.Create(_faker.PickRandom(PatientBuilderConstants.Gender.BinaryOnly));
         }
 
         // Default: random alphanumeric code (only for truly unbound elements)
@@ -664,12 +664,12 @@ public class SchemaBasedFhirResourceFaker
         if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
         {
             // administrative-gender: all versions have male/female/other/unknown
-            return JsonValue.Create(_faker.PickRandom("male", "female", "other", "unknown"));
+            return JsonValue.Create(_faker.PickRandom(PatientBuilderConstants.Gender.All));
         }
 
         // Ultimate fallback for required bindings we don't recognize
         // Use "unknown" as it's a common safe code across many value sets
-        return JsonValue.Create("unknown");
+        return JsonValue.Create(PatientBuilderConstants.Gender.Unknown);
     }
 
     #region Complex Type Generators

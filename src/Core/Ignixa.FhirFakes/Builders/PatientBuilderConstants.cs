@@ -27,6 +27,16 @@ public static class PatientBuilderConstants
 
         /// <summary>Unknown gender.</summary>
         public const string Unknown = "unknown";
+
+        /// <summary>
+        /// All administrative gender values (male, female, other, unknown).
+        /// </summary>
+        public static readonly string[] All = [Male, Female, Other, Unknown];
+
+        /// <summary>
+        /// Binary gender values (male, female) for demographic sampling.
+        /// </summary>
+        public static readonly string[] BinaryOnly = [Male, Female];
     }
 
     /// <summary>

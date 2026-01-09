@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Builders.Profiles;
 
 namespace Ignixa.FhirFakes.Population;
@@ -439,7 +440,7 @@ public class DemographicsDataProvider
     /// </summary>
     public string SampleGender(CityDemographics city)
     {
-        return Random.Shared.NextDouble() < city.MaleRatio ? "male" : "female";
+        return Random.Shared.NextDouble() < city.MaleRatio ? PatientBuilderConstants.Gender.Male : PatientBuilderConstants.Gender.Female;
     }
 
     /// <summary>

@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.FhirFakes.Builders;
 
 namespace Ignixa.FhirFakes.Scenarios.States;
 
@@ -52,8 +53,8 @@ public sealed class InitialState : ScenarioState
         ArgumentNullException.ThrowIfNull(faker);
 
         // Determine demographics
-        var gender = Gender ?? _faker.PickRandom("male", "female");
-        var givenName = GivenName ?? (gender == "male" ? _faker.Name.FirstName(Bogus.DataSets.Name.Gender.Male) : _faker.Name.FirstName(Bogus.DataSets.Name.Gender.Female));
+        var gender = Gender ?? _faker.PickRandom(PatientBuilderConstants.Gender.BinaryOnly);
+        var givenName = GivenName ?? (gender == PatientBuilderConstants.Gender.Male ? _faker.Name.FirstName(Bogus.DataSets.Name.Gender.Male) : _faker.Name.FirstName(Bogus.DataSets.Name.Gender.Female));
         var familyName = FamilyName ?? _faker.Name.LastName();
         var age = Age ?? _faker.Random.Int(25, 70);
 
