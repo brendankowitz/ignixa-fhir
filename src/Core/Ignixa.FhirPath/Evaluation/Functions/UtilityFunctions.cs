@@ -30,6 +30,7 @@ internal static class UtilityFunctions
         ReturnType = "context",
         MinArguments = 0,
         MaxArguments = 2,
+        TakesExpressionArguments = true,
         Category = "Utility",
         Description = "Returns focus unchanged for debugging/logging")]
     public static IEnumerable<IElement> Trace(

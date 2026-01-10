@@ -74,6 +74,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         var supportedAtRoot = GetNamedArgument<bool>(attribute, "SupportedAtRoot");
         var minArguments = GetNamedArgument<int>(attribute, "MinArguments");
         var maxArguments = GetNamedArgument<int>(attribute, "MaxArguments");
+        var takesExpressionArguments = GetNamedArgument<bool>(attribute, "TakesExpressionArguments");
         var category = GetNamedArgument<string>(attribute, "Category");
         var description = GetNamedArgument<string>(attribute, "Description");
 
@@ -90,6 +91,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
             SupportedAtRoot: supportedAtRoot,
             MinArguments: minArguments == -1 ? null : minArguments,
             MaxArguments: maxArguments == -1 ? null : maxArguments,
+            TakesExpressionArguments: takesExpressionArguments,
             Category: category,
             Description: description,
             ContainingClassName: containingClassName,
@@ -250,6 +252,11 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
                 sb.AppendLine($"            .AddValidation(ValidateArgumentCount({min}, {max}))");
             }
 
+            if (func.TakesExpressionArguments)
+            {
+                sb.AppendLine("            .WithTakesExpressionArguments()");
+            }
+
             GenerateReturnTypeProperty(sb, func);
 
             sb.AppendLine("        );");
@@ -272,7 +279,21 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         }
         else if (string.Equals(returnType, "fromargument", StringComparison.OrdinalIgnoreCase))
         {
-            sb.AppendLine("            .WithReturnType(ReturnsFromArgument)");
+            // Special case for iif(): union of then/else branches (arguments[1] and arguments[2])
+            if (string.Equals(func.Name, "iif", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine("            .WithReturnType((def, focus, args, issues) => {");
+                sb.AppendLine("                var argList = args.ToList();");
+                sb.AppendLine("                var result = new List<FhirPathType>();");
+                sb.AppendLine("                if (argList.Count > 1) result.AddRange(argList[1].Types);");
+                sb.AppendLine("                if (argList.Count > 2) result.AddRange(argList[2].Types);");
+                sb.AppendLine("                return result.Count > 0 ? result : focus.Types.ToList();");
+                sb.AppendLine("            })");
+            }
+            else
+            {
+                sb.AppendLine("            .WithReturnType(ReturnsFromArgument)");
+            }
         }
         else if (!string.Equals(returnType, "any", StringComparison.OrdinalIgnoreCase))
         {
@@ -429,6 +450,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         bool SupportedAtRoot,
         int? MinArguments,
         int? MaxArguments,
+        bool TakesExpressionArguments,
         string? Category,
         string? Description,
         string ContainingClassName,

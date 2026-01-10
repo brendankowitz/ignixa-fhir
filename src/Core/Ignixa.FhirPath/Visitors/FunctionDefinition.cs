@@ -46,6 +46,11 @@ public sealed class FunctionDefinition
     public bool SupportedAtRoot { get; }
 
     /// <summary>
+    /// Gets whether this function takes expression arguments evaluated with focus as $this.
+    /// </summary>
+    public bool TakesExpressionArguments { get; set; }
+
+    /// <summary>
     /// Gets the supported context types (input type -> return type mappings).
     /// </summary>
     public IReadOnlyList<FunctionContext> SupportedContexts => _supportedContexts;
@@ -110,6 +115,16 @@ public sealed class FunctionDefinition
     public FunctionDefinition WithReturnType(GetReturnTypeDelegate returnTypeDelegate)
     {
         GetReturnType = returnTypeDelegate;
+        return this;
+    }
+
+    /// <summary>
+    /// Marks this function as taking expression arguments evaluated with focus as $this.
+    /// </summary>
+    /// <returns>This instance for fluent chaining</returns>
+    public FunctionDefinition WithTakesExpressionArguments()
+    {
+        TakesExpressionArguments = true;
         return this;
     }
 

@@ -9,33 +9,37 @@ using Ignixa.FhirPath.Visitors;
 namespace Ignixa.FhirPath.Optimization;
 
 /// <summary>
-/// Expression optimizer that transforms FhirPath expressions into more efficient forms.
+/// Optimizes FhirPath expressions by applying transformations like constant folding,
+/// short-circuiting, and algebraic simplification.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>OBSOLETE:</b> Use parse-time optimization instead for better performance.
-/// Instead of optimizing at evaluation-time, use <see cref="Parsing.FhirPathParser"/> with
-/// <see cref="Parsing.CompilationOptions.Optimize"/> set to true.
-/// </para>
-/// <para>
-/// <b>Migration:</b>
-/// </para>
-/// <code>
-/// // OLD (evaluation-time optimization):
-/// var optimizer = new FhirPathOptimizer();
-/// var optimized = optimizer.Optimize(expression);
-///
-/// // NEW (parse-time optimization):
-/// var parser = new FhirPathParser(CompilationOptions.Optimized);
-/// var optimized = parser.Parse(expressionString);
-/// </code>
-/// <para>
-/// <b>Why Parse-Time is Better:</b>
+/// This optimizer can be used in two ways:
 /// </para>
 /// <list type="bullet">
-///   <item><description>Optimize once at parse-time, not repeatedly at evaluation-time</description></item>
-///   <item><description>Better caching - optimized AST can be reused across evaluations</description></item>
-///   <item><description>Consistent with compiler architecture (optimization is a compilation phase)</description></item>
+/// <item>
+/// <term>Parse-time optimization (recommended for cached expressions)</term>
+/// <description>
+/// Use <see cref="Parsing.CompilationOptions.Optimize"/> when parsing to optimize during compilation.
+/// The optimized AST can be cached and reused across multiple evaluations.
+/// <code>
+/// var parser = new FhirPathParser(CompilationOptions.Optimized);
+/// var optimized = parser.Parse("Patient.name.where(2 + 3 > 4)");
+/// // Use 'optimized' many times without re-optimization
+/// </code>
+/// </description>
+/// </item>
+/// <item>
+/// <term>Post-parse optimization (for dynamic expressions)</term>
+/// <description>
+/// Use this class directly when you have an already-parsed expression that needs optimization,
+/// or when expressions are generated programmatically.
+/// <code>
+/// var optimizer = new FhirPathOptimizer();
+/// var optimized = optimizer.Optimize(expression);
+/// </code>
+/// </description>
+/// </item>
 /// </list>
 /// <para>
 /// <b>Optimization Strategies:</b>
@@ -47,9 +51,6 @@ namespace Ignixa.FhirPath.Optimization;
 ///   <item><description>Function optimization: Removes no-op function calls (where(true) -> focus)</description></item>
 /// </list>
 /// </remarks>
-[Obsolete("Use parse-time optimization instead: new FhirPathParser(CompilationOptions.Optimized).Parse(expression). " +
-          "Optimizing at parse-time is more efficient than optimizing at evaluation-time. " +
-          "This class will be removed in a future version.")]
 public class FhirPathOptimizer : DefaultFhirPathExpressionVisitor<OptimizationContext, Expression>
 {
     /// <summary>

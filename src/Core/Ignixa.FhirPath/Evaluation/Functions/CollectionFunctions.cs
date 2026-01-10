@@ -29,6 +29,7 @@ internal static class CollectionFunctions
         SupportedAtRoot = true,
         MinArguments = 0,
         MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Collection",
         Description = "Returns true if collection is not empty, or if any element matches criteria")]
     public static IEnumerable<IElement> Exists(
@@ -272,6 +273,7 @@ internal static class CollectionFunctions
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Collection",
         Description = "Filters elements based on a criteria expression")]
     public static IEnumerable<IElement> Where(
@@ -318,6 +320,7 @@ internal static class CollectionFunctions
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Collection",
         Description = "Projects elements based on a projection expression")]
     public static IEnumerable<IElement> Select(
@@ -349,6 +352,7 @@ internal static class CollectionFunctions
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Collection",
         Description = "Returns true if all elements match the criteria")]
     public static IEnumerable<IElement> All(
@@ -415,6 +419,7 @@ internal static class CollectionFunctions
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Collection",
         Description = "Recursively applies a projection expression until no new elements are found")]
     public static IEnumerable<IElement> Repeat(

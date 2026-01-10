@@ -126,6 +126,13 @@ public sealed class FhirPathFunctionAttribute : Attribute
     public int MaxArguments { get; set; } = -1;
 
     /// <summary>
+    /// Gets or sets whether this function takes expression arguments that should be evaluated
+    /// with the focus element as $this context (e.g., where(), select(), exists(), all()).
+    /// When true, arguments are evaluated with single-item context from focus collection.
+    /// </summary>
+    public bool TakesExpressionArguments { get; set; }
+
+    /// <summary>
     /// Gets or sets the category of the function for documentation/grouping purposes.
     /// </summary>
     /// <remarks>
