@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -19,4 +21,8 @@ public class EmptyExpression : Expression
     }
 
     public override string ToString() => "{}";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitEmpty(this, context);
 }

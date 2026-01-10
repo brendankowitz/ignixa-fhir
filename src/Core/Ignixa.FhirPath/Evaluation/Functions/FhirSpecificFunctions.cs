@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -19,6 +20,14 @@ internal static class FhirSpecificFunctions
     /// extension() - Filters the input collection for items named "extension" with the given url.
     /// Equivalent to: .extension.where(url = urlValue)
     /// </summary>
+    [FhirPathFunction("extension",
+        SupportedContexts = "any-any",
+        ReturnType = "Extension",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "FHIR",
+        Description = "Filters extensions by URL")]
     public static IEnumerable<IElement> Extension(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -63,6 +72,13 @@ internal static class FhirSpecificFunctions
     /// Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
     /// Per FHIR spec: resolve() returns empty on failure (does not throw).
     /// </summary>
+    [FhirPathFunction("resolve",
+        SupportedContexts = "Reference-Resource",
+        ReturnType = "Resource",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "FHIR",
+        Description = "Resolves a Reference to the actual resource")]
     public static IEnumerable<IElement> Resolve(
         IEnumerable<IElement> focus,
         EvaluationContext context)
@@ -121,6 +137,14 @@ internal static class FhirSpecificFunctions
     /// getResourceKey() - SQL on FHIR v2 function that returns resourceType/id for the ROOT resource.
     /// Enables JOINs across resources and should always reference the root, not the current focus.
     /// </summary>
+    [FhirPathFunction("getResourceKey",
+        SupportedContexts = "any-string",
+        ReturnType = "string",
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "FHIR",
+        Description = "Returns resourceType/id for the root resource")]
     public static IEnumerable<IElement> GetResourceKey(EvaluationContext context)
     {
         // Per SQL on FHIR v2 spec: getResourceKey() returns "{resourceType}/{id}" for the ROOT resource
@@ -163,6 +187,13 @@ internal static class FhirSpecificFunctions
     /// Returns the full reference string (e.g., "Patient/123").
     /// Optional type parameter filters by resource type.
     /// </summary>
+    [FhirPathFunction("getReferenceKey",
+        SupportedContexts = "Reference-string",
+        ReturnType = "string",
+        MinArguments = 0,
+        MaxArguments = 1,
+        Category = "FHIR",
+        Description = "Extracts reference key from a Reference element")]
     public static IEnumerable<IElement> GetReferenceKey(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,

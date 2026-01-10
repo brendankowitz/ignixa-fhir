@@ -1,8 +1,32 @@
 # Investigation: Visitor Pattern Evaluation
 
 **Feature**: fhirpath
-**Status**: In Progress
+**Status**: Completed
 **Created**: 2026-01-09
+**Completed**: 2026-01-09
+
+## Implementation Status
+
+| Phase | Status | Files | Tests | Notes |
+|-------|--------|-------|-------|-------|
+| **Phase 1: Core Visitor Pattern** | ✅ Complete | 13 files | All passing | AcceptVisitor infrastructure, visitor interface, base class |
+| **Phase 2A: Type Infrastructure** | ✅ Complete | 3 files | All passing | FhirPathType, FhirPathTypeSet, ValidationIssue |
+| **Phase 2B: Context Management** | ✅ Complete | 2 files | All passing | FhirPathVisitorContext, SymbolTable |
+| **Phase 3: AST Normalization** | ✅ Complete | 8 files | All passing | PropertyAccessExpression, parser updates |
+| **Phase 4A: Function Registry** | ✅ Complete | 2 files | All passing | SymbolTable with source generator support |
+| **Phase 4B: Testing Infrastructure** | ✅ Complete | 2 files | 500+ passing | SymbolTableTests, VisitorPatternTests |
+| **Phase 4C: Documentation** | ✅ Complete | 3 files | N/A | Quick start guide, updated investigation docs |
+
+### Summary
+
+All phases completed successfully. The visitor pattern refactoring is production-ready:
+
+- **13 expression types** with AcceptVisitor implementations
+- **FhirPathType** and **FhirPathTypeSet** for type tracking
+- **SymbolTable** with function signature registry
+- **PropertyAccessExpression** for semantic clarity
+- **500+ tests** passing (existing + new visitor tests)
+- **Comprehensive documentation** for future developers
 
 ## Approach
 
@@ -266,10 +290,10 @@ See "Developer Experience Analysis" section below for detailed rationale and cod
 
 2. **Add `AcceptVisitor` infrastructure**:
    - `Expression.AcceptVisitor<TContext, TOutput>` abstract method
-   - Implement in all 12 expression types (mechanical, 5 min each)
+   - Implement in all 13 expression types (mechanical, 5 min each)
 
 3. **Create visitor interface + base class**:
-   - `IFhirPathExpressionVisitor<TContext, TOutput>` with 12 visit methods
+   - `IFhirPathExpressionVisitor<TContext, TOutput>` with 13 visit methods
    - `DefaultFhirPathExpressionVisitor<TContext, TOutput>` with default traversal
 
 4. **Refactor evaluator**:
@@ -315,12 +339,12 @@ See "Developer Experience Analysis" section below for detailed rationale and cod
 
 **NEW PHASE**: Not in original plan, but production validator showed this is critical.
 
-6. **NodeProps struct** (~130 LOC):
+6. **FhirPathType struct** (~130 LOC):
    - Represents single type node with collection tracking
    - `AsSingle()`, `AsCollection()`, `WithPath()` methods
    - Immutable value type for performance
 
-7. **FhirPathVisitorProps class** (~210 LOC):
+7. **FhirPathTypeSet class** (~210 LOC):
    - Container holding multiple possible types (for union operators, choice types)
    - `CanBeOfType()`, `IsCollection()` query methods
    - Type normalization (`code` → `string`, `date` → `datetime`)
@@ -339,14 +363,14 @@ See "Developer Experience Analysis" section below for detailed rationale and cod
 ### **Phase 2B: Context Management** (2-3 hours) - SEMANTIC REQUIREMENTS
 
 9. **Variable registration pattern** (~100 LOC):
-   - `Dictionary<string, FhirPathVisitorProps>` for variables
+   - `Dictionary<string, FhirPathTypeSet>` for variables
    - `SetContext(string definitionPath)` with path navigation
    - Register standard variables: `%resource`, `%rootResource`, `%context`, `%ucum`, `%sct`, `%loinc`
 
 10. **Context stacks** (~80 LOC):
-    - `Stack<FhirPathVisitorProps>` for property context
-    - `Stack<FhirPathVisitorProps>` for expression context (where/select args)
-    - `Stack<FhirPathVisitorProps>` for aggregate accumulator
+    - `Stack<FhirPathTypeSet>` for property context
+    - `Stack<FhirPathTypeSet>` for expression context (where/select args)
+    - `Stack<FhirPathTypeSet>` for aggregate accumulator
 
 11. **Builtin variable handling**:
     - `builtin.that` → property context stack
@@ -512,7 +536,7 @@ See "Developer Experience Analysis" section below for detailed rationale and cod
 **Incremental delivery**: Each phase ships independently, delivers value immediately.
 
 **Why revised estimate?** Production validator revealed missing infrastructure:
-- Type system (NodeProps, FhirPathVisitorProps) - critical for collection tracking
+- Type system (FhirPathType, FhirPathTypeSet) - critical for collection tracking
 - Function registry (SymbolTable) - source generator + 60+ function annotations
 - Error reporting (ValidationIssue, OperationOutcomeBuilder) - locations for IDE integration
 - Testing infrastructure - parameterized multi-version tests
@@ -542,7 +566,7 @@ Analysis of `C:\src\Hl7.Fhir.FhirPath.Validator\src-ignixa\Ignixa.FhirPath.Valid
 #### 1. **Manual Dispatch Switch Statement** (lines 188-206)
 Every visitor must implement the same 12-case switch:
 ```csharp
-public FhirPathVisitorProps Visit(Expression expression)
+public FhirPathTypeSet Visit(Expression expression)
 {
     return expression switch
     {
@@ -561,11 +585,11 @@ public FhirPathVisitorProps Visit(Expression expression)
 #### 2. **Context Stack Management Complexity** (lines 36-38)
 Three separate stacks manually managed throughout traversal:
 ```csharp
-private readonly Stack<FhirPathVisitorProps> _propertyContextStack = new();
-private readonly Stack<FhirPathVisitorProps> _expressionContextStack = new();
-private readonly Stack<FhirPathVisitorProps> _aggregateTotalStack = new();
+private readonly Stack<FhirPathTypeSet> _propertyContextStack = new();
+private readonly Stack<FhirPathTypeSet> _expressionContextStack = new();
+private readonly Stack<FhirPathTypeSet> _aggregateTotalStack = new();
 ```
-**Problem**: Push/pop logic scattered across 12 visitor methods. Easy to forget, causes bugs.
+**Problem**: Push/pop logic scattered across 13 visitor methods. Easy to forget, causes bugs.
 
 #### 3. **AST Ambiguity Detection** (lines 417-420)
 Special case for when `FunctionCallExpression` is actually property access:
@@ -640,14 +664,14 @@ var result = expression.AcceptVisitor(visitor, context);
 Replace three stacks with single context object:
 ```csharp
 public sealed record FhirPathVisitorContext(
-    FhirPathVisitorProps PropertyContext,
-    FhirPathVisitorProps? ExpressionContext = null,
-    FhirPathVisitorProps? AggregateTotal = null,
-    ImmutableStack<FhirPathVisitorProps>? PropertyStack = null
+    FhirPathTypeSet PropertyContext,
+    FhirPathTypeSet? ExpressionContext = null,
+    FhirPathTypeSet? AggregateTotal = null,
+    ImmutableStack<FhirPathTypeSet>? PropertyStack = null
 )
 {
-    public FhirPathVisitorContext PushPropertyContext(FhirPathVisitorProps props) =>
-        this with { PropertyStack = (PropertyStack ?? ImmutableStack<FhirPathVisitorProps>.Empty).Push(props) };
+    public FhirPathVisitorContext PushPropertyContext(FhirPathTypeSet props) =>
+        this with { PropertyStack = (PropertyStack ?? ImmutableStack<FhirPathTypeSet>.Empty).Push(props) };
 
     public FhirPathVisitorContext PopPropertyContext() =>
         this with { PropertyStack = PropertyStack?.Pop() };
@@ -721,7 +745,7 @@ public abstract class FhirPathExpressionVisitor<TContext, TOutput> : IFhirPathEx
 }
 
 // Type inference visitor: Extends core with type tracking
-public class TypeInferenceVisitor : FhirPathExpressionVisitor<TypeContext, FhirPathVisitorProps>
+public class TypeInferenceVisitor : FhirPathExpressionVisitor<TypeContext, FhirPathTypeSet>
 {
     // Override only type-related logic
 }
@@ -773,7 +797,7 @@ Each phase delivers value independently. Phase 1 unblocks validator refactoring 
 
 The validator prototype revealed that switch-based traversal imposes significant developer friction:
 - **200+ lines of duplicated dispatch logic** per visitor
-- **3 mutable stacks** manually managed across 12 visitor methods
+- **3 mutable stacks** manually managed across 13 visitor methods
 - **Complex AST ambiguity detection** reimplemented in every visitor
 - **Mixed concerns** (traversal + type inference + debug output)
 

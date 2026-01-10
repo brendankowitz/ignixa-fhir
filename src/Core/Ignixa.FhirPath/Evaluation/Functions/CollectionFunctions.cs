@@ -9,6 +9,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -21,6 +22,15 @@ internal static class CollectionFunctions
     /// <summary>
     /// exists() - Returns true if collection is not empty, or if any element matches criteria.
     /// </summary>
+    [FhirPathFunction("exists",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns true if collection is not empty, or if any element matches criteria")]
     public static IEnumerable<IElement> Exists(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -53,6 +63,15 @@ internal static class CollectionFunctions
     /// <summary>
     /// empty() - Returns true if collection is empty.
     /// </summary>
+    [FhirPathFunction("empty",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns true if collection is empty")]
     public static IEnumerable<IElement> Empty(IEnumerable<IElement> focus)
     {
         var isEmpty = !focus.Any();
@@ -63,6 +82,15 @@ internal static class CollectionFunctions
     /// <summary>
     /// count() - Returns the number of elements in the collection.
     /// </summary>
+    [FhirPathFunction("count",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns the number of elements in the collection")]
     public static IEnumerable<IElement> Count(IEnumerable<IElement> focus)
     {
         var count = focus.Count();
@@ -72,6 +100,15 @@ internal static class CollectionFunctions
     /// <summary>
     /// isDistinct() - Returns true if all elements in the collection are distinct.
     /// </summary>
+    [FhirPathFunction("isDistinct",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns true if all elements in the collection are distinct")]
     public static IEnumerable<IElement> IsDistinct(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -84,6 +121,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// first() - Returns the first element in the collection, or empty if collection is empty.
     /// </summary>
+    [FhirPathFunction("first",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns the first element in the collection")]
     public static IEnumerable<IElement> First(IEnumerable<IElement> focus)
     {
         var first = focus.FirstOrDefault();
@@ -93,6 +138,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// last() - Returns the last element in the collection, or empty if collection is empty.
     /// </summary>
+    [FhirPathFunction("last",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns the last element in the collection")]
     public static IEnumerable<IElement> Last(IEnumerable<IElement> focus)
     {
         var last = focus.LastOrDefault();
@@ -102,6 +155,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// single() - Returns the single element in the collection, throws if collection has more than one element.
     /// </summary>
+    [FhirPathFunction("single",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns the single element in the collection")]
     public static IEnumerable<IElement> Single(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -117,6 +178,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// tail() - Returns all elements except the first.
     /// </summary>
+    [FhirPathFunction("tail",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns all elements except the first")]
     public static IEnumerable<IElement> Tail(IEnumerable<IElement> focus)
     {
         return focus.Skip(1);
@@ -125,6 +194,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// skip() - Skips the first n elements in the collection.
     /// </summary>
+    [FhirPathFunction("skip",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Skips the first n elements in the collection")]
     public static IEnumerable<IElement> Skip(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -144,6 +221,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// take() - Takes the first n elements in the collection.
     /// </summary>
+    [FhirPathFunction("take",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Takes the first n elements in the collection")]
     public static IEnumerable<IElement> Take(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -163,6 +248,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// where() - Filters elements based on a criteria expression.
     /// </summary>
+    [FhirPathFunction("where",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Filters elements based on a criteria expression")]
     public static IEnumerable<IElement> Where(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -201,6 +294,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// select() - Projects elements based on a projection expression.
     /// </summary>
+    [FhirPathFunction("select",
+        SupportedContexts = "any-any",
+        ReturnType = "fromArgument",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Projects elements based on a projection expression")]
     public static IEnumerable<IElement> Select(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -224,6 +325,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// all() - Returns true if all elements match the criteria.
     /// </summary>
+    [FhirPathFunction("all",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns true if all elements match the criteria")]
     public static IEnumerable<IElement> All(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -247,6 +356,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// any() - Returns true if any element matches the criteria, or if collection is not empty (no criteria).
     /// </summary>
+    [FhirPathFunction("any",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns true if any element matches the criteria")]
     public static IEnumerable<IElement> Any(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -274,6 +391,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// repeat() - Recursively applies a projection expression until no new elements are found.
     /// </summary>
+    [FhirPathFunction("repeat",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Recursively applies a projection expression until no new elements are found")]
     public static IEnumerable<IElement> Repeat(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -309,6 +434,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// ofType() - Filters elements by instance type.
     /// </summary>
+    [FhirPathFunction("ofType",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Filters elements by instance type")]
     public static IEnumerable<IElement> OfType(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -349,6 +482,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// as() - Type coercion operator (filters by type).
     /// </summary>
+    [FhirPathFunction("as",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Type coercion operator (filters by type)")]
     public static IEnumerable<IElement> As(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments)
@@ -372,6 +513,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// intersect() - Returns elements that appear in both collections.
     /// </summary>
+    [FhirPathFunction("intersect",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns elements that appear in both collections")]
     public static IEnumerable<IElement> Intersect(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -398,6 +547,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// exclude() - Returns elements from focus that do not appear in other collection.
     /// </summary>
+    [FhirPathFunction("exclude",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns elements from focus that do not appear in other collection")]
     public static IEnumerable<IElement> Exclude(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -424,6 +581,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// union() - Combines two collections, eliminating duplicates.
     /// </summary>
+    [FhirPathFunction("union",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Combines two collections, eliminating duplicates")]
     public static IEnumerable<IElement> Union(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -440,6 +605,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// combine() - Combines two collections without eliminating duplicates.
     /// </summary>
+    [FhirPathFunction("combine",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Combines two collections without eliminating duplicates")]
     public static IEnumerable<IElement> Combine(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -456,6 +629,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// subsetOf() - Returns true if focus collection is a subset of other collection.
     /// </summary>
+    [FhirPathFunction("subsetOf",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns true if focus collection is a subset of other collection")]
     public static IEnumerable<IElement> SubsetOf(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -481,6 +662,14 @@ internal static class CollectionFunctions
     /// <summary>
     /// supersetOf() - Returns true if focus collection is a superset of other collection.
     /// </summary>
+    [FhirPathFunction("supersetOf",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "Collection",
+        Description = "Returns true if focus collection is a superset of other collection")]
     public static IEnumerable<IElement> SupersetOf(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,

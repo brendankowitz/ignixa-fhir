@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -24,6 +25,13 @@ internal static class UtilityFunctions
     /// <param name="arguments">Optional trace name/message arguments</param>
     /// <param name="context">Evaluation context</param>
     /// <returns>Focus collection unchanged</returns>
+    [FhirPathFunction("trace",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        MinArguments = 0,
+        MaxArguments = 2,
+        Category = "Utility",
+        Description = "Returns focus unchanged for debugging/logging")]
     public static IEnumerable<IElement> Trace(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -40,6 +48,14 @@ internal static class UtilityFunctions
     /// </summary>
     /// <param name="focus">Input collection (unused)</param>
     /// <returns>Current UTC dateTime</returns>
+    [FhirPathFunction("now",
+        SupportedContexts = "any-any",
+        ReturnType = "dateTime",
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Utility",
+        Description = "Returns current UTC date and time")]
     public static IEnumerable<IElement> Now(IEnumerable<IElement> focus)
     {
         var now = DateTime.UtcNow.ToString("o");
@@ -52,6 +68,14 @@ internal static class UtilityFunctions
     /// </summary>
     /// <param name="focus">Input collection (unused)</param>
     /// <returns>Current date</returns>
+    [FhirPathFunction("today",
+        SupportedContexts = "any-any",
+        ReturnType = "date",
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Utility",
+        Description = "Returns current date without time component")]
     public static IEnumerable<IElement> Today(IEnumerable<IElement> focus)
     {
         var today = DateTime.Today.ToString("yyyy-MM-dd");
@@ -64,6 +88,14 @@ internal static class UtilityFunctions
     /// </summary>
     /// <param name="focus">Input collection (unused)</param>
     /// <returns>Current time of day</returns>
+    [FhirPathFunction("timeOfDay",
+        SupportedContexts = "any-any",
+        ReturnType = "time",
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Utility",
+        Description = "Returns current time of day without date component")]
     public static IEnumerable<IElement> TimeOfDay(IEnumerable<IElement> focus)
     {
         var time = DateTime.Now.TimeOfDay.ToString(@"hh\:mm\:ss");

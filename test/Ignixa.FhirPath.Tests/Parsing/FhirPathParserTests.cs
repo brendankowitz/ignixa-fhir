@@ -99,9 +99,9 @@ public class FhirPathParserTests
 
         // Bare function calls have implicit $that focus
         Assert.NotNull(funcExpr.Focus);
-        Assert.IsType<AxisExpression>(funcExpr.Focus);
-        var axis = (AxisExpression)funcExpr.Focus;
-        Assert.Equal("that", axis.AxisName, ignoreCase: true);
+        Assert.IsType<ScopeExpression>(funcExpr.Focus);
+        var scope = (ScopeExpression)funcExpr.Focus;
+        Assert.Equal("that", scope.ScopeName, ignoreCase: true);
 
         var argExpr = Assert.Single(funcExpr.Arguments);
         var idExpr = Assert.IsType<IdentifierExpression>(argExpr);

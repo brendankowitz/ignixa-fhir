@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
@@ -18,6 +19,15 @@ internal static class BooleanFunctions
     /// allTrue() - Returns true if all elements are boolean true.
     /// Empty collection returns true.
     /// </summary>
+    [FhirPathFunction("allTrue",
+        SupportedContexts = "boolean-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boolean",
+        Description = "Returns true if all elements are boolean true")]
     public static IEnumerable<IElement> AllTrue(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -33,6 +43,15 @@ internal static class BooleanFunctions
     /// anyTrue() - Returns true if any element is boolean true.
     /// Empty collection returns false.
     /// </summary>
+    [FhirPathFunction("anyTrue",
+        SupportedContexts = "boolean-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boolean",
+        Description = "Returns true if any element is boolean true")]
     public static IEnumerable<IElement> AnyTrue(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -49,6 +68,15 @@ internal static class BooleanFunctions
     /// allFalse() - Returns true if all elements are boolean false.
     /// Empty collection returns true.
     /// </summary>
+    [FhirPathFunction("allFalse",
+        SupportedContexts = "boolean-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boolean",
+        Description = "Returns true if all elements are boolean false")]
     public static IEnumerable<IElement> AllFalse(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -64,6 +92,15 @@ internal static class BooleanFunctions
     /// anyFalse() - Returns true if any element is boolean false.
     /// Empty collection returns false.
     /// </summary>
+    [FhirPathFunction("anyFalse",
+        SupportedContexts = "boolean-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boolean",
+        Description = "Returns true if any element is boolean false")]
     public static IEnumerable<IElement> AnyFalse(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -80,6 +117,13 @@ internal static class BooleanFunctions
     /// not() - Negates a single boolean value.
     /// Returns empty if collection is empty or has more than one element.
     /// </summary>
+    [FhirPathFunction("not",
+        SupportedContexts = "boolean-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boolean",
+        Description = "Negates a single boolean value")]
     public static IEnumerable<IElement> Not(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();

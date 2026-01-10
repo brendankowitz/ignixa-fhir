@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -24,4 +26,8 @@ public class ChildExpression : FunctionCallExpression
 
     public override string ToString() =>
         Focus != null ? $"{Focus}.{ChildName}" : ChildName;
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitChild(this, context);
 }

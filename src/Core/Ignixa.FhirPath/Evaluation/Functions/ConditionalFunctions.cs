@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -19,6 +20,13 @@ internal static class ConditionalFunctions
     /// iif() - Conditional expression (if-then-else).
     /// Syntax: iif(criterion, true-result [, false-result])
     /// </summary>
+    [FhirPathFunction("iif",
+        SupportedContexts = "any-any",
+        ReturnType = "fromArgument",
+        MinArguments = 2,
+        MaxArguments = 3,
+        Category = "Conditional",
+        Description = "Conditional expression (if-then-else)")]
     public static IEnumerable<IElement> Iif(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,

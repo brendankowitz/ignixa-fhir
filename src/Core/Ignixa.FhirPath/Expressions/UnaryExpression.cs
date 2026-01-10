@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -15,7 +17,7 @@ namespace Ignixa.FhirPath.Expressions;
 public class UnaryExpression : FunctionCallExpression
 {
     public UnaryExpression(string op, Expression operand, ISourcePositionInfo? location = null)
-        : base(AxisExpression.That, $"unary.{op}", new[] { operand }, location)
+        : base(ScopeExpression.That, $"unary.{op}", new[] { operand }, location)
     {
         Operator = op;
     }
@@ -24,4 +26,8 @@ public class UnaryExpression : FunctionCallExpression
     public Expression Operand => Arguments[0];
 
     public override string ToString() => $"({Operator}{Operand})";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitUnary(this, context);
 }

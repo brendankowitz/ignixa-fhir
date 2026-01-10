@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
@@ -25,6 +26,13 @@ public static class DateTimeFunctions
     /// @2024.year() = 2024
     /// @T14:30:45.year() = empty (time has no year)
     /// </example>
+    [FhirPathFunction("year",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the year component from a date/datetime value")]
     public static IEnumerable<IElement> Year(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -46,6 +54,13 @@ public static class DateTimeFunctions
     /// @2024-01-15T10:00:00Z.month() = 1
     /// @2024.month() = empty (year-only has no month)
     /// </example>
+    [FhirPathFunction("month",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the month component from a date/datetime value")]
     public static IEnumerable<IElement> Month(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -67,6 +82,13 @@ public static class DateTimeFunctions
     /// @2024-02-29.day() = 29 (leap year)
     /// @2024-11.day() = empty (year-month has no day)
     /// </example>
+    [FhirPathFunction("day",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the day component from a date/datetime value")]
     public static IEnumerable<IElement> Day(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -88,6 +110,13 @@ public static class DateTimeFunctions
     /// @T14:30:45.hour() = 14
     /// @2024-11-18.hour() = empty (date has no time)
     /// </example>
+    [FhirPathFunction("hour",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the hour component from a datetime/time value")]
     public static IEnumerable<IElement> Hour(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -109,6 +138,13 @@ public static class DateTimeFunctions
     /// @T14:30:45.minute() = 30
     /// @2024-11-18T14:00:00Z.minute() = 0
     /// </example>
+    [FhirPathFunction("minute",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the minute component from a datetime/time value")]
     public static IEnumerable<IElement> Minute(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -130,6 +166,13 @@ public static class DateTimeFunctions
     /// @T14:30:45.second() = 45
     /// @2024-11-18T14:30:00Z.second() = 0
     /// </example>
+    [FhirPathFunction("second",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the second component from a datetime/time value")]
     public static IEnumerable<IElement> Second(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -153,6 +196,13 @@ public static class DateTimeFunctions
     /// @2024-11-18T14:30:45Z.millisecond() = 0
     /// @2024-11-18.millisecond() = empty (date has no time)
     /// </example>
+    [FhirPathFunction("millisecond",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the millisecond component from a datetime/time value")]
     public static IEnumerable<IElement> Millisecond(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -177,6 +227,13 @@ public static class DateTimeFunctions
     /// @2024-11-18T14:30:45.timezone() = empty (local time)
     /// @2024-11-18.timezone() = empty (date has no timezone)
     /// </example>
+    [FhirPathFunction("timezone",
+        SupportedContexts = "any-string",
+        ReturnType = "string",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Extracts the timezone offset from a datetime value")]
     public static IEnumerable<IElement> Timezone(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)

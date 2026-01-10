@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -27,4 +29,8 @@ public class QuantityExpression : Expression
     public string Unit { get; }
 
     public override string ToString() => $"{Value} '{Unit}'";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitQuantity(this, context);
 }

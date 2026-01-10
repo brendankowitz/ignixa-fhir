@@ -19,6 +19,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.FhirPath.Generators\Ignixa.FhirPath.Generators.csproj">
+      <OutputItemType>Analyzer</OutputItemType>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -44,8 +44,8 @@ public class FhirPathDelegateCompiler
                 // Simple identifier: "name"
                 IdentifierExpression id => CompileIdentifier(id),
 
-                // Axis reference: $this
-                AxisExpression axis => CompileAxis(axis),
+                // Scope reference: $this
+                ScopeExpression scope => CompileAxis(scope),
 
                 // Child access: name.family, identifier.value (check before FunctionCallExpression)
                 ChildExpression child => CompileChild(child),
@@ -81,17 +81,17 @@ public class FhirPathDelegateCompiler
     }
 
     /// <summary>
-    /// Compiles an axis reference like $this.
+    /// Compiles a scope reference like $this.
     /// </summary>
-    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileAxis(AxisExpression axis)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileAxis(ScopeExpression scope)
     {
-        if (axis.AxisName.Equals("this", StringComparison.OrdinalIgnoreCase))
+        if (scope.ScopeName.Equals("this", StringComparison.OrdinalIgnoreCase))
         {
             // $this returns the current input as a single-element list
             return (input, ctx) => [input];
         }
 
-        // Other axes ($index, $total) require context, not compiled
+        // Other scopes ($index, $total) require context, not compiled
         return null;
     }
 
@@ -102,7 +102,7 @@ public class FhirPathDelegateCompiler
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileChild(ChildExpression child)
     {
         // Optimize simple case: single-level child on $this axis
-        // Pattern: "name" where Focus is AxisExpression($this)
+        // Pattern: "name" where Focus is ScopeExpression($this)
         if (IsAxisThis(child.Focus))
         {
             string childName = child.ChildName;
@@ -330,11 +330,11 @@ public class FhirPathDelegateCompiler
     }
 
     /// <summary>
-    /// Checks if an expression is the $this axis (implicitly the current context).
+    /// Checks if an expression is the $this scope (implicitly the current context).
     /// </summary>
     private bool IsAxisThis(Expression? expr)
     {
-        return expr is AxisExpression axis && axis.AxisName.Equals("this", StringComparison.OrdinalIgnoreCase);
+        return expr is ScopeExpression scope && scope.ScopeName.Equals("this", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

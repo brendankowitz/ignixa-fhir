@@ -124,12 +124,12 @@ public static class FhirPathGrammar
 
 
     // Axis: $this, $index, $total
-    private static readonly TokenListParser<FhirPathTokenKind, AxisExpression> Axis =
+    private static readonly TokenListParser<FhirPathTokenKind, ScopeExpression> Axis =
         Token.EqualTo(FhirPathTokenKind.Axis)
             .Select(t =>
             {
-                var axisName = t.ToStringValue().Substring(1); // Remove '$'
-                return new AxisExpression(axisName, CreatePosition(t));
+                var scopeName = t.ToStringValue().Substring(1); // Remove '$'
+                return new ScopeExpression(scopeName, CreatePosition(t));
             });
 
     // External constant: %identifier
@@ -170,8 +170,8 @@ public static class FhirPathGrammar
                unescaped.Equals("as", StringComparison.OrdinalIgnoreCase);
     }
 
-    // Helper: identifier that could be function(args) or bare identifier
-    // Bare identifiers at root level are treated as function calls (e.g., "Patient" = "Patient()")
+    // Helper: identifier that could be function(args) or property access
+    // Bare identifiers at root level are now PropertyAccessExpression (eliminating AST ambiguity)
     // NOTE: Keywords can be used as function/property names in certain contexts
     // SPECIAL CASE: ofType() arguments are type specifiers, not expressions
     private static TokenListParser<FhirPathTokenKind, Expression> IdentifierOrFunction() =>
@@ -189,11 +189,16 @@ public static class FhirPathGrammar
             from rparen in Token.EqualTo(FhirPathTokenKind.RightParen)
             select (args, rparen)
         ).Optional()
-        select (Expression)new FunctionCallExpression(
-            AxisExpression.That,
-            UnescapeIdentifier(nameToken.ToStringValue()),
-            maybeArgs.HasValue ? maybeArgs.Value.args : Array.Empty<Expression>(),
-            maybeArgs.HasValue ? CreatePosition(nameToken, maybeArgs.Value.rparen) : CreatePosition(nameToken));
+        select maybeArgs.HasValue
+            ? (Expression)new FunctionCallExpression(
+                ScopeExpression.That,
+                UnescapeIdentifier(nameToken.ToStringValue()),
+                maybeArgs.Value.args,
+                CreatePosition(nameToken, maybeArgs.Value.rparen))
+            : (Expression)new PropertyAccessExpression(
+                null,
+                UnescapeIdentifier(nameToken.ToStringValue()),
+                CreatePosition(nameToken));
 
     // Function call: identifier(args) - used by DotInvocation
     // NOTE: Keywords can be used as function names in certain contexts

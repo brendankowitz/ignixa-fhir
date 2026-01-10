@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -23,4 +25,8 @@ public class ParenthesizedExpression : Expression
     public Expression InnerExpression { get; }
 
     public override string ToString() => $"({InnerExpression})";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitParenthesized(this, context);
 }

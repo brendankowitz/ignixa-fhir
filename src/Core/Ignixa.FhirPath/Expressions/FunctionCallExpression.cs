@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -38,4 +40,8 @@ public class FunctionCallExpression : Expression
         Focus != null
             ? $"{Focus}.{FunctionName}({string.Join(", ", Arguments)})"
             : $"{FunctionName}({string.Join(", ", Arguments)})";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitFunctionCall(this, context);
 }

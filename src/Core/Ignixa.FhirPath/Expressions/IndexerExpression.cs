@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -23,4 +25,8 @@ public class IndexerExpression : FunctionCallExpression
     public Expression Index => Arguments[0];
 
     public override string ToString() => $"{Collection}[{Index}]";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitIndexer(this, context);
 }

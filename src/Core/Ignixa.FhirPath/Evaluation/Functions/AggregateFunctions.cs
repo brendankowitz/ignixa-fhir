@@ -7,6 +7,7 @@
 
 using System.Globalization;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Types;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -26,6 +27,14 @@ internal static class AggregateFunctions
     /// </summary>
     /// <param name="elements">Collection to sum</param>
     /// <returns>Sum as IElement, or empty if operation not possible</returns>
+    [FhirPathFunction("sum",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Aggregate",
+        Description = "Computes the sum of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
@@ -57,6 +66,14 @@ internal static class AggregateFunctions
     /// </summary>
     /// <param name="elements">Collection to evaluate</param>
     /// <returns>Minimum element, or empty if collection is empty</returns>
+    [FhirPathFunction("min",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Aggregate",
+        Description = "Finds the minimum value in a collection")]
     public static IEnumerable<IElement> Min(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
@@ -110,6 +127,14 @@ internal static class AggregateFunctions
     /// </summary>
     /// <param name="elements">Collection to evaluate</param>
     /// <returns>Maximum element, or empty if collection is empty</returns>
+    [FhirPathFunction("max",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Aggregate",
+        Description = "Finds the maximum value in a collection")]
     public static IEnumerable<IElement> Max(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
@@ -164,6 +189,14 @@ internal static class AggregateFunctions
     /// </summary>
     /// <param name="elements">Collection to average</param>
     /// <returns>Average as IElement, or empty if operation not possible</returns>
+    [FhirPathFunction("avg",
+        SupportedContexts = "any-any",
+        ReturnType = "decimal",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Aggregate",
+        Description = "Computes the average of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();

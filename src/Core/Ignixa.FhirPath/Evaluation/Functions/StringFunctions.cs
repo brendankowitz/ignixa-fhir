@@ -8,6 +8,7 @@
 
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -21,6 +22,13 @@ internal static class StringFunctions
     /// indexOf() - Returns the 0-based index of the first occurrence of a substring.
     /// Returns -1 if substring is not found.
     /// </summary>
+    [FhirPathFunction("indexOf",
+        SupportedContexts = "string-integer",
+        ReturnType = "integer",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Returns the 0-based index of the first occurrence of a substring")]
     public static IEnumerable<IElement> IndexOf(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -46,6 +54,13 @@ internal static class StringFunctions
     /// substring() - Extracts a substring starting at a 0-based index.
     /// Optionally accepts a length parameter.
     /// </summary>
+    [FhirPathFunction("substring",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 1,
+        MaxArguments = 2,
+        Category = "String",
+        Description = "Extracts a substring starting at a 0-based index")]
     public static IEnumerable<IElement> Substring(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -84,6 +99,13 @@ internal static class StringFunctions
     /// <summary>
     /// startsWith() - Tests if a string starts with a given prefix.
     /// </summary>
+    [FhirPathFunction("startsWith",
+        SupportedContexts = "string-boolean",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Tests if a string starts with a given prefix")]
     public static IEnumerable<IElement> StartsWith(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -107,6 +129,13 @@ internal static class StringFunctions
     /// <summary>
     /// endsWith() - Tests if a string ends with a given suffix.
     /// </summary>
+    [FhirPathFunction("endsWith",
+        SupportedContexts = "string-boolean",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Tests if a string ends with a given suffix")]
     public static IEnumerable<IElement> EndsWith(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -130,6 +159,13 @@ internal static class StringFunctions
     /// <summary>
     /// upper() - Converts a string to uppercase.
     /// </summary>
+    [FhirPathFunction("upper",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "String",
+        Description = "Converts a string to uppercase")]
     public static IEnumerable<IElement> Upper(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -142,6 +178,13 @@ internal static class StringFunctions
     /// <summary>
     /// lower() - Converts a string to lowercase.
     /// </summary>
+    [FhirPathFunction("lower",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "String",
+        Description = "Converts a string to lowercase")]
     public static IEnumerable<IElement> Lower(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -157,6 +200,13 @@ internal static class StringFunctions
     /// <summary>
     /// length() - Returns the number of characters in a string.
     /// </summary>
+    [FhirPathFunction("length",
+        SupportedContexts = "string-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "String",
+        Description = "Returns the number of characters in a string")]
     public static IEnumerable<IElement> Length(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -169,6 +219,13 @@ internal static class StringFunctions
     /// <summary>
     /// replace() - Replaces all occurrences of a pattern string with a substitution string.
     /// </summary>
+    [FhirPathFunction("replace",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 2,
+        MaxArguments = 2,
+        Category = "String",
+        Description = "Replaces all occurrences of a pattern string with a substitution string")]
     public static IEnumerable<IElement> Replace(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -195,6 +252,13 @@ internal static class StringFunctions
     /// <summary>
     /// matches() - Tests if a string matches a regular expression pattern.
     /// </summary>
+    [FhirPathFunction("matches",
+        SupportedContexts = "string-boolean",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Tests if a string matches a regular expression pattern")]
     public static IEnumerable<IElement> Matches(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -226,6 +290,13 @@ internal static class StringFunctions
     /// <summary>
     /// replaceMatches() - Replaces all regex pattern matches with a substitution string.
     /// </summary>
+    [FhirPathFunction("replaceMatches",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 2,
+        MaxArguments = 2,
+        Category = "String",
+        Description = "Replaces all regex pattern matches with a substitution string")]
     public static IEnumerable<IElement> ReplaceMatches(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -261,6 +332,14 @@ internal static class StringFunctions
     /// toChars() - Splits a string into individual characters.
     /// Returns a collection of single-character strings.
     /// </summary>
+    [FhirPathFunction("toChars",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "String",
+        Description = "Splits a string into individual characters")]
     public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -274,6 +353,14 @@ internal static class StringFunctions
     /// join() - Concatenates a collection of strings with an optional separator.
     /// If separator is not provided, concatenates without separator.
     /// </summary>
+    [FhirPathFunction("join",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Concatenates a collection of strings with an optional separator")]
     public static IEnumerable<IElement> Join(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,

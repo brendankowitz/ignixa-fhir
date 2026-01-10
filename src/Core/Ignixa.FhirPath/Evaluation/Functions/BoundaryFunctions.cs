@@ -7,6 +7,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
@@ -21,6 +22,13 @@ internal static class BoundaryFunctions
     /// For decimals: multiplies by 0.95 (5% lower)
     /// For dates/times: returns the start of the period with UTC+14:00 offset
     /// </summary>
+    [FhirPathFunction("lowBoundary",
+        SupportedContexts = "any-any",
+        ReturnType = "any",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boundary",
+        Description = "Calculates the low boundary of a value")]
     public static IEnumerable<IElement> LowBoundary(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
@@ -68,6 +76,13 @@ internal static class BoundaryFunctions
     /// For decimals: multiplies by 1.05 (5% higher)
     /// For dates/times: returns the end of the period with UTC-12:00 offset
     /// </summary>
+    [FhirPathFunction("highBoundary",
+        SupportedContexts = "any-any",
+        ReturnType = "any",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Boundary",
+        Description = "Calculates the high boundary of a value")]
     public static IEnumerable<IElement> HighBoundary(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)

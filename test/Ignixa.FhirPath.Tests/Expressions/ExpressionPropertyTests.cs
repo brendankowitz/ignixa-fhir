@@ -89,7 +89,7 @@ public class ExpressionPropertyTests
 
     #endregion
 
-    #region AxisExpression Tests
+    #region ScopeExpression Tests
 
     [Fact]
     public void GivenThisAxis_WhenToString_ThenReturnsAxis()
@@ -112,7 +112,7 @@ public class ExpressionPropertyTests
 
         // Assert
         Assert.NotNull(expr);
-        Assert.IsType<AxisExpression>(expr);
+        Assert.IsType<ScopeExpression>(expr);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class ExpressionPropertyTests
 
         // Assert
         Assert.NotNull(expr);
-        Assert.IsType<AxisExpression>(expr);
+        Assert.IsType<ScopeExpression>(expr);
     }
 
     #endregion

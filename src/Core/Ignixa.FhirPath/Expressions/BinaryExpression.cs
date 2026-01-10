@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -15,7 +17,7 @@ namespace Ignixa.FhirPath.Expressions;
 public class BinaryExpression : FunctionCallExpression
 {
     public BinaryExpression(string op, Expression left, Expression right, ISourcePositionInfo? location = null)
-        : base(AxisExpression.That, $"binary.{op}", new[] { left, right }, location)
+        : base(ScopeExpression.That, $"binary.{op}", new[] { left, right }, location)
     {
         Operator = op;
     }
@@ -25,4 +27,8 @@ public class BinaryExpression : FunctionCallExpression
     public Expression Right => Arguments[1];
 
     public override string ToString() => $"({Left} {Operator} {Right})";
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context) => visitor.VisitBinary(this, context);
 }

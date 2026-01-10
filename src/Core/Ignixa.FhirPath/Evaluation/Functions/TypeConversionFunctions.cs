@@ -7,6 +7,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
@@ -21,6 +22,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toInteger() - Converts a value to an integer.
     /// </summary>
+    [FhirPathFunction("toInteger",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to an integer")]
     public static IEnumerable<IElement> ToInteger(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -46,6 +54,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toDecimal() - Converts a value to a decimal.
     /// </summary>
+    [FhirPathFunction("toDecimal",
+        SupportedContexts = "any-decimal",
+        ReturnType = "decimal",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a decimal")]
     public static IEnumerable<IElement> ToDecimal(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -68,6 +83,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toString() - Converts a value to a string.
     /// </summary>
+    [FhirPathFunction("toString",
+        SupportedContexts = "any-string",
+        ReturnType = "string",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a string")]
     public static IEnumerable<IElement> ToString(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -84,6 +106,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toBoolean() - Converts a value to a boolean.
     /// </summary>
+    [FhirPathFunction("toBoolean",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a boolean")]
     public static IEnumerable<IElement> ToBoolean(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -111,6 +140,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toDate() - Converts a value to a date.
     /// </summary>
+    [FhirPathFunction("toDate",
+        SupportedContexts = "any-any",
+        ReturnType = "date",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a date")]
     public static IEnumerable<IElement> ToDate(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -132,6 +168,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toDateTime() - Converts a value to a dateTime.
     /// </summary>
+    [FhirPathFunction("toDateTime",
+        SupportedContexts = "any-any",
+        ReturnType = "dateTime",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a dateTime")]
     public static IEnumerable<IElement> ToDateTime(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -151,6 +194,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toTime() - Converts a value to a time.
     /// </summary>
+    [FhirPathFunction("toTime",
+        SupportedContexts = "any-any",
+        ReturnType = "time",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a time")]
     public static IEnumerable<IElement> ToTime(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
@@ -171,6 +221,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// toQuantity() - Converts a value to a quantity.
     /// </summary>
+    [FhirPathFunction("toQuantity",
+        SupportedContexts = "any-any",
+        ReturnType = "quantity",
+        MinArguments = 0,
+        MaxArguments = 1,
+        Category = "TypeConversion",
+        Description = "Converts a value to a quantity")]
     public static IEnumerable<IElement> ToQuantity(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
     {
         var list = focus.ToList();
@@ -188,6 +245,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToInteger() - Returns true if value can be converted to integer.
     /// </summary>
+    [FhirPathFunction("convertsToInteger",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to integer")]
     public static IEnumerable<IElement> ConvertsToInteger(IEnumerable<IElement> focus)
     {
         var result = ToInteger(focus);
@@ -197,6 +261,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToDecimal() - Returns true if value can be converted to decimal.
     /// </summary>
+    [FhirPathFunction("convertsToDecimal",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to decimal")]
     public static IEnumerable<IElement> ConvertsToDecimal(IEnumerable<IElement> focus)
     {
         var result = ToDecimal(focus);
@@ -206,6 +277,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToString() - Returns true if value can be converted to string.
     /// </summary>
+    [FhirPathFunction("convertsToString",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to string")]
     public static IEnumerable<IElement> ConvertsToString(IEnumerable<IElement> focus)
     {
         var result = ToString(focus);
@@ -215,6 +293,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToBoolean() - Returns true if value can be converted to boolean.
     /// </summary>
+    [FhirPathFunction("convertsToBoolean",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to boolean")]
     public static IEnumerable<IElement> ConvertsToBoolean(IEnumerable<IElement> focus)
     {
         var result = ToBoolean(focus);
@@ -224,6 +309,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToDate() - Returns true if value can be converted to date.
     /// </summary>
+    [FhirPathFunction("convertsToDate",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to date")]
     public static IEnumerable<IElement> ConvertsToDate(IEnumerable<IElement> focus)
     {
         var result = ToDate(focus);
@@ -233,6 +325,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToDateTime() - Returns true if value can be converted to dateTime.
     /// </summary>
+    [FhirPathFunction("convertsToDateTime",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to dateTime")]
     public static IEnumerable<IElement> ConvertsToDateTime(IEnumerable<IElement> focus)
     {
         var result = ToDateTime(focus);
@@ -242,6 +341,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToTime() - Returns true if value can be converted to time.
     /// </summary>
+    [FhirPathFunction("convertsToTime",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to time")]
     public static IEnumerable<IElement> ConvertsToTime(IEnumerable<IElement> focus)
     {
         var result = ToTime(focus);
@@ -251,6 +357,13 @@ internal static class TypeConversionFunctions
     /// <summary>
     /// convertsToQuantity() - Returns true if value can be converted to quantity.
     /// </summary>
+    [FhirPathFunction("convertsToQuantity",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 1,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to quantity")]
     public static IEnumerable<IElement> ConvertsToQuantity(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
     {
         var result = ToQuantity(focus, arguments);

@@ -55,13 +55,14 @@ public class FhirPathParserTests
     }
 
     [Fact]
-    public void GivenIdentifier_WhenParsing_ThenReturnsFunctionCall()
+    public void GivenIdentifier_WhenParsing_ThenReturnsPropertyAccess()
     {
         var expr = _parser.Parse("Patient");
 
-        Assert.IsType<FunctionCallExpression>(expr);
-        var func = (FunctionCallExpression)expr;
-        Assert.Equal("Patient", func.FunctionName);
+        Assert.IsType<PropertyAccessExpression>(expr);
+        var prop = (PropertyAccessExpression)expr;
+        Assert.Equal("Patient", prop.PropertyName);
+        Assert.Null(prop.Focus);
     }
 
     [Fact]
@@ -122,7 +123,7 @@ public class FhirPathParserTests
         Assert.IsType<BinaryExpression>(expr);
         var binary = (BinaryExpression)expr;
         Assert.Equal(">", binary.Operator);
-        Assert.IsType<FunctionCallExpression>(binary.Left);
+        Assert.IsType<PropertyAccessExpression>(binary.Left);
         Assert.IsType<ConstantExpression>(binary.Right);
     }
 
@@ -156,7 +157,7 @@ public class FhirPathParserTests
 
         Assert.IsType<IndexerExpression>(expr);
         var indexer = (IndexerExpression)expr;
-        Assert.IsType<FunctionCallExpression>(indexer.Collection);
+        Assert.IsType<PropertyAccessExpression>(indexer.Collection);
         Assert.IsType<ConstantExpression>(indexer.Index);
     }
 
@@ -165,9 +166,9 @@ public class FhirPathParserTests
     {
         var expr = _parser.Parse("$this");
 
-        Assert.IsType<AxisExpression>(expr);
-        var axis = (AxisExpression)expr;
-        Assert.Equal("this", axis.AxisName);
+        Assert.IsType<ScopeExpression>(expr);
+        var scope = (ScopeExpression)expr;
+        Assert.Equal("this", scope.ScopeName);
     }
 
     [Fact]
@@ -314,12 +315,11 @@ public class FhirPathParserTests
         // Example: value as Quantity
         var expr = _parser.Parse("value as Quantity");
 
-        // This will fail until we implement the 'as' operator
-        // Expected: AsExpression with operand and type
+        // Expected: BinaryExpression with operand and type
         Assert.IsType<BinaryExpression>(expr);
         var asExpr = (BinaryExpression)expr;
         Assert.Equal("as", asExpr.Operator);
-        Assert.IsType<FunctionCallExpression>(asExpr.Left); // value
-        Assert.IsType<FunctionCallExpression>(asExpr.Right); // Quantity (type identifier)
+        Assert.IsType<PropertyAccessExpression>(asExpr.Left); // value
+        Assert.IsType<PropertyAccessExpression>(asExpr.Right); // Quantity (type identifier)
     }
 }

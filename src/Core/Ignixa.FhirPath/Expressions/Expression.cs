@@ -6,6 +6,8 @@
  * Licensed under the BSD 3-Clause license.
  */
 
+using Ignixa.FhirPath.Visitors;
+
 namespace Ignixa.FhirPath.Expressions;
 
 /// <summary>
@@ -48,4 +50,16 @@ public abstract class Expression
     /// Otherwise, reconstructs from the AST using ToString().
     /// </summary>
     public string ToFhirPath() => SourceText ?? ToString() ?? string.Empty;
+
+    /// <summary>
+    /// Accepts a visitor for traversing the expression tree.
+    /// </summary>
+    /// <typeparam name="TContext">The context type passed through the visitor</typeparam>
+    /// <typeparam name="TOutput">The output type produced by the visitor</typeparam>
+    /// <param name="visitor">The visitor to accept</param>
+    /// <param name="context">The context to pass to the visitor</param>
+    /// <returns>The output produced by visiting this expression</returns>
+    public abstract TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context);
 }
