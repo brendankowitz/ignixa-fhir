@@ -98,6 +98,24 @@ internal static class CollectionFunctions
     }
 
     /// <summary>
+    /// distinct() - Returns a collection containing only the distinct elements from the input.
+    /// Uses value-based equality comparison.
+    /// </summary>
+    [FhirPathFunction("distinct",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        SupportedAtRoot = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns a collection containing only the distinct elements")]
+    public static IEnumerable<IElement> Distinct(IEnumerable<IElement> focus)
+    {
+        return focus.Distinct(new FunctionHelpers.ElementEqualityComparer());
+    }
+
+    /// <summary>
     /// isDistinct() - Returns true if all elements in the collection are distinct.
     /// </summary>
     [FhirPathFunction("isDistinct",

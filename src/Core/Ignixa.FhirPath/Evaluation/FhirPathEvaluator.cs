@@ -15,8 +15,19 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <summary>
 /// Evaluates FhirPath expressions against FHIR resources represented as IElement trees.
 /// </summary>
-public class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, IEnumerable<IElement>>
+/// <remarks>
+/// This class is partial - the <see cref="DispatchFunctionCall"/> method is auto-generated
+/// by <c>FhirPathFunctionGenerator</c> based on <c>[FhirPathFunction]</c> attributes.
+/// </remarks>
+public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, IEnumerable<IElement>>
 {
+    /// <summary>
+    /// Creates a new FhirPath evaluator.
+    /// </summary>
+    public FhirPathEvaluator()
+    {
+    }
+
     /// <summary>
     /// Evaluates a FhirPath expression against an input element and returns matching elements.
     /// </summary>
@@ -24,10 +35,13 @@ public class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, I
     /// <param name="expression">The parsed FhirPath expression</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Collection of elements that match the expression</returns>
+    /// <remarks>
+    /// For best performance, use a <see cref="Parser.FhirPathParser"/> with <see cref="Parsing.CompilationOptions.Optimize"/>
+    /// set to true to optimize expressions at parse-time rather than evaluation-time.
+    /// </remarks>
     public IEnumerable<IElement> Evaluate(IElement input, Expression expression, EvaluationContext? context = null)
     {
         context ??= new EvaluationContext();
-
         return EvaluateExpression([input], expression, context);
     }
 
@@ -61,118 +75,8 @@ public class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, I
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
-        // Handle built-in functions
-        // FhirPath function names are case-insensitive, ToLowerInvariant is intentional
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        return expression.FunctionName.ToLowerInvariant() switch
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        {
-            // Collection functions
-            "exists" => CollectionFunctions.Exists(focusElements, expression.Arguments, context, EvaluateExpression),
-            "empty" => CollectionFunctions.Empty(focusElements),
-            "count" => CollectionFunctions.Count(focusElements),
-            "distinct" => focusElements.Distinct(),
-            "isdistinct" => CollectionFunctions.IsDistinct(focusElements),
-            "first" => CollectionFunctions.First(focusElements),
-            "last" => CollectionFunctions.Last(focusElements),
-            "single" => CollectionFunctions.Single(focusElements),
-            "tail" => CollectionFunctions.Tail(focusElements),
-            "skip" => CollectionFunctions.Skip(focusElements, expression.Arguments, context, EvaluateExpression),
-            "take" => CollectionFunctions.Take(focusElements, expression.Arguments, context, EvaluateExpression),
-            "where" => CollectionFunctions.Where(focusElements, expression.Arguments, context, EvaluateExpression),
-            "select" => CollectionFunctions.Select(focusElements, expression.Arguments, context, EvaluateExpression),
-            "all" => CollectionFunctions.All(focusElements, expression.Arguments, context, EvaluateExpression),
-            "any" => CollectionFunctions.Any(focusElements, expression.Arguments, context, EvaluateExpression),
-            "repeat" => CollectionFunctions.Repeat(focusElements, expression.Arguments, context, EvaluateExpression),
-            "oftype" => CollectionFunctions.OfType(focusElements, expression.Arguments, context, EvaluateExpression),
-            "as" => CollectionFunctions.As(focusElements, expression.Arguments),
-            "intersect" => CollectionFunctions.Intersect(focusElements, expression.Arguments, context, EvaluateExpression),
-            "exclude" => CollectionFunctions.Exclude(focusElements, expression.Arguments, context, EvaluateExpression),
-            "union" => CollectionFunctions.Union(focusElements, expression.Arguments, context, EvaluateExpression),
-            "combine" => CollectionFunctions.Combine(focusElements, expression.Arguments, context, EvaluateExpression),
-            "subsetof" => CollectionFunctions.SubsetOf(focusElements, expression.Arguments, context, EvaluateExpression),
-            "supersetof" => CollectionFunctions.SupersetOf(focusElements, expression.Arguments, context, EvaluateExpression),
-
-            // Aggregate functions (Phase 23)
-            "sum" => AggregateFunctions.Sum(focusElements),
-            "min" => AggregateFunctions.Min(focusElements),
-            "max" => AggregateFunctions.Max(focusElements),
-            "avg" => AggregateFunctions.Avg(focusElements),
-
-            // Boolean functions
-            "alltrue" => BooleanFunctions.AllTrue(focusElements),
-            "anytrue" => BooleanFunctions.AnyTrue(focusElements),
-            "allfalse" => BooleanFunctions.AllFalse(focusElements),
-            "anyfalse" => BooleanFunctions.AnyFalse(focusElements),
-            "not" => BooleanFunctions.Not(focusElements),
-
-            // Type conversion functions
-            "tointeger" => TypeConversionFunctions.ToInteger(focusElements),
-            "todecimal" => TypeConversionFunctions.ToDecimal(focusElements),
-            "tostring" => TypeConversionFunctions.ToString(focusElements),
-            "toboolean" => TypeConversionFunctions.ToBoolean(focusElements),
-            "todate" => TypeConversionFunctions.ToDate(focusElements),
-            "todatetime" => TypeConversionFunctions.ToDateTime(focusElements),
-            "totime" => TypeConversionFunctions.ToTime(focusElements),
-            "toquantity" => TypeConversionFunctions.ToQuantity(focusElements, expression.Arguments),
-            "convertstointeger" => TypeConversionFunctions.ConvertsToInteger(focusElements),
-            "convertstodecimal" => TypeConversionFunctions.ConvertsToDecimal(focusElements),
-            "convertstostring" => TypeConversionFunctions.ConvertsToString(focusElements),
-            "convertstoboolean" => TypeConversionFunctions.ConvertsToBoolean(focusElements),
-            "convertstodate" => TypeConversionFunctions.ConvertsToDate(focusElements),
-            "convertstodatetime" => TypeConversionFunctions.ConvertsToDateTime(focusElements),
-            "convertstotime" => TypeConversionFunctions.ConvertsToTime(focusElements),
-            "convertstoquantity" => TypeConversionFunctions.ConvertsToQuantity(focusElements, expression.Arguments),
-
-            // Conditional function
-            "iif" => ConditionalFunctions.Iif(focusElements, expression.Arguments, context, EvaluateExpression),
-
-            // String manipulation functions
-            "indexof" => StringFunctions.IndexOf(focusElements, expression.Arguments, context, EvaluateExpression),
-            "substring" => StringFunctions.Substring(focusElements, expression.Arguments, context, EvaluateExpression),
-            "startswith" => StringFunctions.StartsWith(focusElements, expression.Arguments, context, EvaluateExpression),
-            "endswith" => StringFunctions.EndsWith(focusElements, expression.Arguments, context, EvaluateExpression),
-            "upper" => StringFunctions.Upper(focusElements),
-            "lower" => StringFunctions.Lower(focusElements),
-            "length" => StringFunctions.Length(focusElements),
-            "replace" => StringFunctions.Replace(focusElements, expression.Arguments, context, EvaluateExpression),
-            "matches" => StringFunctions.Matches(focusElements, expression.Arguments, context, EvaluateExpression),
-            "replacematches" => StringFunctions.ReplaceMatches(focusElements, expression.Arguments, context, EvaluateExpression),
-            "tochars" => StringFunctions.ToChars(focusElements),
-            "join" => StringFunctions.Join(focusElements, expression.Arguments, context, EvaluateExpression),
-
-            // Boundary functions
-            "lowboundary" => BoundaryFunctions.LowBoundary(focusElements),
-            "highboundary" => BoundaryFunctions.HighBoundary(focusElements),
-
-            // Tree navigation functions
-            "children" => TreeNavigationFunctions.Children(focusElements),
-            "descendants" => TreeNavigationFunctions.Descendants(focusElements),
-
-            // FHIR-specific functions
-            "extension" => FhirSpecificFunctions.Extension(focusElements, expression.Arguments, context, EvaluateExpression),
-            "resolve" => FhirSpecificFunctions.Resolve(focusElements, context),
-            "getresourcekey" => FhirSpecificFunctions.GetResourceKey(context),
-            "getreferencekey" => FhirSpecificFunctions.GetReferenceKey(focusElements, expression.Arguments, context, EvaluateExpression),
-
-            // Utility functions
-            "trace" => UtilityFunctions.Trace(focusElements, expression.Arguments, context),
-            "now" => UtilityFunctions.Now(focusElements),
-            "today" => UtilityFunctions.Today(focusElements),
-            "timeofday" => UtilityFunctions.TimeOfDay(focusElements),
-
-            // Date/Time component extraction functions (Phase 23)
-            "year" => DateTimeFunctions.Year(focusElements),
-            "month" => DateTimeFunctions.Month(focusElements),
-            "day" => DateTimeFunctions.Day(focusElements),
-            "hour" => DateTimeFunctions.Hour(focusElements),
-            "minute" => DateTimeFunctions.Minute(focusElements),
-            "second" => DateTimeFunctions.Second(focusElements),
-            "millisecond" => DateTimeFunctions.Millisecond(focusElements),
-            "timezone" => DateTimeFunctions.Timezone(focusElements),
-
-            _ => throw new NotSupportedException($"Function '{expression.FunctionName}' is not yet implemented")
-        };
+        // Dispatch to generated switch statement (auto-generated from [FhirPathFunction] attributes)
+        return DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context);
     }
 
     public IEnumerable<IElement> VisitPropertyAccess(PropertyAccessExpression expression, EvaluationContext context)
