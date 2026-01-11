@@ -67,6 +67,17 @@ public static class TypedElementExtensions
 
         context ??= new EvaluationContext();
 
+        // Set the Resource and RootResource for FHIR-specific functions like getResourceKey()
+        // If input is the root resource element, set both to the input (immutable pattern)
+        if (context.Resource is null || context.RootResource is null)
+        {
+            context = context with
+            {
+                Resource = context.Resource ?? input,
+                RootResource = context.RootResource ?? input
+            };
+        }
+
         // 1. Parse expression to AST (cached)
         var ast = CompileExpressionToAst(expression);
 

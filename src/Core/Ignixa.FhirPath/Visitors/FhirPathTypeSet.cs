@@ -168,7 +168,7 @@ public sealed class FhirPathTypeSet
     /// </summary>
     public FhirPathTypeSet AsSingle()
     {
-        var result = new FhirPathTypeSet();
+        var result = new FhirPathTypeSet { IsRoot = IsRoot };
         foreach (var t in Types)
         {
             result.Types.Add(t.AsSingle());
@@ -181,7 +181,7 @@ public sealed class FhirPathTypeSet
     /// </summary>
     public FhirPathTypeSet AsCollection()
     {
-        var result = new FhirPathTypeSet();
+        var result = new FhirPathTypeSet { IsRoot = IsRoot };
         foreach (var t in Types)
         {
             result.Types.Add(t.AsCollection());

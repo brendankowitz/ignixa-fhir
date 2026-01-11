@@ -26,7 +26,7 @@ public class OfficialSqlOnFhirTestRunner
     private readonly SqlOnFhirSchemaEvaluator _schemaEvaluator = new();
     private static readonly string TestFilesDirectory = Path.Combine(
         Path.GetDirectoryName(typeof(OfficialSqlOnFhirTestRunner).Assembly.Location) ?? "",
-        "..", "..", "..", "sql-on-fhir-tests", "tests");
+        "sql-on-fhir-tests", "tests");
 
     /// <summary>
     /// Gets all official SQL on FHIR test files from the specification repository.

@@ -209,9 +209,15 @@ internal static class FhirSpecificFunctions
         if (arguments.Count > 0)
         {
             // Type argument should be a simple identifier (e.g., "Patient", "Observation")
+            // Note: Due to parser behavior, bare identifiers may be parsed as PropertyAccessExpression
             if (arguments[0] is IdentifierExpression identExpr)
             {
                 filterType = identExpr.Name;
+            }
+            else if (arguments[0] is PropertyAccessExpression propExpr)
+            {
+                // Bare identifiers like "Patient" are parsed as PropertyAccessExpression with null focus
+                filterType = propExpr.PropertyName;
             }
             else if (arguments[0] is FunctionCallExpression funcExpr && funcExpr.Arguments.Count == 0)
             {

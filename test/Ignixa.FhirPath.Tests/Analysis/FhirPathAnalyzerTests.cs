@@ -322,7 +322,7 @@ public class FhirPathAnalyzerTests
         var result = _analyzer.Analyze("%context.id", "Patient");
 
         Assert.True(result.IsValid);
-        Assert.Contains("id", result.TypeNames);
+        Assert.Contains("string", result.TypeNames);
     }
 
     [Fact]

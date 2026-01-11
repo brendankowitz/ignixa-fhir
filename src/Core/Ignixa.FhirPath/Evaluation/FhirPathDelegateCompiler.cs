@@ -80,11 +80,29 @@ public class FhirPathDelegateCompiler
 
     /// <summary>
     /// Compiles a simple identifier like "name" to a delegate.
-    /// Direct call to Children(name).
+    /// Handles resource type self-reference (e.g., "Patient" on a Patient element returns self).
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileIdentifier(IdentifierExpression id)
     {
         string name = id.Name;
+
+        // Check if identifier starts with uppercase (resource/type names are capitalized)
+        if (name.Length > 0 && char.IsUpper(name[0]))
+        {
+            return (input, ctx) =>
+            {
+                // If we are at a resource, we should match a path that is possibly not rooted in the resource
+                // (e.g. doing "name.family" on a Patient is equivalent to "Patient.name.family")
+                // Also we do some poor polymorphism here: Resource.meta.lastUpdated is also allowed.
+                if (input.InstanceType == name || name == "Resource" || name == "DomainResource")
+                {
+                    return [input];
+                }
+
+                return input.Children(name);
+            };
+        }
+
         return (input, ctx) => input.Children(name);
     }
 
@@ -106,6 +124,7 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles a child expression like "name.family" or "name" (single level).
     /// Handles arbitrarily deep paths through recursion.
+    /// Handles resource type self-reference (e.g., "Patient.identifier" on a Patient element).
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileChild(ChildExpression child)
     {
@@ -114,15 +133,49 @@ public class FhirPathDelegateCompiler
         if (IsScopeThis(child.Focus))
         {
             string childName = child.ChildName;
+
+            // Check if child name starts with uppercase (resource/type names are capitalized)
+            if (childName.Length > 0 && char.IsUpper(childName[0]))
+            {
+                return (input, ctx) =>
+                {
+                    // Resource type self-reference: "Patient" on a Patient returns self
+                    if (input.InstanceType == childName || childName == "Resource" || childName == "DomainResource")
+                    {
+                        return [input];
+                    }
+                    return input.Children(childName);
+                };
+            }
+
             return (input, ctx) => input.Children(childName);
         }
 
-        // Optimize two-level case: "name.family"
-        // Pattern: ChildExpression { Focus = ChildExpression("name"), ChildName = "family" }
+        // Optimize two-level case: "Patient.identifier" or "name.family"
+        // Pattern: ChildExpression { Focus = ChildExpression("Patient"), ChildName = "identifier" }
         if (child.Focus is ChildExpression parentChild && IsScopeThis(parentChild.Focus))
         {
             string parentName = parentChild.ChildName;
             string childName = child.ChildName;
+
+            // Check if parent name starts with uppercase (resource type self-reference)
+            if (parentName.Length > 0 && char.IsUpper(parentName[0]))
+            {
+                return (input, ctx) =>
+                {
+                    // Resource type self-reference: "Patient" on a Patient returns self
+                    IEnumerable<IElement> parents;
+                    if (input.InstanceType == parentName || parentName == "Resource" || parentName == "DomainResource")
+                    {
+                        parents = [input];
+                    }
+                    else
+                    {
+                        parents = input.Children(parentName);
+                    }
+                    return parents.SelectMany(parent => parent.Children(childName));
+                };
+            }
 
             return (input, ctx) =>
             {
@@ -386,12 +439,17 @@ public class FhirPathDelegateCompiler
                 var leftResults = leftFunc(input, ctx).ToList();
                 var rightResults = rightFunc(input, ctx).ToList();
 
-                if (leftResults.Count == rightResults.Count &&
-                    leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value)))
-                {
-                    return new[] { CreateBooleanElement(true) };
-                }
-                return Enumerable.Empty<IElement>();
+                // Empty collections return empty per FHIRPath spec
+                if (leftResults.Count == 0 || rightResults.Count == 0)
+                    return Enumerable.Empty<IElement>();
+
+                // Different counts means not equal
+                if (leftResults.Count != rightResults.Count)
+                    return [CreateBooleanElement(false)];
+
+                // Compare all pairs
+                bool allEqual = leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
+                return [CreateBooleanElement(allEqual)];
             },
 
             "!=" => (input, ctx) =>
@@ -399,14 +457,17 @@ public class FhirPathDelegateCompiler
                 var leftResults = leftFunc(input, ctx).ToList();
                 var rightResults = rightFunc(input, ctx).ToList();
 
-                bool equal = leftResults.Count == rightResults.Count &&
-                            leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
+                // Empty collections return empty per FHIRPath spec
+                if (leftResults.Count == 0 || rightResults.Count == 0)
+                    return Enumerable.Empty<IElement>();
 
-                if (!equal)
-                {
-                    return new[] { CreateBooleanElement(true) };
-                }
-                return Enumerable.Empty<IElement>();
+                // Different counts means not equal, so != returns true
+                if (leftResults.Count != rightResults.Count)
+                    return [CreateBooleanElement(true)];
+
+                // Compare all pairs
+                bool allEqual = leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
+                return [CreateBooleanElement(!allEqual)];
             },
 
             "<" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) < 0),
@@ -439,6 +500,7 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles a property access expression like "name" or "identifier".
     /// PropertyAccessExpression is semantically equivalent to ChildExpression.
+    /// Handles resource type self-reference (e.g., "Patient" on a Patient element returns self).
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompilePropertyAccess(PropertyAccessExpression prop)
     {
@@ -446,6 +508,21 @@ public class FhirPathDelegateCompiler
         if (prop.Focus == null || IsScopeThis(prop.Focus))
         {
             string propertyName = prop.PropertyName;
+
+            // Check if property name starts with uppercase (resource/type names are capitalized)
+            if (propertyName.Length > 0 && char.IsUpper(propertyName[0]))
+            {
+                return (input, ctx) =>
+                {
+                    // Resource type self-reference: "Patient" on a Patient returns self
+                    if (input.InstanceType == propertyName || propertyName == "Resource" || propertyName == "DomainResource")
+                    {
+                        return [input];
+                    }
+                    return input.Children(propertyName);
+                };
+            }
+
             return (input, ctx) => input.Children(propertyName);
         }
 
@@ -487,7 +564,7 @@ public class FhirPathDelegateCompiler
             if (leftResults.Count == 1 && rightResults.Count == 1)
             {
                 bool result = comparer(leftResults[0].Value, rightResults[0].Value);
-                return result ? new[] { CreateBooleanElement(true) } : Enumerable.Empty<IElement>();
+                return [CreateBooleanElement(result)];
             }
 
             // Empty or multi-element collections return empty per FHIRPath spec

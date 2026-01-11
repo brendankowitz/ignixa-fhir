@@ -59,13 +59,12 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
         var entries = new List<SearchIndexEntry>();
 
-        var context = new FhirEvaluationContext();
-
-        // Our FhirEvaluationContext uses IElement directly - no need for ToPocoNode()
-        context.ElementResolver = str => _referenceToElementResolver.Resolve(str);
-
-        // This allows resolving %resource FhirPath to provided value
-        context.Resource = resource;
+        // Use immutable pattern for FhirEvaluationContext
+        var context = new FhirEvaluationContext
+        {
+            ElementResolver = str => _referenceToElementResolver.Resolve(str),
+            Resource = resource
+        };
 
         IEnumerable<SearchParameterInfo> searchParameters = _searchParameterDefinitionManager.GetSearchParameters(resource.InstanceType);
 

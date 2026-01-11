@@ -103,9 +103,9 @@ public class StructureDefinitionStrategyFactory(
 
     private bool HasSectionSlicingWithLoincCodes(IElement structureDefElement)
     {
-        // Check for section slicing: snapshot.element.where(path='Composition.section' and slicing.exists())
+        // Check for section slicing: snapshot.element with path='Composition.section' AND slicing.exists()
         var hasSectionSlicing = structureDefElement
-            .Select($"snapshot.element.where(path='{SectionPath}' and slicing.exists())")
+            .Select($"snapshot.element.where(path = '{SectionPath}' and slicing.exists())")
             .Any();
 
         if (!hasSectionSlicing)
@@ -114,9 +114,9 @@ public class StructureDefinitionStrategyFactory(
         }
 
         // Check for LOINC codes in section slices:
-        // snapshot.element.where(path.startsWith('Composition.section:') and path.endsWith('.code')).patternCodeableConcept.coding.where(system='http://loinc.org')
+        // Elements with path starting with 'Composition.section:' AND ending with '.code'
         var hasLoincCodes = structureDefElement
-            .Select($"snapshot.element.where(path.startsWith('{SectionPath}:') and path.endsWith('.code')).patternCodeableConcept.coding.where(system='{LoincSystem}')")
+            .Select($"snapshot.element.where(path.startsWith('{SectionPath}:') and path.endsWith('.code')).patternCodeableConcept.coding.where(system = '{LoincSystem}')")
             .Any();
 
         return hasLoincCodes;
@@ -127,6 +127,7 @@ public class StructureDefinitionStrategyFactory(
         var element = compositionProfile.ToElement(schema);
 
         // Find all section slices using FHIRPath
+        // Filter for elements with path starting with 'Composition.section:' AND a sliceName
         var sectionSliceElements = element
             .Select("snapshot.element.where(path.startsWith('Composition.section:') and sliceName.exists())")
             .ToList();

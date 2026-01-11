@@ -32,11 +32,11 @@ public class RemainingCoverageTests
     public void GivenFhirEvaluationContext_WhenSetVariable_ThenCanRetrieve()
     {
         // Arrange
-        var context = new FhirEvaluationContext();
         var element = CreateIntegerElement(42);
 
-        // Act
-        context.SetEnvironmentVariable("test", element);
+        // Act - use immutable pattern
+        var context = new FhirEvaluationContext()
+            .WithEnvironmentVariable("test", element);
         var result = context.GetEnvironmentVariable("test");
 
         // Assert

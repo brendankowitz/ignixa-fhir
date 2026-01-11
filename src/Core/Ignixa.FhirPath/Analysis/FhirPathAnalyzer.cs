@@ -89,6 +89,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         {
             return AnalysisResult.Failure($"Parse error: {ex.Message}");
         }
+        catch (ArgumentException ex)
+        {
+            return AnalysisResult.Failure($"Parse error: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -466,6 +470,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     }
                 }
                 continue;
+            }
+
+            if (focusTypes.IsRoot && focusType.TypeName == expression.Name)
+            {
+                result.Types.Add(focusType);
+                continue;
+            }
+
+            if (focusTypes.IsRoot && _schema.ResourceTypeNames.Contains(expression.Name))
+            {
+                var resourceType = _schema.GetTypeDefinition(expression.Name);
+                if (resourceType != null)
+                {
+                    result.AddType(resourceType, focusType.IsCollection, expression.Name);
+                    continue;
+                }
             }
 
             var child = FindChildByName(focusType.Type, expression.Name);

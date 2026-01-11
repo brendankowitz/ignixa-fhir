@@ -35,10 +35,10 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     public IEnumerable<Dictionary<string, object?>> Evaluate(ViewDefinitionExpression viewDef, IElement resource)
     {
         _currentResource = resource;
-        _currentContext = CreateEvaluationContext(viewDef);
+        var baseContext = CreateEvaluationContext(viewDef);
 
-        // Set the root resource for SQL on FHIR v2 functions like getResourceKey()
-        _currentContext.RootResource = resource;
+        // Set the root resource for SQL on FHIR v2 functions like getResourceKey() (immutable pattern)
+        _currentContext = baseContext with { RootResource = resource };
 
         return (IEnumerable<Dictionary<string, object?>>)viewDef.Accept(this)!;
     }
@@ -425,9 +425,9 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         {
             if (constant.Value != null)
             {
-                // Wrap primitive values as ITypedElement
+                // Wrap primitive values as ITypedElement (immutable pattern)
                 var typedElement = WrapConstantValue(constant.Value);
-                context.SetEnvironmentVariable(constant.Name, typedElement);
+                context = context.WithEnvironmentVariable(constant.Name, typedElement);
             }
         }
 

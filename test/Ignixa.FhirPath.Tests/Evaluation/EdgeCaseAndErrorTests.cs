@@ -22,11 +22,11 @@ public class EdgeCaseAndErrorTests
     public void GivenContext_WhenSetAndGetVariable_ThenReturnsVariable()
     {
         // Arrange
-        var context = new EvaluationContext();
         var element = CreateIntegerElement(42);
 
-        // Act
-        context.SetEnvironmentVariable("myVar", element);
+        // Act - use immutable pattern
+        var context = new EvaluationContext()
+            .WithEnvironmentVariable("myVar", element);
         var result = context.GetEnvironmentVariable("myVar");
 
         // Assert
@@ -37,13 +37,13 @@ public class EdgeCaseAndErrorTests
     public void GivenContext_WhenRemoveVariable_ThenVariableNoLongerExists()
     {
         // Arrange
-        var context = new EvaluationContext();
         var element = CreateIntegerElement(42);
-        context.SetEnvironmentVariable("myVar", element);
+        var contextWithVar = new EvaluationContext()
+            .WithEnvironmentVariable("myVar", element);
 
-        // Act
-        context.RemoveEnvironmentVariable("myVar");
-        var result = context.GetEnvironmentVariable("myVar");
+        // Act - use immutable pattern
+        var contextWithoutVar = contextWithVar.WithoutEnvironmentVariable("myVar");
+        var result = contextWithoutVar.GetEnvironmentVariable("myVar");
 
         // Assert
         Assert.Null(result);
@@ -65,9 +65,9 @@ public class EdgeCaseAndErrorTests
     [Fact]
     public void GivenExternalVariable_WhenReferenced_ThenReturnsValue()
     {
-        // Arrange
-        var context = new EvaluationContext();
-        context.SetEnvironmentVariable("myValue", CreateIntegerElement(99));
+        // Arrange - use immutable pattern
+        var context = new EvaluationContext()
+            .WithEnvironmentVariable("myValue", CreateIntegerElement(99));
         var expr = _parser.Parse("%myValue");
         var root = CreateIntegerElement(0);
 

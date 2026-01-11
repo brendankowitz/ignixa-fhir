@@ -33,7 +33,7 @@ public class SectionMetadataParser(
         var structureDefElement = compositionProfile.ResourceNode.ToElement(schema);
 
         // Find all section slices using FHIRPath:
-        // snapshot.element.where(path.startsWith('Composition.section:') and sliceName.exists())
+        // Filter for elements with both path starting with 'Composition.section:' AND a sliceName
         var sectionSliceElements = structureDefElement
             .Select("snapshot.element.where(path.startsWith('Composition.section:') and sliceName.exists())")
             .ToList();

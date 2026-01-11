@@ -3,6 +3,7 @@
  *
  * FhirPath expression evaluator.
  * Executes parsed FhirPath AST against IElement trees.
+ * Uses immutable EvaluationContext for pure functional evaluation.
  */
 
 using Ignixa.FhirPath.Expressions;
@@ -16,8 +17,16 @@ namespace Ignixa.FhirPath.Evaluation;
 /// Evaluates FhirPath expressions against FHIR resources represented as IElement trees.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This class is partial - the <see cref="DispatchFunctionCall"/> method is auto-generated
 /// by <c>FhirPathFunctionGenerator</c> based on <c>[FhirPathFunction]</c> attributes.
+/// </para>
+/// <para>
+/// <b>Immutable Context Pattern:</b>
+/// All visitor methods are pure functions with respect to context. The <see cref="EvaluationContext"/>
+/// is immutable, and each method creates new context instances as needed via fluent methods
+/// like <see cref="EvaluationContext.WithFocus"/> and <see cref="EvaluationContext.PushThis"/>.
+/// </para>
 /// </remarks>
 public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, IEnumerable<IElement>>
 {
@@ -47,18 +56,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private IEnumerable<IElement> EvaluateExpression(IEnumerable<IElement> focus, Expression expr, EvaluationContext context)
     {
-        context.Focus = focus;
-        return expr.AcceptVisitor(this, context);
+        var newContext = context.WithFocus(focus);
+        return expr.AcceptVisitor(this, newContext);
     }
 
     public IEnumerable<IElement> VisitChild(ChildExpression expression, EvaluationContext context)
     {
-        // First evaluate the focus expression if present
         var focusElements = expression.Focus != null
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
-        // Then navigate to children with the specified name
         foreach (var element in focusElements)
         {
             foreach (var childElement in element.Children(expression.ChildName))
@@ -70,31 +77,23 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitFunctionCall(FunctionCallExpression expression, EvaluationContext context)
     {
-        // Evaluate focus first
         var focusElements = expression.Focus != null
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
-        // Dispatch to generated switch statement (auto-generated from [FhirPathFunction] attributes)
         return DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context);
     }
 
     public IEnumerable<IElement> VisitPropertyAccess(PropertyAccessExpression expression, EvaluationContext context)
     {
-        // Evaluate focus first (if present), otherwise use current context focus
         var focusElements = expression.Focus != null
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
-        // Navigate to property using the same logic as VisitIdentifier
         foreach (var element in focusElements)
         {
-            // Check if property name starts with uppercase (resource/type names are capitalized)
             if (expression.PropertyName.Length > 0 && char.IsUpper(expression.PropertyName[0]))
             {
-                // If we are at a resource, we should match a path that is possibly not rooted in the resource
-                // (e.g. doing "name.family" on a Patient is equivalent to "Patient.name.family")
-                // Also we do some poor polymorphism here: Resource.meta.lastUpdated is also allowed.
                 string[] baseClasses = ["Resource", "DomainResource"];
                 if (element.InstanceType == expression.PropertyName || baseClasses.Contains(expression.PropertyName))
                 {
@@ -103,7 +102,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 }
             }
 
-            // Navigate to child elements with this name
             foreach (var child in element.Children(expression.PropertyName))
             {
                 yield return child;
@@ -113,15 +111,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitIdentifier(IdentifierExpression expression, EvaluationContext context)
     {
-        // Identifiers navigate to child elements, with special handling for resource type names
         foreach (var element in context.Focus)
         {
-            // Check if identifier starts with uppercase (resource/type names are capitalized)
             if (expression.Name.Length > 0 && char.IsUpper(expression.Name[0]))
             {
-                // If we are at a resource, we should match a path that is possibly not rooted in the resource
-                // (e.g. doing "name.family" on a Patient is equivalent to "Patient.name.family")
-                // Also we do some poor polymorphism here: Resource.meta.lastUpdated is also allowed.
                 string[] baseClasses = ["Resource", "DomainResource"];
                 if (element.InstanceType == expression.Name || baseClasses.Contains(expression.Name))
                 {
@@ -130,7 +123,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 }
             }
 
-            // Navigate to child elements with this name
             foreach (var child in element.Children(expression.Name))
             {
                 yield return child;
@@ -143,15 +135,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var left = EvaluateExpression(context.Focus, expression.Left, context).ToList();
         var right = EvaluateExpression(context.Focus, expression.Right, context).ToList();
 
-        // FhirPath operators are case-insensitive, ToLowerInvariant is intentional
 #pragma warning disable CA1308 // Normalize strings to uppercase
         return expression.Operator.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            // Collection operators (return collections)
             "|" => EvaluateUnion(left, right),
 
-            // Math operators (return numeric values)
             "+" => EvaluateAddition(left, right),
             "-" => EvaluateSubtraction(left, right),
             "*" => EvaluateMultiplication(left, right),
@@ -159,18 +148,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "div" => EvaluateIntegerDivision(left, right),
             "mod" => EvaluateModulo(left, right),
 
-            // String concatenation (returns string)
             "&" => EvaluateStringConcatenation(left, right),
 
-            // Type operators (special handling for identifiers)
             "is" => EvaluateTypeIs(left, expression.Right),
             "as" => EvaluateTypeAs(left, expression.Right),
 
-            // Membership operators (return boolean)
             "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(left, right, isIn: true)),
             "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(left, right, isIn: false)),
 
-            // Comparison operators (return boolean)
             "=" => FunctionHelpers.ReturnBoolean(CompareEquality(left, right, equals: true)),
             "!=" => FunctionHelpers.ReturnBoolean(CompareEquality(left, right, equals: false)),
             "~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(left, right, equivalent: true)),
@@ -180,7 +165,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "<" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: false, orEqual: false)),
             "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: false, orEqual: true)),
 
-            // Logical operators (return boolean)
             "and" => FunctionHelpers.ReturnBoolean(FunctionHelpers.IsTrue(left) && FunctionHelpers.IsTrue(right)),
             "or" => FunctionHelpers.ReturnBoolean(FunctionHelpers.IsTrue(left) || FunctionHelpers.IsTrue(right)),
             "xor" => FunctionHelpers.ReturnBoolean(FunctionHelpers.IsTrue(left) ^ FunctionHelpers.IsTrue(right)),
@@ -191,13 +175,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     }
 
 
-    // Union operator: Merge collections, eliminate duplicates
     private IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
     {
         return FunctionHelpers.EvaluateUnion(left, right);
     }
 
-    // Math operators
     private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)
     {
         if (left.Count != 1 || right.Count != 1)
@@ -206,17 +188,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        // Try quantity arithmetic first
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
         }
 
-        // Try numeric addition with implicit Integer->Decimal conversion
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
         {
             var result = leftDecimal + rightDecimal;
-            // Return Integer if both were Integer, otherwise Decimal
             return leftValue is int && rightValue is int && result == Math.Floor(result)
                 ? [CreateInteger((int)result)]
                 : [CreateDecimal(result)];
@@ -233,7 +212,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        // Try quantity arithmetic first
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "-", right);
@@ -258,7 +236,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        // Try quantity arithmetic first
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "*", right);
@@ -283,7 +260,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        // Try quantity arithmetic first
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "/", right);
@@ -292,7 +268,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
         {
             if (rightDecimal == 0)
-                return []; // Division by zero returns empty
+                return [];
 
             return [CreateDecimal(leftDecimal / rightDecimal)];
         }
@@ -332,7 +308,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [];
     }
 
-    // String concatenation
     private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right)
     {
         if (left.Count != 1 || right.Count != 1)
@@ -344,13 +319,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [new PrimitiveElement(leftStr + rightStr, "string")];
     }
 
-    // Type operators
     private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr)
     {
         if (left.Count != 1)
             return [];
 
-        // Extract type name from identifier, property access, or function call expression
         string? typeName = typeExpr switch
         {
             IdentifierExpression idExpr => idExpr.Name,
@@ -362,13 +335,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (typeName == null)
             return [];
 
-        // FhirPath type names are lowercase, ToLowerInvariant is intentional
 #pragma warning disable CA1308 // Normalize strings to uppercase
         typeName = typeName.ToLowerInvariant();
         var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
-        // Simple type checking (can be enhanced for inheritance)
         return FunctionHelpers.ReturnBoolean(elementType == typeName);
     }
 
@@ -377,7 +348,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left.Count != 1)
             return [];
 
-        // Extract type name from identifier, property access, or function call expression
         string? typeName = typeExpr switch
         {
             IdentifierExpression idExpr => idExpr.Name,
@@ -389,56 +359,46 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (typeName == null)
             return [];
 
-        // FhirPath type names are lowercase, ToLowerInvariant is intentional
 #pragma warning disable CA1308 // Normalize strings to uppercase
         typeName = typeName.ToLowerInvariant();
         var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
-        // Return element if type matches, empty otherwise
         return elementType == typeName ? [left[0]] : [];
     }
 
-    // Membership operators
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)
     {
-        // 'in' operator: left operand must be single item
-        // 'contains' operator: right operand must be single item
         var singleItem = isIn ? left : right;
         var collection = isIn ? right : left;
 
         if (singleItem.Count == 0)
-            return null; // Empty -> empty result
+            return null;
 
         if (singleItem.Count != 1)
-            return null; // More than one item -> error (return null for now, should signal error)
+            return null;
 
         if (collection.Count == 0)
-            return false; // Item not in empty collection
+            return false;
 
         var itemValue = singleItem[0].Value;
         return collection.Any(c => FunctionHelpers.AreEqual(c.Value, itemValue));
     }
 
-    // Equivalence comparison
     private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent)
     {
-        // Empty collections are equivalent
         if (left.Count == 0 && right.Count == 0)
             return equivalent;
 
-        // Different counts are not equivalent
         if (left.Count != right.Count)
             return !equivalent;
 
-        // For single items, compare with normalization
         if (left.Count == 1 && right.Count == 1)
         {
             var isEquiv = AreEquivalent(left[0].Value, right[0].Value);
             return isEquiv == equivalent;
         }
 
-        // For multiple items, order-independent comparison
         var leftSorted = left.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
         var rightSorted = right.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
 
@@ -456,7 +416,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
 
-        // String equivalence: case-insensitive, whitespace-normalized
         if (left is string leftStr && right is string rightStr)
         {
             return string.Equals(
@@ -465,7 +424,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        // Numeric equivalence with rounding to least precise
         if (left is decimal || right is decimal || left is int || right is int)
         {
             if (FunctionHelpers.TryConvertToDecimal(left, out var leftDec) && FunctionHelpers.TryConvertToDecimal(right, out var rightDec))
@@ -477,19 +435,17 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private string NormalizeWhitespace(string str)
     {
-        // Normalize all whitespace characters to single space
         return System.Text.RegularExpressions.Regex.Replace(str.Trim(), @"\s+", " ");
     }
 
 
     public IEnumerable<IElement> VisitScope(ScopeExpression expression, EvaluationContext context)
     {
-        // FhirPath scope names are case-insensitive, ToLowerInvariant is intentional
 #pragma warning disable CA1308 // Normalize strings to uppercase
         return expression.ScopeName.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            "this" => context.GetEnvironmentVariable("this") is IElement thisElement
+            "this" => context.GetThis() is IElement thisElement
                 ? [thisElement]
                 : context.Focus,
             "that" => context.Focus,
@@ -501,10 +457,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         var value = context.GetEnvironmentVariable(expression.Name);
 
-        // Special handling for predefined variables that may not exist
         if (expression.Name is "this" or "index")
         {
-            // These variables are optional and may not be defined
             if (value == null)
                 return [];
             if (value is IElement element)
@@ -514,20 +468,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [];
         }
 
-        // Per FHIRPath specification, accessing undefined variables returns empty collection
-        // (not an error) - allows for defensive expressions like %resource.where(...)
         if (value == null)
         {
             return [];
         }
 
-        // Handle both single element and collection returns
         if (value is IElement element2)
             return [element2];
         if (value is IEnumerable<IElement> elements2)
             return elements2;
 
-        // If it's neither, return empty
         return [];
     }
 
@@ -553,26 +503,21 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (string.IsNullOrEmpty(value))
             return CreateString(value);
 
-        // Check for date/time literal prefix
         if (!value.StartsWith("@", StringComparison.Ordinal))
             return CreateString(value);
 
-        // Remove @ prefix for type detection
         var dateTimeValue = value.Substring(1);
 
-        // Time literal: @THH:MM:SS
         if (dateTimeValue.StartsWith("T", StringComparison.Ordinal))
         {
             return new PrimitiveElement(value, "time");
         }
 
-        // DateTime literal: @YYYY-MM-DDTHH:MM:SS
         if (dateTimeValue.Contains('T', StringComparison.Ordinal))
         {
             return new PrimitiveElement(value, "dateTime");
         }
 
-        // Date literal: @YYYY, @YYYY-MM, @YYYY-MM-DD
         return new PrimitiveElement(value, "date");
     }
 
@@ -601,7 +546,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             var value = operand[0].Value;
             try
             {
-                // Preserve integer type if possible
                 if (value is int i)
                 {
                     return [CreateInteger(-i)];
@@ -618,7 +562,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             }
             catch
             {
-                // Ignore conversion errors
             }
         }
 
@@ -628,14 +571,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
     {
-        // Empty collections: return empty (null means empty result)
         if (left.Count == 0 || right.Count == 0)
             return null;
 
         if (left.Count != right.Count)
             return !equals;
 
-        // Special handling for Quantity comparisons with unit conversion
         if (left.Count == 1 && right.Count == 1 &&
             (left[0].Value is Types.Quantity || right[0].Value is Types.Quantity))
         {
@@ -654,17 +595,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
     {
-        // Empty collections: return empty (null means empty result)
         if (left.Count == 0 || right.Count == 0)
             return null;
 
         if (left.Count != 1 || right.Count != 1)
-            return null; // Multiple items: undefined
+            return null;
 
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        // Special handling for Quantity comparisons with unit conversion
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
         {
             var op = (greater, orEqual) switch
@@ -711,7 +650,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [];
     }
 
-    // Factory methods for creating primitive IElement instances
     private IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
     private IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
     private IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
@@ -731,7 +669,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             decimal => "decimal",
             bool => "boolean",
             DateTime or DateTimeOffset => "dateTime",
-            _ => "string" // Default fallback
+            _ => "string"
         };
     }
 
