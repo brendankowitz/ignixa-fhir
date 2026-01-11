@@ -7,12 +7,25 @@ title: Performance Benchmarks
 
 This page shows the latest performance benchmarks for Ignixa FHIR server components.
 
+## Interactive Dashboard
+
+View performance trends and comparisons in our interactive dashboard:
+
+**[Open Performance Dashboard](/benchmarks-dashboard)**
+
+The dashboard provides:
+- Trend charts showing performance over time
+- Side-by-side comparison of Ignixa vs Firely SDK
+- Memory allocation analysis
+- Filtering by benchmark category
+
 ## Latest Results
 
 Benchmarks run automatically when a release is published and can be triggered manually.
 
 - **Latest Run**: [View Workflow](https://github.com/brendankowitz/ignixa-fhir/actions/workflows/benchmarks.yml)
-- **Raw Data**: [JSON Results](/benchmarks/)
+- **Interactive Dashboard**: [Performance Dashboard](/benchmarks-dashboard)
+- **Raw Data**: [JSON Results](/benchmarks/latest.json)
 
 ## Running Benchmarks Manually
 
