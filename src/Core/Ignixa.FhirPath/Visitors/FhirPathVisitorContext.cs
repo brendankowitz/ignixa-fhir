@@ -59,7 +59,7 @@ namespace Ignixa.FhirPath.Visitors;
 ///     .PopPropertyContext();
 /// </code>
 /// </example>
-public sealed record FhirPathVisitorContext
+internal sealed record FhirPathVisitorContext
 {
     /// <summary>
     /// Creates a new empty context without schema binding.

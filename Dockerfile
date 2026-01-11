@@ -36,6 +36,7 @@ COPY src/Application/Ignixa.Conformance.Events/Ignixa.Conformance.Events.csproj 
 COPY src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj src/Core/Ignixa.Abstractions/
 COPY src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj src/Core/Ignixa.FhirMappingLanguage/
 COPY src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj src/Core/Ignixa.FhirPath/
+COPY src/Core/Ignixa.FhirPath.Generators/Ignixa.FhirPath.Generators.csproj src/Core/Ignixa.FhirPath.Generators/
 COPY src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj src/Core/Ignixa.PackageManagement/
 COPY src/Core/Ignixa.Search/Ignixa.Search.csproj src/Core/Ignixa.Search/
 COPY src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj src/Core/Ignixa.Serialization/

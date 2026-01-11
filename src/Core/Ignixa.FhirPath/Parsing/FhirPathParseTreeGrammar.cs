@@ -17,7 +17,7 @@ namespace Ignixa.FhirPath.Parsing;
 /// Parser grammar for FhirPath expressions producing parse trees.
 /// Parse trees are then converted to AST via visitor pattern.
 /// </summary>
-public static class FhirPathParseTreeGrammar
+internal static class FhirPathParseTreeGrammar
 {
     private static SourceLocation Loc(Token<FhirPathTokenKind> token) =>
         SourceLocation.From(token);

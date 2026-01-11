@@ -88,7 +88,7 @@ public class FhirPathParser
     /// <param name="expression">The FhirPath expression to parse</param>
     /// <returns>The root ParseNode of the parse tree</returns>
     /// <exception cref="FormatException">Thrown when the expression cannot be parsed</exception>
-    public ParseNode ParseToTree(string expression)
+    internal ParseNode ParseToTree(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
             throw new ArgumentException("Expression cannot be null or whitespace", nameof(expression));
@@ -121,7 +121,7 @@ public class FhirPathParser
     /// <param name="parseTree">The parse tree to convert</param>
     /// <param name="sourceExpression">The original source expression (for trivia preservation)</param>
     /// <returns>The root Expression node of the AST</returns>
-    public Expression BuildAst(ParseNode parseTree, string? sourceExpression = null)
+    internal Expression BuildAst(ParseNode parseTree, string? sourceExpression = null)
     {
         var context = new AstBuildContext
         {
@@ -173,7 +173,7 @@ public class FhirPathParser
     /// <param name="result">The parse tree, or null if parsing failed</param>
     /// <param name="errorMessage">Error message if parsing failed, or null if successful</param>
     /// <returns>True if parsing succeeded, false otherwise</returns>
-    public bool TryParseToTree(string expression, out ParseNode? result, out string? errorMessage)
+    internal bool TryParseToTree(string expression, out ParseNode? result, out string? errorMessage)
     {
         try
         {

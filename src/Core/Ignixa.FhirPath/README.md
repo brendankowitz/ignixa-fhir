@@ -5,9 +5,11 @@ FHIRPath expression evaluation engine for FHIR resources. Provides a high-perfor
 ## Why Use This Package?
 
 - **Standards-compliant**: Implements the FHIRPath specification
-- **High-performance**: Includes compiled delegate mode for common patterns
+- **High-performance**: Visitor pattern architecture with compile-time optimization
+- **Compile-time optimizations**: Constant folding, short-circuiting, algebraic simplification
+- **Expression caching**: Compiled expressions are cached for repeated use
 - **Modern architecture**: Works with `IElement` from Ignixa.Abstractions
-- **Extensible**: Add custom functions and evaluation logic
+- **Extensible**: Add custom functions via attributes and source generators
 
 ## Installation
 
@@ -24,9 +26,10 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
 
-// Parse a FHIRPath expression
+// Parse a FHIRPath expression with compile-time optimization
 var parser = new FhirPathParser();
-var expression = parser.Parse("Patient.name.family");
+var options = new CompilationOptions { Optimize = true };
+var expression = parser.Parse("Patient.name.family", options);
 
 // Evaluate against a resource
 var evaluator = new FhirPathEvaluator();
@@ -39,6 +42,27 @@ foreach (var result in results)
 {
     Console.WriteLine(result.Value); // Prints family names
 }
+```
+
+### Compile-Time Optimization Examples
+
+The parser can optimize expressions at compile time:
+
+```csharp
+var options = new CompilationOptions { Optimize = true };
+
+// Constant folding
+parser.Parse("1 + 1", options);              // Optimized to: 2
+parser.Parse("'hello' + 'world'", options);  // Optimized to: 'helloworld'
+
+// Short-circuit evaluation
+parser.Parse("false and X", options);        // Optimized to: false (X not evaluated)
+parser.Parse("true or X", options);          // Optimized to: true (X not evaluated)
+
+// Algebraic simplification
+parser.Parse("X + 0", options);              // Optimized to: X
+parser.Parse("X * 1", options);              // Optimized to: X
+parser.Parse("X and true", options);         // Optimized to: X
 ```
 
 ### Using the Compiled Delegate Mode (Faster)

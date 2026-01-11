@@ -17,7 +17,7 @@ namespace Ignixa.FhirPath.Parsing.ParseTree;
 /// <param name="Column">1-based column number</param>
 /// <param name="Position">0-based absolute position</param>
 /// <param name="Length">Length in characters</param>
-public readonly record struct SourceLocation(int Line, int Column, int Position, int Length)
+internal readonly record struct SourceLocation(int Line, int Column, int Position, int Length)
 {
     public static SourceLocation From(Token<FhirPathTokenKind> token) =>
         new(token.Position.Line, token.Position.Column, (int)token.Position.Absolute, token.Span.Length);
@@ -34,7 +34,7 @@ public readonly record struct SourceLocation(int Line, int Column, int Position,
 /// Base class for all parse tree nodes.
 /// Parse trees represent syntactic structure before semantic analysis.
 /// </summary>
-public abstract record ParseNode(SourceLocation Location)
+internal abstract record ParseNode(SourceLocation Location)
 {
     public abstract TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context);
 }
@@ -43,7 +43,7 @@ public abstract record ParseNode(SourceLocation Location)
 /// Represents a binary operation in the parse tree.
 /// Examples: age > 18, 1 + 2, name = 'John'
 /// </summary>
-public sealed record BinaryParseNode(
+internal sealed record BinaryParseNode(
     ParseNode Left,
     string Operator,
     ParseNode Right,
@@ -57,7 +57,7 @@ public sealed record BinaryParseNode(
 /// Represents a unary operation in the parse tree.
 /// Examples: -5, +10
 /// </summary>
-public sealed record UnaryParseNode(
+internal sealed record UnaryParseNode(
     string Operator,
     ParseNode Operand,
     SourceLocation Location) : ParseNode(Location)
@@ -70,7 +70,7 @@ public sealed record UnaryParseNode(
 /// Represents a function call in the parse tree.
 /// Examples: exists(), where($this > 5), first()
 /// </summary>
-public sealed record FunctionCallParseNode(
+internal sealed record FunctionCallParseNode(
     ParseNode? Focus,
     string FunctionName,
     IReadOnlyList<ParseNode> Arguments,
@@ -84,7 +84,7 @@ public sealed record FunctionCallParseNode(
 /// Represents child/member access in the parse tree (dot notation).
 /// Examples: Patient.name, name.given
 /// </summary>
-public sealed record ChildParseNode(
+internal sealed record ChildParseNode(
     ParseNode Focus,
     string ChildName,
     SourceLocation Location) : ParseNode(Location)
@@ -97,7 +97,7 @@ public sealed record ChildParseNode(
 /// Represents a constant value in the parse tree.
 /// Examples: 42, 3.14, 'hello', true, @2024-01-15
 /// </summary>
-public sealed record ConstantParseNode(
+internal sealed record ConstantParseNode(
     object Value,
     SourceLocation Location) : ParseNode(Location)
 {
@@ -110,7 +110,7 @@ public sealed record ConstantParseNode(
 /// Used primarily for ofType() and as() arguments.
 /// Examples: Patient, string, Quantity
 /// </summary>
-public sealed record IdentifierParseNode(
+internal sealed record IdentifierParseNode(
     string Name,
     SourceLocation Location) : ParseNode(Location)
 {
@@ -123,7 +123,7 @@ public sealed record IdentifierParseNode(
 /// Eliminates ambiguity between property access and function calls.
 /// Examples: name, family (when used without parentheses)
 /// </summary>
-public sealed record PropertyAccessParseNode(
+internal sealed record PropertyAccessParseNode(
     ParseNode? Focus,
     string PropertyName,
     SourceLocation Location) : ParseNode(Location)
@@ -136,7 +136,7 @@ public sealed record PropertyAccessParseNode(
 /// Represents a variable reference in the parse tree.
 /// Examples: %context, %resource, %ext-id
 /// </summary>
-public sealed record VariableRefParseNode(
+internal sealed record VariableRefParseNode(
     string Name,
     SourceLocation Location) : ParseNode(Location)
 {
@@ -148,7 +148,7 @@ public sealed record VariableRefParseNode(
 /// Represents indexer access in the parse tree.
 /// Examples: name[0], collection[5]
 /// </summary>
-public sealed record IndexerParseNode(
+internal sealed record IndexerParseNode(
     ParseNode Collection,
     ParseNode Index,
     SourceLocation Location) : ParseNode(Location)
@@ -161,7 +161,7 @@ public sealed record IndexerParseNode(
 /// Represents a parenthesized expression in the parse tree.
 /// Examples: (1 + 2), (name.exists())
 /// </summary>
-public sealed record ParenthesizedParseNode(
+internal sealed record ParenthesizedParseNode(
     ParseNode InnerExpression,
     SourceLocation Location) : ParseNode(Location)
 {
@@ -173,7 +173,7 @@ public sealed record ParenthesizedParseNode(
 /// Represents a quantity literal in the parse tree.
 /// Examples: 5 'mg', 37.5 'Cel', 100 '[lb_av]'
 /// </summary>
-public sealed record QuantityParseNode(
+internal sealed record QuantityParseNode(
     decimal Value,
     string Unit,
     SourceLocation Location) : ParseNode(Location)
@@ -186,7 +186,7 @@ public sealed record QuantityParseNode(
 /// Represents a scope reference in the parse tree.
 /// Examples: $this, $index, $total
 /// </summary>
-public sealed record ScopeParseNode(
+internal sealed record ScopeParseNode(
     string ScopeName,
     SourceLocation Location) : ParseNode(Location)
 {
@@ -198,7 +198,7 @@ public sealed record ScopeParseNode(
 /// Represents an empty collection literal in the parse tree.
 /// Example: {}
 /// </summary>
-public sealed record EmptyParseNode(
+internal sealed record EmptyParseNode(
     SourceLocation Location) : ParseNode(Location)
 {
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)

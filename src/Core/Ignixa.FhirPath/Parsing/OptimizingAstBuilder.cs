@@ -34,7 +34,7 @@ namespace Ignixa.FhirPath.Parsing;
 /// When in doubt, the original expression is returned unchanged.
 /// </para>
 /// </remarks>
-public class OptimizingAstBuilder : AstBuilder
+internal class OptimizingAstBuilder : AstBuilder
 {
     public override Expression VisitBinary(BinaryParseNode node, AstBuildContext context)
     {

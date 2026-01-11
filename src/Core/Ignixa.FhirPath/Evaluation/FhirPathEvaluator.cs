@@ -56,6 +56,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private IEnumerable<IElement> EvaluateExpression(IEnumerable<IElement> focus, Expression expr, EvaluationContext context)
     {
+        // Optimization: Skip context creation if focus hasn't changed
+        // This is common in indexer/child/binary expressions where we evaluate sub-expressions with the same focus
+        if (ReferenceEquals(focus, context.Focus))
+        {
+            return expr.AcceptVisitor(this, context);
+        }
+
         var newContext = context.WithFocus(focus);
         return expr.AcceptVisitor(this, newContext);
     }
@@ -523,14 +530,29 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
     {
-        var collection = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
+        // Optimization: Fast path for constant integer indexes
+        // Avoids creating IElement wrapper and context allocation for index evaluation
+        if (expression.Index is ConstantExpression { Value: int constantIndex })
+        {
+            var collection = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
+
+            if (constantIndex >= 0 && constantIndex < collection.Count)
+            {
+                return [collection[constantIndex]];
+            }
+
+            return [];
+        }
+
+        // General case: evaluate index expression dynamically
+        var collection2 = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
         var indexResults = EvaluateExpression(context.Focus, expression.Index, context).ToList();
 
         if (indexResults.Count == 1 && indexResults[0].Value is int index)
         {
-            if (index >= 0 && index < collection.Count)
+            if (index >= 0 && index < collection2.Count)
             {
-                return [collection[index]];
+                return [collection2[index]];
             }
         }
 

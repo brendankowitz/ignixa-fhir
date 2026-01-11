@@ -1,14 +1,23 @@
 ---
 sidebar_position: 4
 title: FHIRPath
-description: Compiled FHIRPath expression engine
+description: High-performance FHIRPath expression engine with visitor pattern architecture
 ---
 
 # Ignixa.FhirPath
 
-A high-performance FHIRPath implementation with expression compilation and caching, implementing the [FHIRPath N1 (Normative) specification](http://hl7.org/fhirpath/N1/).
+A high-performance FHIRPath implementation with visitor pattern architecture, compile-time optimization, and expression caching, implementing the [FHIRPath N1 (Normative) specification](http://hl7.org/fhirpath/N1/).
 
 Built using the [Superpower](https://github.com/datalust/superpower) parser combinator library (based on [Sprache](https://github.com/sprache/Sprache)), which provides token-driven parsing with friendly, human-readable error messages for invalid FHIRPath expressions.
+
+## Key Features
+
+- **Visitor Pattern Architecture** - Clean separation between AST structure and operations
+- **Compile-Time Optimization** - Constant folding, short-circuiting, and algebraic simplification
+- **Expression Caching** - Parsed ASTs cached for repeated evaluations
+- **Type Inference** - Static analyzer validates expressions before execution
+- **High Performance** - Significant improvements over traditional switch-based evaluators
+- **Extensible** - Custom functions registered via attributes and source generators
 
 ## Installation
 
@@ -25,10 +34,38 @@ using Ignixa.FhirPath.Evaluation;
 var sourceNode = JsonSourceNavigator.Parse(patientJson);
 var element = sourceNode.ToElement(schema);
 
-// Evaluate FHIRPath
+// Evaluate FHIRPath (with automatic caching)
 var names = element.Select("name.given");
 var isActive = element.IsTrue("active = true");
 ```
+
+## Compile-Time Optimization
+
+The parser can optimize expressions at compile time when using `CompilationOptions`:
+
+```csharp
+using Ignixa.FhirPath.Parser;
+
+var parser = new FhirPathParser();
+var options = new CompilationOptions { Optimize = true };
+
+// Constant folding
+var expr1 = parser.Parse("1 + 1", options);              // Optimized to: 2
+var expr2 = parser.Parse("'hello' + 'world'", options);  // Optimized to: 'helloworld'
+
+// Short-circuit evaluation
+var expr3 = parser.Parse("false and X", options);        // Optimized to: false (X not evaluated)
+var expr4 = parser.Parse("true or X", options);          // Optimized to: true (X not evaluated)
+
+// Algebraic simplification
+var expr5 = parser.Parse("X + 0", options);              // Optimized to: X
+var expr6 = parser.Parse("X * 1", options);              // Optimized to: X
+var expr7 = parser.Parse("X and true", options);         // Optimized to: X
+```
+
+:::tip
+The `Select()` extension methods automatically use optimized parsing. Manual optimization is only needed when using the parser API directly.
+:::
 
 ## Evaluation Methods
 
@@ -306,23 +343,51 @@ FHIRPath follows propagation semantics for empty collections - operations on emp
 
 ## Architecture
 
-The FHIRPath engine uses a three-stage pipeline:
+The FHIRPath engine uses a visitor pattern architecture with compile-time optimization:
 
 ```
-Expression String → Parser → AST → Compiler/Evaluator → Results
+Expression String → Parser (with optimization) → AST → Visitor-based Evaluator → Results
 ```
+
+### Visitor Pattern Design
+
+The AST uses the visitor pattern to cleanly separate structure from operations:
+
+```csharp
+// Expression base class
+public abstract class Expression {
+    public abstract TOutput AcceptVisitor<TContext, TOutput>(
+        IFhirPathExpressionVisitor<TContext, TOutput> visitor,
+        TContext context);
+}
+
+// Evaluator implements visitor interface
+public class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, IEnumerable<IElement>> {
+    public IEnumerable<IElement> VisitBinary(BinaryExpression expr, EvaluationContext context) { ... }
+    public IEnumerable<IElement> VisitFunctionCall(FunctionCallExpression expr, EvaluationContext context) { ... }
+    // ... 11 more visitor methods
+}
+```
+
+**Benefits:**
+- **Extensibility**: New visitors (optimizer, debugger, SQL translator) can be added without modifying AST
+- **Type Safety**: Compiler enforces handling of all expression types via double dispatch
+- **Separation of Concerns**: AST structure decoupled from evaluation/analysis logic
+- **Consistency**: Matches the visitor pattern used throughout the Ignixa codebase
 
 ### Components
 
-**FhirPathParser**: Tokenizes and parses expression strings into an Abstract Syntax Tree (AST) using the [Superpower](https://github.com/datalust/superpower) parser combinator library. Provides human-readable error messages for invalid expressions.
+**FhirPathParser**: Tokenizes and parses expression strings into an Abstract Syntax Tree (AST) using the [Superpower](https://github.com/datalust/superpower) parser combinator library. Includes optional compile-time optimization pass for constant folding, short-circuiting, and algebraic simplification.
+
+**FhirPathEvaluator**: Visitor-based evaluator that traverses the AST using the visitor pattern. Implements optimizations like ReferenceEquals context checking and constant indexer fast paths for improved performance.
+
+**FhirPathAnalyzer**: Static analyzer visitor that performs type inference and validation on expressions before execution. Uses the same visitor infrastructure for consistency.
 
 **FhirPathDelegateCompiler**: Compiles common AST patterns to executable delegates for improved performance. Supports approximately 80% of typical search parameter patterns:
 - Simple paths: `name`, `identifier`
 - Two-level paths: `name.family`, `identifier.value`
 - Where clauses: `telecom.where(system='phone')`
 - Collection functions: `name.first()`, `identifier.exists()`
-
-**FhirPathEvaluator**: Tree-walking interpreter that handles all expressions. Used as fallback when the compiler doesn't support a pattern.
 
 ### Direct API Access
 
@@ -357,10 +422,12 @@ Most applications should use the `Select()`, `Scalar()`, `IsTrue()` extension me
 
 ## Performance Tips
 
-1. **Automatic caching works best with literal expressions** - use the same string repeatedly to benefit from cached compiled delegates
-2. **Use specific paths** instead of wildcards - simpler expressions compile better
+1. **Automatic caching works best with literal expressions** - use the same string repeatedly to benefit from cached ASTs and compiled delegates
+2. **Use specific paths** instead of wildcards - simpler expressions compile better and benefit from optimizations like constant indexer fast paths
 3. **Cache evaluation results** when evaluating same expression on same data multiple times
-4. **Prefer simple patterns** - path navigation and basic predicates compile to fast delegates; complex expressions fall back to interpreter
+4. **Prefer simple patterns** - path navigation and basic predicates compile to fast delegates; complex expressions fall back to visitor-based interpreter
+5. **Compile-time optimization is automatic** - the `Select()` extension methods automatically use optimized parsing with constant folding and short-circuiting
+6. **Constant indexes are optimized** - expressions like `name[0]` use fast paths that avoid creating unnecessary intermediate objects
 
 ## Related Documentation
 

@@ -24,7 +24,7 @@ namespace Ignixa.FhirPath.Visitors;
 /// - Context type checking
 /// </para>
 /// </remarks>
-public sealed partial class SymbolTable
+internal sealed partial class SymbolTable
 {
     private readonly Dictionary<string, FunctionDefinition> _functions = new(StringComparer.OrdinalIgnoreCase);
     private readonly IFhirSchemaProvider? _schema;

@@ -25,13 +25,6 @@ public sealed class CompilationOptions
     public bool PreserveTrivia { get; init; }
 
     /// <summary>
-    /// Return the parse tree instead of converting to AST.
-    /// Useful for tooling and analysis.
-    /// Default: false (returns AST)
-    /// </summary>
-    public bool ReturnParseTree { get; init; }
-
-    /// <summary>
     /// Default compilation options (no optimizations, no trivia preservation).
     /// </summary>
     public static CompilationOptions Default { get; } = new();

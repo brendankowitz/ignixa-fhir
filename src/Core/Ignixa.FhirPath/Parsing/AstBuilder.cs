@@ -14,7 +14,7 @@ namespace Ignixa.FhirPath.Parsing;
 /// Converts parse tree nodes into Expression AST nodes.
 /// This is the default visitor used during FhirPath compilation.
 /// </summary>
-public class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
+internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 {
     public virtual Expression VisitBinary(BinaryParseNode node, AstBuildContext context)
     {
@@ -125,7 +125,7 @@ public class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
 /// Context passed during AST building.
 /// Can be extended to carry state through the compilation process.
 /// </summary>
-public record AstBuildContext
+internal record AstBuildContext
 {
     public bool PreserveTrivia { get; init; }
     public string? SourceExpression { get; init; }

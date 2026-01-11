@@ -13,7 +13,7 @@ namespace Ignixa.FhirPath.Parsing.ParseTree;
 /// </summary>
 /// <typeparam name="TContext">The context type passed during traversal</typeparam>
 /// <typeparam name="TResult">The result type produced by visiting nodes</typeparam>
-public interface IParseTreeVisitor<TContext, TResult>
+internal interface IParseTreeVisitor<TContext, TResult>
 {
     TResult VisitBinary(BinaryParseNode node, TContext context);
     TResult VisitUnary(UnaryParseNode node, TContext context);
