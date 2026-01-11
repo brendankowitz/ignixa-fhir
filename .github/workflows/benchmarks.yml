@@ -36,7 +36,7 @@ jobs:
         run: |
           cd bench/Ignixa.Benchmarks
           dotnet run -c Release -- \
-            --filter ${{ github.event.inputs.benchmark_filter || '*' }} \
+            --filter '${{ github.event.inputs.benchmark_filter || '*' }}' \
             --exporters json \
             --memory
 

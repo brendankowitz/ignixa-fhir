@@ -14,6 +14,7 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Generated;
 // Ignixa FHIRPath extension methods
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
@@ -44,6 +45,14 @@ public class FhirPathBenchmarks
     private FhirVersionContext _versionContext = null!;
 
     private FhirPathParser _ignixaParser = null!;
+    private FhirPathParser _ignixaParserOptimized = null!;
+    private FhirPathCompiler _firelyCompiler = null!;
+
+    private const string ComplexExpression = "Patient.name.where(use='official').given.first()";
+    private const string SimpleExpression = "Patient.name.family";
+    private const string ArrayExpression = "Patient.name[0].given";
+    private const string SearchParamExpression = "Observation.component.where(code.coding.code='8480-6').valueQuantity.value";
+    private const string ScalarExpression = "Patient.birthDate";
 
     [GlobalSetup]
     public void Setup()
@@ -56,15 +65,15 @@ public class FhirPathBenchmarks
         // Ignixa setup
         _ignixaPatient = JsonSerializer.Deserialize<ResourceJsonNode>(patientJson)!;
         _ignixaObservation = JsonSerializer.Deserialize<ResourceJsonNode>(observationJson)!;
+        
+        _ignixaSchemaProvider = new R4CoreSchemaProvider();
 
-        var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
-        _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
-        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirVersion.R4);
-
-        _ignixaPatientTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaPatient.ToSourceNavigator(), _ignixaSchemaProvider);
-        _ignixaObservationTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaObservation.ToSourceNavigator(), _ignixaSchemaProvider);
+        _ignixaPatientTyped = _ignixaPatient.ToSourceNavigator().ToElement(_ignixaSchemaProvider);
+        _ignixaObservationTyped = _ignixaObservation.ToSourceNavigator().ToElement(_ignixaSchemaProvider);
 
         _ignixaParser = new FhirPathParser();
+        _ignixaParserOptimized = new FhirPathParser(Ignixa.FhirPath.Parsing.CompilationOptions.Optimized);
+        _firelyCompiler = new FhirPathCompiler();
 
         // Firely setup
         var firelyPatientSource = Hl7.Fhir.Serialization.FhirJsonNode.Parse(patientJson);
@@ -72,6 +81,23 @@ public class FhirPathBenchmarks
 
         _firelyPatientTyped = firelyPatientSource.ToTypedElement(ModelInfo.ModelInspector);
         _firelyObservationTyped = firelyObservationSource.ToTypedElement(ModelInfo.ModelInspector);
+
+        WarmupCaches();
+    }
+
+    private void WarmupCaches()
+    {
+        _ = _ignixaPatientTyped.Select(SimpleExpression).ToArray();
+        _ = _ignixaPatientTyped.Select(ArrayExpression).ToArray();
+        _ = _ignixaPatientTyped.Select(ComplexExpression).ToArray();
+        _ = _ignixaObservationTyped.Select(SearchParamExpression).ToArray();
+        _ = _ignixaPatientTyped.Scalar(ScalarExpression);
+
+        _ = _firelyPatientTyped.Select(SimpleExpression).ToArray();
+        _ = _firelyPatientTyped.Select(ArrayExpression).ToArray();
+        _ = _firelyPatientTyped.Select(ComplexExpression).ToArray();
+        _ = _firelyObservationTyped.Select(SearchParamExpression).ToArray();
+        _ = _firelyPatientTyped.Scalar(ScalarExpression);
     }
 
     private static string ReadEmbeddedResource(Assembly assembly, string resourceName)
@@ -82,93 +108,95 @@ public class FhirPathBenchmarks
         return reader.ReadToEnd();
     }
 
-    // ========== SIMPLE PROPERTY ACCESS ==========
+    [Benchmark(Description = "Ignixa: Parse (no optimizations)")]
+    [BenchmarkCategory("Compilation")]
+    public Ignixa.FhirPath.Expressions.Expression IgnixaParseBaseline()
+    {
+        return _ignixaParser.Parse(ComplexExpression);
+    }
+
+    [Benchmark(Description = "Ignixa: Parse (with optimizations)")]
+    [BenchmarkCategory("Compilation")]
+    public Ignixa.FhirPath.Expressions.Expression IgnixaParseOptimized()
+    {
+        return _ignixaParserOptimized.Parse(ComplexExpression);
+    }
+
+    [Benchmark(Description = "Firely: Compile FHIRPath expression")]
+    [BenchmarkCategory("Compilation")]
+    public CompiledExpression FirelyCompile()
+    {
+        return _firelyCompiler.Compile(ComplexExpression);
+    }
 
     [Benchmark(Description = "Ignixa: Simple FHIRPath (Patient.name.family)")]
-    [BenchmarkCategory("Simple")]
+    [BenchmarkCategory("Execution-Simple")]
     public IElement[] IgnixaSimple()
     {
-        return _ignixaPatientTyped.Select("Patient.name.family").ToArray();
+        return _ignixaPatientTyped.Select(SimpleExpression).ToArray();
     }
 
     [Benchmark(Description = "Firely: Simple FHIRPath (Patient.name.family)")]
-    [BenchmarkCategory("Simple")]
+    [BenchmarkCategory("Execution-Simple")]
     public SdkITypedElement[] FirelySimple()
     {
-        return _firelyPatientTyped.Select("Patient.name.family").ToArray();
+        return _firelyPatientTyped.Select(SimpleExpression).ToArray();
     }
 
-    // ========== ARRAY INDEXING ==========
-
     [Benchmark(Description = "Ignixa: Array indexing (Patient.name[0].given)")]
-    [BenchmarkCategory("Array")]
+    [BenchmarkCategory("Execution-Array")]
     public IElement[] IgnixaArray()
     {
-        return _ignixaPatientTyped.Select("Patient.name[0].given").ToArray();
+        return _ignixaPatientTyped.Select(ArrayExpression).ToArray();
     }
 
     [Benchmark(Description = "Firely: Array indexing (Patient.name[0].given)")]
-    [BenchmarkCategory("Array")]
+    [BenchmarkCategory("Execution-Array")]
     public SdkITypedElement[] FirelyArray()
     {
-        return _firelyPatientTyped.Select("Patient.name[0].given").ToArray();
+        return _firelyPatientTyped.Select(ArrayExpression).ToArray();
     }
 
-    // ========== COMPLEX NAVIGATION WITH where() ==========
-
     [Benchmark(Description = "Ignixa: Complex navigation (where + first)")]
-    [BenchmarkCategory("Complex")]
+    [BenchmarkCategory("Execution-Complex")]
     public IElement[] IgnixaComplex()
     {
-        return _ignixaPatientTyped.Select("Patient.name.where(use='official').given.first()").ToArray();
+        return _ignixaPatientTyped.Select(ComplexExpression).ToArray();
     }
 
     [Benchmark(Description = "Firely: Complex navigation (where + first)")]
-    [BenchmarkCategory("Complex")]
+    [BenchmarkCategory("Execution-Complex")]
     public SdkITypedElement[] FirelyComplex()
     {
-        return _firelyPatientTyped.Select("Patient.name.where(use='official').given.first()").ToArray();
+        return _firelyPatientTyped.Select(ComplexExpression).ToArray();
     }
 
-    // ========== REALISTIC SEARCH PARAMETER EXTRACTION ==========
-
     [Benchmark(Description = "Ignixa: Search parameter extraction (component value)")]
-    [BenchmarkCategory("SearchParam")]
+    [BenchmarkCategory("Execution-SearchParam")]
     public IElement[] IgnixaSearchParam()
     {
-        return _ignixaObservationTyped.Select("Observation.component.where(code.coding.code='8480-6').valueQuantity.value").ToArray();
+        return _ignixaObservationTyped.Select(SearchParamExpression).ToArray();
     }
 
     [Benchmark(Description = "Firely: Search parameter extraction (component value)")]
-    [BenchmarkCategory("SearchParam")]
+    [BenchmarkCategory("Execution-SearchParam")]
     public SdkITypedElement[] FirelySearchParam()
     {
-        return _firelyObservationTyped.Select("Observation.component.where(code.coding.code='8480-6').valueQuantity.value").ToArray();
+        return _firelyObservationTyped.Select(SearchParamExpression).ToArray();
     }
 
-    // ========== SCALAR VALUE EXTRACTION ==========
-
     [Benchmark(Description = "Ignixa: Scalar extraction (Patient.birthDate)")]
-    [BenchmarkCategory("Scalar")]
+    [BenchmarkCategory("Execution-Scalar")]
     public object? IgnixaScalar()
     {
-        return _ignixaPatientTyped.Scalar("Patient.birthDate");
+        return _ignixaPatientTyped.Scalar(ScalarExpression);
     }
 
     [Benchmark(Description = "Firely: Scalar extraction (Patient.birthDate)")]
-    [BenchmarkCategory("Scalar")]
+    [BenchmarkCategory("Execution-Scalar")]
     public object? FirelyScalar()
     {
-        return _firelyPatientTyped.Scalar("Patient.birthDate");
-    }
-
-    // ========== COMPILATION PERFORMANCE ==========
-
-    [Benchmark(Description = "Ignixa: Compile FHIRPath expression")]
-    [BenchmarkCategory("Compile")]
-    public Ignixa.FhirPath.Expressions.Expression IgnixaCompile()
-    {
-        return _ignixaParser.Parse("Patient.name.where(use='official').given.first()");
+        return _firelyPatientTyped.Scalar(ScalarExpression);
     }
 
     [GlobalCleanup]

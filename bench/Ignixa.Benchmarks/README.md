@@ -81,19 +81,26 @@ Compares resource navigation performance:
 
 ### FhirPathBenchmarks.cs
 
-Compares FHIRPath evaluation performance:
+Compares FHIRPath parsing, compilation, and execution performance.
+
+**IMPORTANT**: These benchmarks separate compilation from execution to ensure fair comparison:
+- **Compilation benchmarks**: Measure time to parse and compile an expression (no caching)
+- **Execution benchmarks**: Use pre-compiled/cached expressions (caches warmed up in GlobalSetup)
 
 | Category | Expression | Description |
 |----------|------------|-------------|
-| **Simple** | `Patient.name.family` | Simple property access |
-| **Array** | `Patient.name[0].given` | Array indexing |
-| **Complex** | `Patient.name.where(use='official').given.first()` | Filtering + navigation |
-| **SearchParam** | `Observation.component.where(code.coding.code='8480-6').valueQuantity.value` | Realistic search parameter extraction |
-| **Compile** | - | FHIRPath expression compilation time |
+| **Compilation** | `Patient.name.where(use='official').given.first()` | Parsing + compilation time (no caching) |
+| **Execution-Simple** | `Patient.name.family` | Simple property access (with compiled expression) |
+| **Execution-Array** | `Patient.name[0].given` | Array indexing (with compiled expression) |
+| **Execution-Complex** | `Patient.name.where(use='official').given.first()` | Filtering + navigation (with compiled expression) |
+| **Execution-SearchParam** | `Observation.component.where(code.coding.code='8480-6').valueQuantity.value` | Realistic search parameter extraction (with compiled expression) |
+| **Execution-Scalar** | `Patient.birthDate` | Scalar value extraction (with compiled expression) |
 
 **Comparison Points**:
-- **Ignixa**: `Ignixa.FhirPath.Evaluation.FhirPathEvaluator`
-- **Firely SDK**: `Hl7.FhirPath` package evaluator
+- **Ignixa Compilation**: `FhirPathParser.Parse()` (AST + optional delegate compilation)
+- **Firely Compilation**: `FhirPathCompiler.Compile()` (compiled expression)
+- **Ignixa Execution**: `TypedElementExtensions.Select()` (uses cached AST + compiled delegate)
+- **Firely Execution**: `ITypedElement.Select()` extension from Hl7.FhirPath (uses cached compiled expression)
 
 ## Test Data
 
