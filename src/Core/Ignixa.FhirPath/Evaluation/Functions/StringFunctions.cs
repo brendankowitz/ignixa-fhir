@@ -6,6 +6,9 @@
  * length(), replace(), matches(), replaceMatches(), toChars(), join().
  */
 
+using System.Net;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
@@ -389,5 +392,252 @@ internal static class StringFunctions
         // join() always returns a string, even if empty
         var result = string.Join(separator, strings);
         return [FunctionHelpers.CreateString(result)];
+    }
+
+    /// <summary>
+    /// trim() - Removes leading and trailing whitespace from a string.
+    /// </summary>
+    [FhirPathFunction("trim",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "String",
+        Description = "Removes leading and trailing whitespace")]
+    public static IEnumerable<IElement> Trim(IEnumerable<IElement> focus)
+    {
+        var list = focus.ToList();
+        if (list.Count != 1 || list[0].Value is not string str)
+            return [];
+
+        return [FunctionHelpers.CreateString(str.Trim())];
+    }
+
+    /// <summary>
+    /// split() - Splits a string by a delimiter into a collection of strings.
+    /// </summary>
+    [FhirPathFunction("split",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Splits a string by a delimiter")]
+    public static IEnumerable<IElement> Split(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        if (arguments.Count == 0)
+            throw new ArgumentException("split() requires a delimiter argument");
+
+        var list = focus.ToList();
+        if (list.Count != 1 || list[0].Value is not string str)
+            return [];
+
+        var delimiterResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        if (delimiterResult?.Value is not string delimiter)
+            return [];
+
+        var parts = str.Split(delimiter, StringSplitOptions.None);
+        return parts.Select(p => FunctionHelpers.CreateString(p));
+    }
+
+    /// <summary>
+    /// contains() - Tests if a string contains a substring (case-sensitive).
+    /// </summary>
+    [FhirPathFunction("contains",
+        SupportedContexts = "string-boolean",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Tests if a string contains a substring")]
+    public static IEnumerable<IElement> Contains(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        if (arguments.Count == 0)
+            throw new ArgumentException("contains() requires a substring argument");
+
+        var list = focus.ToList();
+        if (list.Count != 1 || list[0].Value is not string str)
+            return [];
+
+        var substringResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        if (substringResult?.Value is not string substring)
+            return [];
+
+        return FunctionHelpers.ReturnBoolean(str.Contains(substring, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// encode() - Encodes the string using the specified encoding.
+    /// Supports base64, urlbase64, and hex encodings.
+    /// </summary>
+    [FhirPathFunction("encode",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Encodes the string using the specified encoding")]
+    public static IEnumerable<IElement> Encode(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        var element = focus.SingleOrDefault();
+        if (element?.Value is not string str)
+            return [];
+
+        var encodingTypeResult = evaluateExpression(focus, arguments[0], context);
+        var encodingType = encodingTypeResult.FirstOrDefault()?.Value?.ToString();
+
+        if (encodingType is null)
+            return [];
+
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        return encodingType.ToLowerInvariant() switch
+        {
+            "urlbase64" => [FunctionHelpers.CreateString(Convert.ToBase64String(Encoding.UTF8.GetBytes(str)).Replace('+', '-').Replace('/', '_'))],
+            "base64" => [FunctionHelpers.CreateString(Convert.ToBase64String(Encoding.UTF8.GetBytes(str)))],
+            "hex" => [FunctionHelpers.CreateString(Convert.ToHexString(Encoding.UTF8.GetBytes(str)).ToLowerInvariant())],
+            _ => []
+        };
+#pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    /// <summary>
+    /// decode() - Decodes the string using the specified encoding.
+    /// Supports base64, urlbase64, and hex encodings.
+    /// </summary>
+    [FhirPathFunction("decode",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Decodes the string using the specified encoding")]
+    public static IEnumerable<IElement> Decode(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        var element = focus.SingleOrDefault();
+        if (element?.Value is not string str)
+            return [];
+
+        var encodingTypeResult = evaluateExpression(focus, arguments[0], context);
+        var encodingType = encodingTypeResult.FirstOrDefault()?.Value?.ToString();
+
+        if (encodingType is null)
+            return [];
+
+        try
+        {
+#pragma warning disable CA1308 // Normalize strings to uppercase
+            return encodingType.ToLowerInvariant() switch
+            {
+                "urlbase64" => [FunctionHelpers.CreateString(Encoding.UTF8.GetString(Convert.FromBase64String(str.Replace('-', '+').Replace('_', '/'))))],
+                "base64" => [FunctionHelpers.CreateString(Encoding.UTF8.GetString(Convert.FromBase64String(str)))],
+                "hex" => [FunctionHelpers.CreateString(Encoding.UTF8.GetString(Convert.FromHexString(str)))],
+                _ => []
+            };
+#pragma warning restore CA1308 // Normalize strings to uppercase
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// escape() - Escapes the string using the specified escape type.
+    /// Supports html, json, and url escape types.
+    /// </summary>
+    [FhirPathFunction("escape",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Escapes the string using the specified escape type")]
+    public static IEnumerable<IElement> Escape(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        var element = focus.SingleOrDefault();
+        if (element?.Value is not string str)
+            return [];
+
+        var escapeTypeResult = evaluateExpression(focus, arguments[0], context);
+        var escapeType = escapeTypeResult.FirstOrDefault()?.Value?.ToString();
+
+        if (escapeType is null)
+            return [];
+
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        return escapeType.ToLowerInvariant() switch
+        {
+            "html" => [FunctionHelpers.CreateString(WebUtility.HtmlEncode(str))],
+            "json" => [FunctionHelpers.CreateString(JsonSerializer.Serialize(str).Trim('"'))],
+            "url" => [FunctionHelpers.CreateString(Uri.EscapeDataString(str))],
+            _ => []
+        };
+#pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    /// <summary>
+    /// unescape() - Unescapes the string using the specified escape type.
+    /// Supports html, json, and url escape types.
+    /// </summary>
+    [FhirPathFunction("unescape",
+        SupportedContexts = "string-string",
+        ReturnType = "string",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Unescapes the string using the specified escape type")]
+    public static IEnumerable<IElement> Unescape(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        var element = focus.SingleOrDefault();
+        if (element?.Value is not string str)
+            return [];
+
+        var escapeTypeResult = evaluateExpression(focus, arguments[0], context);
+        var escapeType = escapeTypeResult.FirstOrDefault()?.Value?.ToString();
+
+        if (escapeType is null)
+            return [];
+
+        try
+        {
+#pragma warning disable CA1308 // Normalize strings to uppercase
+            return escapeType.ToLowerInvariant() switch
+            {
+                "html" => [FunctionHelpers.CreateString(WebUtility.HtmlDecode(str))],
+                "json" => [FunctionHelpers.CreateString(JsonSerializer.Deserialize<string>($"\"{str}\"") ?? "")],
+                "url" => [FunctionHelpers.CreateString(Uri.UnescapeDataString(str))],
+                _ => []
+            };
+#pragma warning restore CA1308 // Normalize strings to uppercase
+        }
+        catch
+        {
+            return [];
+        }
     }
 }

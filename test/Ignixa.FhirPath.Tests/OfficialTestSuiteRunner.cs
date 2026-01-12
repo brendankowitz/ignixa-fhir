@@ -22,38 +22,16 @@ public class OfficialTestSuiteRunner
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
 
     // Functions that are not yet implemented. Tests using these are skipped to focus on supported functionality.
-    // Type introspection: type(), is(), conformsTo()
-    // String manipulation: trim(), split(), contains(), escape(), unescape()
-    // Math functions: round(), power(), floor(), ceiling(), truncate(), abs(), sqrt(), exp(), ln(), log()
-    // Collection operations: aggregate(), sort()
+    // Type introspection: is(), conformsTo()
+    // Collection operations: aggregate()
     // Variable definition: defineVariable() (FHIRPath 2.0 feature)
-    // Encoding: encode(), decode()
 
     private static readonly FrozenSet<string> _unsupportedFunctions = new[]
     {
-        ".type()",
         ".conformsTo(",
         ".is(",
         ".aggregate(",
-        ".defineVariable(",
-        ".encode(",
-        ".decode(",
-        ".escape(",
-        ".unescape(",
-        ".trim(",
-        ".split(",
-        ".contains(",
-        ".round(",
-        ".power(",
-        ".floor(",
-        ".ceiling(",
-        ".truncate(",
-        ".abs(",
-        ".sqrt(",
-        ".exp(",
-        ".ln(",
-        ".log(",
-        ".sort("
+        ".defineVariable("
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     // Scopes that are not yet implemented
@@ -94,11 +72,10 @@ public class OfficialTestSuiteRunner
             .Where(tc => !tc.IsInvalidTest)
             .Where(tc => tc.InputFile is not null)
             .Where(tc => !tc.Predicate)
-            .Where(tc => tc.GroupName != "comments")
             .Where(tc => !ShouldSkipTest(tc));
 
         var totalTests = testCases.Count;
-        var afterBasicFiltering = testCases.Count(tc => !tc.IsInvalidTest && tc.InputFile is not null && !tc.Predicate && tc.GroupName != "comments");
+        var afterBasicFiltering = testCases.Count(tc => !tc.IsInvalidTest && tc.InputFile is not null && !tc.Predicate);
         var afterSkipFiltering = filteredTests.Count();
         var skippedCount = afterBasicFiltering - afterSkipFiltering;
 

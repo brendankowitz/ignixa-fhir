@@ -123,6 +123,10 @@ public static class FhirPathTokenizer
         {
             // Build tokenizer without trivia tokens for performance
             return new TokenizerBuilder<FhirPathTokenKind>()
+                // Comments (must come before operators to avoid capturing // as division + division)
+                .Ignore(Comment.CStyle)
+                .Ignore(Comment.CPlusPlusStyle)
+
                 // Keywords (must come before identifiers, case-sensitive per FHIRPath N1.0 spec, require word boundary)
                 // Use regex with \b word boundaries to prevent matching within identifiers (e.g., "is" in "issued")
                 .Match(Span.Regex(@"\band\b"), FhirPathTokenKind.And, requireDelimiters: false)

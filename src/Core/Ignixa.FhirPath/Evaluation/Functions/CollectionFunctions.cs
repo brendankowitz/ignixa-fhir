@@ -683,4 +683,79 @@ internal static class CollectionFunctions
         var isSuperset = other.All(o => focusList.Any(f => FunctionHelpers.AreEqual(f.Value, o.Value)));
         return [(IElement)FunctionHelpers.CreateBoolean(isSuperset)];
     }
+
+    /// <summary>
+    /// type() - Returns the FHIR type name of each element in the collection.
+    /// </summary>
+    [FhirPathFunction("type",
+        SupportedContexts = "any-string",
+        ReturnType = "string",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "Collection",
+        Description = "Returns the FHIR type name of each element")]
+    public static IEnumerable<IElement> Type(IEnumerable<IElement> focus)
+    {
+        return focus.Select(e => FunctionHelpers.CreateString(e.InstanceType ?? "unknown"));
+    }
+
+    /// <summary>
+    /// sort() - Sorts the collection in ascending order.
+    /// Can optionally take an expression to determine sort key.
+    /// </summary>
+    [FhirPathFunction("sort",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        SupportsCollections = true,
+        MinArguments = 0,
+        MaxArguments = 1,
+        TakesExpressionArguments = true,
+        Category = "Collection",
+        Description = "Sorts the collection in ascending order")]
+    public static IEnumerable<IElement> Sort(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        var list = focus.ToList();
+
+        if (arguments.Count == 0)
+        {
+            return list.OrderBy(e => e.Value, new ObjectComparer());
+        }
+
+        var sortExpression = arguments[0];
+        return list.OrderBy(element =>
+        {
+            var innerContext = context.PushThis(element);
+            var result = evaluateExpression([element], sortExpression, innerContext);
+            return result.FirstOrDefault()?.Value;
+        }, new ObjectComparer());
+    }
+
+    private class ObjectComparer : IComparer<object?>
+    {
+        public int Compare(object? x, object? y)
+        {
+            if (x is null && y is null) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+
+            if (x is IComparable comparableX && y is IComparable)
+            {
+                try
+                {
+                    return comparableX.CompareTo(y);
+                }
+                catch
+                {
+                    return 0;
+                }
+            }
+
+            return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+        }
+    }
 }
