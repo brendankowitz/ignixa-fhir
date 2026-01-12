@@ -47,20 +47,21 @@ public class QuantityUnitConverter : IQuantityUnitConverter
         if (string.Equals(unit1, unit2, StringComparison.Ordinal))
             return true;
 
-        // Calendar duration units (year, month, week, day, hour, minute, second, millisecond)
-        // can only be combined with the EXACT same unit per FHIRPath specification.
-        // This is because calendar units have variable lengths or represent different time scales.
-        var isCalendarDuration1 = CalendarDuration.IsCalendarDurationUnit(unit1);
-        var isCalendarDuration2 = CalendarDuration.IsCalendarDurationUnit(unit2);
+        // Calendar-precision units (year, month) have variable lengths and cannot be converted
+        // to other units. Fixed-length duration units (week, day, hour, min, s, ms) can be
+        // converted to each other via UCUM.
+        var isCalendarPrecision1 = CalendarDuration.IsCalendarPrecisionUnit(unit1);
+        var isCalendarPrecision2 = CalendarDuration.IsCalendarPrecisionUnit(unit2);
 
-        // If one is a calendar duration and the other is not, they are incompatible
-        if (isCalendarDuration1 != isCalendarDuration2)
-            return false;
-
-        // If both are calendar duration units but different, incompatible
-        // (e.g., 1 year + 5 days, 2 hours + 3 minutes are not allowed)
-        if (isCalendarDuration1 && isCalendarDuration2)
+        // If either is a calendar-precision unit (year/month), they must be exactly the same
+        if (isCalendarPrecision1 || isCalendarPrecision2)
+        {
+            // Calendar-precision units can only match exactly
             return false; // Already checked for exact match above
+        }
+
+        // Fixed-length durations (week, day, hour, etc.) can be converted via UCUM
+        // Continue to UCUM-based compatibility check below
 
         try
         {
@@ -103,17 +104,15 @@ public class QuantityUnitConverter : IQuantityUnitConverter
         if (string.Equals(fromUnit, toUnit, StringComparison.Ordinal))
             return value;
 
-        // Calendar duration units can only be combined with the exact same unit
-        var isCalendarDuration1 = CalendarDuration.IsCalendarDurationUnit(fromUnit);
-        var isCalendarDuration2 = CalendarDuration.IsCalendarDurationUnit(toUnit);
+        // Calendar-precision units (year, month) cannot be converted to other units
+        var isCalendarPrecision1 = CalendarDuration.IsCalendarPrecisionUnit(fromUnit);
+        var isCalendarPrecision2 = CalendarDuration.IsCalendarPrecisionUnit(toUnit);
 
-        // If one is a calendar duration and the other is not, incompatible
-        if (isCalendarDuration1 != isCalendarDuration2)
+        // If either is a calendar-precision unit, they must be exactly the same (already handled above)
+        if (isCalendarPrecision1 || isCalendarPrecision2)
             return null;
 
-        // If both are calendar duration units but different, incompatible
-        if (isCalendarDuration1 && isCalendarDuration2)
-            return null; // Already checked for exact match above
+        // Fixed-length durations can be converted via UCUM
 
         try
         {
