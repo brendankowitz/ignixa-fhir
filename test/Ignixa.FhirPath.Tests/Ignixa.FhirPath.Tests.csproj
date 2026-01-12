@@ -10,11 +10,14 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Shouldly" />
     <Using Include="Xunit" />
   </ItemGroup>
 
@@ -23,6 +26,37 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <FhirTestCasesVersion>1.7.46</FhirTestCasesVersion>
+    <FhirTestCasesUrl>https://github.com/FHIR/fhir-test-cases/releases/download/$(FhirTestCasesVersion)/testcases.zip</FhirTestCasesUrl>
+    <FhirTestCasesZip>$(MSBuildProjectDirectory)\TestData\testcases.zip</FhirTestCasesZip>
+    <FhirTestCasesDir>$(MSBuildProjectDirectory)\TestData\fhir-test-cases</FhirTestCasesDir>
+    <FhirTestCasesTempDir>$(MSBuildProjectDirectory)\TestData\temp-extract</FhirTestCasesTempDir>
+    <FhirTestCasesMarker>$(FhirTestCasesDir)\.downloaded</FhirTestCasesMarker>
+  </PropertyGroup>
+
+  <Target Name="DownloadFhirTestCases" BeforeTargets="BeforeBuild" Condition="!Exists('$(FhirTestCasesMarker)')">
+    <Message Text="Downloading FHIR test cases from $(FhirTestCasesUrl)..." Importance="high" />
+    <MakeDir Directories="$(MSBuildProjectDirectory)\TestData" />
+    <DownloadFile SourceUrl="$(FhirTestCasesUrl)" DestinationFolder="$(MSBuildProjectDirectory)\TestData" DestinationFileName="testcases.zip" SkipUnchangedFiles="true" />
+
+    <Message Text="Extracting FHIR test cases to temporary location..." Importance="high" />
+    <RemoveDir Directories="$(FhirTestCasesTempDir)" Condition="Exists('$(FhirTestCasesTempDir)')" />
+    <Unzip SourceFiles="$(FhirTestCasesZip)" DestinationFolder="$(FhirTestCasesTempDir)" OverwriteReadOnlyFiles="true" />
+
+    <ItemGroup>
+      <ExtractedFiles Include="$(FhirTestCasesTempDir)\fhir-test-cases\**\*.*" />
+    </ItemGroup>
+
+    <Message Text="Moving extracted files from nested directory to $(FhirTestCasesDir)..." Importance="high" />
+    <RemoveDir Directories="$(FhirTestCasesDir)" Condition="Exists('$(FhirTestCasesDir)')" />
+    <Move SourceFiles="@(ExtractedFiles)" DestinationFolder="$(FhirTestCasesDir)\%(RecursiveDir)" />
+
+    <RemoveDir Directories="$(FhirTestCasesTempDir)" />
+    <Touch Files="$(FhirTestCasesMarker)" AlwaysCreate="true" />
+    <Message Text="FHIR test cases downloaded and extracted successfully." Importance="high" />
+  </Target>
 
 </Project>
 

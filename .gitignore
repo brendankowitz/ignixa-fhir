@@ -352,3 +352,6 @@ bundle-*.json
 
 # Local Environment variables
 .env
+
+# Downloaded FHIR test cases
+test/Ignixa.FhirPath.Tests/TestData/

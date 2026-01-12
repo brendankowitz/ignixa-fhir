@@ -18,6 +18,7 @@ This feature provides FHIRPath expression evaluation capabilities used throughou
 | [Gap Analysis](investigations/gap-analysis.md) | Complete | 2025-11-18 | Analysis of FHIRPath implementation gaps and missing functionality |
 | [Visitor Pattern Evaluation](investigations/visitor-pattern-evaluation.md) | Complete | 2026-01-09 | Comparison of switch-based vs visitor pattern for FhirPath AST traversal |
 | [Performance vs Firely SDK](investigations/fhirpath-performance-analysis.md) | Complete | 2026-01-11 | Deep analysis proving 3,220x speedup over Firely through compiled delegates |
+| [Official Test Suite Integration](investigations/official-test-suite-integration.md) | In Progress | 2026-01-12 | Leveraging HL7's official FHIRPath test cases (1000+ tests) for specification compliance validation |
 
 ### Performance Comparison: Ignixa vs Firely
 
