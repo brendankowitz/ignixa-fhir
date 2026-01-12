@@ -452,9 +452,10 @@ export default function BenchmarkDashboard(): JSX.Element {
   function extractBaseName(displayInfo: string): string {
     // First extract clean name from BenchmarkDotNet format
     const cleanName = extractCleanName(displayInfo);
-    // Then remove implementation prefix
+    // Then remove any component prefix using generic pattern: "[component]:"
+    // Handles: "Ignixa:", "Firely:", "Hybrid:", etc.
     return cleanName
-      .replace(/^(Firely|Ignixa|Firely SDK):\s*/i, '')
+      .replace(/^[^:]+:\s*/, '')
       .trim();
   }
 
@@ -467,16 +468,20 @@ export default function BenchmarkDashboard(): JSX.Element {
   }
 
   function extractVariantLabel(displayInfo: string): string {
-    // Extract implementation + variant for chart legend
+    // Extract component + variant for chart legend
     // "Ignixa: Access array element (JsonNode direct)" -> "Ignixa (JsonNode direct)"
+    // "Hybrid: Simple FHIRPath (Firely parse + Ignixa eval)" -> "Hybrid (Firely parse + Ignixa eval)"
     const cleanName = extractCleanName(displayInfo);
-    const implMatch = cleanName.match(/^(Firely|Ignixa|Firely SDK):/i);
-    const impl = implMatch ? implMatch[1] : 'Other';
 
+    // Extract component prefix before colon
+    const componentMatch = cleanName.match(/^([^:]+):/);
+    const component = componentMatch ? componentMatch[1].trim() : 'Other';
+
+    // Extract variant in parentheses
     const variantMatch = cleanName.match(/\(([^)]+)\)/);
     const variant = variantMatch ? ` (${variantMatch[1]})` : '';
 
-    return `${impl}${variant}`;
+    return `${component}${variant}`;
   }
 
   function detectImplementationFromDisplayInfo(displayInfo: string): 'Ignixa' | 'Firely' | 'Other' {
