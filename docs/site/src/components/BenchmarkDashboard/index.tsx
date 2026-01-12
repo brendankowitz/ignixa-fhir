@@ -115,13 +115,18 @@ function formatMultiplier(value: number): string {
 }
 
 function parseTimestampFromTitle(title: string): Date {
-  const match = title.match(/(\d{8})/);
+  // Match YYYYMMDD-HHMMSS format in title
+  const match = title.match(/(\d{8})-(\d{6})/);
   if (match) {
     const dateStr = match[1];
+    const timeStr = match[2];
     const year = parseInt(dateStr.slice(0, 4), 10);
     const month = parseInt(dateStr.slice(4, 6), 10) - 1;
     const day = parseInt(dateStr.slice(6, 8), 10);
-    return new Date(year, month, day);
+    const hour = parseInt(timeStr.slice(0, 2), 10);
+    const minute = parseInt(timeStr.slice(2, 4), 10);
+    const second = parseInt(timeStr.slice(4, 6), 10);
+    return new Date(year, month, day, hour, minute, second);
   }
   return new Date();
 }
@@ -294,8 +299,10 @@ export default function BenchmarkDashboard(): JSX.Element {
       const chartDataMap = new Map<string, ChartDataPoint>();
 
       for (const b of benchmarks) {
+        // Use runId as the unique key to avoid merging different runs on the same day
+        const runKey = b.runId;
         const dateKey = formatDate(b.timestamp);
-        const existing = chartDataMap.get(dateKey) || {
+        const existing = chartDataMap.get(runKey) || {
           date: dateKey,
           timestamp: b.timestamp.getTime(),
           runId: b.runId,
@@ -312,7 +319,7 @@ export default function BenchmarkDashboard(): JSX.Element {
           existing.hybridAlloc = b.allocatedBytes;
         }
 
-        chartDataMap.set(dateKey, existing);
+        chartDataMap.set(runKey, existing);
       }
 
       const chartData = Array.from(chartDataMap.values()).sort(
