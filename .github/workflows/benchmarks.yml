@@ -9,6 +9,11 @@ on:
         description: 'Benchmark filter (e.g., *FhirPath* or leave empty for all)'
         required: false
         default: '*'
+      skip_commit:
+        description: 'Skip committing results (just upload artifacts)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write  # For committing benchmark results
@@ -118,8 +123,15 @@ jobs:
           fi
 
       - name: Commit benchmark results
-        # Only commit if not on main/master (protected branches)
-        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+        # Only commit if:
+        # 1. Not on main/master (protected branches)
+        # 2. User didn't request skip_commit
+        # 3. Not triggered by release (releases use artifacts)
+        if: |
+          github.ref != 'refs/heads/main' &&
+          github.ref != 'refs/heads/master' &&
+          github.event.inputs.skip_commit != 'true' &&
+          github.event_name != 'release'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -127,9 +139,16 @@ jobs:
           git commit -m "📊 Update benchmark results from run #${{ github.run_number }}" || echo "No changes to commit"
           git push
 
-      - name: Upload benchmark data (for protected branches)
-        # When on main/master, upload as artifact instead of committing
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      - name: Upload benchmark data (artifacts only mode)
+        # Upload as artifact when:
+        # 1. On main/master (protected branches), OR
+        # 2. User requested skip_commit, OR
+        # 3. Triggered by release
+        if: |
+          github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/master' ||
+          github.event.inputs.skip_commit == 'true' ||
+          github.event_name == 'release'
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-data-${{ github.run_number }}
