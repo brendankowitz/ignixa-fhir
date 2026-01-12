@@ -118,12 +118,23 @@ jobs:
           fi
 
       - name: Commit benchmark results
+        # Only commit if not on main/master (protected branches)
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/site/static/benchmarks/
           git commit -m "📊 Update benchmark results from run #${{ github.run_number }}" || echo "No changes to commit"
           git push
+
+      - name: Upload benchmark data (for protected branches)
+        # When on main/master, upload as artifact instead of committing
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-data-${{ github.run_number }}
+          path: docs/site/static/benchmarks/
+          retention-days: 90
 
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
