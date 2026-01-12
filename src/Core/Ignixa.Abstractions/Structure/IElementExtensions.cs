@@ -32,14 +32,7 @@ public static class IElementExtensions
     /// <returns>True if a child was found; otherwise false.</returns>
     public static bool TryGetFirstChild(this IElement element, string name, out IElement? child)
     {
-        ArgumentNullException.ThrowIfNull(element);
-        var children = element.Children(name);
-        if (children.Count > 0)
-        {
-            child = children[0];
-            return true;
-        }
-        child = null;
-        return false;
+        child = element.FirstChild(name);
+        return child is not null;
     }
 }
