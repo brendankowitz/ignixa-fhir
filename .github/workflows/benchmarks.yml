@@ -1,0 +1,79 @@
+name: Benchmarks
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      benchmark_filter:
+        description: 'Benchmark filter (e.g., *FhirPath* or leave empty for all)'
+        required: false
+        default: '*'
+
+permissions:
+  contents: write  # For committing benchmark results
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comparison
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore bench/Ignixa.Benchmarks/Ignixa.Benchmarks.csproj
+
+      - name: Run Benchmarks
+        run: |
+          cd bench/Ignixa.Benchmarks
+          dotnet run -c Release -- \
+            --filter ${{ github.event.inputs.benchmark_filter || '*' }} \
+            --exporters json \
+            --memory
+
+      - name: Prepare benchmark data for docs site
+        run: |
+          # Create benchmarks directory in docs site
+          mkdir -p docs/site/static/benchmarks
+
+          # Copy JSON results
+          cp bench/Ignixa.Benchmarks/BenchmarkDotNet.Artifacts/results/*.json \
+             docs/site/static/benchmarks/ || true
+
+          # Create metadata file
+          cat > docs/site/static/benchmarks/latest.json <<EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "run_number": "${{ github.run_number }}",
+            "workflow": "${{ github.workflow }}"
+          }
+          EOF
+
+      - name: Commit benchmark results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/site/static/benchmarks/
+          git commit -m "📊 Update benchmark results from run #${{ github.run_number }}" || echo "No changes to commit"
+          git push
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: |
+            bench/Ignixa.Benchmarks/BenchmarkDotNet.Artifacts/results/*.html
+            bench/Ignixa.Benchmarks/BenchmarkDotNet.Artifacts/results/*.md
+            bench/Ignixa.Benchmarks/BenchmarkDotNet.Artifacts/results/*.csv
+            bench/Ignixa.Benchmarks/BenchmarkDotNet.Artifacts/results/*.json
+          retention-days: 90
