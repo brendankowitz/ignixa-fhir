@@ -1,5 +1,5 @@
 {
-  "latestRun": "baseline-release-0.0.137-benchmarks-98f3a8a",
+  "latestRun": "dev-perf-test-pipeline-2ff690d7",
   "runs": [
     {
       "directory": "baseline-release-0.0.137-benchmarks-98f3a8a",
@@ -8,6 +8,13 @@
       "timestamp": "2026-01-12T02:10:19Z",
       "tag": "release/0.0.137",
       "description": "Baseline benchmarks from release 0.0.137"
+    },
+    {
+      "directory": "dev-perf-test-pipeline-2ff690d7",
+      "branch": "dev/perf-test-pipeline",
+      "commit": "2ff690d777dcb5b9682016b4903e902b26cb5579",
+      "timestamp": "2026-01-12T03:21:07Z",
+      "description": "Current dev/perf-test-pipeline performance improvements"
     }
   ]
 }
