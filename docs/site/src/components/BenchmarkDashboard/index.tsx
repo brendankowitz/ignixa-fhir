@@ -279,6 +279,12 @@ export default function BenchmarkDashboard(): JSX.Element {
       const timestamp = parseTimestampFromTitle(file.data.Title) || file.timestamp;
 
       for (const benchmark of file.data.Benchmarks) {
+        // Skip benchmarks with no statistics (failed runs)
+        if (!benchmark.Statistics || !benchmark.Statistics.Mean || benchmark.Statistics.Mean === 0) {
+          console.log(`Skipping benchmark with no data: ${benchmark.DisplayInfo}`);
+          continue;
+        }
+
         const category = CATEGORY_MAP[benchmark.Method] || 'Other';
         const implementation = detectImplementation(benchmark.Method, benchmark.DisplayInfo);
         const cleanName = extractCleanName(benchmark.DisplayInfo);
@@ -288,10 +294,10 @@ export default function BenchmarkDashboard(): JSX.Element {
           method: benchmark.Method,
           category,
           implementation,
-          meanNs: benchmark.Statistics?.Mean ?? 0,
-          meanUs: (benchmark.Statistics?.Mean ?? 0) / 1000,
-          meanMs: (benchmark.Statistics?.Mean ?? 0) / 1000000,
-          stdDev: benchmark.Statistics?.StandardDeviation ?? 0,
+          meanNs: benchmark.Statistics.Mean,
+          meanUs: benchmark.Statistics.Mean / 1000,
+          meanMs: benchmark.Statistics.Mean / 1000000,
+          stdDev: benchmark.Statistics.StandardDeviation ?? 0,
           allocatedBytes: benchmark.Memory?.BytesAllocatedPerOperation ?? 0,
           allocatedKb: (benchmark.Memory?.BytesAllocatedPerOperation ?? 0) / 1024,
           gen0: benchmark.Memory?.Gen0Collections ?? 0,
@@ -505,6 +511,11 @@ export default function BenchmarkDashboard(): JSX.Element {
       const runId = file.filename;
 
       file.data.Benchmarks.forEach((b) => {
+        // Skip benchmarks with no statistics (failed runs)
+        if (!b.Statistics || !b.Statistics.Mean || b.Statistics.Mean === 0) {
+          return;
+        }
+
         if (selectedSuite !== 'All' && b.Type !== selectedSuite) return;
 
         const operationName = extractOperationName(b.DisplayInfo);
@@ -534,8 +545,8 @@ export default function BenchmarkDashboard(): JSX.Element {
         }
 
         // Store value and stdDev under the variant label
-        (dataPoint as any)[variantLabel] = b.Statistics?.Mean ?? 0;
-        (dataPoint as any)[`${variantLabel}_stdDev`] = b.Statistics?.StandardDeviation ?? 0;
+        (dataPoint as any)[variantLabel] = b.Statistics.Mean;
+        (dataPoint as any)[`${variantLabel}_stdDev`] = b.Statistics.StandardDeviation ?? 0;
       });
     });
 
