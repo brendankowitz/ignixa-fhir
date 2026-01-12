@@ -1,6 +1,13 @@
 {
-  "timestamp": "2026-01-12T02:10:19Z",
-  "commit": "45baf649611b3b0403bbb9a53d3bd550c6c79a41",
-  "tag": "release/0.0.137",
-  "description": "Baseline benchmarks from release 0.0.137"
+  "latestRun": "baseline-release-0.0.137-benchmarks-98f3a8a",
+  "runs": [
+    {
+      "directory": "baseline-release-0.0.137-benchmarks-98f3a8a",
+      "branch": "baseline/release-0.0.137-benchmarks",
+      "commit": "98f3a8a8113d180b3a919f0c1a1108d56091476f",
+      "timestamp": "2026-01-12T02:10:19Z",
+      "tag": "release/0.0.137",
+      "description": "Baseline benchmarks from release 0.0.137"
+    }
+  ]
 }
