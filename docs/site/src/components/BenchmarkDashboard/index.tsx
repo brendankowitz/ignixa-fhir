@@ -667,7 +667,12 @@ export default function BenchmarkDashboard(): JSX.Element {
                 <LineChart data={cat.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
-                  <YAxis tickFormatter={getYAxisFormatter(maxValue)} />
+                  <YAxis
+                    scale="log"
+                    domain={['auto', 'auto']}
+                    tickFormatter={getYAxisFormatter(maxValue)}
+                    allowDataOverflow={false}
+                  />
                   <Tooltip content={<CustomTooltip showMemory={false} />} />
                   <Legend />
                   <Line
