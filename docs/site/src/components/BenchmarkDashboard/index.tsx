@@ -899,7 +899,12 @@ export default function BenchmarkDashboard(): JSX.Element {
                   <LineChart data={group.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
-                    <YAxis tickFormatter={(value) => formatNanoseconds(value)} />
+                    <YAxis
+                      scale="log"
+                      domain={['auto', 'auto']}
+                      tickFormatter={(value) => formatNanoseconds(value)}
+                      allowDataOverflow={false}
+                    />
                     <Tooltip content={<CustomTooltip showMemory={false} />} />
                     <Legend />
                     {variantsArray.map((variant, idx) => (
