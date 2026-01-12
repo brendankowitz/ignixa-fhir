@@ -182,6 +182,35 @@ public class FhirPathParserTests
     }
 
     [Fact]
+    public void GivenBacktickQuotedExternalConstant_WhenParsing_ThenReturnsVariableRefExpressionWithUnquotedName()
+    {
+        var expr = _parser.Parse("%`ext-patient-birthTime`");
+
+        Assert.IsType<VariableRefExpression>(expr);
+        var varRef = (VariableRefExpression)expr;
+        Assert.Equal("ext-patient-birthTime", varRef.Name);
+    }
+
+    [Fact]
+    public void GivenBacktickQuotedExternalConstantInComplexExpression_WhenParsing_ThenParsesCorrectly()
+    {
+        var expr = _parser.Parse("Patient.birthDate.extension(%`ext-patient-birthTime`).exists()");
+
+        Assert.IsType<FunctionCallExpression>(expr);
+        var exists = (FunctionCallExpression)expr;
+        Assert.Equal("exists", exists.FunctionName);
+
+        Assert.IsType<FunctionCallExpression>(exists.Focus);
+        var extension = (FunctionCallExpression)exists.Focus!;
+        Assert.Equal("extension", extension.FunctionName);
+
+        Assert.Single(extension.Arguments);
+        Assert.IsType<VariableRefExpression>(extension.Arguments[0]);
+        var varRef = (VariableRefExpression)extension.Arguments[0];
+        Assert.Equal("ext-patient-birthTime", varRef.Name);
+    }
+
+    [Fact]
     public void GivenEmptyCollection_WhenParsing_ThenReturnsEmptyExpression()
     {
         var expr = _parser.Parse("{}");

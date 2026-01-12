@@ -140,12 +140,6 @@ public class OfficialTestSuiteRunner
             return true;
         }
 
-        // Backtick-quoted variable names: %`ext-patient-birthTime`
-        if (testCase.Expression.Contains(@"%`", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
         // Unsupported escape sequences: \f (form feed), \u (unicode escapes)
         if (testCase.Expression.Contains(@"\f", StringComparison.Ordinal) ||
             testCase.Expression.Contains(@"\u", StringComparison.Ordinal))

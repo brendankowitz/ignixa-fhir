@@ -89,7 +89,15 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> ExternalConstant =
         Token.EqualTo(FhirPathTokenKind.ExternalConstant)
-            .Select(t => (ParseNode)new VariableRefParseNode(t.ToStringValue().Substring(1), Loc(t)));
+            .Select(t =>
+            {
+                var raw = t.ToStringValue().Substring(1); // Remove '%'
+                // Check if delimited with backticks and remove them
+                var varName = (raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`')
+                    ? raw.Substring(1, raw.Length - 2)
+                    : raw;
+                return (ParseNode)new VariableRefParseNode(varName, Loc(t));
+            });
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> ParenthesizedExpression =
         from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)

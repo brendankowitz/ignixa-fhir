@@ -132,12 +132,18 @@ public static class FhirPathGrammar
                 return new ScopeExpression(scopeName, CreatePosition(t));
             });
 
-    // External constant: %identifier
+    // External constant: %identifier or %`delimited-identifier`
     private static readonly TokenListParser<FhirPathTokenKind, Expression> ExternalConstant =
         Token.EqualTo(FhirPathTokenKind.ExternalConstant)
-            .Select(t => (Expression)new VariableRefExpression(
-                t.ToStringValue().Substring(1), // Remove '%'
-                CreatePosition(t)));
+            .Select(t =>
+            {
+                var raw = t.ToStringValue().Substring(1); // Remove '%'
+                // Check if delimited with backticks and remove them
+                var varName = (raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`')
+                    ? raw.Substring(1, raw.Length - 2)
+                    : raw;
+                return (Expression)new VariableRefExpression(varName, CreatePosition(t));
+            });
 
     // Parenthesized expression: (expression)
     private static readonly TokenListParser<FhirPathTokenKind, Expression> ParenthesizedExpression =

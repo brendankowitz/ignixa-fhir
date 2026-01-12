@@ -141,6 +141,26 @@ public class FhirPathTokenizerTests
     }
 
     [Fact]
+    public void GivenBacktickQuotedExternalConstant_WhenTokenizing_ThenProducesExternalConstantToken()
+    {
+        var tokens = Tokenize("%`ext-patient-birthTime`");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal("%`ext-patient-birthTime`", tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenBacktickQuotedExternalConstantWithDashes_WhenTokenizing_ThenProducesExternalConstantToken()
+    {
+        var tokens = Tokenize("%`some-dashed-name`");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal("%`some-dashed-name`", tokens[0].ToStringValue());
+    }
+
+    [Fact]
     public void GivenAxisThis_WhenTokenizing_ThenProducesAxisToken()
     {
         var tokens = Tokenize("$this");
