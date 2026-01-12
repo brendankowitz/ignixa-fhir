@@ -163,11 +163,38 @@ function CustomTooltip({ active, payload, label, showMemory }: CustomTooltipProp
   return (
     <div className={styles.tooltip}>
       <p className={styles.tooltipLabel}>{label}</p>
-      {payload.map((entry, index) => (
-        <p key={index} style={{ color: entry.color }} className={styles.tooltipEntry}>
-          {entry.name}: {showMemory ? formatBytes(entry.value as number) : formatNanoseconds(entry.value as number)}
-        </p>
-      ))}
+      {payload.map((entry, index) => {
+        const value = entry.value as number;
+        const dataPoint = entry.payload as ChartDataPoint;
+
+        // Get standard deviation based on the entry name
+        let stdDev: number | undefined;
+        if (entry.dataKey === 'ignixa') {
+          stdDev = dataPoint.ignixaStdDev;
+        } else if (entry.dataKey === 'firely') {
+          stdDev = dataPoint.firelyStdDev;
+        } else if (entry.dataKey === 'hybrid') {
+          stdDev = dataPoint.hybridStdDev;
+        } else if (entry.dataKey === 'ignixaAlloc') {
+          // For allocation metrics, we don't have stdDev
+          stdDev = undefined;
+        } else if (entry.dataKey === 'firelyAlloc') {
+          stdDev = undefined;
+        } else if (entry.dataKey === 'hybridAlloc') {
+          stdDev = undefined;
+        }
+
+        const formattedValue = showMemory ? formatBytes(value) : formatNanoseconds(value);
+        const formattedStdDev = stdDev !== undefined && !showMemory
+          ? ` ± ${formatNanoseconds(stdDev)}`
+          : '';
+
+        return (
+          <p key={index} style={{ color: entry.color }} className={styles.tooltipEntry}>
+            {entry.name}: {formattedValue}{formattedStdDev}
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -320,12 +347,15 @@ export default function BenchmarkDashboard(): JSX.Element {
 
         if (b.implementation === 'Ignixa') {
           existing.ignixa = b.meanNs;
+          existing.ignixaStdDev = b.stdDev;
           existing.ignixaAlloc = b.allocatedBytes;
         } else if (b.implementation === 'Firely') {
           existing.firely = b.meanNs;
+          existing.firelyStdDev = b.stdDev;
           existing.firelyAlloc = b.allocatedBytes;
         } else if (b.implementation === 'Hybrid') {
           existing.hybrid = b.meanNs;
+          existing.hybridStdDev = b.stdDev;
           existing.hybridAlloc = b.allocatedBytes;
         }
 

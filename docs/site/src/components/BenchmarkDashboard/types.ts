@@ -118,8 +118,13 @@ export interface ChartDataPoint {
   runId: string;
   ignixa?: number;
   firely?: number;
+  hybrid?: number;
+  ignixaStdDev?: number;
+  firelyStdDev?: number;
+  hybridStdDev?: number;
   ignixaAlloc?: number;
   firelyAlloc?: number;
+  hybridAlloc?: number;
 }
 
 export interface CategoryData {
