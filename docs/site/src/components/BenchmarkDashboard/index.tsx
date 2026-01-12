@@ -228,7 +228,6 @@ export default function BenchmarkDashboard(): JSX.Element {
           const benchmarkTypes = [
             'FhirPathBenchmarks',
             'NavigationBenchmarks',
-            'PostPutBenchmarks',
             'SerializationBenchmarks',
             'ValidationBenchmarks'
           ];
