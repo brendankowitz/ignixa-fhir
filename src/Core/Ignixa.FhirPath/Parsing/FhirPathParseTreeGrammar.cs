@@ -315,6 +315,14 @@ internal static class FhirPathParseTreeGrammar
                         sb.Append('"');
                         i += 2; // Skip both \ and "
                         break;
+                    case '`':
+                        sb.Append('`');
+                        i += 2; // Skip both \ and `
+                        break;
+                    case '/':
+                        sb.Append('/');
+                        i += 2; // Skip both \ and /
+                        break;
                     case '\\':
                         sb.Append('\\');
                         i += 2; // Skip both backslashes

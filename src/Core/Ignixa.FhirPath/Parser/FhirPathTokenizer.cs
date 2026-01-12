@@ -62,7 +62,7 @@ public static class FhirPathTokenizer
                        FhirPathTokenKind.DateLiteral, requireDelimiters: false)
 
                 // String literals (single-quoted, SQL-style '' or backslash escapes)
-                .Match(Span.Regex(@"'([^'\\]|''|\\['""\\rnft]|\\u[0-9a-fA-F]{4})*'"),
+                .Match(Span.Regex(@"'([^'\\]|''|\\['""\\rnft/`]|\\u[0-9a-fA-F]{4})*'"),
                        FhirPathTokenKind.StringLiteral)
 
                 // Delimited identifiers (backtick or legacy double-quote style)
@@ -158,7 +158,7 @@ public static class FhirPathTokenizer
                        FhirPathTokenKind.DateLiteral, requireDelimiters: false)
 
                 // String literals (single-quoted, SQL-style '' or backslash escapes)
-                .Match(Span.Regex(@"'([^'\\]|''|\\['""\\rnft]|\\u[0-9a-fA-F]{4})*'"),
+                .Match(Span.Regex(@"'([^'\\]|''|\\['""\\rnft/`]|\\u[0-9a-fA-F]{4})*'"),
                        FhirPathTokenKind.StringLiteral)
 
                 // Delimited identifiers (backtick or legacy double-quote style)
