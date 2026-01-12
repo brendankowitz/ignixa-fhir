@@ -63,6 +63,7 @@ jobs:
         run: |
           # Core libraries (src/Core/)
           dotnet pack src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Core/Ignixa.Analyzers/Ignixa.Analyzers.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}

@@ -33,7 +33,8 @@ public class ResourceConverter : JsonConverter<ResourceJsonNode>
         var type = jsonObject["resourceType"]?.GetValue<string>();
         if (type == Searchparameter)
         {
-            return jsonObject.Deserialize<SearchParameterJsonNode>(options);
+            // Directly construct SearchParameterJsonNode from JsonObject (not via Deserialize)
+            return new SearchParameterJsonNode(jsonObject);
         }
 
         // Directly construct ResourceJsonNode from the JsonObject to avoid infinite recursion

@@ -284,6 +284,44 @@ catch (InvalidOperationException ex)
 }
 ```
 
+## Analyzers
+
+**Ignixa.Analyzers** is automatically included with `Ignixa.Serialization` to prevent common misuse patterns at compile-time.
+
+### IGNIXA001: Incorrect Deserialization
+
+**Error**: Using `JsonSerializer.Deserialize<ResourceJsonNode>()` creates uninitialized objects.
+
+```csharp
+// ❌ Wrong - creates object with no children
+var patient = JsonSerializer.Deserialize<ResourceJsonNode>(json);
+var results = patient.Select("name").ToArray(); // Returns empty!
+
+// ✅ Correct - properly initialized
+var patient = ResourceJsonNode.Parse(json);
+var results = patient.Select("name").ToArray(); // Works correctly
+```
+
+**Why it matters**: `ResourceJsonNode` requires special initialization to set up internal navigation structures for FHIRPath evaluation. Standard JSON deserialization bypasses this initialization, causing all FHIRPath queries to return empty results.
+
+### IGNIXA002: Redundant Serialization
+
+**Warning**: `ResourceJsonNode` is already JSON-backed and doesn't need `JsonSerializer.Serialize()`.
+
+```csharp
+// ⚠ Redundant
+var output = JsonSerializer.Serialize(patient);
+
+// ✅ Use built-in methods
+var output = patient.ToJson();
+// or
+var output = patient.ToString();
+// or access underlying JSON
+var output = patient.MutableNode.ToJsonString();
+```
+
+The analyzer provides automatic code fixes for both issues.
+
 ## Related Documentation
 
 - [Abstractions](/docs/core-sdk/abstractions)

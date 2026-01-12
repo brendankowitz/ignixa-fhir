@@ -39,7 +39,8 @@ The Ignixa Core SDK is a collection of high-performance, reusable .NET libraries
 | Package | Depends On |
 |---------|------------|
 | **Abstractions** | *(foundation - no internal deps)* |
-| **Serialization** | Abstractions |
+| **Analyzers** | *(Roslyn analyzer - no runtime deps)* |
+| **Serialization** | Abstractions, Analyzers |
 | **FhirPath** | Abstractions |
 | **Specification** | Serialization, Abstractions |
 | **Search** | FhirPath, Specification, Serialization |
@@ -82,6 +83,7 @@ The Ignixa Core SDK is a collection of high-performance, reusable .NET libraries
 
 | Package | Description |
 |---------|-------------|
+| **Ignixa.Analyzers** | Roslyn analyzers for compile-time protection against common misuse patterns |
 | **Ignixa.FhirFakes** | Synthetic FHIR data generator with clinical scenarios |
 
 ### Interoperability

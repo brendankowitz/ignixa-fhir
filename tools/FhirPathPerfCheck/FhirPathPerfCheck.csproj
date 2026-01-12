@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hl7.Fhir.R4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj" />
+  </ItemGroup>
+
+</Project>
