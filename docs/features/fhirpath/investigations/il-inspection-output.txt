@@ -1,0 +1,53 @@
+FHIRPath IL Inspector
+====================
+
+Expression: name.family
+
+=== IGNIXA IMPLEMENTATION ===
+
+Result count: 0
+
+Cached Delegate Information:
+  Type: System.Func`3[[Ignixa.Abstractions.IElement, Ignixa.Abstractions, Version=0.0.140.0, Culture=neutral, PublicKeyToken=null],[Ignixa.FhirPath.Evaluation.EvaluationContext, Ignixa.FhirPath, Version=0.0.140.0, Culture=neutral, PublicKeyToken=null],[System.Collections.Generic.IEnumerable`1[[Ignixa.Abstractions.IElement, Ignixa.Abstractions, Version=0.0.140.0, Culture=neutral, PublicKeyToken=null]], System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+  Target: Ignixa.FhirPath.Evaluation.FhirPathDelegateCompiler+<>c__DisplayClass5_0
+  Method: <CompileChild>b__0
+  Declaring Type: Ignixa.FhirPath.Evaluation.FhirPathDelegateCompiler+<>c__DisplayClass5_0
+
+Method Body:
+  Max Stack Size: 4
+  Local Variables: 1
+    - Local 0: System.Func`2[Ignixa.Abstractions.IElement,System.Collections.Generic.IEnumerable`1[Ignixa.Abstractions.IElement]]
+  IL Size: 50 bytes
+
+Disassembled IL:
+    IL_0000: ldarg.0        
+    IL_0001: ldfld           Field(token:040001D2)
+    IL_0006: ldarg.1        
+    IL_0007: ldarg.2        
+    IL_0008: callvirt        Method(token:0A0001CD)
+    IL_000D: ldarg.0        
+    IL_000E: ldfld           Field(token:040001D4)
+    IL_0013: dup            
+    IL_0014: brtrue.s        22
+    IL_0016: pop            
+    IL_0017: ldarg.0        
+    IL_0018: ldarg.0        
+    IL_0019: ldftn           Method(token:06000592)
+    IL_001F: newobj          Method(token:0A00029D)
+    IL_0024: dup            
+    IL_0025: stloc.0        
+    IL_0026: stfld           Field(token:040001D4)
+    IL_002B: ldloc.0        
+    IL_002C: call            Method(token:2B000098)
+    IL_0031: ret            
+
+=== SUMMARY ===
+Ignixa uses cached Func<IElement, EvaluationContext, IEnumerable<IElement>> delegates
+- Compiled at parse time via pattern matching in FhirPathDelegateCompiler
+- Direct method calls, minimal indirection
+- Zero closures for simple paths like 'name.family'
+
+For comparison, Firely uses Invokee delegate chains:
+- Each operation is a nested delegate with Closure context
+- Dictionary-based variable lookup for each access
+- Multiple delegate invocations per operation

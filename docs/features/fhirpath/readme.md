@@ -17,6 +17,33 @@ This feature provides FHIRPath expression evaluation capabilities used throughou
 | [Performance Optimization](investigations/performance-optimization.md) | Complete | 2025-10-16 | Performance analysis and optimization strategies for FHIRPath evaluation |
 | [Gap Analysis](investigations/gap-analysis.md) | Complete | 2025-11-18 | Analysis of FHIRPath implementation gaps and missing functionality |
 | [Visitor Pattern Evaluation](investigations/visitor-pattern-evaluation.md) | Complete | 2026-01-09 | Comparison of switch-based vs visitor pattern for FhirPath AST traversal |
+| [Performance vs Firely SDK](investigations/fhirpath-performance-analysis.md) | Complete | 2026-01-11 | Deep analysis proving 3,220x speedup over Firely through compiled delegates |
+
+### Performance Comparison: Ignixa vs Firely
+
+A comprehensive investigation (Jan 2026) analyzed why Ignixa's FHIRPath implementation is dramatically faster than the Firely .NET SDK. Key findings:
+
+**Benchmark Results** (Expression: `name.family`):
+- **Mean Time**: 85.02 ns (Ignixa) vs 273,682 ns (Firely) = **3,220x faster**
+- **Allocations**: 728 B vs 97.18 KB = **136x less memory**
+- **Code Size**: 7,457 B vs 56,356 B native code = **7.5x smaller**
+
+**Architecture Differences**:
+- **Ignixa**: Pattern-based `Func<>` delegate compilation (92% coverage) with dual-level caching (AST + delegates)
+- **Firely**: Universal interpreter using `Invokee` delegate chains with Dictionary-based Closure context
+
+**Evidence** (with IL and assembly code proof):
+- [Performance Analysis](investigations/fhirpath-performance-analysis.md) - Architectural comparison
+- [IL Code Analysis](investigations/il-analysis.md) - IL disassembly proving compiled delegates
+- [Assembly Comparison](investigations/assembly-code-comparison.md) - Native x86-64 code analysis
+- [Full Disassembly](investigations/assembly-disassembly.md) - BenchmarkDotNet output (590 KB)
+
+**Key Optimizations**:
+1. Eliminates Closure allocations (struct-based context)
+2. Zero Dictionary lookups (direct field access)
+3. Cached delegates with lazy initialization
+4. Instruction cache locality (7.5x smaller code)
+5. Pattern-based compilation for common cases (92% of queries)
 
 ## Key Components
 
