@@ -125,13 +125,13 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine("{");
 
         // ISchema.Version property (explicit interface implementation)
-        sb.AppendLine($"    Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.{coreFhirVersion};");
+        // Note: FhirVersion enum uses "Stu3" not "STU3"
+        string fhirVersionEnumValue = coreFhirVersion == "STU3" ? "Stu3" : coreFhirVersion;
+        sb.AppendLine($"    Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.{fhirVersionEnumValue};");
         sb.AppendLine();
 
         // IFhirSchemaProvider.Version property (using FhirVersion)
-        // Note: FhirVersion enum uses "Stu3" not "STU3"
-        string fhirVersionValue = coreFhirVersion == "STU3" ? "Stu3" : coreFhirVersion;
-        sb.AppendLine($"    public FhirVersion Version => FhirVersion.{fhirVersionValue};");
+        sb.AppendLine($"    public FhirVersion Version => FhirVersion.{fhirVersionEnumValue};");
         sb.AppendLine();
 
         // FullVersion property
@@ -151,17 +151,51 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine("    };");
         sb.AppendLine();
 
-        // GetTypeDefinition method
+        // GetTypeDefinition method - handles case-insensitive BackboneElement type lookups
         sb.AppendLine("    public Ignixa.Abstractions.IType? GetTypeDefinition(string typeName)");
         sb.AppendLine("    {");
-        sb.AppendLine("        return _types.TryGetValue(typeName, out var type) ? type : null;");
+        sb.AppendLine("        if (_types.TryGetValue(typeName, out var type))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            return type;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        // Handle BackboneElement types with lowercase element names");
+        sb.AppendLine("        // FHIR invariants use lowercase (e.g., \"ElementDefinition.slicing\")");
+        sb.AppendLine("        // but schema registers TitleCase (e.g., \"ElementDefinition.Slicing\")");
+        sb.AppendLine("        if (typeName.Contains('.'))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var titleCased = ConvertToTitleCase(typeName);");
+        sb.AppendLine("            if (_types.TryGetValue(titleCased, out var titleCasedType))");
+        sb.AppendLine("            {");
+        sb.AppendLine("                return titleCasedType;");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        return null;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Converts a BackboneElement type path to TitleCase.");
+        sb.AppendLine("    /// E.g., \"ElementDefinition.slicing\" -> \"ElementDefinition.Slicing\"");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    private static string ConvertToTitleCase(string typeName)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var parts = typeName.Split('.');");
+        sb.AppendLine("        for (int i = 0; i < parts.Length; i++)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (parts[i].Length > 0)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                parts[i] = char.ToUpperInvariant(parts[i][0]) + parts[i].Substring(1);");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine("        return string.Join(\".\", parts);");
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // IsKnownType method
+        // IsKnownType method - uses GetTypeDefinition for consistent behavior
         sb.AppendLine("    public bool IsKnownType(string typeName)");
         sb.AppendLine("    {");
-        sb.AppendLine("        return _types.ContainsKey(typeName);");
+        sb.AppendLine("        return GetTypeDefinition(typeName) != null;");
         sb.AppendLine("    }");
         sb.AppendLine();
 
@@ -192,13 +226,20 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         foreach (var kvp in definitions.ComplexTypesByName)
         {
             allTypes.Add((kvp.Key, kvp.Value, false, null));
+
+            // Extract BackboneElement types from complex types (e.g., ElementDefinition.Slicing, Timing.Repeat)
+            var complexBackboneElements = ExtractBackboneElements(kvp.Value);
+            foreach (var (backboneName, backbonePath) in complexBackboneElements)
+            {
+                allTypes.Add((backboneName, kvp.Value, false, backbonePath));
+            }
         }
 
         foreach (var kvp in definitions.ResourcesByName)
         {
             allTypes.Add((kvp.Key, kvp.Value, true, null));
 
-            // Extract BackboneElement types
+            // Extract BackboneElement types from resources
             var backboneElements = ExtractBackboneElements(kvp.Value);
             foreach (var (backboneName, backbonePath) in backboneElements)
             {
@@ -272,13 +313,20 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         foreach (var kvp in definitions.ComplexTypesByName)
         {
             allTypes.Add((kvp.Key, kvp.Value, false, null));
+
+            // Extract BackboneElement types from complex types (e.g., ElementDefinition.Slicing, Timing.Repeat)
+            var complexBackboneElements = ExtractBackboneElements(kvp.Value);
+            foreach (var (backboneName, backbonePath) in complexBackboneElements)
+            {
+                allTypes.Add((backboneName, kvp.Value, false, backbonePath));
+            }
         }
 
         foreach (var kvp in definitions.ResourcesByName)
         {
             allTypes.Add((kvp.Key, kvp.Value, true, null));
 
-            // Extract BackboneElement types
+            // Extract BackboneElement types from resources
             var backboneElements = ExtractBackboneElements(kvp.Value);
             foreach (var (backboneName, backbonePath) in backboneElements)
             {
@@ -725,11 +773,19 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
     {
         var backboneElements = new List<(string TypeName, string ElementPath)>();
 
-        var allElements = sd.cgElements(topLevelOnly: false, includeRoot: false, skipSlices: true);
+        var allElements = sd.cgElements(topLevelOnly: false, includeRoot: false, skipSlices: true).ToList();
 
         foreach (var element in allElements)
         {
-            if (element.Type.Any(t => t.Code == "BackboneElement"))
+            // Check for explicit BackboneElement type (used in resources)
+            // OR Element type with children (used in complex types like ElementDefinition, Timing)
+            bool isBackbone = element.Type.Any(t => t.Code == "BackboneElement");
+            bool isElementWithChildren = !isBackbone &&
+                element.Type.Any(t => t.Code == "Element") &&
+                allElements.Any(e => e.Path.StartsWith(element.Path + ".", StringComparison.Ordinal) &&
+                                    e.Path.IndexOf('.', element.Path.Length + 1) == -1);
+
+            if (isBackbone || isElementWithChildren)
             {
                 string elementPath = element.Path;
                 int lastDotIndex = elementPath.LastIndexOf('.');

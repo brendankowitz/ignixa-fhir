@@ -162,4 +162,31 @@ internal sealed partial class SymbolTable
         return resultTypes;
     }
 #pragma warning restore CA1002
+
+    /// <summary>
+    /// Creates a return type delegate that resolves a type by name from the schema.
+    /// Falls back to a simple FhirPathType if schema is not available or type not found.
+    /// </summary>
+    /// <param name="typeName">The type name to resolve</param>
+    /// <returns>A return type delegate</returns>
+    public GetReturnTypeDelegate CreateSchemaAwareReturnType(string typeName)
+    {
+        return (def, focus, args, issues) =>
+        {
+            var isCollection = focus.IsCollection();
+
+            // Try to resolve the type from schema if available
+            if (_schema != null)
+            {
+                var typeDefinition = _schema.GetTypeDefinition(typeName);
+                if (typeDefinition != null)
+                {
+                    return new List<FhirPathType> { new FhirPathType(typeDefinition, isCollection) };
+                }
+            }
+
+            // Fallback to string-based type
+            return new List<FhirPathType> { new FhirPathType(typeName, isCollection) };
+        };
+    }
 }

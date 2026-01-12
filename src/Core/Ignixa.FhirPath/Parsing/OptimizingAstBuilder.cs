@@ -39,9 +39,22 @@ internal class OptimizingAstBuilder : AstBuilder
     public override Expression VisitBinary(BinaryParseNode node, AstBuildContext context)
     {
         var left = node.Left.Accept(this, context);
-        var right = node.Right.Accept(this, context);
-        var location = CreateLocation(node.Location);
+        Expression right;
         var op = node.Operator;
+
+        // For 'is' and 'as' binary operators, the right operand is a type specifier.
+        // Convert IdentifierParseNode to ConstantExpression with the type name as a string value.
+        // This allows the analyzer to handle type checking correctly.
+        if ((op == "is" || op == "as") && node.Right is IdentifierParseNode idNode)
+        {
+            right = new ConstantExpression(idNode.Name, CreateLocation(idNode.Location));
+        }
+        else
+        {
+            right = node.Right.Accept(this, context);
+        }
+
+        var location = CreateLocation(node.Location);
 
         var normalized = op.ToUpperInvariant();
 

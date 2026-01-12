@@ -316,6 +316,12 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return HandleTypeFilterFunction(expression, focusTypes, innerContext, result);
         }
 
+        // Handle is() as a function call (equivalent to binary "is" operator)
+        if (functionName.Equals("is", StringComparison.OrdinalIgnoreCase))
+        {
+            return HandleIsFunction(expression, focusTypes, innerContext, result);
+        }
+
         var argTypes = new List<FhirPathTypeSet>();
         foreach (var arg in expression.Arguments)
         {
@@ -649,6 +655,40 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
     }
 
+    /// <summary>
+    /// Handles the is() function call (equivalent to binary 'is' operator).
+    /// Returns boolean type and validates the type check.
+    /// </summary>
+    private FhirPathTypeSet HandleIsFunction(
+        FunctionCallExpression expression,
+        FhirPathTypeSet focusTypes,
+        AnalysisContext context,
+        FhirPathTypeSet result)
+    {
+        result.AddPrimitiveType("boolean");
+
+        if (expression.Arguments.Count == 0)
+        {
+            context.AddError("Function 'is' requires a type argument", expression);
+            return result;
+        }
+
+        var typeName = ExtractTypeName(expression.Arguments[0]);
+        if (typeName != null && !focusTypes.CanBeOfType(typeName))
+        {
+            context.AddWarning(
+                $"Type check 'is({typeName})' will always be false. Possible types: {focusTypes.TypeNames()}",
+                expression);
+        }
+
+        if (focusTypes.IsCollection())
+        {
+            context.AddWarning("Function 'is' applied to collection - only first item will be checked", expression);
+        }
+
+        return result;
+    }
+
     private void ValidateIsOperator(BinaryExpression expression, FhirPathTypeSet leftResult, AnalysisContext context)
     {
         if (expression.Right is ConstantExpression typeExpr)
@@ -761,6 +801,27 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         {
             foreach (var typeRef in extended.Types)
             {
+                // Check if this is a BackboneElement or Element (with children) that needs specialized type resolution
+                // BackboneElement is used for inline complex types in resources
+                // Element is used for inline complex types in complex types (like ElementDefinition.constraint)
+                if ((typeRef.Code.Equals("BackboneElement", StringComparison.OrdinalIgnoreCase) ||
+                     typeRef.Code.Equals("Element", StringComparison.OrdinalIgnoreCase)) && focusType.Type != null)
+                {
+                    var specializedTypeName = BuildBackboneElementTypeName(focusType, propertyName);
+
+                    if (!string.IsNullOrEmpty(specializedTypeName))
+                    {
+                        var specializedType = _schema.GetTypeDefinition(specializedTypeName);
+
+                        if (specializedType != null)
+                        {
+                            result.AddType(specializedType, isCollection, path);
+                            continue;
+                        }
+                    }
+                    // If specialized type not found, fall through to use the base type
+                }
+
                 var choiceType = _schema.GetTypeDefinition(typeRef.Code);
                 if (choiceType != null)
                 {
@@ -774,8 +835,90 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
+            // Check if this is a BackboneElement or Element that needs specialized type resolution
+            var childTypeName = child.Info.Name;
+            if (childTypeName != null &&
+                (childTypeName.Equals("BackboneElement", StringComparison.OrdinalIgnoreCase) ||
+                 childTypeName.Equals("Element", StringComparison.OrdinalIgnoreCase)) &&
+                focusType.Type != null)
+            {
+                var specializedTypeName = BuildBackboneElementTypeName(focusType, propertyName);
+
+                if (!string.IsNullOrEmpty(specializedTypeName))
+                {
+                    var specializedType = _schema.GetTypeDefinition(specializedTypeName);
+
+                    if (specializedType != null)
+                    {
+                        result.AddType(specializedType, isCollection, path);
+                        return;
+                    }
+                }
+                // If specialized type not found, fall through to use the base type
+            }
+
             result.AddType(child, isCollection, path);
         }
+    }
+
+    /// <summary>
+    /// Builds the specialized BackboneElement type name from the parent type and property name.
+    /// </summary>
+    /// <param name="parentType">The parent type containing the BackboneElement</param>
+    /// <param name="propertyName">The property name (will be converted to TitleCase)</param>
+    /// <returns>The specialized type name (e.g., "Bundle.Entry") or null if not applicable</returns>
+    private string? BuildBackboneElementTypeName(FhirPathType parentType, string propertyName)
+    {
+        if (parentType.Type == null)
+            return null;
+
+        var rootTypeName = GetRootTypeName(parentType);
+        var titleCasePropertyName = TitleCase(propertyName);
+
+        // For nested BackboneElements, append to existing path
+        if (parentType.TypeName.Contains('.', StringComparison.Ordinal))
+        {
+            // e.g., "Bundle.Entry" + "search" → "Bundle.Entry.Search"
+            return $"{parentType.TypeName}.{titleCasePropertyName}";
+        }
+        else
+        {
+            // e.g., "Bundle" + "entry" → "Bundle.Entry"
+            return $"{rootTypeName}.{titleCasePropertyName}";
+        }
+    }
+
+    /// <summary>
+    /// Gets the root type name from a FhirPathType (handles nested types).
+    /// </summary>
+    /// <param name="type">The FhirPath type</param>
+    /// <returns>The root type name (e.g., "Bundle" from "Bundle.Entry")</returns>
+    private static string GetRootTypeName(FhirPathType type)
+    {
+        if (type.Type == null)
+            return type.TypeName;
+
+        var typeName = type.TypeName;
+
+        // If already a nested type (e.g., "Bundle.Entry"), extract root
+        var dotIndex = typeName.IndexOf('.', StringComparison.Ordinal);
+        if (dotIndex > 0)
+            return typeName.Substring(0, dotIndex);
+
+        return typeName;
+    }
+
+    /// <summary>
+    /// Converts a property name to TitleCase for BackboneElement type name construction.
+    /// </summary>
+    /// <param name="propertyName">The property name in camelCase</param>
+    /// <returns>The property name in TitleCase (first letter uppercase)</returns>
+    private static string TitleCase(string propertyName)
+    {
+        if (string.IsNullOrEmpty(propertyName))
+            return propertyName;
+
+        return char.ToUpperInvariant(propertyName[0]) + propertyName.Substring(1);
     }
 
     private static string? ExtractTypeName(Expression expression)
