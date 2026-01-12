@@ -23,18 +23,25 @@ import type {
 import styles from './styles.module.css';
 
 interface LatestMetadata {
-  timestamp?: string;
-  commit?: string;
-  run_number?: string;
-  workflow?: string;
-  files: Array<string | {
-    filename: string;
-    timestamp: string;
-    runNumber: number;
-    commit: string;
+  latestRun: string;
+  runs: Array<{
+    directory: string;
     branch: string;
+    commit: string;
+    timestamp: string;
+    run_number?: string;
+    tag?: string;
+    description?: string;
   }>;
-  lastUpdated?: string;
+}
+
+interface RunMetadata {
+  timestamp: string;
+  commit: string;
+  branch: string;
+  run_number?: string;
+  tag?: string;
+  description?: string;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -161,37 +168,57 @@ export default function BenchmarkDashboard(): JSX.Element {
   useEffect(() => {
     async function loadBenchmarks() {
       try {
+        // Load latest.json to get all benchmark runs
         const metadataResponse = await fetch(`${baseUrl}benchmarks/latest.json`);
         if (!metadataResponse.ok) {
           throw new Error('Failed to load benchmark metadata');
         }
         const metadata: LatestMetadata = await metadataResponse.json();
 
-        const files: BenchmarkFile[] = await Promise.all(
-          metadata.files.map(async (fileInfo) => {
-            // Handle both string[] and object[] formats
-            const filename = typeof fileInfo === 'string' ? fileInfo : fileInfo.filename;
-            const fileTimestamp = typeof fileInfo === 'string'
-              ? metadata.timestamp || new Date().toISOString()
-              : fileInfo.timestamp;
+        // Load benchmark files from each run directory
+        const allFiles: BenchmarkFile[] = [];
 
-            const response = await fetch(`${baseUrl}benchmarks/${filename}`);
-            if (!response.ok) {
-              throw new Error(`Failed to load ${filename}`);
+        for (const run of metadata.runs) {
+          const runDir = run.directory;
+
+          // List of expected benchmark files
+          const benchmarkTypes = [
+            'FhirPathBenchmarks',
+            'NavigationBenchmarks',
+            'PostPutBenchmarks',
+            'SerializationBenchmarks',
+            'ValidationBenchmarks'
+          ];
+
+          for (const benchType of benchmarkTypes) {
+            const filename = `Ignixa.Benchmarks.${benchType}-report-full-compressed.json`;
+            const filePath = `${baseUrl}benchmarks/${runDir}/${filename}`;
+
+            try {
+              const response = await fetch(filePath);
+              if (!response.ok) {
+                // File might not exist for this run (e.g., ValidationBenchmarks failed in baseline)
+                console.log(`Skipping ${filePath}: ${response.status}`);
+                continue;
+              }
+
+              const data: BenchmarkRun = await response.json();
+              allFiles.push({
+                filename: `${runDir}/${filename}`,
+                timestamp: new Date(run.timestamp),
+                data,
+              });
+            } catch (err) {
+              console.log(`Failed to load ${filePath}:`, err);
+              // Continue with other files
             }
-            const data: BenchmarkRun = await response.json();
-            return {
-              filename,
-              timestamp: new Date(fileTimestamp),
-              data,
-            };
-          })
-        );
+          }
+        }
 
-        files.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        console.log('Loaded benchmark files:', files.length);
-        console.log('Sample benchmark:', files[0]?.data.Benchmarks[0]);
-        setBenchmarkFiles(files);
+        allFiles.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        console.log('Loaded benchmark files:', allFiles.length);
+        console.log('Sample benchmark:', allFiles[0]?.data.Benchmarks[0]);
+        setBenchmarkFiles(allFiles);
       } catch (err) {
         console.error('Error loading benchmarks:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');

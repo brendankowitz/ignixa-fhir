@@ -42,22 +42,80 @@ jobs:
 
       - name: Prepare benchmark data for docs site
         run: |
-          # Create benchmarks directory in docs site
-          mkdir -p docs/site/static/benchmarks
+          # Get branch name and sanitize for directory name
+          BRANCH_NAME="${{ github.ref_name }}"
+          BRANCH_SAFE=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
 
-          # Copy JSON results
+          # Get short commit hash
+          SHORT_HASH=$(echo "${{ github.sha }}" | cut -c1-7)
+
+          # Create directory structure: [branch]-[hash]
+          RUN_DIR="${BRANCH_SAFE}-${SHORT_HASH}"
+          BENCHMARK_DIR="docs/site/static/benchmarks/${RUN_DIR}"
+          mkdir -p "$BENCHMARK_DIR"
+
+          # Copy JSON results to versioned directory
           cp bench/Ignixa.Benchmarks/BenchmarkDotNet.Artifacts/results/*.json \
-             docs/site/static/benchmarks/ || true
+             "$BENCHMARK_DIR/" || true
 
-          # Create metadata file
-          cat > docs/site/static/benchmarks/latest.json <<EOF
+          # Create metadata file in run directory
+          cat > "${BENCHMARK_DIR}/metadata.json" <<EOF
           {
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
             "run_number": "${{ github.run_number }}",
             "workflow": "${{ github.workflow }}"
           }
           EOF
+
+          # Update latest.json to reference this run
+          LATEST_FILE="docs/site/static/benchmarks/latest.json"
+          if [ -f "$LATEST_FILE" ]; then
+            # Add new run to existing latest.json
+            TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            python3 << 'PYTHON_EOF'
+          import json
+          import sys
+
+          # Read existing latest.json
+          with open('docs/site/static/benchmarks/latest.json', 'r') as f:
+              data = json.load(f)
+
+          # Add new run
+          new_run = {
+              "directory": "$RUN_DIR",
+              "branch": "${{ github.ref_name }}",
+              "commit": "${{ github.sha }}",
+              "timestamp": "$TIMESTAMP",
+              "run_number": "${{ github.run_number }}"
+          }
+
+          # Update latest and prepend to runs list
+          data['latestRun'] = "$RUN_DIR"
+          data['runs'].insert(0, new_run)
+
+          # Write back
+          with open('docs/site/static/benchmarks/latest.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          PYTHON_EOF
+          else
+            # Create new latest.json
+            cat > "$LATEST_FILE" <<LATEST_EOF
+          {
+            "latestRun": "${RUN_DIR}",
+            "runs": [
+              {
+                "directory": "${RUN_DIR}",
+                "branch": "${{ github.ref_name }}",
+                "commit": "${{ github.sha }}",
+                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                "run_number": "${{ github.run_number }}"
+              }
+            ]
+          }
+          LATEST_EOF
+          fi
 
       - name: Commit benchmark results
         run: |
