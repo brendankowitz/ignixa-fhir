@@ -105,6 +105,17 @@ function formatDate(date: Date): string {
   });
 }
 
+function formatDateWithTime(date: Date): string {
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 function formatMultiplier(value: number): string {
   // For large multipliers (>=10x), round to whole number with thousand separators
   // For smaller multipliers (<10x), keep 1 decimal place
@@ -301,9 +312,8 @@ export default function BenchmarkDashboard(): JSX.Element {
       for (const b of benchmarks) {
         // Use runId as the unique key to avoid merging different runs on the same day
         const runKey = b.runId;
-        const dateKey = formatDate(b.timestamp);
         const existing = chartDataMap.get(runKey) || {
-          date: dateKey,
+          date: '', // Will be set after checking for duplicates
           timestamp: b.timestamp.getTime(),
           runId: b.runId,
         };
@@ -325,6 +335,20 @@ export default function BenchmarkDashboard(): JSX.Element {
       const chartData = Array.from(chartDataMap.values()).sort(
         (a, b) => a.timestamp - b.timestamp
       );
+
+      // Check if multiple runs are on the same day - if so, include time in labels
+      const dateCount = new Map<string, number>();
+      for (const point of chartData) {
+        const dateOnly = formatDate(new Date(point.timestamp));
+        dateCount.set(dateOnly, (dateCount.get(dateOnly) || 0) + 1);
+      }
+
+      // Set date labels - use time if there are duplicates on same day
+      for (const point of chartData) {
+        const date = new Date(point.timestamp);
+        const dateOnly = formatDate(date);
+        point.date = dateCount.get(dateOnly)! > 1 ? formatDateWithTime(date) : dateOnly;
+      }
 
       result.push({ name, benchmarks, chartData });
     }
