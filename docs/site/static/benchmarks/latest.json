@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-01-11T16:42:00Z",
+  "files": [
+    "Ignixa.Benchmarks.FhirPathBenchmarks-report-full-compressed.json",
+    "Ignixa.Benchmarks.NavigationBenchmarks-report-full-compressed.json",
+    "Ignixa.Benchmarks.SerializationBenchmarks-report-full-compressed.json",
+    "Ignixa.Benchmarks.ValidationBenchmarks-report-full-compressed.json"
+  ]
+}

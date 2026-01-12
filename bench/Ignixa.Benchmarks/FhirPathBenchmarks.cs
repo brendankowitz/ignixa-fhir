@@ -3,26 +3,19 @@ using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
-using Hl7.Fhir.Serialization;
 using Hl7.FhirPath;
-using Ignixa.Abstractions;
-using Ignixa.Application.Features.Search; // SDK 6.0 FHIRPath extension methods
-using Ignixa.Domain;
+using Ignixa.Application.Features.Search;
 using Ignixa.Specification;
-using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
-using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 // Ignixa FHIRPath extension methods
-using Microsoft.Extensions.Logging.Abstractions;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
 using IElement = Ignixa.Abstractions.IElement;
 
 // Static using for extension methods
-using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
-using SchemaAwareElementExtensions = Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
+using Ignixa.Extensions.FirelySdk;
 
 #pragma warning disable CS0618
 
@@ -41,6 +34,8 @@ public class FhirPathBenchmarks
     private IElement _ignixaObservationTyped = null!;
     private SdkITypedElement _firelyPatientTyped = null!;
     private SdkITypedElement _firelyObservationTyped = null!;
+    private IElement _hybridPatientTyped = null!;
+    private IElement _hybridObservationTyped = null!;
     private IFhirSchemaProvider _ignixaSchemaProvider = null!;
     private FhirVersionContext _versionContext = null!;
 
@@ -82,6 +77,11 @@ public class FhirPathBenchmarks
         _firelyPatientTyped = firelyPatientSource.ToTypedElement(ModelInfo.ModelInspector);
         _firelyObservationTyped = firelyObservationSource.ToTypedElement(ModelInfo.ModelInspector);
 
+        // Hybrid setup: Firely deserialization -> Ignixa IElement (via adapter) for FHIRPath evaluation
+        // Uses IgnixaElementAdapter to wrap Firely's ITypedElement as Ignixa's IElement
+        _hybridPatientTyped = new IgnixaElementAdapter(_firelyPatientTyped);
+        _hybridObservationTyped = new IgnixaElementAdapter(_firelyObservationTyped);
+
         WarmupCaches();
     }
 
@@ -98,6 +98,12 @@ public class FhirPathBenchmarks
         _ = _firelyPatientTyped.Select(ComplexExpression).ToArray();
         _ = _firelyObservationTyped.Select(SearchParamExpression).ToArray();
         _ = _firelyPatientTyped.Scalar(ScalarExpression);
+
+        _ = _hybridPatientTyped.Select(SimpleExpression).ToArray();
+        _ = _hybridPatientTyped.Select(ArrayExpression).ToArray();
+        _ = _hybridPatientTyped.Select(ComplexExpression).ToArray();
+        _ = _hybridObservationTyped.Select(SearchParamExpression).ToArray();
+        _ = _hybridPatientTyped.Scalar(ScalarExpression);
     }
 
     private static string ReadEmbeddedResource(Assembly assembly, string resourceName)
@@ -197,6 +203,43 @@ public class FhirPathBenchmarks
     public object? FirelyScalar()
     {
         return _firelyPatientTyped.Scalar(ScalarExpression);
+    }
+
+    // ========== HYBRID: Firely deserialization + Ignixa FHIRPath engine ==========
+
+    [Benchmark(Description = "Hybrid: Simple FHIRPath (Firely parse + Ignixa eval)")]
+    [BenchmarkCategory("Execution-Simple", "Hybrid")]
+    public IElement[] HybridSimple()
+    {
+        return _hybridPatientTyped.Select(SimpleExpression).ToArray();
+    }
+
+    [Benchmark(Description = "Hybrid: Array indexing (Firely parse + Ignixa eval)")]
+    [BenchmarkCategory("Execution-Array", "Hybrid")]
+    public IElement[] HybridArray()
+    {
+        return _hybridPatientTyped.Select(ArrayExpression).ToArray();
+    }
+
+    [Benchmark(Description = "Hybrid: Complex navigation (Firely parse + Ignixa eval)")]
+    [BenchmarkCategory("Execution-Complex", "Hybrid")]
+    public IElement[] HybridComplex()
+    {
+        return _hybridPatientTyped.Select(ComplexExpression).ToArray();
+    }
+
+    [Benchmark(Description = "Hybrid: Search parameter extraction (Firely parse + Ignixa eval)")]
+    [BenchmarkCategory("Execution-SearchParam", "Hybrid")]
+    public IElement[] HybridSearchParam()
+    {
+        return _hybridObservationTyped.Select(SearchParamExpression).ToArray();
+    }
+
+    [Benchmark(Description = "Hybrid: Scalar extraction (Firely parse + Ignixa eval)")]
+    [BenchmarkCategory("Execution-Scalar", "Hybrid")]
+    public object? HybridScalar()
+    {
+        return _hybridPatientTyped.Scalar(ScalarExpression);
     }
 
     [GlobalCleanup]

@@ -23,14 +23,18 @@ import type {
 import styles from './styles.module.css';
 
 interface LatestMetadata {
-  files: Array<{
+  timestamp?: string;
+  commit?: string;
+  run_number?: string;
+  workflow?: string;
+  files: Array<string | {
     filename: string;
     timestamp: string;
     runNumber: number;
     commit: string;
     branch: string;
   }>;
-  lastUpdated: string;
+  lastUpdated?: string;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -39,17 +43,35 @@ const CATEGORY_MAP: Record<string, string> = {
   FirelyCompile: 'Compilation',
   IgnixaSimple: 'Execution-Simple',
   FirelySimple: 'Execution-Simple',
+  HybridSimple: 'Execution-Simple',
   IgnixaArray: 'Execution-Array',
   FirelyArray: 'Execution-Array',
+  HybridArray: 'Execution-Array',
   IgnixaComplex: 'Execution-Complex',
   FirelyComplex: 'Execution-Complex',
+  HybridComplex: 'Execution-Complex',
   IgnixaSearchParam: 'Execution-SearchParam',
   FirelySearchParam: 'Execution-SearchParam',
+  HybridSearchParam: 'Execution-SearchParam',
   IgnixaScalar: 'Execution-Scalar',
   FirelyScalar: 'Execution-Scalar',
+  HybridScalar: 'Execution-Scalar',
 };
 
-function detectImplementation(method: string, displayInfo: string): 'Ignixa' | 'Firely' {
+const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  'Compilation': 'Parsing FHIRPath expressions and compiling them into executable form. Lower is better.',
+  'Execution-Simple': 'Basic property access like Patient.name.family. Tests simple navigation performance.',
+  'Execution-Array': 'Array indexing operations like Patient.name[0].given. Tests collection access patterns.',
+  'Execution-Complex': 'Complex navigation with where() and first() functions. Tests filtering and advanced queries.',
+  'Execution-SearchParam': 'Search parameter extraction from resources. Tests real-world FHIR search scenarios.',
+  'Execution-Scalar': 'Scalar value extraction like Patient.birthDate. Tests primitive value access.',
+  'Hybrid': 'Firely SDK parsing + Ignixa FHIRPath engine. Demonstrates drop-in FHIRPath performance improvement.',
+};
+
+function detectImplementation(method: string, displayInfo: string): 'Ignixa' | 'Firely' | 'Hybrid' {
+  if (method.startsWith('Hybrid') || displayInfo.toLowerCase().includes('hybrid')) {
+    return 'Hybrid';
+  }
   if (method.startsWith('Ignixa') || displayInfo.toLowerCase().includes('ignixa')) {
     return 'Ignixa';
   }
@@ -76,6 +98,15 @@ function formatDate(date: Date): string {
   });
 }
 
+function formatMultiplier(value: number): string {
+  // For large multipliers (>=10x), round to whole number with thousand separators
+  // For smaller multipliers (<10x), keep 1 decimal place
+  if (value >= 10) {
+    return `${Math.round(value).toLocaleString('en-US')}x`;
+  }
+  return `${value.toFixed(1)}x`;
+}
+
 function parseTimestampFromTitle(title: string): Date {
   const match = title.match(/(\d{8})/);
   if (match) {
@@ -86,6 +117,15 @@ function parseTimestampFromTitle(title: string): Date {
     return new Date(year, month, day);
   }
   return new Date();
+}
+
+function extractCleanName(displayInfo: string): string {
+  // Extract from BenchmarkDotNet format: "ClassName.'Display Name': .NET 9.0(...)"
+  const match = displayInfo.match(/'([^']+)'/);
+  if (match) {
+    return match[1];
+  }
+  return displayInfo;
 }
 
 interface CustomTooltipProps extends TooltipProps<number, string> {
@@ -114,7 +154,8 @@ export default function BenchmarkDashboard(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [showMemory, setShowMemory] = useState(false);
+  const [activeTab, setActiveTab] = useState<'fhirpath' | 'all'>('fhirpath');
+  const [selectedSuite, setSelectedSuite] = useState<string>('All');
   const baseUrl = useBaseUrl('/');
 
   useEffect(() => {
@@ -128,22 +169,31 @@ export default function BenchmarkDashboard(): JSX.Element {
 
         const files: BenchmarkFile[] = await Promise.all(
           metadata.files.map(async (fileInfo) => {
-            const response = await fetch(`${baseUrl}benchmarks/${fileInfo.filename}`);
+            // Handle both string[] and object[] formats
+            const filename = typeof fileInfo === 'string' ? fileInfo : fileInfo.filename;
+            const fileTimestamp = typeof fileInfo === 'string'
+              ? metadata.timestamp || new Date().toISOString()
+              : fileInfo.timestamp;
+
+            const response = await fetch(`${baseUrl}benchmarks/${filename}`);
             if (!response.ok) {
-              throw new Error(`Failed to load ${fileInfo.filename}`);
+              throw new Error(`Failed to load ${filename}`);
             }
             const data: BenchmarkRun = await response.json();
             return {
-              filename: fileInfo.filename,
-              timestamp: new Date(fileInfo.timestamp),
+              filename,
+              timestamp: new Date(fileTimestamp),
               data,
             };
           })
         );
 
         files.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        console.log('Loaded benchmark files:', files.length);
+        console.log('Sample benchmark:', files[0]?.data.Benchmarks[0]);
         setBenchmarkFiles(files);
       } catch (err) {
+        console.error('Error loading benchmarks:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
@@ -151,7 +201,7 @@ export default function BenchmarkDashboard(): JSX.Element {
     }
 
     loadBenchmarks();
-  }, []);
+  }, [baseUrl]);
 
   const processedData = useMemo(() => {
     const benchmarks: ProcessedBenchmark[] = [];
@@ -163,16 +213,17 @@ export default function BenchmarkDashboard(): JSX.Element {
       for (const benchmark of file.data.Benchmarks) {
         const category = CATEGORY_MAP[benchmark.Method] || 'Other';
         const implementation = detectImplementation(benchmark.Method, benchmark.DisplayInfo);
+        const cleanName = extractCleanName(benchmark.DisplayInfo);
 
         benchmarks.push({
-          name: benchmark.DisplayInfo,
+          name: cleanName,
           method: benchmark.Method,
           category,
           implementation,
-          meanNs: benchmark.Statistics.Mean,
-          meanUs: benchmark.Statistics.Mean / 1000,
-          meanMs: benchmark.Statistics.Mean / 1000000,
-          stdDev: benchmark.Statistics.StdDev,
+          meanNs: benchmark.Statistics?.Mean ?? 0,
+          meanUs: (benchmark.Statistics?.Mean ?? 0) / 1000,
+          meanMs: (benchmark.Statistics?.Mean ?? 0) / 1000000,
+          stdDev: benchmark.Statistics?.StandardDeviation ?? 0,
           allocatedBytes: benchmark.Memory?.BytesAllocatedPerOperation ?? 0,
           allocatedKb: (benchmark.Memory?.BytesAllocatedPerOperation ?? 0) / 1024,
           gen0: benchmark.Memory?.Gen0Collections ?? 0,
@@ -185,6 +236,8 @@ export default function BenchmarkDashboard(): JSX.Element {
       }
     }
 
+    console.log('Processed benchmarks:', benchmarks.length);
+    console.log('Sample processed:', benchmarks[0]);
     return benchmarks;
   }, [benchmarkFiles]);
 
@@ -224,9 +277,12 @@ export default function BenchmarkDashboard(): JSX.Element {
         if (b.implementation === 'Ignixa') {
           existing.ignixa = b.meanNs;
           existing.ignixaAlloc = b.allocatedBytes;
-        } else {
+        } else if (b.implementation === 'Firely') {
           existing.firely = b.meanNs;
           existing.firelyAlloc = b.allocatedBytes;
+        } else if (b.implementation === 'Hybrid') {
+          existing.hybrid = b.meanNs;
+          existing.hybridAlloc = b.allocatedBytes;
         }
 
         chartDataMap.set(dateKey, existing);
@@ -243,15 +299,24 @@ export default function BenchmarkDashboard(): JSX.Element {
   }, [processedData, selectedCategory]);
 
   const latestComparison = useMemo(() => {
-    if (benchmarkFiles.length === 0) return [];
+    if (benchmarkFiles.length === 0) {
+      console.log('No benchmark files for comparison');
+      return [];
+    }
 
-    const latestFile = benchmarkFiles[benchmarkFiles.length - 1];
+    // Use FhirPath benchmarks for the summary (it has Ignixa vs Firely comparisons)
+    const latestFile = benchmarkFiles.find(f => f.filename.includes('FhirPathBenchmarks'))
+      || benchmarkFiles[benchmarkFiles.length - 1];
+    console.log('Latest file for comparison:', latestFile.filename);
+
     const comparisons: Array<{
       category: string;
       ignixaMethod: string;
       firelyMethod: string;
+      hybridMethod?: string;
       ignixaTime: number;
       firelyTime: number;
+      hybridTime?: number;
       speedup: number;
       ignixaAlloc: number;
       firelyAlloc: number;
@@ -259,23 +324,33 @@ export default function BenchmarkDashboard(): JSX.Element {
     }> = [];
 
     const byCategory = new Map<string, ProcessedBenchmark[]>();
-    for (const b of processedData.filter((b) => b.runId === latestFile.filename)) {
+    const latestBenchmarks = processedData.filter((b) => b.runId === latestFile.filename);
+    console.log('Latest benchmarks for comparison:', latestBenchmarks.length);
+
+    for (const b of latestBenchmarks) {
       const existing = byCategory.get(b.category) || [];
       existing.push(b);
       byCategory.set(b.category, existing);
     }
 
+    console.log('Categories for comparison:', Array.from(byCategory.keys()));
+
     for (const [category, benchmarks] of byCategory) {
       const ignixa = benchmarks.find((b) => b.implementation === 'Ignixa');
       const firely = benchmarks.find((b) => b.implementation === 'Firely');
+      const hybrid = benchmarks.find((b) => b.implementation === 'Hybrid');
+
+      console.log(`Category ${category}: Ignixa=${!!ignixa}, Firely=${!!firely}, Hybrid=${!!hybrid}`);
 
       if (ignixa && firely) {
         comparisons.push({
           category,
           ignixaMethod: ignixa.method,
           firelyMethod: firely.method,
+          hybridMethod: hybrid?.method,
           ignixaTime: ignixa.meanNs,
           firelyTime: firely.meanNs,
+          hybridTime: hybrid?.meanNs,
           speedup: firely.meanNs / ignixa.meanNs,
           ignixaAlloc: ignixa.allocatedBytes,
           firelyAlloc: firely.allocatedBytes,
@@ -284,8 +359,117 @@ export default function BenchmarkDashboard(): JSX.Element {
       }
     }
 
+    console.log('Comparisons generated:', comparisons.length, comparisons);
     return comparisons.sort((a, b) => b.speedup - a.speedup);
   }, [processedData, benchmarkFiles]);
+
+  function extractBaseName(displayInfo: string): string {
+    // First extract clean name from BenchmarkDotNet format
+    const cleanName = extractCleanName(displayInfo);
+    // Then remove implementation prefix
+    return cleanName
+      .replace(/^(Firely|Ignixa|Firely SDK):\s*/i, '')
+      .trim();
+  }
+
+  function extractOperationName(displayInfo: string): string {
+    // Extract the operation name before the parentheses
+    // "Ignixa: Access array element (JsonNode direct)" -> "Access array element"
+    const baseName = extractBaseName(displayInfo);
+    const match = baseName.match(/^([^(]+)/);
+    return match ? match[1].trim() : baseName;
+  }
+
+  function extractVariantLabel(displayInfo: string): string {
+    // Extract implementation + variant for chart legend
+    // "Ignixa: Access array element (JsonNode direct)" -> "Ignixa (JsonNode direct)"
+    const cleanName = extractCleanName(displayInfo);
+    const implMatch = cleanName.match(/^(Firely|Ignixa|Firely SDK):/i);
+    const impl = implMatch ? implMatch[1] : 'Other';
+
+    const variantMatch = cleanName.match(/\(([^)]+)\)/);
+    const variant = variantMatch ? ` (${variantMatch[1]})` : '';
+
+    return `${impl}${variant}`;
+  }
+
+  function detectImplementationFromDisplayInfo(displayInfo: string): 'Ignixa' | 'Firely' | 'Other' {
+    // First extract clean name from BenchmarkDotNet format
+    const cleanName = extractCleanName(displayInfo);
+    if (/^Ignixa:/i.test(cleanName)) return 'Ignixa';
+    if (/^(Firely|Firely SDK):/i.test(cleanName)) return 'Firely';
+    return 'Other';
+  }
+
+  const allBenchmarksGrouped = useMemo(() => {
+    const groups: Record<string, {
+      operationName: string;
+      suite: string;
+      chartData: ChartDataPoint[];
+      variants: Set<string>;
+    }> = {};
+
+    benchmarkFiles.forEach((file) => {
+      const timestamp = file.timestamp;
+      const runId = file.filename;
+
+      file.data.Benchmarks.forEach((b) => {
+        if (selectedSuite !== 'All' && b.Type !== selectedSuite) return;
+
+        const operationName = extractOperationName(b.DisplayInfo);
+        const variantLabel = extractVariantLabel(b.DisplayInfo);
+        const suite = b.Type;
+        const key = `${suite}::${operationName}`;
+
+        if (!groups[key]) {
+          groups[key] = {
+            operationName,
+            suite,
+            chartData: [],
+            variants: new Set(),
+          };
+        }
+
+        groups[key].variants.add(variantLabel);
+
+        let dataPoint = groups[key].chartData.find((d) => d.runId === runId);
+        if (!dataPoint) {
+          dataPoint = {
+            date: formatDate(timestamp),
+            timestamp: timestamp.getTime(),
+            runId,
+          };
+          groups[key].chartData.push(dataPoint);
+        }
+
+        // Store value under the variant label instead of just impl
+        (dataPoint as any)[variantLabel] = b.Statistics?.Mean ?? 0;
+      });
+    });
+
+    Object.values(groups).forEach((group) => {
+      group.chartData.sort((a, b) => a.timestamp - b.timestamp);
+    });
+
+    return Object.values(groups);
+  }, [benchmarkFiles, selectedSuite]);
+
+  const allBenchmarksSuites = useMemo(() => {
+    if (benchmarkFiles.length === 0) return ['All'];
+
+    const suites = new Set<string>();
+
+    benchmarkFiles.forEach((file) => {
+      file.data.Benchmarks.forEach((b) => {
+        if (b.Type) {
+          suites.add(b.Type);
+        }
+      });
+    });
+
+    return ['All', ...Array.from(suites).sort()];
+  }, [benchmarkFiles]);
+
 
   if (loading) {
     return (
@@ -321,13 +505,30 @@ export default function BenchmarkDashboard(): JSX.Element {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>FHIRPath Performance Dashboard</h1>
+        <h1>Performance Dashboard</h1>
         <p className={styles.subtitle}>
-          Comparing Ignixa vs Firely SDK performance across {benchmarkFiles.length} benchmark runs
+          Benchmark results from {benchmarkFiles.length} suite{benchmarkFiles.length !== 1 ? 's' : ''}
         </p>
       </header>
 
-      <section className={styles.controls}>
+      <div className={styles.tabContainer}>
+        <button
+          className={activeTab === 'fhirpath' ? styles.tabActive : styles.tab}
+          onClick={() => setActiveTab('fhirpath')}
+        >
+          FhirPath Performance
+        </button>
+        <button
+          className={activeTab === 'all' ? styles.tabActive : styles.tab}
+          onClick={() => setActiveTab('all')}
+        >
+          All Benchmarks
+        </button>
+      </div>
+
+      {activeTab === 'fhirpath' && (
+        <>
+          <section className={styles.controls}>
         <div className={styles.filterGroup}>
           <label htmlFor="category-select">Category:</label>
           <select
@@ -343,16 +544,6 @@ export default function BenchmarkDashboard(): JSX.Element {
             ))}
           </select>
         </div>
-        <div className={styles.toggleGroup}>
-          <label className={styles.toggle}>
-            <input
-              type="checkbox"
-              checked={showMemory}
-              onChange={(e) => setShowMemory(e.target.checked)}
-            />
-            <span>Show Memory Allocation</span>
-          </label>
-        </div>
       </section>
 
       <section className={styles.summarySection}>
@@ -362,7 +553,7 @@ export default function BenchmarkDashboard(): JSX.Element {
             <div key={comp.category} className={styles.comparisonCard}>
               <h3>{comp.category}</h3>
               <div className={styles.speedupBadge}>
-                <span className={styles.speedupValue}>{comp.speedup.toFixed(1)}x</span>
+                <span className={styles.speedupValue}>{formatMultiplier(comp.speedup)}</span>
                 <span className={styles.speedupLabel}>faster</span>
               </div>
               <div className={styles.comparisonDetails}>
@@ -392,42 +583,67 @@ export default function BenchmarkDashboard(): JSX.Element {
 
       <section className={styles.chartsSection}>
         <h2>Performance Trends</h2>
-        {categoryData.map((cat) => (
-          <div key={cat.name} className={styles.chartContainer}>
-            <h3>{cat.name}</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={cat.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis
-                  tickFormatter={(value) =>
-                    showMemory ? formatBytes(value) : formatNanoseconds(value)
-                  }
-                />
-                <Tooltip content={<CustomTooltip showMemory={showMemory} />} />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey={showMemory ? 'ignixaAlloc' : 'ignixa'}
-                  stroke="#2196F3"
-                  strokeWidth={2}
-                  name="Ignixa"
-                  dot={{ fill: '#2196F3', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey={showMemory ? 'firelyAlloc' : 'firely'}
-                  stroke="#FF5722"
-                  strokeWidth={2}
-                  name="Firely"
-                  dot={{ fill: '#FF5722', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        ))}
+        {categoryData.filter(cat => cat.name !== 'Other').map((cat) => {
+          // Find max value to determine appropriate unit
+          const maxValue = Math.max(
+            ...cat.chartData.flatMap(d => [d.ignixa || 0, d.firely || 0, d.hybrid || 0])
+          );
+          const getYAxisFormatter = (max: number) => {
+            if (max >= 1000000) {
+              return (value: number) => `${(value / 1000000).toFixed(2)} ms`;
+            } else if (max >= 1000) {
+              return (value: number) => `${(value / 1000).toFixed(2)} μs`;
+            }
+            return (value: number) => `${value.toFixed(2)} ns`;
+          };
+
+          return (
+            <div key={cat.name} className={styles.chartContainer}>
+              <h3>{cat.name}</h3>
+              {CATEGORY_DESCRIPTIONS[cat.name] && (
+                <p className={styles.categoryDescription}>
+                  {CATEGORY_DESCRIPTIONS[cat.name]}
+                </p>
+              )}
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={cat.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis tickFormatter={getYAxisFormatter(maxValue)} />
+                  <Tooltip content={<CustomTooltip showMemory={false} />} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="ignixa"
+                    stroke="#2196F3"
+                    strokeWidth={2}
+                    name="Ignixa"
+                    dot={{ fill: '#2196F3', r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="firely"
+                    stroke="#FF5722"
+                    strokeWidth={2}
+                    name="Firely"
+                    dot={{ fill: '#FF5722', r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="hybrid"
+                    stroke="#9C27B0"
+                    strokeWidth={2}
+                    name="Hybrid"
+                    dot={{ fill: '#9C27B0', r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          );
+        })}
       </section>
 
       <section className={styles.comparisonSection}>
@@ -443,24 +659,27 @@ export default function BenchmarkDashboard(): JSX.Element {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   type="number"
-                  tickFormatter={(value) =>
-                    showMemory ? formatBytes(value) : formatNanoseconds(value)
-                  }
+                  scale="log"
+                  domain={['auto', 'auto']}
+                  tickFormatter={(value) => formatNanoseconds(value)}
                 />
                 <YAxis type="category" dataKey="category" width={110} />
                 <Tooltip
-                  formatter={(value: number) =>
-                    showMemory ? formatBytes(value) : formatNanoseconds(value)
-                  }
+                  formatter={(value: number) => formatNanoseconds(value)}
                 />
                 <Legend />
                 <Bar
-                  dataKey={showMemory ? 'ignixaAlloc' : 'ignixaTime'}
+                  dataKey="ignixaTime"
                   fill="#2196F3"
                   name="Ignixa"
                 />
                 <Bar
-                  dataKey={showMemory ? 'firelyAlloc' : 'firelyTime'}
+                  dataKey="hybridTime"
+                  fill="#9C27B0"
+                  name="Hybrid"
+                />
+                <Bar
+                  dataKey="firelyTime"
                   fill="#FF5722"
                   name="Firely"
                 />
@@ -487,7 +706,12 @@ export default function BenchmarkDashboard(): JSX.Element {
             </thead>
             <tbody>
               {processedData
-                .filter((b) => b.runId === benchmarkFiles[benchmarkFiles.length - 1]?.filename)
+                .filter((b) => {
+                  // Use same file as comparison summary (FhirPath benchmarks)
+                  const latestFile = benchmarkFiles.find(f => f.filename.includes('FhirPathBenchmarks'))
+                    || benchmarkFiles[benchmarkFiles.length - 1];
+                  return b.runId === latestFile?.filename;
+                })
                 .sort((a, b) => {
                   const catCompare = a.category.localeCompare(b.category);
                   if (catCompare !== 0) return catCompare;
@@ -522,13 +746,154 @@ export default function BenchmarkDashboard(): JSX.Element {
         <p>
           Last updated:{' '}
           {benchmarkFiles.length > 0
-            ? formatDate(benchmarkFiles[benchmarkFiles.length - 1].timestamp)
+            ? formatDate(new Date(Math.max(...benchmarkFiles.map(f => f.timestamp.getTime()))))
             : 'N/A'}
         </p>
         <p>
-          Data from {benchmarkFiles.length} benchmark run{benchmarkFiles.length !== 1 ? 's' : ''}
+          Data from {benchmarkFiles.length} benchmark suite{benchmarkFiles.length !== 1 ? 's' : ''} •{' '}
+          <a href="https://github.com/brendankowitz/ignixa-fhir/tree/main/bench/Ignixa.Benchmarks" target="_blank" rel="noopener noreferrer">
+            View benchmark source code
+          </a>
         </p>
       </footer>
+        </>
+      )}
+
+      {activeTab === 'all' && (
+        <>
+          <section className={styles.controls}>
+            <div className={styles.filterGroup}>
+              <label htmlFor="suite-select"><strong>Suite:</strong></label>
+              <select
+                id="suite-select"
+                value={selectedSuite}
+                onChange={(e) => setSelectedSuite(e.target.value)}
+                className={styles.select}
+              >
+                {allBenchmarksSuites.map((suite) => (
+                  <option key={suite} value={suite}>
+                    {suite}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
+
+          {allBenchmarksGrouped.length === 0 && (
+            <section className={styles.empty}>
+              <p>No benchmarks found for the selected suite.</p>
+            </section>
+          )}
+
+          {allBenchmarksGrouped.map((group) => {
+            // Define colors for different variants
+            const variantColors = [
+              '#2196F3', // Blue (Ignixa)
+              '#FF5722', // Orange-red (Firely)
+              '#4CAF50', // Green
+              '#9C27B0', // Purple
+              '#FF9800', // Orange
+              '#00BCD4', // Cyan
+              '#E91E63', // Pink
+              '#795548', // Brown
+            ];
+            const variantsArray = Array.from(group.variants);
+
+            return (
+              <div key={`${group.suite}::${group.operationName}`} className={styles.chartSection}>
+                <h3>{group.operationName}</h3>
+                <p className={styles.chartSubtitle}>{group.suite}</p>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={group.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis tickFormatter={(value) => formatNanoseconds(value)} />
+                    <Tooltip content={<CustomTooltip showMemory={false} />} />
+                    <Legend />
+                    {variantsArray.map((variant, idx) => (
+                      group.chartData.some((d) => (d as any)[variant] !== undefined) && (
+                        <Line
+                          key={variant}
+                          type="monotone"
+                          dataKey={variant}
+                          stroke={variantColors[idx % variantColors.length]}
+                          name={variant}
+                          strokeWidth={2}
+                          dot={{ r: 4 }}
+                        />
+                      )
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })}
+
+          <section className={styles.detailsSection}>
+            <h2>Detailed Results</h2>
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Suite</th>
+                    <th>Benchmark</th>
+                    <th>Mean Time</th>
+                    <th>Std Dev</th>
+                    <th>Memory</th>
+                    <th>Gen0</th>
+                    <th>Rank</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {benchmarkFiles.flatMap(file =>
+                    file.data.Benchmarks
+                      .filter(b => selectedSuite === 'All' || b.Type === selectedSuite)
+                      .map((b, idx) => {
+                        const impl = detectImplementationFromDisplayInfo(b.DisplayInfo);
+                        const cleanName = extractCleanName(b.DisplayInfo);
+                        return (
+                          <tr
+                            key={`${file.filename}-${b.Method}-${idx}`}
+                            className={impl === 'Ignixa' ? styles.ignixaRow : impl === 'Firely' ? styles.firelyRow : ''}
+                          >
+                            <td>{b.Type}</td>
+                            <td>
+                              <span className={styles.benchmarkName}>{cleanName}</span>
+                            </td>
+                            <td>{formatNanoseconds(b.Statistics?.Mean ?? 0)}</td>
+                            <td>{formatNanoseconds(b.Statistics?.StandardDeviation ?? 0)}</td>
+                            <td>{formatBytes(b.Memory?.BytesAllocatedPerOperation ?? 0)}</td>
+                            <td>{(b.Memory?.Gen0Collections ?? 0).toFixed(4)}</td>
+                            <td>
+                              <span className={b.Rank === 1 ? styles.rankFirst : styles.rank}>
+                                #{b.Rank ?? '-'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer className={styles.footer}>
+            <p>
+              Last updated:{' '}
+              {benchmarkFiles.length > 0
+                ? formatDate(new Date(Math.max(...benchmarkFiles.map(f => f.timestamp.getTime()))))
+                : 'N/A'}
+            </p>
+            <p>
+              Data from {benchmarkFiles.length} benchmark suite{benchmarkFiles.length !== 1 ? 's' : ''} •{' '}
+              <a href="https://github.com/brendankowitz/ignixa-fhir/tree/main/bench/Ignixa.Benchmarks" target="_blank" rel="noopener noreferrer">
+                View benchmark source code
+              </a>
+            </p>
+          </footer>
+        </>
+      )}
     </div>
   );
 }

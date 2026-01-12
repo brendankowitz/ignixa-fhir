@@ -113,6 +113,10 @@ const config = {
                 label: 'Core SDK',
                 to: '/docs/core-sdk/overview',
               },
+              {
+                label: 'Performance Benchmarks',
+                to: '/benchmarks-dashboard',
+              },
             ],
           },
           {
