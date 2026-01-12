@@ -1,13 +1,13 @@
 {
-  "latestRun": "dev-perf-test-pipeline-69adafd",
+  "latestRun": "dev-perf-test-pipeline-2ff690d7",
   "runs": [
     {
-      "directory": "dev-perf-test-pipeline-69adafd",
-      "branch": "dev/perf-test-pipeline",
-      "commit": "69adafd979ec401ce545eab16d24eefbab2636b0",
-      "timestamp": "2026-01-12T04:14:13Z",
-      "run_number": "4",
-      "description": "Latest dev/perf-test-pipeline with logarithmic charts"
+      "directory": "baseline-release-0.0.137-benchmarks-98f3a8a",
+      "branch": "baseline/release-0.0.137-benchmarks",
+      "commit": "2315352a80179651ee0eb3f2f3776447ea8c7290",
+      "timestamp": "2026-01-09T17:18:21Z",
+      "tag": "release/0.0.137",
+      "description": "Baseline benchmarks from release 0.0.137"
     },
     {
       "directory": "dev-perf-test-pipeline-2ff690d7",
@@ -15,14 +15,6 @@
       "commit": "2ff690d777dcb5b9682016b4903e902b26cb5579",
       "timestamp": "2026-01-12T03:21:07Z",
       "description": "Current dev/perf-test-pipeline performance improvements"
-    },
-    {
-      "directory": "baseline-release-0.0.137-benchmarks-98f3a8a",
-      "branch": "baseline/release-0.0.137-benchmarks",
-      "commit": "98f3a8a8113d180b3a919f0c1a1108d56091476f",
-      "timestamp": "2026-01-12T02:10:19Z",
-      "tag": "release/0.0.137",
-      "description": "Baseline benchmarks from release 0.0.137"
     }
   ]
 }

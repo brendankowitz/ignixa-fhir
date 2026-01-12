@@ -1,7 +1,0 @@
-{
-  "timestamp": "2026-01-12T04:14:13Z",
-  "commit": "69adafd979ec401ce545eab16d24eefbab2636b0",
-  "branch": "dev/perf-test-pipeline",
-  "run_number": "4",
-  "workflow": "Benchmarks"
-}
