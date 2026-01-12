@@ -83,7 +83,7 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Simple")]
     public string? IgnixaSimpleTypedElement()
     {
-        return _ignixaTypedElement.Children("status")?[0].Value?.ToString();
+        return _ignixaTypedElement.FirstChild("status")?.Value?.ToString();
     }
 
     [Benchmark(Description = "Firely: Access simple property (POCO)")]
@@ -114,9 +114,9 @@ public class NavigationBenchmarks
     public string? IgnixaNestedTypedElement()
     {
         return _ignixaTypedElement
-            .Children("code")?[0]
-            .Children("coding")?[0]
-            .Children("code")?[0]
+            .FirstChild("code")?
+            .FirstChild("coding")?
+            .FirstChild("code")?
             .Value?.ToString();
     }
 
@@ -153,9 +153,9 @@ public class NavigationBenchmarks
     public string? IgnixaArrayTypedElement()
     {
         return _ignixaTypedElement
-            .Children("component")?[0]
-            .Children("valueQuantity")?[0]
-            .Children("value")?[0]
+            .FirstChild("component")?
+            .FirstChild("valueQuantity")?
+            .FirstChild("value")?
             .Value?.ToString();
     }
 

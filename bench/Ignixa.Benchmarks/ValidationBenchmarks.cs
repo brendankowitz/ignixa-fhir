@@ -22,8 +22,8 @@ namespace Ignixa.Benchmarks;
 [MarkdownExporter]
 public class ValidationBenchmarks
 {
-    private ISourceNavigator _patientSourceNode = null!;
-    private ISourceNavigator _observationSourceNode = null!;
+    private IElement _patientElement = null!;
+    private IElement _observationElement = null!;
     private ValidationSchema _patientSchema = null!;
     private ValidationSchema _observationSchema = null!;
     private ValidationSettings _fastSettings = null!;
@@ -60,7 +60,7 @@ public class ValidationBenchmarks
                 ""country"": ""USA""
             }]
         }")!;
-        _patientSourceNode = JsonNodeSourceNode.Create(patientJson);
+        var patientSourceNode = JsonNodeSourceNode.Create(patientJson);
 
         // Observation with typical complexity
         var observationJson = JsonNode.Parse(@"{
@@ -101,10 +101,16 @@ public class ValidationBenchmarks
                 }
             }]
         }")!;
-        _observationSourceNode = JsonNodeSourceNode.Create(observationJson);
+        var observationSourceNode = JsonNodeSourceNode.Create(observationJson);
+
+        // Setup schema provider
+        var schemaProvider = new R4CoreSchemaProvider();
+
+        // Convert ISourceNavigator to IElement with schema awareness
+        _patientElement = patientSourceNode.ToElement(schemaProvider);
+        _observationElement = observationSourceNode.ToElement(schemaProvider);
 
         // Setup schema resolver with caching
-        var schemaProvider = new R4CoreSchemaProvider();
         var innerResolver = new StructureDefinitionSchemaResolver(schemaProvider);
         var schemaResolver = new CachedValidationSchemaResolver(innerResolver);
 
@@ -119,24 +125,24 @@ public class ValidationBenchmarks
     [Benchmark(Baseline = true, Description = "Ignixa: Validate Patient (Fast tier)")]
     public ValidationResult ValidatePatientFast()
     {
-        return _patientSchema.Validate((IElement)_patientSourceNode, _fastSettings, _state);
+        return _patientSchema.Validate(_patientElement, _fastSettings, _state);
     }
 
     [Benchmark(Description = "Ignixa: Validate Patient (Spec tier)")]
     public ValidationResult ValidatePatientSpec()
     {
-        return _patientSchema.Validate((IElement)_patientSourceNode, _specSettings, _state);
+        return _patientSchema.Validate(_patientElement, _specSettings, _state);
     }
 
     [Benchmark(Description = "Ignixa: Validate Observation (Fast tier)")]
     public ValidationResult ValidateObservationFast()
     {
-        return _observationSchema.Validate((IElement)_observationSourceNode, _fastSettings, _state);
+        return _observationSchema.Validate(_observationElement, _fastSettings, _state);
     }
 
     [Benchmark(Description = "Ignixa: Validate Observation (Spec tier)")]
     public ValidationResult ValidateObservationSpec()
     {
-        return _observationSchema.Validate((IElement)_observationSourceNode, _specSettings, _state);
+        return _observationSchema.Validate(_observationElement, _specSettings, _state);
     }
 }
