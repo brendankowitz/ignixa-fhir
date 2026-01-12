@@ -231,10 +231,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "<" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: false, orEqual: false)),
             "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: false, orEqual: true)),
 
-            "and" => FunctionHelpers.ReturnBoolean(FunctionHelpers.IsTrue(left) && FunctionHelpers.IsTrue(right)),
-            "or" => FunctionHelpers.ReturnBoolean(FunctionHelpers.IsTrue(left) || FunctionHelpers.IsTrue(right)),
-            "xor" => FunctionHelpers.ReturnBoolean(FunctionHelpers.IsTrue(left) ^ FunctionHelpers.IsTrue(right)),
-            "implies" => FunctionHelpers.ReturnBoolean(!FunctionHelpers.IsTrue(left) || FunctionHelpers.IsTrue(right)),
+            "and" => EvaluateAnd(left, right),
+            "or" => EvaluateOr(left, right),
+            "xor" => EvaluateXor(left, right),
+            "implies" => EvaluateImplies(left, right),
 
             _ => throw new NotSupportedException($"Binary operator '{expression.Operator}' is not yet implemented")
         };
@@ -244,6 +244,106 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     private IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
     {
         return FunctionHelpers.EvaluateUnion(left, right);
+    }
+
+    /// <summary>
+    /// Evaluates the AND operator with FHIRPath three-valued logic.
+    /// Returns false if either is false, empty if either is empty and neither is false, otherwise true.
+    /// </summary>
+    private IEnumerable<IElement> EvaluateAnd(List<IElement> left, List<IElement> right)
+    {
+        var leftBool = GetBooleanValue(left);
+        var rightBool = GetBooleanValue(right);
+
+        // false AND anything = false
+        if (leftBool == false || rightBool == false)
+            return FunctionHelpers.ReturnBoolean(false);
+
+        // If either is empty (null), result is empty
+        if (leftBool == null || rightBool == null)
+            return [];
+
+        // Both are true
+        return FunctionHelpers.ReturnBoolean(true);
+    }
+
+    /// <summary>
+    /// Evaluates the OR operator with FHIRPath three-valued logic.
+    /// Returns true if either is true, empty if either is empty and neither is true, otherwise false.
+    /// </summary>
+    private IEnumerable<IElement> EvaluateOr(List<IElement> left, List<IElement> right)
+    {
+        var leftBool = GetBooleanValue(left);
+        var rightBool = GetBooleanValue(right);
+
+        // true OR anything = true
+        if (leftBool == true || rightBool == true)
+            return FunctionHelpers.ReturnBoolean(true);
+
+        // If either is empty (null), result is empty
+        if (leftBool == null || rightBool == null)
+            return [];
+
+        // Both are false
+        return FunctionHelpers.ReturnBoolean(false);
+    }
+
+    /// <summary>
+    /// Evaluates the XOR operator with FHIRPath three-valued logic.
+    /// Returns empty if either is empty, otherwise true if exactly one is true.
+    /// </summary>
+    private IEnumerable<IElement> EvaluateXor(List<IElement> left, List<IElement> right)
+    {
+        var leftBool = GetBooleanValue(left);
+        var rightBool = GetBooleanValue(right);
+
+        // If either is empty, result is empty
+        if (leftBool == null || rightBool == null)
+            return [];
+
+        // XOR: true if exactly one is true
+        return FunctionHelpers.ReturnBoolean(leftBool.Value ^ rightBool.Value);
+    }
+
+    /// <summary>
+    /// Evaluates the IMPLIES operator with FHIRPath three-valued logic.
+    /// Returns true if left is false or right is true, empty if cannot determine, otherwise false.
+    /// </summary>
+    private IEnumerable<IElement> EvaluateImplies(List<IElement> left, List<IElement> right)
+    {
+        var leftBool = GetBooleanValue(left);
+        var rightBool = GetBooleanValue(right);
+
+        // false IMPLIES anything = true
+        if (leftBool == false)
+            return FunctionHelpers.ReturnBoolean(true);
+
+        // anything IMPLIES true = true
+        if (rightBool == true)
+            return FunctionHelpers.ReturnBoolean(true);
+
+        // true IMPLIES false = false
+        if (leftBool == true && rightBool == false)
+            return FunctionHelpers.ReturnBoolean(false);
+
+        // Otherwise empty (cannot determine)
+        return [];
+    }
+
+    /// <summary>
+    /// Converts a collection to a boolean value (true/false/null for empty).
+    /// Per FHIRPath spec, a collection with a single boolean element returns that boolean.
+    /// An empty collection returns null. Multiple elements or non-boolean returns null.
+    /// </summary>
+    private static bool? GetBooleanValue(List<IElement> elements)
+    {
+        if (elements.Count == 0)
+            return null;
+
+        if (elements.Count == 1 && elements[0].Value is bool b)
+            return b;
+
+        return null;
     }
 
     private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)

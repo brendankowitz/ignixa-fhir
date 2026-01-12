@@ -9,6 +9,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
+using Ignixa.FhirPath.Types;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
@@ -111,6 +112,11 @@ internal static class TypeConversionFunctions
         if (value == null)
             return [];
 
+        // Handle boolean: lowercase "true" or "false" per FHIRPath spec
+        if (value is bool b)
+            return [FunctionHelpers.CreateString(b ? "true" : "false")];
+
+        // All other types use their standard ToString()
         return [FunctionHelpers.CreateString(value.ToString()!)];
     }
 
@@ -136,6 +142,9 @@ internal static class TypeConversionFunctions
 
         if (value is int i && (i == 0 || i == 1))
             return [FunctionHelpers.CreateBoolean(i == 1)];
+
+        if (value is decimal d && (d == 0 || d == 1))
+            return [FunctionHelpers.CreateBoolean(d == 1)];
 
         if (value is string s)
         {
@@ -342,8 +351,86 @@ internal static class TypeConversionFunctions
         if (list.Count != 1)
             return [];
 
-        // Simplified implementation - just pass through for now
-        return list;
+        var value = list[0].Value;
+
+        // If already a quantity, return it
+        if (value is Quantity)
+            return list;
+
+        // Try to parse from string
+        if (value is string s)
+        {
+            var parsed = TryParseQuantity(s);
+            if (parsed != null)
+                return [new QuantityElement(parsed)];
+        }
+
+        // Convert numeric to dimensionless quantity with unit "1"
+        if (value is int i)
+            return [new QuantityElement(new Quantity(i, "1"))];
+
+        if (value is decimal d)
+            return [new QuantityElement(new Quantity(d, "1"))];
+
+        return [];
+    }
+
+    /// <summary>
+    /// Parses a quantity string like "5 mg" or "100 'kg'" into a Quantity.
+    /// </summary>
+    private static Quantity? TryParseQuantity(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        var trimmed = input.Trim();
+
+        // Split on first space to get value and unit
+        var spaceIndex = trimmed.IndexOf(' ', StringComparison.Ordinal);
+        if (spaceIndex < 0)
+        {
+            // No space - might be just a number (dimensionless)
+            if (decimal.TryParse(trimmed, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                return new Quantity(val, "1");
+            return null;
+        }
+
+        var valueStr = trimmed.Substring(0, spaceIndex);
+        var unitStr = trimmed.Substring(spaceIndex + 1).Trim();
+
+        if (!decimal.TryParse(valueStr, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value))
+            return null;
+
+        // Remove quotes from unit if present (e.g., '1 'mg'' -> 'mg')
+        if (unitStr.StartsWith('\'') && unitStr.EndsWith('\'') && unitStr.Length > 1)
+            unitStr = unitStr.Substring(1, unitStr.Length - 2);
+
+        // Validate unit is not empty
+        if (string.IsNullOrWhiteSpace(unitStr))
+            return null;
+
+        return new Quantity(value, unitStr);
+    }
+
+    /// <summary>
+    /// IElement implementation for Quantity values.
+    /// </summary>
+    private class QuantityElement : IElement
+    {
+        private readonly Quantity _quantity;
+
+        public QuantityElement(Quantity quantity)
+        {
+            _quantity = quantity ?? throw new ArgumentNullException(nameof(quantity));
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType => "Quantity";
+        public object Value => _quantity;
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion
