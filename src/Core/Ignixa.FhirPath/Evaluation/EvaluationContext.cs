@@ -6,6 +6,7 @@
  */
 
 using System.Collections.Immutable;
+using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -66,7 +67,8 @@ public record EvaluationContext
         ImmutableStack<IElement> indexStack,
         ImmutableDictionary<string, ImmutableList<IElement>> environment,
         IElement? resource,
-        IElement? rootResource)
+        IElement? rootResource,
+        ConcurrentDictionary<string, ImmutableList<IElement>>? definedVariables = null)
     {
         Focus = focus;
         ThisStack = thisStack;
@@ -74,6 +76,7 @@ public record EvaluationContext
         Environment = environment;
         Resource = resource;
         RootResource = rootResource;
+        DefinedVariables = definedVariables ?? new ConcurrentDictionary<string, ImmutableList<IElement>>(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -84,6 +87,7 @@ public record EvaluationContext
         ImmutableStack<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
         ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase),
+        null,
         null,
         null)
     {
@@ -122,6 +126,12 @@ public record EvaluationContext
     /// The data represented by %rootResource variable.
     /// </summary>
     public IElement? RootResource { get; init; }
+
+    /// <summary>
+    /// Mutable dictionary for user-defined variables created by defineVariable().
+    /// This is shared across immutable context copies to allow defineVariable side effects.
+    /// </summary>
+    public ConcurrentDictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
 
     /// <summary>
     /// Creates a new context with the specified focus.
@@ -245,6 +255,7 @@ public record EvaluationContext
     /// <summary>
     /// Gets an environment variable value.
     /// Returns the single element if collection has one item, otherwise returns the list.
+    /// Checks user-defined variables first (from defineVariable), then environment variables.
     /// </summary>
     public object? GetEnvironmentVariable(string name)
     {
@@ -257,6 +268,11 @@ public record EvaluationContext
         {
             var idx = GetIndex();
             return idx.HasValue ? new IndexElement(idx.Value) : null;
+        }
+
+        if (DefinedVariables.TryGetValue(name, out var definedValue))
+        {
+            return definedValue.Count == 1 ? definedValue[0] : definedValue;
         }
 
         if (Environment.TryGetValue(name, out var value))

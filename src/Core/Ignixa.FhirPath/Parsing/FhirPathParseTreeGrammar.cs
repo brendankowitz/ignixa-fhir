@@ -289,12 +289,87 @@ internal static class FhirPathParseTreeGrammar
 
     private static string UnescapeString(string str)
     {
-        if (str.StartsWith('\'') && str.EndsWith('\''))
+        // Remove quotes if present
+        if (str.StartsWith('\'') && str.EndsWith('\'') && str.Length >= 2)
         {
             str = str.Substring(1, str.Length - 2);
-            str = str.Replace("''", "'", StringComparison.Ordinal);
         }
-        return str;
+
+        // Handle SQL-style escaping first (for backward compatibility)
+        str = str.Replace("''", "'", StringComparison.Ordinal);
+
+        // Handle backslash escapes
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < str.Length; )
+        {
+            if (str[i] == '\\' && i + 1 < str.Length)
+            {
+                char next = str[i + 1];
+                switch (next)
+                {
+                    case '\'':
+                        sb.Append('\'');
+                        i += 2; // Skip both \ and '
+                        break;
+                    case '"':
+                        sb.Append('"');
+                        i += 2; // Skip both \ and "
+                        break;
+                    case '\\':
+                        sb.Append('\\');
+                        i += 2; // Skip both backslashes
+                        break;
+                    case 'r':
+                        sb.Append('\r');
+                        i += 2; // Skip \ and r
+                        break;
+                    case 'n':
+                        sb.Append('\n');
+                        i += 2; // Skip \ and n
+                        break;
+                    case 't':
+                        sb.Append('\t');
+                        i += 2; // Skip \ and t
+                        break;
+                    case 'f':
+                        sb.Append('\f');
+                        i += 2; // Skip \ and f
+                        break;
+                    case 'u':
+                        if (i + 5 < str.Length)
+                        {
+                            var hex = str.Substring(i + 2, 4);
+                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int codePoint))
+                            {
+                                sb.Append(char.ConvertFromUtf32(codePoint));
+                                i += 6; // Skip \, u, and 4 hex digits
+                            }
+                            else
+                            {
+                                sb.Append(str[i]); // Invalid hex, keep backslash
+                                i++;
+                            }
+                        }
+                        else
+                        {
+                            sb.Append(str[i]); // Incomplete escape, keep backslash
+                            i++;
+                        }
+                        break;
+                    default:
+                        sb.Append(str[i]); // Unknown escape, keep backslash
+                        i++;
+                        break;
+                }
+            }
+            else
+            {
+                sb.Append(str[i]);
+                i++;
+            }
+        }
+
+        return sb.ToString();
     }
 
     private static string UnescapeIdentifier(string id)

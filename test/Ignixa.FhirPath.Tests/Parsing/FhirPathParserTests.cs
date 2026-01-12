@@ -110,6 +110,120 @@ public class FhirPathParserTests
 
     #endregion
 
+    #region String Escape Sequence Tests
+
+    [Fact]
+    public void GivenStringWithBackslashEscapedQuote_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'O\'Reilly'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("O'Reilly", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithBackslashEscapedBackslash_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'C:\\path\\file'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal(@"C:\path\file", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithNewline_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'line1\nline2'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("line1\nline2", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithCarriageReturn_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'line1\r\nline2'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("line1\r\nline2", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithTab_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'col1\tcol2'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("col1\tcol2", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithFormFeed_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'page1\fpage2'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("page1\fpage2", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithUnicodeEscape_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'Hello\u0020World'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("Hello World", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithUnicodeEscapeNonAscii_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'\u00A9 2025'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("© 2025", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithSqlStyleEscape_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse("'O''Reilly'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("O'Reilly", constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenStringWithMultipleEscapes_WhenParsed_ThenUnescapedCorrectly()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse(@"'Path: C:\\data\tValue: \""test\""\nEnd'");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal("Path: C:\\data\tValue: \"test\"\nEnd", constExpr.Value);
+    }
+
+    #endregion
+
     #region OfType Function Tests
 
     [Fact]

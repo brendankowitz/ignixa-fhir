@@ -133,20 +133,6 @@ public class OfficialTestSuiteRunner
             }
         }
 
-        // Parser syntax limitations (not missing functions, but parsing features)
-        // Escaped quotes in string/quantity literals: '1 \'wk\''
-        if (testCase.Expression.Contains(@"\'", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        // Unsupported escape sequences: \f (form feed), \u (unicode escapes)
-        if (testCase.Expression.Contains(@"\f", StringComparison.Ordinal) ||
-            testCase.Expression.Contains(@"\u", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
         return false;
     }
 

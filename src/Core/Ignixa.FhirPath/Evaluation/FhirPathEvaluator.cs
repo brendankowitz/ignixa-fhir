@@ -6,6 +6,7 @@
  * Uses immutable EvaluationContext for pure functional evaluation.
  */
 
+using System.Collections.Immutable;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
@@ -88,7 +89,49 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
 
+        if (expression.FunctionName.Equals("defineVariable", StringComparison.OrdinalIgnoreCase))
+        {
+            return EvaluateDefineVariable(expression, focusElements, context);
+        }
+
         return DispatchFunctionCall(expression.FunctionName, focusElements, expression.Arguments, context);
+    }
+
+    /// <summary>
+    /// Evaluates defineVariable() function - defines a variable that can be referenced later.
+    /// Per FHIRPath 2.0 spec, the variable is available for the remainder of the expression.
+    /// Uses a mutable dictionary in the context to allow side effects while keeping context immutable.
+    /// </summary>
+    private IEnumerable<IElement> EvaluateDefineVariable(FunctionCallExpression expression, IEnumerable<IElement> focus, EvaluationContext context)
+    {
+        if (expression.Arguments.Count != 2)
+        {
+            throw new InvalidOperationException("defineVariable requires exactly 2 arguments: variable name and value expression");
+        }
+
+        var nameExpr = expression.Arguments[0];
+        string? variableName = null;
+
+        if (nameExpr is ConstantExpression constExpr && constExpr.Value is string str)
+        {
+            variableName = str;
+        }
+        else if (nameExpr is IdentifierExpression idExpr)
+        {
+            variableName = idExpr.Name;
+        }
+
+        if (string.IsNullOrEmpty(variableName))
+        {
+            throw new InvalidOperationException("defineVariable requires a string literal or identifier as the first argument");
+        }
+
+        var valueExpr = expression.Arguments[1];
+        var value = EvaluateExpression(focus, valueExpr, context).ToImmutableList();
+
+        context.DefinedVariables[variableName] = value;
+
+        return focus;
     }
 
     public IEnumerable<IElement> VisitPropertyAccess(PropertyAccessExpression expression, EvaluationContext context)

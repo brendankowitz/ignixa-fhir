@@ -61,8 +61,9 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex(@"@[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?"),
                        FhirPathTokenKind.DateLiteral, requireDelimiters: false)
 
-                // String literals (single-quoted, SQL-style escaping: '' for ')
-                .Match(QuotedString.SqlStyle, FhirPathTokenKind.StringLiteral)
+                // String literals (single-quoted, SQL-style '' or backslash escapes)
+                .Match(Span.Regex(@"'([^'\\]|''|\\['""\\rnft]|\\u[0-9a-fA-F]{4})*'"),
+                       FhirPathTokenKind.StringLiteral)
 
                 // Delimited identifiers (backtick or legacy double-quote style)
                 .Match(Span.Regex("`[^`]*`"),
@@ -152,8 +153,9 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex(@"@[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?"),
                        FhirPathTokenKind.DateLiteral, requireDelimiters: false)
 
-                // String literals (single-quoted, SQL-style escaping: '' for ')
-                .Match(QuotedString.SqlStyle, FhirPathTokenKind.StringLiteral)
+                // String literals (single-quoted, SQL-style '' or backslash escapes)
+                .Match(Span.Regex(@"'([^'\\]|''|\\['""\\rnft]|\\u[0-9a-fA-F]{4})*'"),
+                       FhirPathTokenKind.StringLiteral)
 
                 // Delimited identifiers (backtick or legacy double-quote style)
                 .Match(Span.Regex("`[^`]*`"),
