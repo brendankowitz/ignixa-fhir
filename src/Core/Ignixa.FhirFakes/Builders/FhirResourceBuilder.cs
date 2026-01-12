@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;

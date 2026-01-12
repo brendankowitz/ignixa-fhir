@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 using System.CommandLine;
 using System.Text.Json;
 using Ignixa.FhirFakes.Cli.Discovery;

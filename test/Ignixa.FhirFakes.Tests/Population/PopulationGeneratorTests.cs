@@ -8,6 +8,7 @@ using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Serialization.Models;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;

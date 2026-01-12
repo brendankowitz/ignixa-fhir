@@ -5,7 +5,7 @@
 
 using Ignixa.Abstractions;
 
-namespace Ignixa.Specification;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// Provides FHIR schema metadata for a specific FHIR version.

@@ -121,7 +121,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine($"/// Pre-generated IFhirSchemaProvider for FHIR {fhirVersion}.");
         sb.AppendLine("/// This provider uses IType and ITypeExtended interfaces for type metadata.");
         sb.AppendLine("/// </summary>");
-        sb.AppendLine($"public sealed partial class {fhirVersion}CoreSchemaProvider : Ignixa.Specification.IFhirSchemaProvider");
+        sb.AppendLine($"public sealed partial class {fhirVersion}CoreSchemaProvider : Ignixa.Abstractions.IFhirSchemaProvider");
         sb.AppendLine("{");
 
         // ISchema.Version property (explicit interface implementation)

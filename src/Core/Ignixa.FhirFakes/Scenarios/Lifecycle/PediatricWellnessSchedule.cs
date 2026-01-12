@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.FhirFakes.Scenarios.States;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Scenarios.Lifecycle;

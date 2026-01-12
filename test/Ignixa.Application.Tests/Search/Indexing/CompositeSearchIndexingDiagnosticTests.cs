@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Microsoft.Extensions.Logging;

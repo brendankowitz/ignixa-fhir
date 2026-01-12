@@ -4,6 +4,7 @@ using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
 
 namespace Ignixa.Validation.Cli.Tests;

@@ -5,7 +5,6 @@
 
 using System.Collections.ObjectModel;
 using Ignixa.Abstractions;
-using Ignixa.Specification;
 
 namespace Ignixa.FhirPath.Visitors;
 

@@ -5,6 +5,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Bogus;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;

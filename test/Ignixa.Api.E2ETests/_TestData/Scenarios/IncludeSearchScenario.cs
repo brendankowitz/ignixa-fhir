@@ -6,7 +6,9 @@
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.Api.E2ETests._TestData.Scenarios;
 

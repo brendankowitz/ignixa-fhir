@@ -5,6 +5,7 @@
 
 using Shouldly;
 using Ignixa.FhirFakes.Builders;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;

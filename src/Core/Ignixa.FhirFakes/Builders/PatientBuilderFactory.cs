@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.FhirFakes.Population;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Builders;

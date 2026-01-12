@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 namespace Ignixa.Application.Features.Specification;

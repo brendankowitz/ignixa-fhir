@@ -82,7 +82,7 @@ public class CompositeSearchFixture : IAsyncLifetime
         DocumentReferences = await CreateDocumentReferencesAsync(schemaProvider);
     }
 
-    private async Task<IReadOnlyList<ResourceJsonNode>> CreateObservationsAsync(Ignixa.Specification.IFhirSchemaProvider schemaProvider)
+    private async Task<IReadOnlyList<ResourceJsonNode>> CreateObservationsAsync(Ignixa.Abstractions.IFhirSchemaProvider schemaProvider)
     {
         var observations = new[]
         {
@@ -161,7 +161,7 @@ public class CompositeSearchFixture : IAsyncLifetime
         return await _apiFixture.Harness.CreateResourcesAsync(observations);
     }
 
-    private async Task<IReadOnlyList<ResourceJsonNode>> CreateDocumentReferencesAsync(Ignixa.Specification.IFhirSchemaProvider schemaProvider)
+    private async Task<IReadOnlyList<ResourceJsonNode>> CreateDocumentReferencesAsync(Ignixa.Abstractions.IFhirSchemaProvider schemaProvider)
     {
         var documentReferences = new[]
         {
@@ -176,7 +176,7 @@ public class CompositeSearchFixture : IAsyncLifetime
     }
 
     private static ResourceJsonNode CreateBloodPressureObservation(
-        Ignixa.Specification.IFhirSchemaProvider schemaProvider,
+        Ignixa.Abstractions.IFhirSchemaProvider schemaProvider,
         string tag,
         string patientId)
     {
@@ -268,7 +268,7 @@ public class CompositeSearchFixture : IAsyncLifetime
     }
 
     private static ResourceJsonNode CreateDocumentReference(
-        Ignixa.Specification.IFhirSchemaProvider schemaProvider,
+        Ignixa.Abstractions.IFhirSchemaProvider schemaProvider,
         string tag,
         string patientId,
         string relatesToCode,

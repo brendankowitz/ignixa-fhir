@@ -5,6 +5,7 @@
 
 using System.Reflection;
 using EnsureThat;
+using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification;
 using Ignixa.Search.Definition;

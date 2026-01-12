@@ -3,8 +3,8 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.FhirPath.Expressions;
-using Ignixa.Specification;
 
 namespace Ignixa.FhirPath.Visitors;
 

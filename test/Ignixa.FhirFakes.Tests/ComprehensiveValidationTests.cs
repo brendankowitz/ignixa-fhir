@@ -10,6 +10,7 @@ using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;

@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Immutable;
+using Ignixa.Abstractions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Visitors;
-using Ignixa.Specification;
 
 namespace Ignixa.FhirPath.Analysis;
 

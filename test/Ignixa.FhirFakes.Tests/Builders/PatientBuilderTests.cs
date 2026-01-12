@@ -7,6 +7,7 @@ using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;

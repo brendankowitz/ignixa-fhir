@@ -13,6 +13,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 var builder = WebApplication.CreateBuilder(args);

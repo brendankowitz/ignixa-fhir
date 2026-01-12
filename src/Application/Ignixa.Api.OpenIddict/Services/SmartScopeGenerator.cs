@@ -8,7 +8,7 @@ namespace Ignixa.Api.OpenIddict.Services;
 /// </summary>
 /// <remarks>
 /// This generator is version-agnostic. Resource types should be provided from
-/// <see cref="Ignixa.Specification.IFhirSchemaProvider.ResourceTypeNames"/> for
+/// <see cref="Ignixa.Abstractions.IFhirSchemaProvider.ResourceTypeNames"/> for
 /// proper multi-version FHIR support.
 /// </remarks>
 public static partial class SmartScopeGenerator

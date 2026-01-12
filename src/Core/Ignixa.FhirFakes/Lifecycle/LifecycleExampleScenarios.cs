@@ -5,7 +5,9 @@
 
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes.Lifecycle;
 

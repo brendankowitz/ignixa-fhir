@@ -6,6 +6,7 @@
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 namespace Ignixa.Api.E2ETests._TestData.Fixtures.Sorting;

@@ -3,12 +3,14 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using System.Diagnostics.CodeAnalysis;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Lifecycle;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes.Population;
 

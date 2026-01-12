@@ -6,8 +6,10 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes.Scenarios.States;
 

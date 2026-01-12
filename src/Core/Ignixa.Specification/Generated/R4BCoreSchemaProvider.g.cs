@@ -18,7 +18,7 @@ namespace Ignixa.Specification.Generated;
 /// Pre-generated IFhirSchemaProvider for FHIR R4B.
 /// This provider uses IType and ITypeExtended interfaces for type metadata.
 /// </summary>
-public sealed partial class R4BCoreSchemaProvider : Ignixa.Specification.IFhirSchemaProvider
+public sealed partial class R4BCoreSchemaProvider : Ignixa.Abstractions.IFhirSchemaProvider
 {
     Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.R4B;
 

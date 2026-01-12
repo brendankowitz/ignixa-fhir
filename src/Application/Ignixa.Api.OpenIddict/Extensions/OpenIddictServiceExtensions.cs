@@ -1,6 +1,7 @@
 using Ignixa.Api.OpenIddict.Configuration;
 using Ignixa.Api.OpenIddict.Data;
 using Ignixa.Api.OpenIddict.Services;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;

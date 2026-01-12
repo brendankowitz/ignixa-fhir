@@ -5,6 +5,7 @@ using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.FhirPath;
 using Ignixa.Application.Features.Search;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;

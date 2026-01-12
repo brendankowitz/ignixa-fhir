@@ -7,7 +7,6 @@ using Ignixa.Abstractions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Visitors;
-using Ignixa.Specification;
 
 namespace Ignixa.FhirPath.Analysis;
 

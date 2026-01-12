@@ -18,7 +18,7 @@ namespace Ignixa.Specification.Generated;
 /// Pre-generated IFhirSchemaProvider for FHIR STU3.
 /// This provider uses IType and ITypeExtended interfaces for type metadata.
 /// </summary>
-public sealed partial class STU3CoreSchemaProvider : Ignixa.Specification.IFhirSchemaProvider
+public sealed partial class STU3CoreSchemaProvider : Ignixa.Abstractions.IFhirSchemaProvider
 {
     Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.Stu3;
 

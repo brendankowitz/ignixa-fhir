@@ -8,7 +8,9 @@ using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 using Ignixa.Specification.Generated;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;

@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Immutable;
-using Ignixa.Specification;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Visitors;
 
