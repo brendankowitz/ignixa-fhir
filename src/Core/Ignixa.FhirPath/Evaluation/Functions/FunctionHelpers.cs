@@ -84,12 +84,41 @@ internal static class FunctionHelpers
 
     /// <summary>
     /// Compares two values for equality.
+    /// Handles date/time literals with @ prefix normalization and numeric type coercion.
     /// </summary>
     public static bool AreEqual(object? left, object? right)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
+
+        if (left is string leftStr && right is string rightStr)
+        {
+            var leftNormalized = NormalizeDateString(leftStr);
+            var rightNormalized = NormalizeDateString(rightStr);
+            return leftNormalized == rightNormalized;
+        }
+
+        if (TryConvertToDecimal(left, out var leftDecimal) && TryConvertToDecimal(right, out var rightDecimal))
+        {
+            return leftDecimal == rightDecimal;
+        }
+
         return left.Equals(right);
+    }
+
+    /// <summary>
+    /// Normalizes date/time strings by ensuring consistent @ prefix handling.
+    /// For date/time values, both "@2023-01-01" and "2023-01-01" should compare equal.
+    /// </summary>
+    private static string NormalizeDateString(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        if (value.StartsWith('@'))
+            return value.Substring(1);
+
+        return value;
     }
 
     #endregion

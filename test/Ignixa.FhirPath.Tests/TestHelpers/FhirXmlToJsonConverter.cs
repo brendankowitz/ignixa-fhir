@@ -108,7 +108,7 @@ public static class FhirXmlToJsonConverter
         var valueAttr = element.Attribute("value");
         var hasChildren = element.Elements().Any(e => e.Name.Namespace == FhirNamespace);
 
-        if (valueAttr is not null && !hasChildren)
+        if (valueAttr is not null)
         {
             WritePrimitiveValue(valueAttr.Value, writer);
         }

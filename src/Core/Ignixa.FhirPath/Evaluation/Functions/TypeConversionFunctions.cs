@@ -39,8 +39,12 @@ internal static class TypeConversionFunctions
         if (value is int i)
             return [FunctionHelpers.CreateInteger(i)];
 
-        if (value is string s && int.TryParse(s, out var parsed))
-            return [FunctionHelpers.CreateInteger(parsed)];
+        if (value is string s)
+        {
+            s = s.Trim();
+            if (int.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                return [FunctionHelpers.CreateInteger(parsed)];
+        }
 
         if (value is decimal d && d == Math.Floor(d) && d >= int.MinValue && d <= int.MaxValue)
             return [FunctionHelpers.CreateInteger((int)d)];
@@ -74,8 +78,15 @@ internal static class TypeConversionFunctions
         if (value is int i)
             return [FunctionHelpers.CreateDecimal(i)];
 
-        if (value is string s && decimal.TryParse(s, out var parsed))
-            return [FunctionHelpers.CreateDecimal(parsed)];
+        if (value is bool b)
+            return [FunctionHelpers.CreateDecimal(b ? 1 : 0)];
+
+        if (value is string s)
+        {
+            s = s.Trim();
+            if (decimal.TryParse(s, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                return [FunctionHelpers.CreateDecimal(parsed)];
+        }
 
         return [];
     }
@@ -153,16 +164,51 @@ internal static class TypeConversionFunctions
         if (list.Count != 1)
             return [];
 
-        // Simplified: Just return the value if it's a date/datetime string
         var value = list[0].Value;
         if (value is string s)
         {
-            // Basic validation for FHIR date format (YYYY-MM-DD)
-            if (DateTime.TryParse(s, out _))
+            s = s.Trim();
+            if (IsValidFhirDate(s))
                 return [FunctionHelpers.CreateDate(s)];
         }
 
         return [];
+    }
+
+    private static bool IsValidFhirDate(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var parts = value.Split('-');
+        if (parts.Length < 1 || parts.Length > 3)
+            return false;
+
+        if (!int.TryParse(parts[0], out var year) || parts[0].Length != 4)
+            return false;
+
+        if (parts.Length >= 2)
+        {
+            if (!int.TryParse(parts[1], out var month) || month < 1 || month > 12 || parts[1].Length != 2)
+                return false;
+        }
+
+        if (parts.Length == 3)
+        {
+            if (!int.TryParse(parts[2], out var day) || day < 1 || day > 31 || parts[2].Length != 2)
+                return false;
+
+            try
+            {
+                _ = new DateTime(year, int.Parse(parts[1]), day);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -184,11 +230,73 @@ internal static class TypeConversionFunctions
         var value = list[0].Value;
         if (value is string s)
         {
-            if (DateTime.TryParse(s, out _))
+            s = s.Trim();
+            if (IsValidFhirDateTime(s))
                 return [FunctionHelpers.CreateDateTime(s)];
         }
 
         return [];
+    }
+
+    private static bool IsValidFhirDateTime(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        if (value.Contains('T', StringComparison.Ordinal))
+        {
+            var parts = value.Split('T');
+            if (parts.Length != 2)
+                return false;
+
+            if (!IsValidFhirDate(parts[0]))
+                return false;
+
+            var timePart = parts[1];
+            timePart = timePart.TrimEnd('Z');
+
+            if (timePart.Contains('+', StringComparison.Ordinal) || (timePart.LastIndexOf('-') > 0))
+            {
+                var tzIndex = timePart.Contains('+', StringComparison.Ordinal)
+                    ? timePart.LastIndexOf('+')
+                    : timePart.LastIndexOf('-');
+                timePart = timePart.Substring(0, tzIndex);
+            }
+
+            var timeComponents = timePart.Split(':');
+            if (timeComponents.Length < 1 || timeComponents.Length > 3)
+                return false;
+
+            if (!int.TryParse(timeComponents[0], out var hour) || hour < 0 || hour > 23 || timeComponents[0].Length != 2)
+                return false;
+
+            if (timeComponents.Length >= 2)
+            {
+                if (!int.TryParse(timeComponents[1], out var minute) || minute < 0 || minute > 59 || timeComponents[1].Length != 2)
+                    return false;
+            }
+
+            if (timeComponents.Length == 3)
+            {
+                var secondPart = timeComponents[2];
+                if (secondPart.Contains('.', StringComparison.Ordinal))
+                {
+                    if (!decimal.TryParse(secondPart, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var second))
+                        return false;
+                    if (second < 0 || second >= 60)
+                        return false;
+                }
+                else
+                {
+                    if (!int.TryParse(secondPart, out var second) || second < 0 || second > 59 || secondPart.Length != 2)
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        return IsValidFhirDate(value);
     }
 
     /// <summary>
@@ -210,8 +318,8 @@ internal static class TypeConversionFunctions
         var value = list[0].Value;
         if (value is string s)
         {
-            // Basic validation for time format
-            if (TimeSpan.TryParse(s, out _))
+            s = s.Trim();
+            if (TimeSpan.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out _))
                 return [FunctionHelpers.CreateTime(s)];
         }
 

@@ -30,8 +30,7 @@ public class OfficialTestSuiteRunner
     {
         ".conformsTo(",
         ".is(",
-        ".aggregate(",
-        ".defineVariable("
+        ".aggregate("
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     // Scopes that are not yet implemented

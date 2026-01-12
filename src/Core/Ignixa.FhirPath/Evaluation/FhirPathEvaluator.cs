@@ -104,9 +104,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// </summary>
     private IEnumerable<IElement> EvaluateDefineVariable(FunctionCallExpression expression, IEnumerable<IElement> focus, EvaluationContext context)
     {
-        if (expression.Arguments.Count != 2)
+        if (expression.Arguments.Count is < 1 or > 2)
         {
-            throw new InvalidOperationException("defineVariable requires exactly 2 arguments: variable name and value expression");
+            throw new InvalidOperationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
         }
 
         var nameExpr = expression.Arguments[0];
@@ -120,14 +120,30 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             variableName = idExpr.Name;
         }
+        else
+        {
+            var nameResult = EvaluateExpression(focus, nameExpr, context).ToList();
+            if (nameResult.Count == 1 && nameResult[0].Value is string evaluatedName)
+            {
+                variableName = evaluatedName;
+            }
+        }
 
         if (string.IsNullOrEmpty(variableName))
         {
-            throw new InvalidOperationException("defineVariable requires a string literal or identifier as the first argument");
+            throw new InvalidOperationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
         }
 
-        var valueExpr = expression.Arguments[1];
-        var value = EvaluateExpression(focus, valueExpr, context).ToImmutableList();
+        ImmutableList<IElement> value;
+        if (expression.Arguments.Count == 2)
+        {
+            var valueExpr = expression.Arguments[1];
+            value = EvaluateExpression(focus, valueExpr, context).ToImmutableList();
+        }
+        else
+        {
+            value = focus.ToImmutableList();
+        }
 
         context.DefinedVariables[variableName] = value;
 
@@ -241,6 +257,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
+        }
+
+        if (leftValue is string leftStr && rightValue is string rightStr)
+        {
+            return [CreateString(leftStr + rightStr)];
         }
 
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
@@ -651,6 +672,20 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return result;
         }
 
+        if (left.Count == 1 && right.Count == 1)
+        {
+#pragma warning disable CA1308 // Normalize strings to uppercase
+            var leftType = left[0].InstanceType?.ToLowerInvariant();
+            var rightType = right[0].InstanceType?.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+            if ((leftType == "date" || leftType == "datetime" || leftType == "instant") &&
+                (rightType == "date" || rightType == "datetime" || rightType == "instant"))
+            {
+                return CompareDateTimeEquality(left[0].Value, right[0].Value, equals);
+            }
+        }
+
         for (int i = 0; i < left.Count; i++)
         {
             var isEqual = FunctionHelpers.AreEqual(left[i].Value, right[i].Value);
@@ -658,6 +693,28 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         return true;
+    }
+
+    private bool? CompareDateTimeEquality(object? leftValue, object? rightValue, bool equals)
+    {
+        if (leftValue is not string leftStr || rightValue is not string rightStr)
+            return null;
+
+        leftStr = leftStr.StartsWith('@') ? leftStr.Substring(1) : leftStr;
+        rightStr = rightStr.StartsWith('@') ? rightStr.Substring(1) : rightStr;
+
+        var leftPrecision = GetDateTimePrecision(leftStr);
+        var rightPrecision = GetDateTimePrecision(rightStr);
+
+        if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
+            return null;
+
+        if (leftPrecision != rightPrecision)
+        {
+            return null;
+        }
+
+        return equals ? leftStr == rightStr : leftStr != rightStr;
     }
 
     private bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
@@ -683,6 +740,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return QuantityEvaluator.EvaluateComparison(left, op, right);
         }
 
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        var leftType = left[0].InstanceType?.ToLowerInvariant();
+        var rightType = right[0].InstanceType?.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        if ((leftType == "date" || leftType == "datetime") && (rightType == "date" || rightType == "datetime"))
+        {
+            return CompareDateTimesWithPrecision(leftValue, rightValue, greater, orEqual);
+        }
+
         if (leftValue is IComparable leftComparable && rightValue is IComparable rightComparable)
         {
             try
@@ -699,6 +766,138 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         return null;
+    }
+
+    private bool? CompareDateTimesWithPrecision(object? leftValue, object? rightValue, bool greater, bool orEqual)
+    {
+        if (leftValue is not string leftStr || rightValue is not string rightStr)
+            return null;
+
+        leftStr = leftStr.StartsWith("@", StringComparison.Ordinal) ? leftStr.Substring(1) : leftStr;
+        rightStr = rightStr.StartsWith("@", StringComparison.Ordinal) ? rightStr.Substring(1) : rightStr;
+
+        var leftPrecision = GetDateTimePrecision(leftStr);
+        var rightPrecision = GetDateTimePrecision(rightStr);
+
+        if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
+            return null;
+
+        var leftLower = GetDateTimeLowerBound(leftStr, leftPrecision);
+        var leftUpper = GetDateTimeUpperBound(leftStr, leftPrecision);
+        var rightLower = GetDateTimeLowerBound(rightStr, rightPrecision);
+        var rightUpper = GetDateTimeUpperBound(rightStr, rightPrecision);
+
+        if (!leftLower.HasValue || !leftUpper.HasValue || !rightLower.HasValue || !rightUpper.HasValue)
+            return null;
+
+        if (greater)
+        {
+            if (orEqual)
+            {
+                return leftUpper >= rightLower;
+            }
+            else
+            {
+                return leftLower > rightUpper;
+            }
+        }
+        else
+        {
+            if (orEqual)
+            {
+                return leftLower <= rightUpper;
+            }
+            else
+            {
+                return leftUpper < rightLower;
+            }
+        }
+    }
+
+    private enum DateTimePrecision
+    {
+        Invalid,
+        Year,
+        Month,
+        Day,
+        Hour,
+        Minute,
+        Second,
+        Millisecond
+    }
+
+    private DateTimePrecision GetDateTimePrecision(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return DateTimePrecision.Invalid;
+
+        if (value.Length >= 4 && value.Length <= 10)
+        {
+            var parts = value.Split('-');
+            return parts.Length switch
+            {
+                1 => DateTimePrecision.Year,
+                2 => DateTimePrecision.Month,
+                3 => DateTimePrecision.Day,
+                _ => DateTimePrecision.Invalid
+            };
+        }
+
+        if (value.Contains('T', StringComparison.Ordinal))
+        {
+            var timePart = value.Split('T')[1];
+            timePart = timePart.TrimEnd('Z');
+            if (timePart.Contains('+', StringComparison.Ordinal) || timePart.Contains('-', StringComparison.Ordinal))
+            {
+                var tzIndex = Math.Max(timePart.LastIndexOf('+'), timePart.LastIndexOf('-'));
+                timePart = timePart.Substring(0, tzIndex);
+            }
+
+            var colonCount = timePart.Count(c => c == ':');
+            if (colonCount == 0) return DateTimePrecision.Hour;
+            if (colonCount == 1) return DateTimePrecision.Minute;
+
+            return timePart.Contains('.', StringComparison.Ordinal) ? DateTimePrecision.Millisecond : DateTimePrecision.Second;
+        }
+
+        return DateTimePrecision.Invalid;
+    }
+
+    private DateTime? GetDateTimeLowerBound(string value, DateTimePrecision precision)
+    {
+        try
+        {
+            return precision switch
+            {
+                DateTimePrecision.Year => new DateTime(int.Parse(value), 1, 1),
+                DateTimePrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                _ => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture)
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private DateTime? GetDateTimeUpperBound(string value, DateTimePrecision precision)
+    {
+        try
+        {
+            return precision switch
+            {
+                DateTimePrecision.Year => new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999),
+                DateTimePrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddMonths(1).AddMilliseconds(-1),
+                DateTimePrecision.Day => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture).Date.AddDays(1).AddMilliseconds(-1),
+                DateTimePrecision.Hour => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture).AddHours(1).AddMilliseconds(-1),
+                DateTimePrecision.Minute => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture).AddMinutes(1).AddMilliseconds(-1),
+                _ => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture)
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
 
