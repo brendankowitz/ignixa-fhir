@@ -336,6 +336,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             IdentifierExpression idExpr => idExpr.Name,
             PropertyAccessExpression propExpr => propExpr.PropertyName,
             FunctionCallExpression funcExpr => funcExpr.FunctionName,
+            ConstantExpression constExpr => constExpr.Value?.ToString(),
             _ => null
         };
 
@@ -360,6 +361,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             IdentifierExpression idExpr => idExpr.Name,
             PropertyAccessExpression propExpr => propExpr.PropertyName,
             FunctionCallExpression funcExpr => funcExpr.FunctionName,
+            ConstantExpression constExpr => constExpr.Value?.ToString(),
             _ => null
         };
 

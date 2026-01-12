@@ -19,7 +19,20 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
     public virtual Expression VisitBinary(BinaryParseNode node, AstBuildContext context)
     {
         var left = node.Left.Accept(this, context);
-        var right = node.Right.Accept(this, context);
+        Expression right;
+
+        // For 'is' and 'as' binary operators, the right operand is a type specifier.
+        // Convert IdentifierParseNode to ConstantExpression with the type name as a string value.
+        // This allows the analyzer to handle type checking correctly.
+        if ((node.Operator == "is" || node.Operator == "as") && node.Right is IdentifierParseNode idNode)
+        {
+            right = new ConstantExpression(idNode.Name, CreateLocation(idNode.Location));
+        }
+        else
+        {
+            right = node.Right.Accept(this, context);
+        }
+
         var location = CreateLocation(node.Location);
 
         return new BinaryExpression(node.Operator, left, right, location);

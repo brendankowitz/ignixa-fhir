@@ -297,8 +297,38 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         }
         else if (!string.Equals(returnType, "any", StringComparison.OrdinalIgnoreCase))
         {
-            sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\") }})");
+            // For complex types (non-primitive), use schema-aware type resolution
+            // to ensure return types have proper IType definitions with children
+            if (IsPrimitiveReturnType(returnType))
+            {
+                // Primitives don't need schema resolution
+                sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\", focus.IsCollection()) }})");
+            }
+            else
+            {
+                // Complex types (Extension, Resource, etc.) use schema-aware resolution
+                // This ensures the returned type has proper child definitions for property access
+                sb.AppendLine($"            .WithReturnType(CreateSchemaAwareReturnType(\"{func.ReturnType}\"))");
+            }
         }
+    }
+
+    /// <summary>
+    /// Determines if a return type is a FhirPath primitive type.
+    /// Primitive types don't require schema resolution.
+    /// </summary>
+    private static bool IsPrimitiveReturnType(string typeName)
+    {
+        // FhirPath primitive types as per specification
+        // These don't have children that need schema resolution
+        return typeName.ToUpperInvariant() switch
+        {
+            "BOOLEAN" or "INTEGER" or "STRING" or "DECIMAL" or "URI" or "URL" or
+            "CANONICAL" or "BASE64BINARY" or "INSTANT" or "DATE" or "DATETIME" or
+            "TIME" or "CODE" or "OID" or "ID" or "MARKDOWN" or "UNSIGNEDINT" or
+            "POSITIVEINT" or "UUID" or "XHTML" or "ANY" => true,
+            _ => false
+        };
     }
 
     /// <summary>

@@ -97,12 +97,20 @@ public sealed record AnalysisContext
     /// <summary>
     /// Creates a new analysis context for the specified root type.
     /// </summary>
+    /// <remarks>
+    /// The schema provider handles case-insensitive BackboneElement type lookups internally.
+    /// For example, "ElementDefinition.slicing" will be resolved to "ElementDefinition.Slicing"
+    /// by the schema provider's GetTypeDefinition method.
+    /// </remarks>
     public static AnalysisContext Create(IFhirSchemaProvider schema, string rootTypeName)
     {
         ArgumentNullException.ThrowIfNull(schema);
         ArgumentNullException.ThrowIfNull(rootTypeName);
 
+        // The schema provider handles case-insensitive lookups for BackboneElement types
+        // (e.g., "ElementDefinition.slicing" -> "ElementDefinition.Slicing")
         var rootType = schema.GetTypeDefinition(rootTypeName);
+
         var rootProps = rootType != null
             ? new FhirPathTypeSet(rootType, rootTypeName)
             : new FhirPathTypeSet();

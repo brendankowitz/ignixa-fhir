@@ -111,7 +111,8 @@ internal static class FhirPathParseTreeGrammar
     {
         var unescaped = UnescapeIdentifier(functionName);
         return unescaped.Equals("oftype", StringComparison.OrdinalIgnoreCase) ||
-               unescaped.Equals("as", StringComparison.OrdinalIgnoreCase);
+               unescaped.Equals("as", StringComparison.OrdinalIgnoreCase) ||
+               unescaped.Equals("is", StringComparison.OrdinalIgnoreCase);
     }
 
     private static TokenListParser<FhirPathTokenKind, ParseNode> IdentifierOrFunction() =>
@@ -235,7 +236,7 @@ internal static class FhirPathParseTreeGrammar
         InequalityExpression.Then(left =>
             Token.EqualTo(FhirPathTokenKind.Is)
                 .Or(Token.EqualTo(FhirPathTokenKind.As))
-                .Then(op => IdentifierOrFunction().Select(typeName => (op, typeName)))
+                .Then(op => TypeSpecifierArgument.Select(typeName => (op, typeName)))
                 .Optional()
                 .Select(typeOp =>
                     typeOp.HasValue

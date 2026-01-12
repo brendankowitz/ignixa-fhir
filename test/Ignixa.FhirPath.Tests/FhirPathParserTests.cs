@@ -320,6 +320,8 @@ public class FhirPathParserTests
         var asExpr = (BinaryExpression)expr;
         Assert.Equal("as", asExpr.Operator);
         Assert.IsType<PropertyAccessExpression>(asExpr.Left); // value
-        Assert.IsType<PropertyAccessExpression>(asExpr.Right); // Quantity (type identifier)
+        Assert.IsType<ConstantExpression>(asExpr.Right); // Quantity (type argument)
+        var rightConst = (ConstantExpression)asExpr.Right;
+        Assert.Equal("Quantity", rightConst.Value);
     }
 }
