@@ -39,7 +39,12 @@ internal static class BoundaryFunctions
                 continue;
             }
 
-            var result = element.Value switch
+            // Strip @ prefix from FHIR date/time string values
+            var cleanValue = element.Value is string s && s.StartsWith('@')
+                ? s.Substring(1)
+                : element.Value;
+
+            var result = cleanValue switch
             {
                 // Decimal boundary: 5% lower
                 decimal d => FunctionHelpers.CreateDecimal(d * 0.95m),
@@ -52,13 +57,13 @@ internal static class BoundaryFunctions
                 DateTimeOffset dto => FunctionHelpers.CreateString(GetDateTimeOffsetLowBoundary(dto)),
 
                 // String dateTime (when element type is dateTime)
-                string s when IsDateLike(s) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => FunctionHelpers.CreateString(GetStringDateTimeLowBoundary(s)),
+                string str when IsDateLike(str) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => FunctionHelpers.CreateString(GetStringDateTimeLowBoundary(str)),
 
                 // String dates (partial dates, when element type is date)
-                string s when IsDateLike(s) => FunctionHelpers.CreateString(GetStringDateLowBoundary(s)),
+                string str when IsDateLike(str) => FunctionHelpers.CreateString(GetStringDateLowBoundary(str)),
 
                 // String times (partial times)
-                string s when IsTimeLike(s) => FunctionHelpers.CreateString(GetStringTimeLowBoundary(s)),
+                string str when IsTimeLike(str) => FunctionHelpers.CreateString(GetStringTimeLowBoundary(str)),
 
                 // Unsupported type: return no result
                 _ => null
@@ -93,7 +98,12 @@ internal static class BoundaryFunctions
                 continue;
             }
 
-            var result = element.Value switch
+            // Strip @ prefix from FHIR date/time string values
+            var cleanValue = element.Value is string s && s.StartsWith('@')
+                ? s.Substring(1)
+                : element.Value;
+
+            var result = cleanValue switch
             {
                 // Decimal boundary: 5% higher
                 decimal d => FunctionHelpers.CreateDecimal(d * 1.05m),
@@ -106,13 +116,13 @@ internal static class BoundaryFunctions
                 DateTimeOffset dto => FunctionHelpers.CreateString(GetDateTimeOffsetHighBoundary(dto)),
 
                 // String dateTime (when element type is dateTime)
-                string s when IsDateLike(s) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => FunctionHelpers.CreateString(GetStringDateTimeHighBoundary(s)),
+                string str when IsDateLike(str) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => FunctionHelpers.CreateString(GetStringDateTimeHighBoundary(str)),
 
                 // String dates (partial dates, when element type is date)
-                string s when IsDateLike(s) => FunctionHelpers.CreateString(GetStringDateHighBoundary(s)),
+                string str when IsDateLike(str) => FunctionHelpers.CreateString(GetStringDateHighBoundary(str)),
 
                 // String times (partial times)
-                string s when IsTimeLike(s) => FunctionHelpers.CreateString(GetStringTimeHighBoundary(s)),
+                string str when IsTimeLike(str) => FunctionHelpers.CreateString(GetStringTimeHighBoundary(str)),
 
                 // Unsupported type: return no result
                 _ => null

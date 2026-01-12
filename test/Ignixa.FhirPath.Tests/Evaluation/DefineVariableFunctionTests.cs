@@ -96,14 +96,23 @@ public class DefineVariableFunctionTests
     [Fact]
     public void GivenDefineVariableInvalidArgumentCount_WhenEvaluating_ThenThrowsException()
     {
-        var expr = _parser.Parse("defineVariable('x')");
+        // Test with 0 arguments - should throw
+        var expr = _parser.Parse("defineVariable()");
         var root = CreateIntegerElement(0);
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             _evaluator.Evaluate(root, expr).ToList()
         );
 
-        Assert.Contains("exactly 2 arguments", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("1 or 2 arguments", exception.Message, StringComparison.Ordinal);
+
+        // Test with 3 arguments - should also throw
+        var expr3 = _parser.Parse("defineVariable('x', 1, 2)");
+        var exception3 = Assert.Throws<InvalidOperationException>(() =>
+            _evaluator.Evaluate(root, expr3).ToList()
+        );
+
+        Assert.Contains("1 or 2 arguments", exception3.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -116,7 +125,7 @@ public class DefineVariableFunctionTests
             _evaluator.Evaluate(root, expr).ToList()
         );
 
-        Assert.Contains("string literal or identifier", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("defineVariable requires a string as the first argument", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
