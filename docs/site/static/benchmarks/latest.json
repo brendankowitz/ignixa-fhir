@@ -1,9 +1,6 @@
 {
-  "timestamp": "2026-01-11T16:42:00Z",
-  "files": [
-    "Ignixa.Benchmarks.FhirPathBenchmarks-report-full-compressed.json",
-    "Ignixa.Benchmarks.NavigationBenchmarks-report-full-compressed.json",
-    "Ignixa.Benchmarks.SerializationBenchmarks-report-full-compressed.json",
-    "Ignixa.Benchmarks.ValidationBenchmarks-report-full-compressed.json"
-  ]
+  "timestamp": "2026-01-12T01:18:24Z",
+  "commit": "bd1a2e99ac07614f2494c7f7c22b6d9a8566d6c7",
+  "run_number": "1",
+  "workflow": "Benchmarks"
 }
