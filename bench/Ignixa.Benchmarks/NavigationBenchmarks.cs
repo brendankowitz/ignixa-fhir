@@ -79,12 +79,11 @@ public class NavigationBenchmarks
         return _ignixaObservation.MutableNode["status"]?.GetValue<string>();
     }
 
-    [Benchmark(Description = "Ignixa: Access simple property (ITypedElement)")]
+    [Benchmark(Description = "Ignixa: Access simple property (IElement)")]
     [BenchmarkCategory("Simple")]
     public string? IgnixaSimpleTypedElement()
     {
-        var children = _ignixaTypedElement.Children("status");
-        return children.Count > 0 ? children[0].Value?.ToString() : null;
+        return _ignixaTypedElement.Children("status")?[0].Value?.ToString();
     }
 
     [Benchmark(Description = "Firely: Access simple property (POCO)")]
@@ -110,20 +109,15 @@ public class NavigationBenchmarks
         return _ignixaObservation.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
     }
 
-    [Benchmark(Description = "Ignixa: Access nested object (ITypedElement)")]
+    [Benchmark(Description = "Ignixa: Access nested object (IElement)")]
     [BenchmarkCategory("Nested")]
     public string? IgnixaNestedTypedElement()
     {
-        var codeChildren = _ignixaTypedElement.Children("code");
-        if (codeChildren.Count == 0) return null;
-
-        var codingChildren = codeChildren[0].Children("coding");
-        if (codingChildren.Count == 0) return null;
-
-        var codeValueChildren = codingChildren[0].Children("code");
-        if (codeValueChildren.Count == 0) return null;
-
-        return codeValueChildren[0].Value?.ToString();
+        return _ignixaTypedElement
+            .Children("code")?[0]
+            .Children("coding")?[0]
+            .Children("code")?[0]
+            .Value?.ToString();
     }
 
     [Benchmark(Description = "Firely: Access nested object (POCO)")]
@@ -154,20 +148,15 @@ public class NavigationBenchmarks
         return components?[0]?["valueQuantity"]?["value"]?.GetValue<decimal>();
     }
 
-    [Benchmark(Description = "Ignixa: Access array element (ITypedElement)")]
+    [Benchmark(Description = "Ignixa: Access array element (IElement)")]
     [BenchmarkCategory("Array")]
     public string? IgnixaArrayTypedElement()
     {
-        var componentChildren = _ignixaTypedElement.Children("component");
-        if (componentChildren.Count == 0) return null;
-
-        var valueQuantityChildren = componentChildren[0].Children("valueQuantity");
-        if (valueQuantityChildren.Count == 0) return null;
-
-        var valueChildren = valueQuantityChildren[0].Children("value");
-        if (valueChildren.Count == 0) return null;
-
-        return valueChildren[0].Value?.ToString();
+        return _ignixaTypedElement
+            .Children("component")?[0]
+            .Children("valueQuantity")?[0]
+            .Children("value")?[0]
+            .Value?.ToString();
     }
 
     [Benchmark(Description = "Firely: Access array element (POCO)")]
@@ -205,9 +194,9 @@ public class NavigationBenchmarks
         return _firelySourceNode;
     }
 
-    // ========== CONVERSION TO ITypedElement ==========
+    // ========== CONVERSION TO TYPED ELEMENT ==========
 
-    [Benchmark(Description = "Ignixa: Convert to ITypedElement")]
+    [Benchmark(Description = "Ignixa: Convert to IElement")]
     [BenchmarkCategory("Conversion")]
     public IElement IgnixaToTypedElement()
     {

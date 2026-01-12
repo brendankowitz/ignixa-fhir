@@ -116,25 +116,25 @@ public class ValidationBenchmarks
         _state = new ValidationState();
     }
 
-    [Benchmark(Baseline = true, Description = "Validate Patient (Fast tier)")]
+    [Benchmark(Baseline = true, Description = "Ignixa: Validate Patient (Fast tier)")]
     public ValidationResult ValidatePatientFast()
     {
         return _patientSchema.Validate((IElement)_patientSourceNode, _fastSettings, _state);
     }
 
-    [Benchmark(Description = "Validate Patient (Spec tier)")]
+    [Benchmark(Description = "Ignixa: Validate Patient (Spec tier)")]
     public ValidationResult ValidatePatientSpec()
     {
         return _patientSchema.Validate((IElement)_patientSourceNode, _specSettings, _state);
     }
 
-    [Benchmark(Description = "Validate Observation (Fast tier)")]
+    [Benchmark(Description = "Ignixa: Validate Observation (Fast tier)")]
     public ValidationResult ValidateObservationFast()
     {
         return _observationSchema.Validate((IElement)_observationSourceNode, _fastSettings, _state);
     }
 
-    [Benchmark(Description = "Validate Observation (Spec tier)")]
+    [Benchmark(Description = "Ignixa: Validate Observation (Spec tier)")]
     public ValidationResult ValidateObservationSpec()
     {
         return _observationSchema.Validate((IElement)_observationSourceNode, _specSettings, _state);
