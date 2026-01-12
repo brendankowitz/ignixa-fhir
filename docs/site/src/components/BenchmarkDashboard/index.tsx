@@ -165,23 +165,23 @@ function CustomTooltip({ active, payload, label, showMemory }: CustomTooltipProp
       <p className={styles.tooltipLabel}>{label}</p>
       {payload.map((entry, index) => {
         const value = entry.value as number;
-        const dataPoint = entry.payload as ChartDataPoint;
+        const dataPoint = entry.payload as any;
+        const dataKey = entry.dataKey as string;
 
-        // Get standard deviation based on the entry name
+        // Get standard deviation - check for specific keys first, then generic pattern
         let stdDev: number | undefined;
-        if (entry.dataKey === 'ignixa') {
+        if (dataKey === 'ignixa') {
           stdDev = dataPoint.ignixaStdDev;
-        } else if (entry.dataKey === 'firely') {
+        } else if (dataKey === 'firely') {
           stdDev = dataPoint.firelyStdDev;
-        } else if (entry.dataKey === 'hybrid') {
+        } else if (dataKey === 'hybrid') {
           stdDev = dataPoint.hybridStdDev;
-        } else if (entry.dataKey === 'ignixaAlloc') {
+        } else if (dataKey.endsWith('Alloc')) {
           // For allocation metrics, we don't have stdDev
           stdDev = undefined;
-        } else if (entry.dataKey === 'firelyAlloc') {
-          stdDev = undefined;
-        } else if (entry.dataKey === 'hybridAlloc') {
-          stdDev = undefined;
+        } else {
+          // For dynamic variant labels (All Benchmarks tab), check for ${variantLabel}_stdDev
+          stdDev = dataPoint[`${dataKey}_stdDev`];
         }
 
         const formattedValue = showMemory ? formatBytes(value) : formatNanoseconds(value);
@@ -528,8 +528,9 @@ export default function BenchmarkDashboard(): JSX.Element {
           groups[key].chartData.push(dataPoint);
         }
 
-        // Store value under the variant label instead of just impl
+        // Store value and stdDev under the variant label
         (dataPoint as any)[variantLabel] = b.Statistics?.Mean ?? 0;
+        (dataPoint as any)[`${variantLabel}_stdDev`] = b.Statistics?.StandardDeviation ?? 0;
       });
     });
 
