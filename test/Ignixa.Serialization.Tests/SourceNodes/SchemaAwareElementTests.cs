@@ -437,7 +437,7 @@ public class SchemaAwareElementTests
         Assert.Single(effectiveChildren);
         Assert.Equal("effectiveDateTime", effectiveChildren[0].Name);
         Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
-        Assert.Equal("1980-05-11", effectiveChildren[0].Value);
+        Assert.Equal("@1980-05-11", effectiveChildren[0].Value);
     }
 
     /// <summary>

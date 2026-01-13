@@ -185,7 +185,7 @@ internal class SchemaAwareElement : IElement
                 "decimal" => decimal.TryParse(text, out var d) ? d : text,
                 // FHIRPath requires @ prefix for date/time literals
                 "date" or "dateTime" or "instant" => $"@{text}",
-                "time" => text.StartsWith('@') ? text : $"@{text}",
+                "time" => text.StartsWith("@", StringComparison.Ordinal) ? text : $"@{text}",
                 // All other types remain as strings (string, code, id, uri, etc.)
                 _ => text
             };

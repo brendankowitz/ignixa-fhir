@@ -525,6 +525,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (typeName == null)
             return [];
 
+        // Handle qualified type names
+        if (typeName.Contains('.', StringComparison.Ordinal))
+        {
+            var parts = typeName.Split('.');
+            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
+            {
+                typeName = parts[1];
+            }
+        }
+
 #pragma warning disable CA1308 // Normalize strings to uppercase
         typeName = typeName.ToLowerInvariant();
         var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
@@ -549,6 +559,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (typeName == null)
             return [];
+
+        // Handle qualified type names
+        if (typeName.Contains('.', StringComparison.Ordinal))
+        {
+            var parts = typeName.Split('.');
+            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
+            {
+                typeName = parts[1];
+            }
+        }
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
         typeName = typeName.ToLowerInvariant();
@@ -812,15 +832,27 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left.Count != right.Count)
             return !equals;
 
-        if (left.Count == 1 && right.Count == 1 &&
-            (left[0].Value is Types.Quantity || right[0].Value is Types.Quantity))
-        {
-            var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
-            return result;
-        }
-
         if (left.Count == 1 && right.Count == 1)
         {
+            var leftVal = left[0].Value;
+            var rightVal = right[0].Value;
+
+            if (leftVal is Types.Quantity || rightVal is Types.Quantity)
+            {
+                var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
+                return result;
+            }
+
+            // Handle mixed numeric equality (e.g. 1 = 1.0)
+            if ((leftVal is int || leftVal is decimal || leftVal is long) &&
+                (rightVal is int || rightVal is decimal || rightVal is long))
+            {
+                if (FunctionHelpers.TryConvertToDecimal(leftVal, out var ld) && FunctionHelpers.TryConvertToDecimal(rightVal, out var rd))
+                {
+                    return equals ? ld == rd : ld != rd;
+                }
+            }
+
 #pragma warning disable CA1308 // Normalize strings to uppercase
             var leftType = left[0].InstanceType?.ToLowerInvariant();
             var rightType = right[0].InstanceType?.ToLowerInvariant();
@@ -829,7 +861,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             if ((leftType == "date" || leftType == "datetime" || leftType == "instant") &&
                 (rightType == "date" || rightType == "datetime" || rightType == "instant"))
             {
-                return CompareDateTimeEquality(left[0].Value, right[0].Value, equals);
+                return CompareDateTimeEquality(leftVal, rightVal, equals);
             }
         }
 
@@ -861,6 +893,22 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return null;
         }
 
+        // Try to parse as DateTimeOffset to handle timezones
+        if (TryParseFhirDateTime(leftStr, out var leftDt) &&
+            TryParseFhirDateTime(rightStr, out var rightDt))
+        {
+            // If both parse successfully, we can compare them properly regardless of timezone representation
+            // But we need to be careful about precision. The precision check above ensures we are comparing
+            // same granularity (e.g. milliseconds to milliseconds).
+            
+            // For date/time, if we have hours/minutes/seconds, we should respect timezone equality
+            if (leftPrecision >= DateTimePrecision.Hour)
+            {
+                 var result = leftDt.ToUniversalTime() == rightDt.ToUniversalTime();
+                 return equals ? result : !result;
+            }
+        }
+
         return equals ? leftStr == rightStr : leftStr != rightStr;
     }
 
@@ -887,12 +935,34 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return QuantityEvaluator.EvaluateComparison(left, op, right);
         }
 
+        if (leftValue is string leftStr && rightValue is string rightStr)
+        {
+            var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
+            return greater
+                ? (orEqual ? comparison >= 0 : comparison > 0)
+                : (orEqual ? comparison <= 0 : comparison < 0);
+        }
+
+        // Handle mixed numeric comparison (e.g. 1.5 > 1)
+        if ((leftValue is int || leftValue is decimal || leftValue is long) &&
+            (rightValue is int || rightValue is decimal || rightValue is long))
+        {
+            if (FunctionHelpers.TryConvertToDecimal(leftValue, out var ld) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rd))
+            {
+                var comparison = ld.CompareTo(rd);
+                return greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0);
+            }
+        }
+
 #pragma warning disable CA1308 // Normalize strings to uppercase
         var leftType = left[0].InstanceType?.ToLowerInvariant();
         var rightType = right[0].InstanceType?.ToLowerInvariant();
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
-        if ((leftType == "date" || leftType == "datetime") && (rightType == "date" || rightType == "datetime"))
+        if ((leftType == "date" || leftType == "datetime" || leftType == "time") && 
+            (rightType == "date" || rightType == "datetime" || rightType == "time"))
         {
             return CompareDateTimesWithPrecision(leftValue, rightValue, greater, orEqual);
         }
@@ -978,6 +1048,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (string.IsNullOrEmpty(value))
             return DateTimePrecision.Invalid;
 
+        if (value.StartsWith("T", StringComparison.Ordinal))
+        {
+            var timePart = value.Substring(1);
+            var colonCount = timePart.Count(c => c == ':');
+            if (colonCount == 0) return DateTimePrecision.Hour;
+            if (colonCount == 1) return DateTimePrecision.Minute;
+
+            return timePart.Contains('.', StringComparison.Ordinal) ? DateTimePrecision.Millisecond : DateTimePrecision.Second;
+        }
+
         if (value.Length >= 4 && value.Length <= 10)
         {
             var parts = value.Split('-');
@@ -1010,6 +1090,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return DateTimePrecision.Invalid;
     }
 
+    private static bool TryParseFhirDateTime(string value, out DateTimeOffset result)
+    {
+        if (value.StartsWith("T", StringComparison.Ordinal))
+        {
+            // Prepend dummy date for parsing
+            value = "1900-01-01" + value;
+        }
+        return DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out result);
+    }
+
     private DateTime? GetDateTimeLowerBound(string value, DateTimePrecision precision)
     {
         try
@@ -1018,7 +1108,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             {
                 DateTimePrecision.Year => new DateTime(int.Parse(value), 1, 1),
                 DateTimePrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-                _ => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture)
+                _ => TryParseFhirDateTime(value, out var dt) ? dt.DateTime : null
             };
         }
         catch
@@ -1031,14 +1121,23 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         try
         {
+            if (precision == DateTimePrecision.Year)
+                return new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999);
+            
+            if (precision == DateTimePrecision.Month)
+                return DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddMonths(1).AddMilliseconds(-1);
+
+            if (!TryParseFhirDateTime(value, out var dtOffset))
+                return null;
+            
+            var dt = dtOffset.DateTime;
+
             return precision switch
             {
-                DateTimePrecision.Year => new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999),
-                DateTimePrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddMonths(1).AddMilliseconds(-1),
-                DateTimePrecision.Day => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture).Date.AddDays(1).AddMilliseconds(-1),
-                DateTimePrecision.Hour => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture).AddHours(1).AddMilliseconds(-1),
-                DateTimePrecision.Minute => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture).AddMinutes(1).AddMilliseconds(-1),
-                _ => DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture)
+                DateTimePrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
+                DateTimePrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
+                DateTimePrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
+                _ => dt
             };
         }
         catch
@@ -1054,14 +1153,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         dateTimeStr = dateTimeStr.StartsWith("@", StringComparison.Ordinal) ? dateTimeStr.Substring(1) : dateTimeStr;
 
         // Determine if this is a date, dateTime, or time
-        var hasTime = dateTimeStr.Contains('T', StringComparison.Ordinal);
+        var isTimeOnly = dateTimeStr.StartsWith("T", StringComparison.Ordinal);
         var precision = GetDateTimePrecision(dateTimeStr);
 
         if (precision == DateTimePrecision.Invalid)
             return [];
 
         // Parse the datetime
-        if (!DateTimeOffset.TryParse(dateTimeStr, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var dt))
+        if (!TryParseFhirDateTime(dateTimeStr, out var dt))
             return [];
 
         // Apply the quantity arithmetic based on unit
@@ -1092,27 +1191,43 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         // Format result to match input precision
         var resultStr = FormatDateTimeWithPrecision(result, precision, dateTimeStr);
-        return [CreateString("@" + resultStr)];
+        return [new PrimitiveElement("@" + resultStr, isTimeOnly ? "time" : (dateTimeStr.Contains('T', StringComparison.Ordinal) ? "dateTime" : "date"))];
     }
 
     private string FormatDateTimeWithPrecision(DateTimeOffset dt, DateTimePrecision precision, string originalStr)
     {
+        var isTimeOnly = originalStr.StartsWith("T", StringComparison.Ordinal);
+        
         // Preserve timezone from original string
         var hasTimeZone = originalStr.Contains('+', StringComparison.Ordinal) ||
                           (originalStr.Contains('-', StringComparison.Ordinal) && originalStr.LastIndexOf('-') > 10) ||
                           originalStr.EndsWith("Z", StringComparison.Ordinal);
 
-        return precision switch
+        var format = precision switch
         {
-            DateTimePrecision.Year => dt.ToString("yyyy"),
-            DateTimePrecision.Month => dt.ToString("yyyy-MM"),
-            DateTimePrecision.Day => dt.ToString("yyyy-MM-dd"),
-            DateTimePrecision.Hour => hasTimeZone ? dt.ToString("yyyy-MM-dd'T'HH") + dt.ToString("zzz") : dt.ToString("yyyy-MM-dd'T'HH"),
-            DateTimePrecision.Minute => hasTimeZone ? dt.ToString("yyyy-MM-dd'T'HH:mm") + dt.ToString("zzz") : dt.ToString("yyyy-MM-dd'T'HH:mm"),
-            DateTimePrecision.Second => hasTimeZone ? dt.ToString("yyyy-MM-dd'T'HH:mm:ss") + dt.ToString("zzz") : dt.ToString("yyyy-MM-dd'T'HH:mm:ss"),
-            DateTimePrecision.Millisecond => hasTimeZone ? dt.ToString("yyyy-MM-dd'T'HH:mm:ss.fff") + dt.ToString("zzz") : dt.ToString("yyyy-MM-dd'T'HH:mm:ss.fff"),
-            _ => dt.ToString("o")
+            DateTimePrecision.Year => "yyyy",
+            DateTimePrecision.Month => "yyyy-MM",
+            DateTimePrecision.Day => "yyyy-MM-dd",
+            DateTimePrecision.Hour => "yyyy-MM-dd'T'HH",
+            DateTimePrecision.Minute => "yyyy-MM-dd'T'HH:mm",
+            DateTimePrecision.Second => "yyyy-MM-dd'T'HH:mm:ss",
+            DateTimePrecision.Millisecond => "yyyy-MM-dd'T'HH:mm:ss.fff",
+            _ => "o"
         };
+
+        var result = dt.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
+        
+        if (isTimeOnly)
+        {
+            var tIndex = result.IndexOf('T', StringComparison.Ordinal);
+            result = result.Substring(tIndex);
+        }
+        else if (hasTimeZone && precision >= DateTimePrecision.Hour)
+        {
+            result += dt.ToString("zzz", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return result;
     }
 
     public IEnumerable<IElement> VisitParenthesized(ParenthesizedExpression expression, EvaluationContext context)
