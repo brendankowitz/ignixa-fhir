@@ -52,6 +52,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     public IEnumerable<IElement> Evaluate(IElement input, Expression expression, EvaluationContext? context = null)
     {
         context ??= new EvaluationContext();
+
+        // Push the root element onto the $this stack so $this resolves correctly throughout evaluation
+        context = context.PushThis(input);
+
         return EvaluateExpression([input], expression, context);
     }
 
@@ -1152,6 +1156,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (!leftLower.HasValue || !leftUpper.HasValue || !rightLower.HasValue || !rightUpper.HasValue)
             return null;
+
+        // Special case: identical intervals with orEqual operators should return true
+        if (orEqual && leftLower == rightLower && leftUpper == rightUpper)
+            return true;
 
         // For strict ordering (< or >), both intervals must be completely separate
         // For non-strict ordering (<= or >=), overlapping intervals return null

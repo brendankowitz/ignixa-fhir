@@ -248,12 +248,24 @@ internal static class StringFunctions
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
 
-        // Empty pattern would cause infinite loop/undefined behavior - return empty per spec
+        // Empty pattern: insert substitution between every character (per FHIRPath spec)
+        // Example: 'abc'.replace('', 'x') → 'xaxbxcx'
         if (string.IsNullOrEmpty(pattern))
-            return [];
+        {
+            if (string.IsNullOrEmpty(str))
+                return [FunctionHelpers.CreateString(substitution)];
 
-        var result = str.Replace(pattern, substitution, StringComparison.Ordinal);
-        return [FunctionHelpers.CreateString(result)];
+            var result = new StringBuilder(substitution);
+            foreach (var ch in str)
+            {
+                result.Append(ch);
+                result.Append(substitution);
+            }
+            return [FunctionHelpers.CreateString(result.ToString())];
+        }
+
+        var replaced = str.Replace(pattern, substitution, StringComparison.Ordinal);
+        return [FunctionHelpers.CreateString(replaced)];
     }
 
     /// <summary>
@@ -323,9 +335,9 @@ internal static class StringFunctions
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
 
-        // Empty pattern would cause infinite loop/undefined behavior - return empty per spec
+        // Empty pattern: return original string unchanged (regex behavior)
         if (string.IsNullOrEmpty(pattern))
-            return [];
+            return [FunctionHelpers.CreateString(str)];
 
         try
         {

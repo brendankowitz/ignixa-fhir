@@ -495,5 +495,67 @@ public static class DateTimeFunctions
         }
     }
 
+    /// <summary>
+    /// Returns the precision (number of significant digits/characters) of a date/time or decimal value.
+    /// For dates/times, counts all digits. For decimals, counts significant figures including trailing zeros.
+    /// Returns empty for empty collections or non-date/decimal values.
+    /// </summary>
+    /// <example>
+    /// 1.58700.precision() = 5
+    /// @2014.precision() = 4
+    /// @2014-01-05T10:30:00.000.precision() = 17
+    /// @T10:30.precision() = 4
+    /// {}.precision() = empty
+    /// </example>
+    [FhirPathFunction("precision",
+        SupportedContexts = "any-integer",
+        ReturnType = "integer",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "DateTime",
+        Description = "Returns the precision (number of significant digits) of a date/time or decimal value")]
+    public static IEnumerable<IElement> Precision(IEnumerable<IElement> focus)
+    {
+        var list = focus.ToList();
+        if (list.Count == 0)
+            return [];
+
+        if (list.Count != 1)
+            return [];
+
+        var element = list[0];
+        var value = element.Value;
+
+        // Handle date/time literals (stored as strings with @ prefix)
+        if (value is string str && str.StartsWith("@", StringComparison.Ordinal))
+        {
+            // Remove @ prefix and count digits only
+            var dateTimeStr = str.Substring(1);
+            var digitCount = dateTimeStr.Count(c => char.IsDigit(c));
+            return [CreateInteger(digitCount)];
+        }
+
+        // Handle decimal values - count significant figures
+        if (value is decimal decValue)
+        {
+            // Convert to string to preserve trailing zeros
+            var decStr = decValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            // Remove decimal point and count digits
+            var digits = decStr.Replace(".", "", StringComparison.Ordinal)
+                              .Replace("-", "", StringComparison.Ordinal);
+            return [CreateInteger(digits.Length)];
+        }
+
+        // Handle integer values
+        if (value is int intValue)
+        {
+            var intStr = intValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return [CreateInteger(intStr.Replace("-", "", StringComparison.Ordinal).Length)];
+        }
+
+        return [];
+    }
+
     #endregion
 }

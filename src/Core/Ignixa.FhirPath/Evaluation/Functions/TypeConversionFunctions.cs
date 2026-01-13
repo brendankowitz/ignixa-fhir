@@ -510,9 +510,9 @@ internal static class TypeConversionFunctions
             return elementTypeName.Equals("code", StringComparison.OrdinalIgnoreCase);
         }
 
-        // Check if element type inherits from target type
-        // This would require type hierarchy information from the schema
-        // For now, we'll do basic checks
+        // TODO: Add inheritance hierarchy checking using element.Type?.Info
+        // Would allow checking if Patient.is(DomainResource) or Patient.is(Resource)
+        // For now, exact type matching suffices for most FHIRPath use cases
 
         return false;
     }

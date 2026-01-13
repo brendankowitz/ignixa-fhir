@@ -52,12 +52,16 @@ public static class FhirPathTokenizer
                 // Full DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
                 .Match(Span.Regex(@"@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})?"),
                        FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
-                // Partial DateTime: @YYYY-MM-DDT, @YYYY-MMT, @YYYYT (trailing T indicates DateTime precision)
+                // Partial DateTime with time: @YYYY-MM-DDTHH, @YYYY-MM-DDTHH:MM (hour/minute without seconds)
+                .Match(Span.Regex(@"@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}(:[0-9]{2})?"),
+                       FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
+                // Partial DateTime date-only: @YYYY-MM-DDT, @YYYY-MMT, @YYYYT (trailing T indicates DateTime precision)
                 .Match(Span.Regex(@"@[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?T"),
                        FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
 
-                // Time literals: @THH:MM:SS.FFF (no timezone per spec)
-                .Match(Span.Regex(@"@T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?"),
+                // Time literals: @THH, @THH:MM, @THH:MM:SS, @THH:MM:SS.FFF (no timezone per spec)
+                // Partial times allowed - hour is required, minutes/seconds optional
+                .Match(Span.Regex(@"@T[0-9]{2}(:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?)?"),
                        FhirPathTokenKind.TimeLiteral, requireDelimiters: false)
 
                 // Date literals: @YYYY, @YYYY-MM, @YYYY-MM-DD (partial precision, no time component)
@@ -151,12 +155,16 @@ public static class FhirPathTokenizer
                 // Full DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
                 .Match(Span.Regex(@"@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})?"),
                        FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
-                // Partial DateTime: @YYYY-MM-DDT, @YYYY-MMT, @YYYYT (trailing T indicates DateTime precision)
+                // Partial DateTime with time: @YYYY-MM-DDTHH, @YYYY-MM-DDTHH:MM (hour/minute without seconds)
+                .Match(Span.Regex(@"@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}(:[0-9]{2})?"),
+                       FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
+                // Partial DateTime date-only: @YYYY-MM-DDT, @YYYY-MMT, @YYYYT (trailing T indicates DateTime precision)
                 .Match(Span.Regex(@"@[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?T"),
                        FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
 
-                // Time literals: @THH:MM:SS.FFF (no timezone per spec)
-                .Match(Span.Regex(@"@T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?"),
+                // Time literals: @THH, @THH:MM, @THH:MM:SS, @THH:MM:SS.FFF (no timezone per spec)
+                // Partial times allowed - hour is required, minutes/seconds optional
+                .Match(Span.Regex(@"@T[0-9]{2}(:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?)?"),
                        FhirPathTokenKind.TimeLiteral, requireDelimiters: false)
 
                 // Date literals: @YYYY, @YYYY-MM, @YYYY-MM-DD (partial precision, no time component)

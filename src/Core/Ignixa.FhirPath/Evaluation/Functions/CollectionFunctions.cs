@@ -672,7 +672,8 @@ internal static class CollectionFunctions
         if (focusList.Count == 0)
             return [(IElement)FunctionHelpers.CreateBoolean(true)];
 
-        var isSubset = focusList.All(f => other.Any(o => FunctionHelpers.AreEqual(o.Value, f.Value)));
+        // Check if every element in focus exists in other (using structural comparison for complex types)
+        var isSubset = focusList.All(f => other.Any(o => AreElementsEqual(o, f)));
         return [(IElement)FunctionHelpers.CreateBoolean(isSubset)];
     }
 
@@ -702,7 +703,9 @@ internal static class CollectionFunctions
         if (other.Count == 0)
             return [(IElement)FunctionHelpers.CreateBoolean(true)];
 
-        var isSuperset = other.All(o => focusList.Any(f => FunctionHelpers.AreEqual(f.Value, o.Value)));
+        // For complex types (where Value is null), use reference equality
+        // For primitive types, use value equality
+        var isSuperset = other.All(o => focusList.Any(f => AreElementsEqual(f, o)));
         return [(IElement)FunctionHelpers.CreateBoolean(isSuperset)];
     }
 
@@ -893,5 +896,69 @@ internal static class CollectionFunctions
             
             return [];
         }
+    }
+
+    /// <summary>
+    /// Compares two IElement instances for equality using structural comparison.
+    /// For primitive types, uses value equality.
+    /// For complex types, performs deep structural comparison of children.
+    /// </summary>
+    private static bool AreElementsEqual(IElement left, IElement right)
+    {
+        // If they're the same reference, they're equal
+        if (ReferenceEquals(left, right))
+            return true;
+
+        // Check instance type match first - different types can't be equal
+        if (left.InstanceType != right.InstanceType)
+            return false;
+
+        // For complex types (both Values are null), use structural comparison
+        if (left.Value == null && right.Value == null)
+        {
+            return AreElementsStructurallyEqual(left, right);
+        }
+
+        // For primitive types, use value comparison
+        return FunctionHelpers.AreEqual(left.Value, right.Value);
+    }
+
+    /// <summary>
+    /// Performs deep structural comparison of two complex elements by recursively comparing all children.
+    /// </summary>
+    private static bool AreElementsStructurallyEqual(IElement left, IElement right)
+    {
+        // Get all named children
+        var leftChildren = left.Children().Where(c => !string.IsNullOrEmpty(c.Name)).ToList();
+        var rightChildren = right.Children().Where(c => !string.IsNullOrEmpty(c.Name)).ToList();
+
+        // Group by name
+        var leftByName = leftChildren.GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.ToList());
+        var rightByName = rightChildren.GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Must have same set of child names
+        if (leftByName.Count != rightByName.Count)
+            return false;
+
+        foreach (var kvp in leftByName)
+        {
+            if (!rightByName.TryGetValue(kvp.Key, out var rightList))
+                return false;
+
+            var leftList = kvp.Value;
+
+            // Must have same number of children with this name
+            if (leftList.Count != rightList.Count)
+                return false;
+
+            // Order matters for repeating elements - compare positionally
+            for (var i = 0; i < leftList.Count; i++)
+            {
+                if (!AreElementsEqual(leftList[i], rightList[i]))
+                    return false;
+            }
+        }
+
+        return true;
     }
 }
