@@ -10,7 +10,7 @@ namespace Ignixa.FhirPath.Visitors;
 /// <summary>
 /// Base visitor implementation providing default traversal logic for FhirPath expression trees.
 /// Derived classes override only the visit methods they need to customize.
-/// Provides 13 virtual methods for all expression types in the FhirPath AST.
+/// Provides 14 virtual methods for all expression types in the FhirPath AST.
 /// </summary>
 /// <typeparam name="TContext">The context type passed during traversal</typeparam>
 /// <typeparam name="TOutput">The output type produced by visiting expressions</typeparam>
@@ -175,6 +175,16 @@ public abstract class DefaultFhirPathExpressionVisitor<TContext, TOutput> : IFhi
     {
         // Default: visit focus (property name is just a string, not a child expression)
         expression.Focus?.AcceptVisitor(this, context);
+        return default!;
+    }
+
+    public virtual TOutput VisitInstanceSelector(InstanceSelectorExpression expression, TContext context)
+    {
+        // Default: visit all element value expressions
+        foreach (var element in expression.Elements)
+        {
+            element.ValueExpression?.AcceptVisitor(this, context);
+        }
         return default!;
     }
 }

@@ -9,7 +9,7 @@ namespace Ignixa.FhirPath.Parsing.ParseTree;
 
 /// <summary>
 /// Visitor interface for traversing FhirPath parse trees.
-/// Provides 13 visit methods for all parse node types.
+/// Provides 14 visit methods for all parse node types.
 /// </summary>
 /// <typeparam name="TContext">The context type passed during traversal</typeparam>
 /// <typeparam name="TResult">The result type produced by visiting nodes</typeparam>
@@ -28,4 +28,5 @@ internal interface IParseTreeVisitor<TContext, TResult>
     TResult VisitQuantity(QuantityParseNode node, TContext context);
     TResult VisitScope(ScopeParseNode node, TContext context);
     TResult VisitEmpty(EmptyParseNode node, TContext context);
+    TResult VisitInstanceSelector(InstanceSelectorParseNode node, TContext context);
 }

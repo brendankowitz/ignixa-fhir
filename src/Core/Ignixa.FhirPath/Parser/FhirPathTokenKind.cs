@@ -150,6 +150,9 @@ public enum FhirPathTokenKind
         /// <summary>, - Comma</summary>
         Comma,
 
+        /// <summary>: - Colon (used in instance selectors)</summary>
+        Colon,
+
         /// <summary>. - Dot (member access)</summary>
         Dot,
 

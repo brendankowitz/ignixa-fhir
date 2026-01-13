@@ -381,5 +381,13 @@ public class ParseTreeTests
         public int VisitQuantity(QuantityParseNode node, object? context) => 0;
         public int VisitScope(ScopeParseNode node, object? context) => 0;
         public int VisitEmpty(EmptyParseNode node, object? context) => 0;
+        public int VisitInstanceSelector(InstanceSelectorParseNode node, object? context)
+        {
+            foreach (var element in node.Elements)
+            {
+                element.ValueExpression.Accept(this, context);
+            }
+            return 0;
+        }
     }
 }

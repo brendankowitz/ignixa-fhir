@@ -1829,6 +1829,61 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [];
     }
 
+    public IEnumerable<IElement> VisitInstanceSelector(InstanceSelectorExpression expression, EvaluationContext context)
+    {
+        // Instance selector: TypeName { element: value, element: value, ... }
+        // Creates a new FHIR object of the specified type
+
+        // Materialize the focus collection to check count
+        var focusList = context.Focus.ToList();
+
+        // Per spec: If input collection has multiple items, signal an error
+        if (focusList.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Instance selector requires a single input item or empty collection, but got {focusList.Count} items");
+        }
+
+        // Per spec: If input collection is empty, result is empty
+        if (focusList.Count == 0)
+        {
+            return [];
+        }
+
+        // Resolve type name (handle namespace prefix like "FHIR.Identifier")
+        var typeName = expression.TypeName;
+
+        // For empty object initializer (e.g., "Period {:}"), create empty complex element
+        if (expression.IsEmpty)
+        {
+            return [new ComplexElement(typeName, typeName, [])];
+        }
+
+        // Evaluate all element assignments
+        var children = new List<(string name, IElement element)>();
+
+        foreach (var assignment in expression.Elements)
+        {
+            // Evaluate the value expression for this element
+            var values = EvaluateExpression(context.Focus, assignment.ValueExpression, context).ToList();
+
+            // Per spec: If element value is empty collection, don't add the element
+            if (values.Count == 0)
+            {
+                continue;
+            }
+
+            // Add each value as a child (supports cardinality > 1)
+            foreach (var value in values)
+            {
+                children.Add((assignment.ElementName, value));
+            }
+        }
+
+        // Create and return the new complex element
+        return [new ComplexElement(typeName, typeName, children)];
+    }
+
     private IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
     private IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
     private IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
@@ -1880,6 +1935,38 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name = null) => [];
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    /// <summary>
+    /// Implementation of IElement for complex FHIR objects with child elements.
+    /// Used by instance selector expressions.
+    /// </summary>
+    private class ComplexElement : IElement
+    {
+        private readonly List<(string name, IElement element)> _children;
+
+        public ComplexElement(string instanceType, string name, IEnumerable<(string name, IElement element)> children)
+        {
+            InstanceType = instanceType;
+            Name = name;
+            _children = children.ToList();
+        }
+
+        public string Name { get; }
+        public string InstanceType { get; }
+        public object? Value => null;
+        public string Location => string.Empty;
+        public IType? Type => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null)
+        {
+            if (name == null)
+                return _children.Select(c => c.element).ToList();
+
+            return _children.Where(c => c.name == name).Select(c => c.element).ToList();
+        }
 
         public T? Meta<T>() where T : class => null;
     }

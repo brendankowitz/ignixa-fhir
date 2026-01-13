@@ -121,6 +121,47 @@ internal static class FhirPathParseTreeGrammar
         from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
         select (ParseNode)new EmptyParseNode(Loc(lbrace, rbrace));
 
+    // Instance selector: TypeName { element: value, element: value, ... }
+    // or empty initializer: TypeName {:}
+    private static TokenListParser<FhirPathTokenKind, ParseNode> InstanceSelector() =>
+        from typeTokens in Token.EqualTo(FhirPathTokenKind.Identifier)
+            .ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Dot))
+        let typeIdentifiers = typeTokens.ToArray()
+        from lbrace in Token.EqualTo(FhirPathTokenKind.LeftBrace)
+        from elements in (
+            // Check for empty initializer {:}
+            from colon in Token.EqualTo(FhirPathTokenKind.Colon)
+            from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
+            select (elements: Array.Empty<ElementAssignmentParseNode>(), isEmpty: true, rbrace)
+        ).Or(
+            // Parse element assignments
+            from assignments in (
+                from elementName in Token.EqualTo(FhirPathTokenKind.Identifier)
+                from colon in Token.EqualTo(FhirPathTokenKind.Colon)
+                from valueExpr in Parse.Ref(() => Expression!)
+                select new ElementAssignmentParseNode(
+                    UnescapeIdentifier(elementName.ToStringValue()),
+                    valueExpr,
+                    Loc(elementName))
+            ).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
+            from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
+            select (elements: assignments.ToArray(), isEmpty: false, rbrace)
+        ).Or(
+            // Empty object without colon: {} (already parsed by EmptyCollection, but handle here too)
+            from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
+            select (elements: Array.Empty<ElementAssignmentParseNode>(), isEmpty: false, rbrace)
+        )
+        select (ParseNode)new InstanceSelectorParseNode(
+            typeIdentifiers.Length == 1
+                ? UnescapeIdentifier(typeIdentifiers[0].ToStringValue())
+                : UnescapeIdentifier(typeIdentifiers[typeIdentifiers.Length - 1].ToStringValue()),
+            typeIdentifiers.Length > 1
+                ? string.Join(".", typeIdentifiers.Take(typeIdentifiers.Length - 1).Select(t => UnescapeIdentifier(t.ToStringValue())))
+                : null,
+            elements.elements,
+            elements.isEmpty,
+            Loc(typeIdentifiers[0], elements.rbrace));
+
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> QualifiedIdentifier =
         from parts in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
@@ -171,6 +212,7 @@ internal static class FhirPathParseTreeGrammar
             .Or(Axis.Select(a => (ParseNode)a))
             .Or(ExternalConstant)
             .Or(ParenthesizedExpression)
+            .Or(InstanceSelector().Try()) // Try instance selector before identifier (needs lookahead for '{')
             .Or(EmptyCollection)
             .Or(IdentifierOrFunction());
 
