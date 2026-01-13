@@ -48,9 +48,12 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex(@"\btrue\b"), FhirPathTokenKind.BooleanLiteral, requireDelimiters: false)
                 .Match(Span.Regex(@"\bfalse\b"), FhirPathTokenKind.BooleanLiteral, requireDelimiters: false)
 
-                // DateTime literals (must have 'T' time component to distinguish from Date)
-                // DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
+                // DateTime literals (must have 'T' to distinguish from Date)
+                // Full DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
                 .Match(Span.Regex(@"@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})?"),
+                       FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
+                // Partial DateTime: @YYYY-MM-DDT, @YYYY-MMT, @YYYYT (trailing T indicates DateTime precision)
+                .Match(Span.Regex(@"@[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?T"),
                        FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
 
                 // Time literals: @THH:MM:SS.FFF (no timezone per spec)
@@ -144,9 +147,12 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex(@"\btrue\b"), FhirPathTokenKind.BooleanLiteral, requireDelimiters: false)
                 .Match(Span.Regex(@"\bfalse\b"), FhirPathTokenKind.BooleanLiteral, requireDelimiters: false)
 
-                // DateTime literals (must have 'T' time component to distinguish from Date)
-                // DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
+                // DateTime literals (must have 'T' to distinguish from Date)
+                // Full DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
                 .Match(Span.Regex(@"@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})?"),
+                       FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
+                // Partial DateTime: @YYYY-MM-DDT, @YYYY-MMT, @YYYYT (trailing T indicates DateTime precision)
+                .Match(Span.Regex(@"@[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?T"),
                        FhirPathTokenKind.DateTimeLiteral, requireDelimiters: false)
 
                 // Time literals: @THH:MM:SS.FFF (no timezone per spec)

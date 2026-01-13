@@ -444,6 +444,84 @@ internal static class TypeConversionFunctions
     #region Type Checking Functions
 
     /// <summary>
+    /// is(type) - Returns true if the value is of the specified type.
+    /// </summary>
+    [FhirPathFunction("is",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "TypeConversion",
+        Description = "Returns true if the value is of the specified type")]
+    public static IEnumerable<IElement> Is(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
+    {
+        var list = focus.ToList();
+
+        // Empty collection returns empty
+        if (list.Count == 0)
+            return [];
+
+        // Multiple items signals an error
+        if (list.Count > 1)
+            throw new InvalidOperationException("is() function requires input collection to contain at most one item");
+
+        // Get the type name from the argument
+        // The argument should be an identifier expression representing the type
+        if (arguments.Count != 1)
+            throw new InvalidOperationException("is() function requires exactly one argument");
+
+        var typeArgument = arguments[0];
+        if (typeArgument is not Expressions.IdentifierExpression identifierExpr)
+            throw new InvalidOperationException("is() function requires a type identifier as argument");
+
+        var targetTypeName = identifierExpr.Name;
+        var element = list[0];
+
+        // Check if the element's type matches the target type
+        var matches = IsTypeMatch(element, targetTypeName);
+        return FunctionHelpers.ReturnBoolean(matches);
+    }
+
+    private static bool IsTypeMatch(IElement element, string targetTypeName)
+    {
+        // Normalize type names (case-insensitive comparison per FHIR spec)
+        var elementTypeName = element.InstanceType;
+
+        if (string.Equals(elementTypeName, targetTypeName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Handle primitive type aliases
+        // FHIRPath uses lowercase primitives (string, integer, decimal, boolean)
+        // while FHIR uses capitalized types (String, Integer, Decimal, Boolean)
+        var normalizedTargetType = targetTypeName.ToUpperInvariant();
+        var normalizedElementType = elementTypeName.ToUpperInvariant();
+
+        if (normalizedElementType == normalizedTargetType)
+            return true;
+
+        // Check for specific type mappings
+        // FHIR has "code" which is a subtype of "string"
+        if (normalizedTargetType == "STRING" && normalizedElementType == "CODE")
+            return true;
+
+        if (normalizedTargetType == "CODE" && normalizedElementType == "STRING")
+        {
+            // Only match if it's actually a code element
+            return elementTypeName.Equals("code", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Check if element type inherits from target type
+        // This would require type hierarchy information from the schema
+        // For now, we'll do basic checks
+
+        return false;
+    }
+
+    #endregion
+
+    #region Conversion Checking Functions
+
+    /// <summary>
     /// convertsToInteger() - Returns true if value can be converted to integer.
     /// </summary>
     [FhirPathFunction("convertsToInteger",
