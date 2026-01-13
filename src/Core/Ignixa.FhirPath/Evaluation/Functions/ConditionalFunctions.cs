@@ -38,7 +38,14 @@ internal static class ConditionalFunctions
         if (arguments.Count < 2)
             throw new ArgumentException("iif() requires at least criterion and true-result arguments");
 
-        var criterion = evaluateExpression(focus, arguments[0], context).ToList();
+        // For iif(), $this should refer to the focus collection
+        // If focus is a single element, $this resolves to that element
+        var focusList = focus.ToList();
+        var innerContext = focusList.Count == 1
+            ? context.PushThis(focusList[0])
+            : context;
+
+        var criterion = evaluateExpression(focus, arguments[0], innerContext).ToList();
 
         // Empty condition returns empty
         if (criterion.Count == 0)
@@ -47,13 +54,13 @@ internal static class ConditionalFunctions
         // True condition returns true branch
         if (FunctionHelpers.IsTrue(criterion))
         {
-            return evaluateExpression(focus, arguments[1], context);
+            return evaluateExpression(focus, arguments[1], innerContext);
         }
 
         // False condition returns false branch (if provided)
         if (arguments.Count > 2)
         {
-            return evaluateExpression(focus, arguments[2], context);
+            return evaluateExpression(focus, arguments[2], innerContext);
         }
 
         return [];
