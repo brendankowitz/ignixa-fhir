@@ -147,6 +147,12 @@ public record EvaluationContext
     public Action<NodeEvaluationEntry>? NodeEvaluationHandler { get; init; }
 
     /// <summary>
+    /// Optional FHIR schema provider for type metadata lookup.
+    /// Used by instance selectors to attach type information to created elements.
+    /// </summary>
+    public ISchema? Schema { get; init; }
+
+    /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).
     /// The forked context has its own copy of DefinedVariables so that variables defined
     /// in one branch don't leak to sibling branches.
@@ -298,6 +304,14 @@ public record EvaluationContext
     public EvaluationContext WithNodeEvaluationHandler(Action<NodeEvaluationEntry> handler)
     {
         return this with { NodeEvaluationHandler = handler };
+    }
+
+    /// <summary>
+    /// Creates a new context with the specified FHIR schema provider.
+    /// </summary>
+    public EvaluationContext WithSchema(ISchema schema)
+    {
+        return this with { Schema = schema };
     }
 
     /// <summary>

@@ -498,6 +498,80 @@ public class InstanceSelectorTests
 
     #endregion
 
+    #region Schema Attachment Tests
+
+    [Fact]
+    public void GivenSchemaInContext_WhenInstanceSelector_ThenAttachesTypeMetadata()
+    {
+        // Arrange
+        var expression = "Coding { system: 'http://example.org', code: 'c1' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Create context with R4 schema
+        var schema = new Ignixa.Specification.Generated.R4CoreSchemaProvider();
+        var context = new EvaluationContext()
+            .WithFocus(root)
+            .WithSchema(schema);
+
+        // Act
+        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+
+        // Verify Type metadata is attached
+        Assert.NotNull(result[0].Type);
+        Assert.Equal("Coding", result[0].Type!.Info.Name);
+    }
+
+    [Fact]
+    public void GivenNoSchemaInContext_WhenInstanceSelector_ThenTypeIsNull()
+    {
+        // Arrange
+        var expression = "Coding { system: 'http://example.org', code: 'c1' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act - no schema in context
+        var result = _evaluator.Evaluate(root, ast).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+
+        // Verify Type is null when no schema provided
+        Assert.Null(result[0].Type);
+    }
+
+    [Fact]
+    public void GivenUnknownTypeWithSchema_WhenInstanceSelector_ThenTypeIsNull()
+    {
+        // Arrange - using a completely made-up type that doesn't exist in FHIR
+        var expression = "CompletelyMadeUpType { field: 'value' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Create context with R4 schema
+        var schema = new Ignixa.Specification.Generated.R4CoreSchemaProvider();
+        var context = new EvaluationContext()
+            .WithFocus(root)
+            .WithSchema(schema);
+
+        // Act
+        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("CompletelyMadeUpType", result[0].InstanceType);
+
+        // Verify Type is null for unknown types
+        Assert.Null(result[0].Type);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private IElement CreateIntegerElement(int value)

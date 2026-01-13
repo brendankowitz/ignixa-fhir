@@ -125,7 +125,7 @@ internal static class FhirPathParseTreeGrammar
     // or empty initializer: TypeName {:}
     private static TokenListParser<FhirPathTokenKind, ParseNode> InstanceSelector() =>
         from typeTokens in Token.EqualTo(FhirPathTokenKind.Identifier)
-            .ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Dot))
+            .AtLeastOnceDelimitedBy(Token.EqualTo(FhirPathTokenKind.Dot))
         let typeIdentifiers = typeTokens.ToArray()
         from lbrace in Token.EqualTo(FhirPathTokenKind.LeftBrace)
         from elements in (
@@ -137,6 +137,7 @@ internal static class FhirPathParseTreeGrammar
             // Parse element assignments
             from assignments in (
                 from elementName in Token.EqualTo(FhirPathTokenKind.Identifier)
+                    .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
                 from colon in Token.EqualTo(FhirPathTokenKind.Colon)
                 from valueExpr in Parse.Ref(() => Expression!)
                 select new ElementAssignmentParseNode(

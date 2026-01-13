@@ -1853,10 +1853,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Resolve type name (handle namespace prefix like "FHIR.Identifier")
         var typeName = expression.TypeName;
 
+        // Lookup type definition from schema if available
+        var typeDefinition = context.Schema?.GetTypeDefinition(typeName);
+
         // For empty object initializer (e.g., "Period {:}"), create empty complex element
         if (expression.IsEmpty)
         {
-            return [new ComplexElement(typeName, typeName, [])];
+            return [new ComplexElement(typeName, typeName, [], typeDefinition)];
         }
 
         // Evaluate all element assignments
@@ -1880,8 +1883,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             }
         }
 
-        // Create and return the new complex element
-        return [new ComplexElement(typeName, typeName, children)];
+        // Create and return the new complex element with type metadata
+        return [new ComplexElement(typeName, typeName, children, typeDefinition)];
     }
 
     private IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
@@ -1947,18 +1950,19 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         private readonly List<(string name, IElement element)> _children;
 
-        public ComplexElement(string instanceType, string name, IEnumerable<(string name, IElement element)> children)
+        public ComplexElement(string instanceType, string name, IEnumerable<(string name, IElement element)> children, IType? type = null)
         {
             InstanceType = instanceType;
             Name = name;
             _children = children.ToList();
+            Type = type;
         }
 
         public string Name { get; }
         public string InstanceType { get; }
         public object? Value => null;
         public string Location => string.Empty;
-        public IType? Type => null;
+        public IType? Type { get; }
 
         public IReadOnlyList<IElement> Children(string? name = null)
         {
