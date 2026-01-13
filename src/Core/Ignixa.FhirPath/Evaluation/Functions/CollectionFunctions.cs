@@ -829,12 +829,23 @@ internal static class CollectionFunctions
         }
 
         var sortExpression = arguments[0];
-        return list.OrderBy(element =>
+
+        // Detect unary negation on sort key: sort(-expr) means descending order per FHIRPath spec
+        var isDescending = sortExpression is UnaryExpression { Operator: "-" };
+        var effectiveExpression = isDescending && sortExpression is UnaryExpression u
+            ? u.Operand
+            : sortExpression;
+
+        Func<IElement, object?> keySelector = element =>
         {
             var innerContext = context.PushThis(element);
-            var result = evaluateExpression([element], sortExpression, innerContext);
+            var result = evaluateExpression([element], effectiveExpression, innerContext);
             return result.FirstOrDefault()?.Value;
-        }, new ObjectComparer());
+        };
+
+        return isDescending
+            ? list.OrderByDescending(keySelector, new ObjectComparer())
+            : list.OrderBy(keySelector, new ObjectComparer());
     }
 
     private class ObjectComparer : IComparer<object?>
