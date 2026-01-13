@@ -25,19 +25,19 @@ public class OfficialTestSuiteRunner
     // Type introspection: is(), conformsTo()
     // Collection operations: aggregate()
     // Variable definition: defineVariable() (FHIRPath 2.0 feature)
+    // Terminology services: %terminologies.expand, validateVS(), translate()
+    // Precision function: precision()
 
     private static readonly FrozenSet<string> _unsupportedFunctions = new[]
     {
-        ".conformsTo(",
-        ".is(",
-        ".aggregate("
+        "conformsTo(",
+        "%terminologies",
+        "validateVS(",
+        "translate("
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     // Scopes that are not yet implemented
-    private static readonly FrozenSet<string> _unsupportedScopes = new[]
-    {
-        "$index"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> _unsupportedScopes = FrozenSet<string>.Empty;
 
     // Matches the 'is' operator when used with type names (e.g., "value is Quantity")
     // This is distinct from .is() function calls which are caught by _unsupportedFunctions
@@ -226,6 +226,14 @@ public class OfficialTestSuiteRunner
 
         var actualValue = actual.Value;
         var actualType = InferFhirPathType(actualValue);
+
+        // If the value is a string but the element metadata says it's a temporal type, trust the metadata
+        // This handles the case where the model returns raw values (no @ prefix)
+        if (actualType == "string" && 
+            (actual.InstanceType == "date" || actual.InstanceType == "dateTime" || actual.InstanceType == "time" || actual.InstanceType == "instant"))
+        {
+            actualType = actual.InstanceType;
+        }
 
         if (!TypesMatch(expectedType, actualType, actualValue))
         {

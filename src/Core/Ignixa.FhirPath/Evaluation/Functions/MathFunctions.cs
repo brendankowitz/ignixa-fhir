@@ -161,7 +161,7 @@ internal static class MathFunctions
     }
 
     /// <summary>
-    /// abs() - Returns the absolute value of a number.
+    /// abs() - Returns the absolute value of a number or quantity.
     /// </summary>
     [FhirPathFunction("abs",
         SupportedContexts = "number-number",
@@ -169,12 +169,19 @@ internal static class MathFunctions
         MinArguments = 0,
         MaxArguments = 0,
         Category = "Math",
-        Description = "Returns the absolute value of a number")]
+        Description = "Returns the absolute value of a number or quantity")]
     public static IEnumerable<IElement> Abs(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
         if (list.Count != 1)
             return [];
+
+        // Handle Quantity types
+        if (list[0].Value is Types.Quantity qty)
+        {
+            var absQty = new Types.Quantity(Math.Abs(qty.Value), qty.Unit);
+            return [new QuantityElement(absQty)];
+        }
 
         if (list[0].Value is int intValue)
             return [FunctionHelpers.CreateInteger(Math.Abs(intValue))];
@@ -295,5 +302,27 @@ internal static class MathFunctions
 
         var result = (decimal)Math.Log((double)value, (double)baseValue);
         return [FunctionHelpers.CreateDecimal(result)];
+    }
+
+    /// <summary>
+    /// Simple IElement wrapper for Quantity values.
+    /// </summary>
+    private class QuantityElement : IElement
+    {
+        private readonly Types.Quantity _quantity;
+
+        public QuantityElement(Types.Quantity quantity)
+        {
+            ArgumentNullException.ThrowIfNull(quantity);
+            _quantity = quantity;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType => "Quantity";
+        public object Value => _quantity;
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
+        public T? Meta<T>() where T : class => null;
     }
 }

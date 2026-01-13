@@ -372,6 +372,10 @@ internal static class TypeConversionFunctions
         if (value is decimal d)
             return [new QuantityElement(new Quantity(d, "1"))];
 
+        // Convert boolean to dimensionless quantity (true=1, false=0)
+        if (value is bool b)
+            return [new QuantityElement(new Quantity(b ? 1 : 0, "1"))];
+
         return [];
     }
 
@@ -401,13 +405,15 @@ internal static class TypeConversionFunctions
         if (!decimal.TryParse(valueStr, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value))
             return null;
 
-        // Remove quotes from unit if present (e.g., '1 'mg'' -> 'mg')
-        if (unitStr.StartsWith('\'') && unitStr.EndsWith('\'') && unitStr.Length > 1)
-            unitStr = unitStr.Substring(1, unitStr.Length - 2);
-
         // Validate unit is not empty
         if (string.IsNullOrWhiteSpace(unitStr))
             return null;
+
+        // Normalize calendar duration units (e.g. "day" -> "d")
+        // This ensures '1 day'.toQuantity() works as expected
+        var ucumUnit = CalendarDuration.GetUcumUnit(unitStr);
+        if (ucumUnit != null)
+            unitStr = ucumUnit;
 
         return new Quantity(value, unitStr);
     }

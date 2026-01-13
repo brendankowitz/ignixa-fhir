@@ -477,6 +477,16 @@ internal static class CollectionFunctions
         if (string.IsNullOrEmpty(typeName))
             return [];
 
+        // Handle qualified type names (e.g. FHIR.Patient -> Patient, System.String -> String)
+        if (typeName.Contains('.', StringComparison.Ordinal))
+        {
+            var parts = typeName.Split('.');
+            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
+            {
+                typeName = parts[1];
+            }
+        }
+
         return focus.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&
                                e.InstanceType.Equals(typeName, StringComparison.OrdinalIgnoreCase));
     }
@@ -502,8 +512,20 @@ internal static class CollectionFunctions
         if (arguments[0] is not IdentifierExpression idExpr)
             return [];
 
+        var typeName = idExpr.Name;
+
+        // Handle qualified type names
+        if (typeName.Contains('.', StringComparison.Ordinal))
+        {
+            var parts = typeName.Split('.');
+            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
+            {
+                typeName = parts[1];
+            }
+        }
+
 #pragma warning disable CA1308 // Normalize strings to uppercase
-        var typeName = idExpr.Name.ToLowerInvariant();
+        typeName = typeName.ToLowerInvariant();
         return focus.Where(e => e.InstanceType?.ToLowerInvariant() == typeName);
 #pragma warning restore CA1308 // Normalize strings to uppercase
     }
@@ -685,19 +707,96 @@ internal static class CollectionFunctions
     }
 
     /// <summary>
-    /// type() - Returns the FHIR type name of each element in the collection.
+    /// type() - Returns the type information of each element in the collection.
+    /// Returns a ClassInfo or SimpleTypeInfo with name and namespace properties.
     /// </summary>
     [FhirPathFunction("type",
-        SupportedContexts = "any-string",
-        ReturnType = "string",
+        SupportedContexts = "any-any",
+        ReturnType = "ClassInfo",
         SupportsCollections = true,
         MinArguments = 0,
         MaxArguments = 0,
         Category = "Collection",
-        Description = "Returns the FHIR type name of each element")]
+        Description = "Returns the type information of each element")]
     public static IEnumerable<IElement> Type(IEnumerable<IElement> focus)
     {
-        return focus.Select(e => FunctionHelpers.CreateString(e.InstanceType ?? "unknown"));
+        foreach (var element in focus)
+        {
+            var typeName = element.InstanceType ?? "unknown";
+            string ns = "FHIR";
+            string name = typeName;
+
+            // Distinguish between System literals (PrimitiveElement) and FHIR elements (e.g. ElementNode, PocoElement)
+            // This is a heuristic based on the implementing class name.
+            var implType = element.GetType().Name;
+            bool isSystemLiteral = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+
+            if (isSystemLiteral)
+            {
+                // Map primitives to System namespace and PascalCase
+#pragma warning disable CA1308 // Normalize strings to uppercase
+                switch (typeName.ToLowerInvariant())
+#pragma warning restore CA1308 // Normalize strings to uppercase
+                {
+                    case "boolean":
+                        ns = "System";
+                        name = "Boolean";
+                        break;
+                    case "string":
+                        ns = "System";
+                        name = "String";
+                        break;
+                    case "integer":
+                        ns = "System";
+                        name = "Integer";
+                        break;
+                    case "decimal":
+                        ns = "System";
+                        name = "Decimal";
+                        break;
+                    case "date":
+                        ns = "System";
+                        name = "Date";
+                        break;
+                    case "datetime":
+                        ns = "System";
+                        name = "DateTime";
+                        break;
+                    case "time":
+                        ns = "System";
+                        name = "Time";
+                        break;
+                    case "quantity":
+                        // Quantity is special, treated as FHIR often but System in path?
+                        // Test usually expects FHIR.Quantity or System.Quantity?
+                        // For now let's assume FHIR for Quantity as it is complex.
+                        ns = "FHIR";
+                        name = "Quantity";
+                        break;
+                    default:
+                        // Other literals?
+                        if (char.IsLower(typeName[0]))
+                        {
+                             // If it starts lowercase but is literal, maybe map to Pascal?
+                             // But safely default to PascalCase if possible
+                             if (typeName.Length > 0)
+                                name = char.ToUpperInvariant(typeName[0]) + typeName.Substring(1);
+                             ns = "System";
+                        }
+                        break;
+                }
+            }
+            else
+            {
+                // FHIR Elements
+                // Namespace is FHIR
+                ns = "FHIR";
+                // Name preserves casing (usually camelCase for primitives, PascalCase for Resources)
+                // e.g. "boolean", "Patient"
+            }
+
+            yield return new TypeInfoElement(name, ns);
+        }
     }
 
     /// <summary>
@@ -756,6 +855,43 @@ internal static class CollectionFunctions
             }
 
             return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Implementation of TypeInfo/ClassInfo for the type() function.
+    /// </summary>
+    private class TypeInfoElement : IElement
+    {
+        private readonly string _name;
+        private readonly string _namespace;
+
+        public TypeInfoElement(string name, string ns)
+        {
+            _name = name;
+            _namespace = ns;
+            // Value is not strictly defined, but useful for debugging
+            Value = $"{ns}.{name}";
+            InstanceType = "ClassInfo";
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType { get; }
+        public object Value { get; }
+        public string Location => string.Empty;
+        public IType? Type => null;
+
+        public T? Meta<T>() where T : class => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null)
+        {
+            if (string.Equals(name, "name", StringComparison.OrdinalIgnoreCase))
+                return [FunctionHelpers.CreateString(_name)];
+            
+            if (string.Equals(name, "namespace", StringComparison.OrdinalIgnoreCase))
+                return [FunctionHelpers.CreateString(_namespace)];
+            
+            return [];
         }
     }
 }

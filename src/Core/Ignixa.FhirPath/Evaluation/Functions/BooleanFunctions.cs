@@ -115,7 +115,7 @@ internal static class BooleanFunctions
 
     /// <summary>
     /// not() - Negates a single boolean value.
-    /// Returns empty if collection is empty or has more than one element.
+    /// Returns empty if collection is empty, has more than one element, or is not a boolean.
     /// </summary>
     [FhirPathFunction("not",
         SupportedContexts = "boolean-boolean",
@@ -132,15 +132,18 @@ internal static class BooleanFunctions
         if (list.Count == 0)
             return [];
 
-        // Single boolean: negate it
-        if (list.Count == 1 && list[0].Value is bool b)
+        // Multiple items: per spec, return empty
+        if (list.Count != 1)
+            return [];
+
+        // Single element: must be a boolean to negate
+        var element = list[0];
+        if (element.Value is bool b)
         {
-            // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
             return [FunctionHelpers.CreateBoolean(!b)];
         }
 
-        // Multiple items or non-boolean: per spec, this is an error
-        // Return empty for safety
+        // Non-boolean type: per spec, return empty
         return [];
     }
 }

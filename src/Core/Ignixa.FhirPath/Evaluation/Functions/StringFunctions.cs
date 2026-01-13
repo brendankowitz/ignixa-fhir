@@ -248,6 +248,10 @@ internal static class StringFunctions
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
             return [];
 
+        // Empty pattern would cause infinite loop/undefined behavior - return empty per spec
+        if (string.IsNullOrEmpty(pattern))
+            return [];
+
         var result = str.Replace(pattern, substitution, StringComparison.Ordinal);
         return [FunctionHelpers.CreateString(result)];
     }
@@ -317,6 +321,10 @@ internal static class StringFunctions
         var substitutionResult = evaluateExpression(focus, arguments[1], context).SingleOrDefault();
 
         if (patternResult?.Value is not string pattern || substitutionResult?.Value is not string substitution)
+            return [];
+
+        // Empty pattern would cause infinite loop/undefined behavior - return empty per spec
+        if (string.IsNullOrEmpty(pattern))
             return [];
 
         try

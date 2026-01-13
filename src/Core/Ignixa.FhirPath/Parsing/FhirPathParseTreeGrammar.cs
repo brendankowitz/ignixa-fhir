@@ -110,10 +110,16 @@ internal static class FhirPathParseTreeGrammar
         from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
         select (ParseNode)new EmptyParseNode(Loc(lbrace, rbrace));
 
-    private static readonly TokenListParser<FhirPathTokenKind, ParseNode> TypeSpecifierArgument =
-        Token.EqualTo(FhirPathTokenKind.Identifier)
+    private static readonly TokenListParser<FhirPathTokenKind, ParseNode> QualifiedIdentifier =
+        from parts in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
-            .Select(t => (ParseNode)new IdentifierParseNode(UnescapeIdentifier(t.ToStringValue()), Loc(t)));
+            .ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Dot))
+        select (ParseNode)new IdentifierParseNode(
+            string.Join(".", parts.Select(t => UnescapeIdentifier(t.ToStringValue()))),
+            Loc(parts.First(), parts.Last()));
+
+    private static readonly TokenListParser<FhirPathTokenKind, ParseNode> TypeSpecifierArgument =
+        QualifiedIdentifier;
 
     private static bool IsTypeSpecifierFunction(string functionName)
     {
