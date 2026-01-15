@@ -351,14 +351,29 @@ internal static class CollectionFunctions
             throw new ArgumentException("all() requires a criteria argument");
 
         var criteria = arguments[0];
-        var allMatch = focus.All(element =>
+        var foundEmpty = false;
+
+        foreach (var element in focus)
         {
             var innerContext = context.PushThis(element);
             var result = evaluateExpression([element], criteria, innerContext);
-            return result.Any() && FunctionHelpers.IsTrue(result);
-        });
 
-        return [(IElement)FunctionHelpers.CreateBoolean(allMatch)];
+            if (!result.Any())
+            {
+                foundEmpty = true;
+                continue;
+            }
+
+            if (!FunctionHelpers.IsTrue(result))
+            {
+                return [(IElement)FunctionHelpers.CreateBoolean(false)];
+            }
+        }
+
+        if (foundEmpty)
+            return [];
+
+        return [(IElement)FunctionHelpers.CreateBoolean(true)];
     }
 
     /// <summary>
@@ -384,14 +399,29 @@ internal static class CollectionFunctions
         }
 
         var criteria = arguments[0];
-        var anyMatch = focus.Any(element =>
+        var foundEmpty = false;
+
+        foreach (var element in focus)
         {
             var innerContext = context.PushThis(element);
             var result = evaluateExpression([element], criteria, innerContext);
-            return result.Any() && FunctionHelpers.IsTrue(result);
-        });
 
-        return [(IElement)FunctionHelpers.CreateBoolean(anyMatch)];
+            if (!result.Any())
+            {
+                foundEmpty = true;
+                continue;
+            }
+
+            if (FunctionHelpers.IsTrue(result))
+            {
+                return [(IElement)FunctionHelpers.CreateBoolean(true)];
+            }
+        }
+
+        if (foundEmpty)
+            return [];
+
+        return [(IElement)FunctionHelpers.CreateBoolean(false)];
     }
 
     /// <summary>
@@ -644,6 +674,49 @@ internal static class CollectionFunctions
 
         var other = evaluateExpression(focus, arguments[0], context);
         return focus.Concat(other);
+    }
+
+    /// <summary>
+    /// aggregate() - Aggregates elements using an accumulator expression.
+    /// </summary>
+    [FhirPathFunction("aggregate",
+        SupportedContexts = "any-any",
+        ReturnType = "fromArgument",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 2,
+        TakesExpressionArguments = true,
+        Category = "Collection",
+        Description = "Aggregates elements using an accumulator expression")]
+    public static IEnumerable<IElement> Aggregate(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        if (arguments.Count == 0)
+            throw new ArgumentException("aggregate() requires an aggregator expression");
+
+        // Initialize $total: initial-value if provided, otherwise empty
+        List<IElement> total =
+            arguments.Count > 1
+                ? evaluateExpression(focus, arguments[1], context).ToList()
+                : [];
+
+        foreach (var element in focus)
+        {
+            var innerContext = context
+                .PushThis(element)
+                .WithEnvironmentVariable("total", total);
+
+            total = evaluateExpression(
+                [element],
+                arguments[0],
+                innerContext
+            ).ToList();
+        }
+
+        return total;
     }
 
     /// <summary>

@@ -960,27 +960,69 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
             return null;
 
+        // Per FHIRPath spec: when comparing dates with different precision, the result is uncertain
+        // unless we can definitively prove they are unequal based on the specified components
         if (leftPrecision != rightPrecision)
         {
+            // Make left the less precise one for easier comparison
+            if (leftPrecision > rightPrecision)
+            {
+                (leftStr, rightStr) = (rightStr, leftStr);
+                (leftPrecision, rightPrecision) = (rightPrecision, leftPrecision);
+            }
+            
+            // Remove timezone info for structural comparison of the date/time components
+            var leftNormalized = RemoveTimezoneForComparison(leftStr);
+            var rightNormalized = RemoveTimezoneForComparison(rightStr);
+            
+            // Check if the more precise value starts with the less precise value
+            // For example: "2018-03-01T10:30" and "2018-03-01T10:30:00"
+            // If they match in all specified components, the result is uncertain (null)
+            // If they differ in a component that's specified in both, they're definitely unequal (false)
+            if (!rightNormalized.StartsWith(leftNormalized, StringComparison.Ordinal))
+            {
+                // They differ in a component specified in both - definitely not equal
+                return equals ? false : true;
+            }
+            
+            // They match in all specified components but have different precision - result is uncertain
+            // Per FHIRPath spec, return null for uncertain comparisons
             return null;
         }
+
+        // Same precision - check timezone handling
+        var leftHasTz = HasTimezone(leftStr);
+        var rightHasTz = HasTimezone(rightStr);
 
         // Try to parse as DateTimeOffset to handle timezones
         if (TryParseFhirDateTime(leftStr, out var leftDt) &&
             TryParseFhirDateTime(rightStr, out var rightDt))
         {
-            // If both parse successfully, we can compare them properly regardless of timezone representation
-            // But we need to be careful about precision. The precision check above ensures we are comparing
-            // same granularity (e.g. milliseconds to milliseconds).
-            
-            // For date/time, if we have hours/minutes/seconds, we should respect timezone equality
+            // For date/time with at least hour precision
             if (leftPrecision >= DateTimePrecision.Hour)
             {
-                 var result = leftDt.ToUniversalTime() == rightDt.ToUniversalTime();
-                 return equals ? result : !result;
+                // If both have explicit timezones, compare in UTC
+                if (leftHasTz && rightHasTz)
+                {
+                    var result = leftDt.UtcDateTime == rightDt.UtcDateTime;
+                    return equals ? result : !result;
+                }
+                
+                // If one has timezone and one doesn't, per FHIRPath spec the result is uncertain
+                // because we don't know what timezone to assume for the one without
+                if (leftHasTz != rightHasTz)
+                {
+                    // Per spec: return null for uncertain timezone comparisons
+                    return null;
+                }
+                
+                // Both have no timezone - compare the datetime values directly
+                var localResult = leftDt.DateTime == rightDt.DateTime;
+                return equals ? localResult : !localResult;
             }
         }
 
+        // For dates without time component, or if parsing failed, use string comparison
         return equals ? leftStr == rightStr : leftStr != rightStr;
     }
 
@@ -1157,9 +1199,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (!leftLower.HasValue || !leftUpper.HasValue || !rightLower.HasValue || !rightUpper.HasValue)
             return null;
 
-        // Special case: identical intervals with orEqual operators should return true
-        if (orEqual && leftLower == rightLower && leftUpper == rightUpper)
-            return true;
+        // Special case: identical intervals
+        if (leftLower == rightLower && leftUpper == rightUpper)
+        {
+            // For <= or >=, identical values satisfy the condition
+            // For < or >, identical values definitely do NOT satisfy (not less/greater than itself)
+            return orEqual;
+        }
 
         // For strict ordering (< or >), both intervals must be completely separate
         // For non-strict ordering (<= or >=), overlapping intervals return null
@@ -1258,6 +1304,56 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return DateTimePrecision.Invalid;
     }
 
+    private static bool HasTimezone(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        // Check for 'Z' suffix
+        if (value.EndsWith('Z'))
+            return true;
+
+        // Check for +HH:MM or -HH:MM timezone offset (after 'T' if present)
+        var tIndex = value.IndexOf('T', StringComparison.Ordinal);
+        if (tIndex < 0)
+            return false; // No time component means no timezone
+
+        var timePart = value.Substring(tIndex);
+        var plusIndex = timePart.LastIndexOf('+');
+        var minusIndex = timePart.LastIndexOf('-');
+
+        // A + or - after T indicates a timezone offset
+        return plusIndex > 0 || minusIndex > 0;
+    }
+    
+    private static string RemoveTimezoneForComparison(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+            
+        // Remove 'Z' suffix
+        if (value.EndsWith('Z'))
+        {
+            value = value.Substring(0, value.Length - 1);
+        }
+            
+        var tIndex = value.IndexOf('T', StringComparison.Ordinal);
+        if (tIndex < 0)
+            return value;
+            
+        var timePart = value.Substring(tIndex);
+        var plusIndex = timePart.LastIndexOf('+');
+        var minusIndex = timePart.LastIndexOf('-');
+        var tzIndex = Math.Max(plusIndex, minusIndex);
+        
+        if (tzIndex > 0)
+        {
+            return value.Substring(0, tIndex + tzIndex);
+        }
+        
+        return value;
+    }
+
     private static bool TryParseFhirDateTime(string value, out DateTimeOffset result)
     {
         if (value.StartsWith("T", StringComparison.Ordinal))
@@ -1305,6 +1401,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                     DateTimePrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
                     DateTimePrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
                     DateTimePrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
+                    DateTimePrecision.Second => dt.AddSeconds(1).AddMilliseconds(-1),
+                    DateTimePrecision.Millisecond => dt, // Millisecond precision is exact
                     _ => dt
                 };
             }
