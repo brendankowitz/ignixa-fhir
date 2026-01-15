@@ -47,12 +47,14 @@ internal static class ConditionalFunctions
 
         var criterion = evaluateExpression(focus, arguments[0], innerContext).ToList();
 
-        // Evaluate condition using FHIRPath boolean semantics (3-valued logic)
+        // Evaluate condition using FHIRPath boolean semantics
+        // Per FHIRPath spec: If criterion is false OR an empty collection, return otherwise-result
         bool? condition;
 
         if (criterion.Count == 0)
         {
-            condition = null;
+            // Empty collection is treated as false for iif
+            condition = false;
         }
         else if (criterion.Count == 1 && criterion[0].Value is bool b)
         {
@@ -64,17 +66,13 @@ internal static class ConditionalFunctions
             condition = true;
         }
 
-        // Empty / indeterminate condition returns empty
-        if (condition == null)
-            return [];
-
         // True condition returns true branch
         if (condition == true)
         {
             return evaluateExpression(focus, arguments[1], innerContext);
         }
 
-        // False condition returns false branch (if provided)
+        // False condition (or empty) returns false branch (if provided)
         if (arguments.Count > 2)
         {
             return evaluateExpression(focus, arguments[2], innerContext);

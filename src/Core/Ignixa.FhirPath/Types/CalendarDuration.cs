@@ -96,6 +96,46 @@ public static class CalendarDuration
     }
 
     /// <summary>
+    /// Normalizes a unit to its UCUM form if it's a calendar keyword.
+    /// Returns the original unit if it's already UCUM or unknown.
+    /// </summary>
+    /// <param name="unit">The unit (keyword or UCUM form)</param>
+    /// <returns>The normalized UCUM unit code</returns>
+    public static string NormalizeToUcum(string unit)
+    {
+        if (string.IsNullOrEmpty(unit))
+            return unit;
+
+        // Try to convert from keyword to UCUM
+        var ucum = GetUcumUnit(unit);
+        return ucum ?? unit; // Return original if not a keyword
+    }
+
+    /// <summary>
+    /// Gets the canonical keyword for a UCUM unit (reverse lookup).
+    /// </summary>
+    /// <param name="ucumUnit">The UCUM unit (e.g., "wk", "a")</param>
+    /// <returns>The canonical keyword (e.g., "week", "year"), or null if not a calendar duration</returns>
+    public static string? GetKeywordFromUcum(string ucumUnit)
+    {
+        if (string.IsNullOrEmpty(ucumUnit))
+            return null;
+
+        return ucumUnit switch
+        {
+            "a" => "year",
+            "mo" => "month",
+            "wk" => "week",
+            "d" => "day",
+            "h" => "hour",
+            "min" => "minute",
+            "s" => "second",
+            "ms" => "millisecond",
+            _ => null
+        };
+    }
+
+    /// <summary>
     /// Gets all supported calendar duration keywords.
     /// </summary>
     public static IReadOnlyCollection<string> SupportedKeywords => CalendarKeywords;

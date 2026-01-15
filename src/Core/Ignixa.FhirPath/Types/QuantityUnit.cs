@@ -29,45 +29,62 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     }
 
     /// <summary>
-    /// Checks if two UCUM units are compatible for conversion.
-    /// Units are compatible if they have the same dimensionality.
+    /// Checks if two units are compatible for comparison.
+    /// Fixed-duration units (wk/week, d/day, h/hour, etc.) are compatible with each other via UCUM conversion.
+    /// Variable-duration units (a/year, mo/month) are ONLY compatible within their own form.
     /// </summary>
     /// <remarks>
-    /// Special handling for calendar duration units: Different calendar precision units
-    /// (years, months) cannot be combined with time-based units (days, hours, etc.)
-    /// because calendar units have variable lengths. Per FHIRPath spec, only exact unit
-    /// matches are allowed for calendar durations.
+    /// Per FHIRPath tests:
+    /// - testStringQuantityWeekLiteralToQuantity: '1 \'wk\''.toQuantity() = 1 week → true (compatible)
+    /// - testStringQuantityMonthLiteralToQuantity: '1 \'mo\''.toQuantity() = 1 month → empty (incompatible)
+    /// - testStringQuantityYearLiteralToQuantity: '1 \'a\''.toQuantity() = 1 year → empty (incompatible)
+    /// - testQuantity5: 7 days = 1 week → true (compatible via UCUM conversion)
     /// </remarks>
     public bool IsCompatible(string unit1, string unit2)
     {
         ArgumentNullException.ThrowIfNull(unit1);
         ArgumentNullException.ThrowIfNull(unit2);
 
-        // Same unit is always compatible
+        // Same unit is always compatible (exact string match)
         if (string.Equals(unit1, unit2, StringComparison.Ordinal))
             return true;
 
-        // Calendar-precision units (year, month) have variable lengths and cannot be converted
-        // to other units. Fixed-length duration units (week, day, hour, min, s, ms) can be
-        // converted to each other via UCUM.
-        var isCalendarPrecision1 = CalendarDuration.IsCalendarPrecisionUnit(unit1);
-        var isCalendarPrecision2 = CalendarDuration.IsCalendarPrecisionUnit(unit2);
+        // Check if units are calendar duration related
+        var isKeyword1 = CalendarDuration.IsCalendarKeyword(unit1);
+        var isKeyword2 = CalendarDuration.IsCalendarKeyword(unit2);
+        var isUcumDuration1 = CalendarDuration.IsCalendarDurationUnit(unit1);
+        var isUcumDuration2 = CalendarDuration.IsCalendarDurationUnit(unit2);
 
-        // If either is a calendar-precision unit (year/month), they must be exactly the same
-        if (isCalendarPrecision1 || isCalendarPrecision2)
+        // Normalize both to UCUM form for comparison
+        var ucum1 = isKeyword1 ? (CalendarDuration.GetUcumUnit(unit1) ?? unit1) : unit1;
+        var ucum2 = isKeyword2 ? (CalendarDuration.GetUcumUnit(unit2) ?? unit2) : unit2;
+
+        // Check for variable-duration calendar units (year/a, month/mo)
+        // These cannot be mixed between keyword and UCUM forms
+        var isVariableDuration1 = ucum1 == "a" || ucum1 == "mo";
+        var isVariableDuration2 = ucum2 == "a" || ucum2 == "mo";
+
+        if (isVariableDuration1 || isVariableDuration2)
         {
-            // Calendar-precision units can only match exactly
-            return false; // Already checked for exact match above
+            // Variable-duration units can only match exact UCUM codes
+            // AND must be same form (both keywords or both UCUM)
+            if (ucum1 != ucum2)
+                return false; // Different units (e.g., month vs year)
+            
+            // Same UCUM code - check if crossing keyword↔UCUM boundary
+            var isCrossing = (isKeyword1 && isUcumDuration2) || (isKeyword2 && isUcumDuration1);
+            if (isCrossing)
+                return false; // Cannot cross keyword↔UCUM for variable durations
+            
+            return true; // Same form, same unit
         }
 
-        // Fixed-length durations (week, day, hour, etc.) can be converted via UCUM
-        // Continue to UCUM-based compatibility check below
-
+        // For fixed-duration units and all other UCUM units, use standard UCUM compatibility
         try
         {
             // Get metrics for both units
-            var metric1 = _ucum.Metric(unit1);
-            var metric2 = _ucum.Metric(unit2);
+            var metric1 = _ucum.Metric(ucum1);
+            var metric2 = _ucum.Metric(ucum2);
 
             if (metric1 == null || metric2 == null)
                 return false;
@@ -93,32 +110,57 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     }
 
     /// <summary>
-    /// Converts a value from one UCUM unit to another.
+    /// Converts a value from one unit to another.
+    /// For fixed-duration units (wk/week, d/day, etc.), allows conversion via UCUM.
+    /// For variable-duration units (a/year, mo/month), only allows exact form matches.
     /// </summary>
     public decimal? Convert(decimal value, string fromUnit, string toUnit)
     {
         ArgumentNullException.ThrowIfNull(fromUnit);
         ArgumentNullException.ThrowIfNull(toUnit);
 
-        // Same unit - no conversion needed
+        // Same unit - no conversion needed (exact string match)
         if (string.Equals(fromUnit, toUnit, StringComparison.Ordinal))
             return value;
 
-        // Calendar-precision units (year, month) cannot be converted to other units
-        var isCalendarPrecision1 = CalendarDuration.IsCalendarPrecisionUnit(fromUnit);
-        var isCalendarPrecision2 = CalendarDuration.IsCalendarPrecisionUnit(toUnit);
+        // Check if units are calendar duration related
+        var isKeywordFrom = CalendarDuration.IsCalendarKeyword(fromUnit);
+        var isKeywordTo = CalendarDuration.IsCalendarKeyword(toUnit);
 
-        // If either is a calendar-precision unit, they must be exactly the same (already handled above)
-        if (isCalendarPrecision1 || isCalendarPrecision2)
+        // Normalize both to UCUM for comparison
+        var ucumFrom = CalendarDuration.GetUcumUnit(fromUnit) ?? fromUnit;
+        var ucumTo = CalendarDuration.GetUcumUnit(toUnit) ?? toUnit;
+
+        // Same normalized UCUM code - 1:1 conversion (e.g., week → wk)
+        if (string.Equals(ucumFrom, ucumTo, StringComparison.Ordinal))
+        {
+            // Variable-duration units (a, mo) can only convert if same form
+            if (ucumFrom == "a" || ucumFrom == "mo")
+            {
+                var isUcumDurationFrom = CalendarDuration.IsCalendarDurationUnit(fromUnit);
+                var isUcumDurationTo = CalendarDuration.IsCalendarDurationUnit(toUnit);
+                // Both must be same form for variable durations (keyword↔keyword or UCUM↔UCUM)
+                var isCrossing = (isKeywordFrom && isUcumDurationTo) || (isKeywordTo && !isKeywordFrom && CalendarDuration.IsCalendarDurationUnit(fromUnit));
+                if ((isKeywordFrom || isUcumDurationFrom) && (isKeywordTo || isUcumDurationTo))
+                {
+                    if (isKeywordFrom != isKeywordTo)
+                        return null;
+                }
+            }
+            // For fixed-duration units, conversion is 1:1
+            return value;
+        }
+
+        // Calendar-precision units (a, mo) cannot convert to DIFFERENT units
+        if (ucumFrom == "a" || ucumFrom == "mo" || ucumTo == "a" || ucumTo == "mo")
             return null;
 
         // Fixed-length durations can be converted via UCUM
-
         try
         {
             // Get metrics
-            var fromMetric = _ucum.Metric(fromUnit);
-            var toMetric = _ucum.Metric(toUnit);
+            var fromMetric = _ucum.Metric(ucumFrom);
+            var toMetric = _ucum.Metric(ucumTo);
 
             if (fromMetric == null || toMetric == null)
                 return null;
@@ -177,6 +219,116 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             var canonical = _ucum.Canonical(quantity);
 
             return canonical?.Symbols;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Multiplies two quantities using UCUM unit algebra.
+    /// </summary>
+    /// <param name="left">The left quantity</param>
+    /// <param name="right">The right quantity</param>
+    /// <returns>The resulting quantity with combined units, or null if operation fails</returns>
+    public Quantity? Multiply(Quantity left, Quantity right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        try
+        {
+            // Get metrics for both units
+            var leftMetric = _ucum.Metric(left.Unit);
+            var rightMetric = _ucum.Metric(right.Unit);
+
+            if (leftMetric == null || rightMetric == null)
+            {
+                return null;
+            }
+
+            // Create Fhir.Metrics quantities
+            var leftQty = new Fhir.Metrics.Quantity(new Exponential((decimal)left.Value), leftMetric);
+            var rightQty = new Fhir.Metrics.Quantity(new Exponential((decimal)right.Value), rightMetric);
+
+            // Convert both to canonical form (base units) before multiplying
+            // This handles cases like cm * m by converting cm to m first
+            var leftCanonical = _ucum.Canonical(leftQty);
+            var rightCanonical = _ucum.Canonical(rightQty);
+            
+            if (leftCanonical == null || rightCanonical == null)
+                return null;
+
+            // Multiply the canonical forms
+            var result = Fhir.Metrics.Quantity.Multiply(leftCanonical, rightCanonical);
+
+            // Extract value and unit
+            var value = (decimal)result.Value;
+            var unit = result.Symbols;
+
+            // Clean up unit representation
+            if (string.IsNullOrEmpty(unit))
+                unit = "1";
+
+            return new Quantity(value, unit);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Divides two quantities using UCUM unit algebra.
+    /// </summary>
+    /// <param name="left">The left quantity (numerator)</param>
+    /// <param name="right">The right quantity (denominator)</param>
+    /// <returns>The resulting quantity with divided units, or null if division fails</returns>
+    public Quantity? Divide(Quantity left, Quantity right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        // Division by zero check
+        if (right.Value == 0)
+            return null;
+
+        try
+        {
+            // Get metrics for both units
+            var leftMetric = _ucum.Metric(left.Unit);
+            var rightMetric = _ucum.Metric(right.Unit);
+
+            if (leftMetric == null || rightMetric == null)
+                return null;
+
+            // Create Fhir.Metrics quantities
+            var leftQty = new Fhir.Metrics.Quantity(new Exponential((decimal)left.Value), leftMetric);
+            var rightQty = new Fhir.Metrics.Quantity(new Exponential((decimal)right.Value), rightMetric);
+
+            // Convert both to canonical form (base units) before dividing
+            // This handles cases like kg / g by converting both to base units
+            var leftCanonical = _ucum.Canonical(leftQty);
+            var rightCanonical = _ucum.Canonical(rightQty);
+            
+            if (leftCanonical == null || rightCanonical == null)
+                return null;
+
+            // Divide the canonical forms
+            var result = Fhir.Metrics.Quantity.Divide(leftCanonical, rightCanonical);
+
+            // Extract value and unit
+            var value = (decimal)result.Value;
+            var unit = result.Symbols;
+
+            // Handle dimensionless result (same units cancel out)
+            if (string.IsNullOrEmpty(unit) || result.IsDimless)
+            {
+                unit = "1"; // UCUM dimensionless unit
+            }
+
+            return new Quantity(value, unit);
         }
         catch
         {

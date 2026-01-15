@@ -609,11 +609,44 @@ internal static class StringFunctions
         return escapeType.ToLowerInvariant() switch
         {
             "html" => [FunctionHelpers.CreateString(WebUtility.HtmlEncode(str))],
-            "json" => [FunctionHelpers.CreateString(JsonSerializer.Serialize(str).Trim('"'))],
+            "json" => [FunctionHelpers.CreateString(EscapeJsonString(str))],
             "url" => [FunctionHelpers.CreateString(Uri.EscapeDataString(str))],
             _ => []
         };
 #pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    /// <summary>
+    /// Escapes a string for JSON using minimal escaping (only control characters, quotes, and backslashes).
+    /// Unlike JsonSerializer, this does not escape characters like &lt; as \u003C.
+    /// </summary>
+    private static string EscapeJsonString(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default:
+                    if (c < 0x20)
+                    {
+                        sb.Append($"\\u{(int)c:X4}");
+                    }
+                    else
+                    {
+                        sb.Append(c);
+                    }
+                    break;
+            }
+        }
+        return sb.ToString();
     }
 
     /// <summary>
@@ -649,7 +682,7 @@ internal static class StringFunctions
             return escapeType.ToLowerInvariant() switch
             {
                 "html" => [FunctionHelpers.CreateString(WebUtility.HtmlDecode(str))],
-                "json" => [FunctionHelpers.CreateString(JsonSerializer.Deserialize<string>($"\"{str}\"") ?? "")],
+                "json" => [FunctionHelpers.CreateString(UnescapeJsonString(str))],
                 "url" => [FunctionHelpers.CreateString(Uri.UnescapeDataString(str))],
                 _ => []
             };
@@ -659,5 +692,52 @@ internal static class StringFunctions
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// Unescapes a JSON-escaped string by converting JSON escape sequences to their corresponding characters.
+    /// </summary>
+    private static string UnescapeJsonString(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '\\' && i + 1 < s.Length)
+            {
+                var next = s[i + 1];
+                switch (next)
+                {
+                    case '"': sb.Append('"'); i++; break;
+                    case '\\': sb.Append('\\'); i++; break;
+                    case '/': sb.Append('/'); i++; break;
+                    case 'b': sb.Append('\b'); i++; break;
+                    case 'f': sb.Append('\f'); i++; break;
+                    case 'n': sb.Append('\n'); i++; break;
+                    case 'r': sb.Append('\r'); i++; break;
+                    case 't': sb.Append('\t'); i++; break;
+                    case 'u':
+                        if (i + 5 < s.Length)
+                        {
+                            var hex = s.Substring(i + 2, 4);
+                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var codepoint))
+                            {
+                                sb.Append((char)codepoint);
+                                i += 5;
+                                break;
+                            }
+                        }
+                        sb.Append(s[i]); // Invalid escape, keep as-is
+                        break;
+                    default:
+                        sb.Append(s[i]); // Unknown escape, keep backslash
+                        break;
+                }
+            }
+            else
+            {
+                sb.Append(s[i]);
+            }
+        }
+        return sb.ToString();
     }
 }

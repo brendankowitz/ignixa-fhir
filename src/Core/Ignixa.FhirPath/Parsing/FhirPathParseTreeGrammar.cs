@@ -69,7 +69,7 @@ internal static class FhirPathParseTreeGrammar
             .Where(t => Types.CalendarDuration.IsCalendarKeyword(t.ToStringValue()))
         select new QuantityParseNode(
             decimal.Parse(valueToken.ToStringValue()),
-            Types.CalendarDuration.GetUcumUnit(keywordToken.ToStringValue())!,
+            keywordToken.ToStringValue(),  // Preserve keyword form (week, year, etc.) for toString()
             Loc(valueToken, keywordToken));
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> Literal =

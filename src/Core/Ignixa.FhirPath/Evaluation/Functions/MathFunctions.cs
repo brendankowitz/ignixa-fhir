@@ -87,8 +87,11 @@ internal static class MathFunctions
         if (!FunctionHelpers.TryConvertToDecimal(exponentResult?.Value, out var exponent))
             return [];
 
-        var result = (decimal)Math.Pow((double)baseValue, (double)exponent);
-        return [FunctionHelpers.CreateDecimal(result)];
+        var result = Math.Pow((double)baseValue, (double)exponent);
+        // Return empty for NaN (e.g., (-1)^0.5 which is imaginary) or Infinity
+        if (double.IsNaN(result) || double.IsInfinity(result))
+            return [];
+        return [FunctionHelpers.CreateDecimal((decimal)result)];
     }
 
     /// <summary>

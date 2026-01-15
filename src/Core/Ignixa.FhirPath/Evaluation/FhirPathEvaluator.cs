@@ -506,48 +506,151 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right)
     {
-        if (left.Count != 1 || right.Count != 1)
+        // FHIRPath spec: Empty collections are treated as empty strings for concatenation
+        // '1' & {} = '1', {} & 'b' = 'b'
+        if (left.Count > 1 || right.Count > 1)
             return [];
 
-        var leftStr = left[0].Value?.ToString() ?? string.Empty;
-        var rightStr = right[0].Value?.ToString() ?? string.Empty;
+        var leftStr = left.Count == 1 ? (left[0].Value?.ToString() ?? string.Empty) : string.Empty;
+        var rightStr = right.Count == 1 ? (right[0].Value?.ToString() ?? string.Empty) : string.Empty;
 
         return [new PrimitiveElement(leftStr + rightStr, "string")];
     }
+
+    // System types that are ONLY FHIRPath primitive types (not FHIR types)
+    // These types exist only in FHIRPath, not as FHIR element types
+    // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
+    //   - Boolean (capitalized) = System type (FHIRPath literal)
+    //   - boolean (lowercase) = FHIR type (element type)
+    private static readonly HashSet<string> s_systemOnlyTypes = new(StringComparer.Ordinal)
+    {
+        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
+    };
 
     private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr)
     {
         if (left.Count != 1)
             return [];
 
-        string? typeName = typeExpr switch
-        {
-            IdentifierExpression idExpr => idExpr.Name,
-            PropertyAccessExpression propExpr => propExpr.PropertyName,
-            FunctionCallExpression funcExpr => funcExpr.FunctionName,
-            ConstantExpression constExpr => constExpr.Value?.ToString(),
-            _ => null
-        };
+        // Extract the full type name, including any namespace prefix
+        string? typeName = ExtractTypeName(typeExpr);
 
-        if (typeName == null)
+        if (string.IsNullOrEmpty(typeName))
             return [];
 
-        // Handle qualified type names
-        if (typeName.Contains('.', StringComparison.Ordinal))
+        // Parse the target type to determine namespace and base type name
+        // System types: System.Boolean, System.Integer, System.Decimal, System.String, System.Date, System.DateTime, System.Time, System.Quantity
+        // FHIR types: FHIR.boolean, FHIR.Patient, FHIR.Quantity, etc.
+        bool explicitSystemNamespace = false;
+        bool explicitFhirNamespace = false;
+
+        if (typeName.StartsWith("System.", StringComparison.OrdinalIgnoreCase))
         {
-            var parts = typeName.Split('.');
-            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
-            {
-                typeName = parts[1];
-            }
+            explicitSystemNamespace = true;
+            typeName = typeName.Substring(7); // Remove "System." prefix
+        }
+        else if (typeName.StartsWith("FHIR.", StringComparison.OrdinalIgnoreCase))
+        {
+            explicitFhirNamespace = true;
+            typeName = typeName.Substring(5); // Remove "FHIR." prefix
         }
 
+        var element = left[0];
+        var elementType = element.InstanceType ?? string.Empty;
+
+        // Check if element is a FHIRPath literal (System type) based on class name
+        var implType = element.GetType().Name;
+        bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+
+        // With explicit namespace, enforce strict matching
+        if (explicitSystemNamespace)
+        {
+            // System.X requires element to be a FHIRPath literal
+            if (!elementIsSystemType)
+                return FunctionHelpers.ReturnBoolean(false);
+        }
+        else if (explicitFhirNamespace)
+        {
+            // FHIR.X requires element to NOT be a FHIRPath literal
+            if (elementIsSystemType)
+                return FunctionHelpers.ReturnBoolean(false);
+        }
+        else if (s_systemOnlyTypes.Contains(typeName))
+        {
+            // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
+            if (!elementIsSystemType)
+                return FunctionHelpers.ReturnBoolean(false);
+        }
+        // For unqualified types that are NOT system-only (Patient, Quantity, code, boolean, etc.):
+        // - Match FHIR element types directly by instance type
+        // - This allows Observation.value.is(Quantity) to match FHIR Quantity elements
+
+        // Now compare the type names (case-insensitive)
 #pragma warning disable CA1308 // Normalize strings to uppercase
         typeName = typeName.ToLowerInvariant();
-        var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
+        elementType = elementType.ToLowerInvariant();
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
-        return FunctionHelpers.ReturnBoolean(elementType == typeName);
+        if (elementType == typeName)
+            return FunctionHelpers.ReturnBoolean(true);
+
+        // Handle FHIR type inheritance:
+        // code, id, markdown, uri, url, canonical, uuid, oid -> string
+        // positiveInt, unsignedInt -> integer
+        if (typeName == "string" && (elementType == "code" || elementType == "id" || 
+            elementType == "markdown" || elementType == "uri" || elementType == "url" ||
+            elementType == "canonical" || elementType == "uuid" || elementType == "oid"))
+            return FunctionHelpers.ReturnBoolean(true);
+
+        if (typeName == "integer" && (elementType == "positiveint" || elementType == "unsignedint"))
+            return FunctionHelpers.ReturnBoolean(true);
+
+        return FunctionHelpers.ReturnBoolean(false);
+    }
+
+    /// <summary>
+    /// Extracts the full type name from a type expression, including namespace prefixes.
+    /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`
+    /// </summary>
+    private static string? ExtractTypeName(Expression expr)
+    {
+        return expr switch
+        {
+            // Simple identifier: Boolean, Patient, boolean
+            IdentifierExpression idExpr => idExpr.Name,
+
+            // Property access: System.Boolean, FHIR.Patient
+            PropertyAccessExpression propExpr => ExtractPropertyAccessTypeName(propExpr),
+
+            // Function call (used for backtick escaping): `Patient`
+            FunctionCallExpression funcExpr => funcExpr.FunctionName,
+
+            // Constant (string literal type name)
+            ConstantExpression constExpr => constExpr.Value?.ToString(),
+
+            _ => null
+        };
+    }
+
+    private static string ExtractPropertyAccessTypeName(PropertyAccessExpression propExpr)
+    {
+        // Build the full qualified name: System.Boolean, FHIR.Patient
+        var parts = new List<string>();
+
+        Expression? current = propExpr;
+        while (current is PropertyAccessExpression prop)
+        {
+            parts.Insert(0, prop.PropertyName);
+            current = prop.Focus;
+        }
+
+        // Add the root identifier
+        if (current is IdentifierExpression id)
+        {
+            parts.Insert(0, id.Name);
+        }
+
+        return string.Join(".", parts);
     }
 
     private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr)
@@ -613,8 +716,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (left.Count == 1 && right.Count == 1)
         {
-            var isEquiv = AreEquivalent(left[0].Value, right[0].Value);
-            return isEquiv == equivalent;
+            // Try to extract quantities from elements (handles FHIR Quantity complex types)
+            var leftQty = TryExtractQuantity(left[0]);
+            var rightQty = TryExtractQuantity(right[0]);
+
+            if (leftQty != null && rightQty != null)
+            {
+                var isEquiv = AreEquivalent(leftQty, rightQty);
+                return isEquiv == equivalent;
+            }
+
+            var isEquivValue = AreEquivalent(left[0].Value, right[0].Value);
+            return isEquivValue == equivalent;
         }
 
         var leftSorted = left.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
@@ -627,6 +740,74 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         return equivalent;
+    }
+
+    /// <summary>
+    /// Extracts a Quantity from an IElement, handling both FhirPath Quantity literals
+    /// and FHIR Quantity elements (which have value/unit/code children).
+    /// </summary>
+    private Types.Quantity? TryExtractQuantity(IElement element)
+    {
+        // If the value is already a Quantity (FhirPath literal), return it directly
+        if (element.Value is Types.Quantity qty)
+            return qty;
+
+        // If it's a FHIR Quantity element, extract value and unit from children
+#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are case-insensitive
+        var instanceType = element.InstanceType?.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+        if (instanceType == "quantity" || instanceType == "age" || instanceType == "distance" || 
+            instanceType == "duration" || instanceType == "count" || instanceType == "simplequantity" ||
+            instanceType == "moneyquantity")
+        {
+            return ExtractQuantityFromFhirElement(element);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts value and unit from a FHIR Quantity element's children.
+    /// </summary>
+    private static Types.Quantity? ExtractQuantityFromFhirElement(IElement element)
+    {
+        decimal? value = null;
+        string? unit = null;
+
+        var children = element.Children();
+        foreach (var child in children)
+        {
+            if (child.Name == "value" && child.Value != null)
+            {
+                if (child.Value is decimal d)
+                    value = d;
+                else if (child.Value is int i)
+                    value = i;
+                else if (child.Value is long l)
+                    value = l;
+                else if (child.Value is double dbl)
+                    value = (decimal)dbl;
+                else if (child.Value is string s && decimal.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                    value = parsed;
+            }
+            else if (child.Name == "code" && child.Value is string code)
+            {
+                // Prefer 'code' over 'unit' as it's the UCUM code
+                unit = code;
+            }
+            else if (child.Name == "unit" && child.Value is string unitVal && unit == null)
+            {
+                // Fall back to 'unit' if 'code' not present
+                unit = unitVal;
+            }
+        }
+
+        if (value.HasValue)
+        {
+            return new Types.Quantity(value.Value, unit ?? "1");
+        }
+
+        return null;
     }
 
     private bool AreEquivalent(object? left, object? right)
@@ -691,10 +872,53 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left is decimal || right is decimal || left is int || right is int)
         {
             if (FunctionHelpers.TryConvertToDecimal(left, out var leftDec) && FunctionHelpers.TryConvertToDecimal(right, out var rightDec))
+            {
+                // For decimal equivalence, round to the precision of the least precise value
+                // The precision is determined by the number of decimal places in the operands
+                var leftPrecision = GetDecimalPrecision(left);
+                var rightPrecision = GetDecimalPrecision(right);
+                var minPrecision = Math.Min(leftPrecision, rightPrecision);
+
+                // Round both values to the minimum precision
+                leftDec = Math.Round(leftDec, minPrecision, MidpointRounding.AwayFromZero);
+                rightDec = Math.Round(rightDec, minPrecision, MidpointRounding.AwayFromZero);
+
                 return leftDec == rightDec;
+            }
         }
 
         return left.Equals(right);
+    }
+
+    /// <summary>
+    /// Gets the number of decimal places in a numeric value.
+    /// For integers, returns 0. For decimals, returns the number of significant decimal places.
+    /// For division results that have infinite precision, returns a high number.
+    /// </summary>
+    private static int GetDecimalPrecision(object value)
+    {
+        if (value is int or long) return 0;
+
+        if (value is decimal d)
+        {
+            // Convert to string and count decimal places
+            var str = d.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var decimalPointIndex = str.IndexOf('.', StringComparison.Ordinal);
+            if (decimalPointIndex < 0) return 0;
+            return str.Length - decimalPointIndex - 1;
+        }
+
+        if (value is double dbl)
+        {
+            // Double values from division may have many decimal places
+            // Use a reasonable maximum precision
+            var str = dbl.ToString("G17", System.Globalization.CultureInfo.InvariantCulture);
+            var decimalPointIndex = str.IndexOf('.', StringComparison.Ordinal);
+            if (decimalPointIndex < 0) return 0;
+            return Math.Min(str.Length - decimalPointIndex - 1, 15);
+        }
+
+        return 0;
     }
 
     /// <summary>
@@ -733,15 +957,40 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     public IEnumerable<IElement> VisitScope(ScopeExpression expression, EvaluationContext context)
     {
 #pragma warning disable CA1308 // Normalize strings to uppercase
-        return expression.ScopeName.ToLowerInvariant() switch
+        var scopeName = expression.ScopeName.ToLowerInvariant();
 #pragma warning restore CA1308 // Normalize strings to uppercase
+
+        switch (scopeName)
         {
-            "this" => context.GetThis() is IElement thisElement
-                ? [thisElement]
-                : context.Focus,
-            "that" => context.Focus,
-            _ => throw new NotSupportedException($"Scope '${expression.ScopeName}' is not yet implemented")
-        };
+            case "this":
+                return context.GetThis() is IElement thisElement
+                    ? [thisElement]
+                    : context.Focus;
+
+            case "that":
+                return context.Focus;
+
+            case "total":
+                // $total is used in aggregate() - retrieve from environment
+                var totalValue = context.GetEnvironmentVariable("total");
+                if (totalValue is IEnumerable<IElement> totalElements)
+                    return totalElements;
+                if (totalValue is IElement totalElement)
+                    return [totalElement];
+                return [];
+
+            case "index":
+                // $index is used in select() and where() - retrieve from environment
+                var indexValue = context.GetEnvironmentVariable("index");
+                if (indexValue is IElement indexElement)
+                    return [indexElement];
+                if (indexValue is int idx)
+                    return [CreateInteger(idx)];
+                return [];
+
+            default:
+                throw new NotSupportedException($"Scope '${expression.ScopeName}' is not yet implemented");
+        }
     }
 
     public IEnumerable<IElement> VisitVariable(VariableRefExpression expression, EvaluationContext context)
@@ -920,7 +1169,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         for (int i = 0; i < left.Count; i++)
         {
-            var isEqual = FunctionHelpers.AreEqual(left[i].Value, right[i].Value);
+            var isEqual = FunctionHelpers.AreElementsEqual(left[i], right[i]);
             if (isEqual != equals) return false;
         }
 
@@ -1135,15 +1384,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                         // This handles cases where type info is lost or implicit conversion is expected
                         if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
                         {
-                             var result = CompareDateTimesWithPrecision(leftValue, rightValue, greater, orEqual);
-                             if (result.HasValue) return result;
+                             // Date comparison - if result is null (uncertain), don't fall through to string comparison
+                             return CompareDateTimesWithPrecision(leftValue, rightValue, greater, orEqual);
                         }
             
                         var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
                         return greater
                             ? (orEqual ? comparison >= 0 : comparison > 0)
                             : (orEqual ? comparison <= 0 : comparison < 0);
-                    }    
+                    }
             // Handle mixed numeric comparison (e.g. 1.5 > 1)
             if ((leftValue is int || leftValue is decimal || leftValue is long) &&
                 (rightValue is int || rightValue is decimal || rightValue is long))
@@ -1207,21 +1456,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
             return null;
-
-        // When comparing a DateTime to a Date, per FHIRPath spec the Date is implicitly
-        // promoted to DateTime at 00:00:00. This allows now() > today() to return true.
-        if (leftPrecision >= DateTimePrecision.Hour && rightPrecision == DateTimePrecision.Day)
-        {
-            // Right side is Date only, promote to DateTime at midnight
-            rightStr = rightStr + "T00:00:00";
-            rightPrecision = DateTimePrecision.Second;
-        }
-        else if (rightPrecision >= DateTimePrecision.Hour && leftPrecision == DateTimePrecision.Day)
-        {
-            // Left side is Date only, promote to DateTime at midnight
-            leftStr = leftStr + "T00:00:00";
-            leftPrecision = DateTimePrecision.Second;
-        }
 
         // Per FHIRPath spec: When comparing dates with different precision,
         // the result is null unless one interval completely precedes/follows the other.
@@ -1506,15 +1740,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         try
         {
+            // Calendar duration units (year, month, week, day) should be truncated to integers
+            // Time-based units (hour, min, s, ms) can use fractional values in R5+
+            // For R4/R4B, the spec truncates to integers, but this is a test data difference
             result = quantity.Unit switch
             {
-                "a" => dt.AddYears((int)Math.Truncate(value)),
-                "mo" => dt.AddMonths((int)Math.Truncate(value)),
-                "wk" => dt.AddDays(Math.Truncate(value) * 7),
+                "a" or "year" or "years" => dt.AddYears((int)Math.Truncate(value)),
+                "mo" or "month" or "months" => dt.AddMonths((int)Math.Truncate(value)),
+                "wk" or "week" or "weeks" => dt.AddDays(Math.Truncate(value) * 7),
                 "d" or "day" or "days" => dt.AddDays(Math.Truncate(value)),
                 "h" or "hour" or "hours" => dt.AddHours(value),
                 "min" or "minute" or "minutes" => dt.AddMinutes(value),
-                "s" or "second" or "seconds" => dt.AddSeconds(value),
+                "s" or "second" or "seconds" => dt.AddMilliseconds(value * 1000), // Convert to ms for precision
                 "ms" or "millisecond" or "milliseconds" => dt.AddMilliseconds(value),
                 _ => dt // Unknown unit, return original
             };

@@ -318,10 +318,14 @@ internal static class CollectionFunctions
             throw new ArgumentException("select() requires a projection argument");
 
         var projection = arguments[0];
+        var focusList = focus.ToList();
 
-        foreach (var element in focus)
+        for (int i = 0; i < focusList.Count; i++)
         {
-            var innerContext = context.PushThis(element);
+            var element = focusList[i];
+            var innerContext = context
+                .PushThis(element)
+                .PushIndex(i);
             foreach (var result in evaluateExpression([element], projection, innerContext))
             {
                 yield return result;
@@ -426,6 +430,7 @@ internal static class CollectionFunctions
 
     /// <summary>
     /// repeat() - Recursively applies a projection expression until no new elements are found.
+    /// Per FHIRPath spec: Returns only the results of the projection, not the original focus items.
     /// </summary>
     [FhirPathFunction("repeat",
         SupportedContexts = "any-any",
@@ -447,18 +452,23 @@ internal static class CollectionFunctions
 
         var projection = arguments[0];
         var result = new HashSet<IElement>(new FunctionHelpers.ElementEqualityComparer());
+        var processed = new HashSet<IElement>(new FunctionHelpers.ElementEqualityComparer());
         var queue = new Queue<IElement>(focus);
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            if (result.Add(current))
+            if (processed.Add(current))
             {
                 var innerContext = context.PushThis(current);
                 var projected = evaluateExpression([current], projection, innerContext);
                 foreach (var item in projected)
                 {
-                    if (!result.Contains(item))
+                    // Add projection results to the output result set
+                    result.Add(item);
+                    
+                    // If this is a new item, add it to queue for further processing
+                    if (!processed.Contains(item))
                     {
                         queue.Enqueue(item);
                     }
@@ -648,7 +658,11 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("union() requires an other argument");
 
-        var other = evaluateExpression(focus, arguments[0], context).ToList();
+        // Evaluate the argument from $this context if available (e.g., inside select())
+        // Otherwise fall back to focus
+        var thisElement = context.GetThis();
+        var argFocus = thisElement != null ? [thisElement] : focus;
+        var other = evaluateExpression(argFocus, arguments[0], context).ToList();
         return FunctionHelpers.EvaluateUnion(focus.ToList(), other);
     }
 
@@ -672,7 +686,10 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("combine() requires an other argument");
 
-        var other = evaluateExpression(focus, arguments[0], context);
+        // Evaluate the argument from the root resource context (not current focus)
+        // This allows expressions like combine(name.family) to navigate from the root
+        var rootFocus = context.Resource != null ? [context.Resource] : context.Focus.AsEnumerable();
+        var other = evaluateExpression(rootFocus, arguments[0], context);
         return focus.Concat(other);
     }
 
@@ -843,32 +860,17 @@ internal static class CollectionFunctions
                         name = "Time";
                         break;
                     case "quantity":
-                        // Quantity is special, treated as FHIR often but System in path?
-                        // Test usually expects FHIR.Quantity or System.Quantity?
-                        // For now let's assume FHIR for Quantity as it is complex.
                         ns = "FHIR";
                         name = "Quantity";
                         break;
                     default:
-                        // Other literals?
-                        if (char.IsLower(typeName[0]))
+                        if (typeName.Length > 0 && char.IsLower(typeName[0]))
                         {
-                             // If it starts lowercase but is literal, maybe map to Pascal?
-                             // But safely default to PascalCase if possible
-                             if (typeName.Length > 0)
-                                name = char.ToUpperInvariant(typeName[0]) + typeName.Substring(1);
-                             ns = "System";
+                            name = char.ToUpperInvariant(typeName[0]) + typeName.Substring(1);
+                            ns = "System";
                         }
                         break;
                 }
-            }
-            else
-            {
-                // FHIR Elements
-                // Namespace is FHIR
-                ns = "FHIR";
-                // Name preserves casing (usually camelCase for primitives, PascalCase for Resources)
-                // e.g. "boolean", "Patient"
             }
 
             yield return new TypeInfoElement(name, ns);
@@ -884,7 +886,7 @@ internal static class CollectionFunctions
         ReturnType = "context",
         SupportsCollections = true,
         MinArguments = 0,
-        MaxArguments = 1,
+        MaxArguments = int.MaxValue, // Support multiple sort keys
         TakesExpressionArguments = true,
         Category = "Collection",
         Description = "Sorts the collection in ascending order")]
@@ -901,26 +903,46 @@ internal static class CollectionFunctions
             return list.OrderBy(e => e.Value, new ObjectComparer());
         }
 
-        var sortExpression = arguments[0];
+        // Extract sort key info (expression and direction) for all arguments
+        var sortKeys = arguments.Select(arg =>
+        {
+            var isDescending = arg is UnaryExpression { Operator: "-" };
+            var effectiveExpression = isDescending && arg is UnaryExpression u ? u.Operand : arg;
+            return (Expression: effectiveExpression, IsDescending: isDescending);
+        }).ToList();
 
-        // Detect unary negation on sort key: sort(-expr) means descending order per FHIRPath spec
-        var isDescending = sortExpression is UnaryExpression { Operator: "-" };
-        var effectiveExpression = isDescending && sortExpression is UnaryExpression u
-            ? u.Operand
-            : sortExpression;
-
-        Func<IElement, object?> keySelector = element =>
+        // Build key selectors
+        Func<IElement, object?> createKeySelector(Expression expr) => element =>
         {
             var innerContext = context.PushThis(element);
-            var result = evaluateExpression([element], effectiveExpression, innerContext);
+            var result = evaluateExpression([element], expr, innerContext);
             return result.FirstOrDefault()?.Value;
         };
 
-        return isDescending
-            ? list.OrderByDescending(keySelector, new ObjectComparer())
-            : list.OrderBy(keySelector, new ObjectComparer());
+        // Apply first sort key
+        var firstKey = sortKeys[0];
+        IComparer<object?> firstComparer = firstKey.IsDescending ? new ObjectComparerNullsFirst() : new ObjectComparer();
+        IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
+            ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
+            : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
+
+        // Apply subsequent sort keys with ThenBy/ThenByDescending
+        for (int i = 1; i < sortKeys.Count; i++)
+        {
+            var key = sortKeys[i];
+            var keySelector = createKeySelector(key.Expression);
+            IComparer<object?> keyComparer = key.IsDescending ? new ObjectComparerNullsFirst() : new ObjectComparer();
+            orderedList = key.IsDescending
+                ? orderedList.ThenByDescending(keySelector, keyComparer)
+                : orderedList.ThenBy(keySelector, keyComparer);
+        }
+
+        return orderedList;
     }
 
+    /// <summary>
+    /// Standard comparer where null is less than any value (nulls last in descending).
+    /// </summary>
     private class ObjectComparer : IComparer<object?>
     {
         public int Compare(object? x, object? y)
@@ -928,6 +950,34 @@ internal static class CollectionFunctions
             if (x is null && y is null) return 0;
             if (x is null) return -1;
             if (y is null) return 1;
+
+            if (x is IComparable comparableX && y is IComparable)
+            {
+                try
+                {
+                    return comparableX.CompareTo(y);
+                }
+                catch
+                {
+                    return 0;
+                }
+            }
+
+            return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Comparer where null is greater than any value (nulls first in descending).
+    /// Used for prototype descending sort with - prefix.
+    /// </summary>
+    private class ObjectComparerNullsFirst : IComparer<object?>
+    {
+        public int Compare(object? x, object? y)
+        {
+            if (x is null && y is null) return 0;
+            if (x is null) return 1;  // null > any value
+            if (y is null) return -1; // any value < null
 
             if (x is IComparable comparableX && y is IComparable)
             {

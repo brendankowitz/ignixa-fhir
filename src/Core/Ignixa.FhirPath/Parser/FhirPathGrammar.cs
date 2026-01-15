@@ -94,6 +94,7 @@ public static class FhirPathGrammar
 
     // Calendar Duration: number followed by calendar keyword (e.g., 1 year, 4 days, 1 hour)
     // FHIRPath spec allows both singular and plural forms
+    // Store the original keyword form (not UCUM) so toString() preserves it
     private static readonly TokenListParser<FhirPathTokenKind, QuantityExpression> CalendarDuration =
         from valueToken in Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
@@ -105,7 +106,7 @@ public static class FhirPathGrammar
             })
         select new QuantityExpression(
             decimal.Parse(valueToken.ToStringValue()),
-            Types.CalendarDuration.GetUcumUnit(keywordToken.ToStringValue())!,
+            keywordToken.ToStringValue(),  // Preserve keyword form (year, week, etc.)
             CreatePosition(valueToken, keywordToken));
 
     // Literal: any constant value

@@ -220,10 +220,10 @@ public class FhirPathQuantityLiteralTests
     }
 
     [Fact]
-    public void GivenTwoQuantitiesSameUnit_WhenDivision_ThenReturnsDecimalRatio()
+    public void GivenTwoQuantitiesSameUnit_WhenDivision_ThenReturnsDimensionlessQuantity()
     {
         // Arrange
-        // (10 'mg') / (4 'mg') = 2.5 (dimensionless)
+        // (10 'mg') / (4 'mg') = 2.5 '1' (dimensionless quantity per FHIRPath spec)
         var expr = _parser.Parse("(10 'mg') / (4 'mg')");
         var root = CreateIntegerElement(0);
 
@@ -231,8 +231,30 @@ public class FhirPathQuantityLiteralTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Equal("decimal", result.InstanceType);
-        Assert.Equal(2.5m, result.Value);
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = (Types.Quantity)result.Value!;
+        Assert.Equal(2.5m, quantity.Value);
+        Assert.Equal("1", quantity.Unit); // Dimensionless unit
+    }
+
+    [SkippableFact]
+    public void GivenTwoQuantitiesDifferentUnits_WhenMultiplication_ThenReturnsCombinedUnit()
+    {
+        // Note: Fhir.Metrics.Multiply can't directly handle units with different prefixes
+        // It throws "Cannot merge metric components with a different unit or prefix"
+        // This is a known limitation of the library.
+        // TODO: Consider implementing custom unit algebra or finding a UCUM library
+        // that properly supports unit multiplication with prefix conversion
+        Skip.If(true, "Fhir.Metrics library doesn't support unit multiplication with different prefixes");
+    }
+
+    [SkippableFact]
+    public void GivenTwoQuantitiesDifferentUnits_WhenDivision_ThenReturnsCompoundUnit()
+    {
+        // Note: Fhir.Metrics.Divide can't handle units with different dimensions
+        // testQuantity10: 4.0 'g' / 2.0 'm' = 2 'g/m'
+        // TODO: Implement custom unit algebra
+        Skip.If(true, "Fhir.Metrics library doesn't support unit division with different dimensions");
     }
 
     #endregion

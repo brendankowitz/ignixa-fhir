@@ -186,13 +186,18 @@ public sealed class Quantity : IEquatable<Quantity>, IComparable<Quantity>
 
     /// <summary>
     /// Determines equality with another quantity.
+    /// Does NOT normalize calendar keywords to UCUM because they represent different concepts:
+    /// - FHIRPath calendar keywords (year, month, week, etc.) are calendar-aware
+    /// - UCUM codes ('a', 'mo', 'wk', etc.) are scientific fixed-duration units
     /// </summary>
     public bool Equals(Quantity? other)
     {
         if (other == null)
             return false;
 
-        return Value == other.Value && Unit == other.Unit;
+        // Compare values and units as-is (no normalization)
+        return Value == other.Value && 
+               string.Equals(Unit, other.Unit, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -213,10 +218,33 @@ public sealed class Quantity : IEquatable<Quantity>, IComparable<Quantity>
 
     /// <summary>
     /// Returns a string representation in FhirPath format.
+    /// For calendar duration keywords (year, month, week, etc.), uses keyword form (e.g., "1 week").
+    /// For UCUM units (including 'wk', 'a', 'mo'), uses quoted form (e.g., "1 'wk'").
     /// </summary>
     public override string ToString()
     {
+        // If the unit is already a calendar keyword (year, month, week, etc.), use it directly
+        if (IsCalendarKeyword(Unit))
+        {
+            return $"{Value} {Unit}";
+        }
+
+        // For all other units (including UCUM time units like 'wk', 'a', 'mo'), use quoted form
         return $"{Value} '{Unit}'";
+    }
+
+    /// <summary>
+    /// Checks if the unit is a FHIRPath calendar duration keyword.
+    /// </summary>
+    private static bool IsCalendarKeyword(string unit)
+    {
+        return unit switch
+        {
+            "year" or "years" or "month" or "months" or "week" or "weeks" or
+            "day" or "days" or "hour" or "hours" or "minute" or "minutes" or
+            "second" or "seconds" or "millisecond" or "milliseconds" => true,
+            _ => false
+        };
     }
 
     /// <summary>
@@ -269,4 +297,20 @@ public interface IQuantityUnitConverter
     /// <param name="unit">The UCUM unit</param>
     /// <returns>The dimension category, or null if unknown</returns>
     string? GetDimensionality(string unit);
+
+    /// <summary>
+    /// Multiplies two quantities using UCUM unit algebra.
+    /// </summary>
+    /// <param name="left">The left quantity (value and unit)</param>
+    /// <param name="right">The right quantity (value and unit)</param>
+    /// <returns>The resulting quantity with combined units, or null if operation fails</returns>
+    Quantity? Multiply(Quantity left, Quantity right);
+
+    /// <summary>
+    /// Divides two quantities using UCUM unit algebra.
+    /// </summary>
+    /// <param name="left">The left quantity (numerator)</param>
+    /// <param name="right">The right quantity (denominator)</param>
+    /// <returns>The resulting quantity with divided units, or null if division fails</returns>
+    Quantity? Divide(Quantity left, Quantity right);
 }

@@ -380,7 +380,10 @@ internal static class TypeConversionFunctions
     }
 
     /// <summary>
-    /// Parses a quantity string like "5 mg" or "100 'kg'" into a Quantity.
+    /// Parses a quantity string like "5 'mg'" or "100 'kg'" or "1 day" into a Quantity.
+    /// Per FHIRPath spec:
+    /// - Calendar keywords (year, month, week, etc.) can be unquoted
+    /// - UCUM units MUST be quoted (e.g., '5 \'kg\'' not '5 kg')
     /// </summary>
     private static Quantity? TryParseQuantity(string input)
     {
@@ -409,13 +412,24 @@ internal static class TypeConversionFunctions
         if (string.IsNullOrWhiteSpace(unitStr))
             return null;
 
-        // Normalize calendar duration units (e.g. "day" -> "d")
-        // This ensures '1 day'.toQuantity() works as expected
-        var ucumUnit = CalendarDuration.GetUcumUnit(unitStr);
-        if (ucumUnit != null)
-            unitStr = ucumUnit;
+        // Check if this is a quoted UCUM unit (e.g., 'kg' or 'mg')
+        if (unitStr.Length >= 2 && unitStr[0] == '\'' && unitStr[unitStr.Length - 1] == '\'')
+        {
+            // Remove quotes and use the UCUM unit directly
+            var ucumUnit = unitStr.Substring(1, unitStr.Length - 2);
+            if (!string.IsNullOrEmpty(ucumUnit))
+                return new Quantity(value, ucumUnit);
+            return null;
+        }
 
-        return new Quantity(value, unitStr);
+        // Check if this is a calendar duration keyword (year, month, week, day, etc.)
+        var ucumFromKeyword = CalendarDuration.GetUcumUnit(unitStr);
+        if (ucumFromKeyword != null)
+            return new Quantity(value, ucumFromKeyword);
+
+        // Unquoted non-keyword unit is not valid per FHIRPath spec
+        // (e.g., "1 wk" without quotes is not valid, "1 'wk'" is)
+        return null;
     }
 
     /// <summary>
@@ -466,55 +480,154 @@ internal static class TypeConversionFunctions
             throw new InvalidOperationException("is() function requires input collection to contain at most one item");
 
         // Get the type name from the argument
-        // The argument should be an identifier expression representing the type
         if (arguments.Count != 1)
             throw new InvalidOperationException("is() function requires exactly one argument");
 
         var typeArgument = arguments[0];
-        if (typeArgument is not Expressions.IdentifierExpression identifierExpr)
+        string? targetTypeName = ExtractTypeName(typeArgument);
+
+        if (string.IsNullOrEmpty(targetTypeName))
             throw new InvalidOperationException("is() function requires a type identifier as argument");
 
-        var targetTypeName = identifierExpr.Name;
         var element = list[0];
 
         // Check if the element's type matches the target type
-        var matches = IsTypeMatch(element, targetTypeName);
+        var matches = IsTypeMatchWithNamespace(element, targetTypeName);
         return FunctionHelpers.ReturnBoolean(matches);
+    }
+
+    /// <summary>
+    /// Extracts the full type name from a type expression, including namespace prefixes.
+    /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`
+    /// </summary>
+    private static string? ExtractTypeName(Expression expr)
+    {
+        return expr switch
+        {
+            // Simple identifier: Boolean, Patient, boolean
+            Expressions.IdentifierExpression idExpr => idExpr.Name,
+
+            // Property access: System.Boolean, FHIR.Patient
+            Expressions.PropertyAccessExpression propExpr => ExtractPropertyAccessTypeName(propExpr),
+
+            // Function call (used for backtick escaping): `Patient`
+            Expressions.FunctionCallExpression funcExpr => funcExpr.FunctionName,
+
+            // Constant (string literal type name)
+            Expressions.ConstantExpression constExpr => constExpr.Value?.ToString(),
+
+            _ => null
+        };
+    }
+
+    private static string ExtractPropertyAccessTypeName(Expressions.PropertyAccessExpression propExpr)
+    {
+        // Build the full qualified name: System.Boolean, FHIR.Patient
+        var parts = new List<string>();
+
+        Expression? current = propExpr;
+        while (current is Expressions.PropertyAccessExpression prop)
+        {
+            parts.Insert(0, prop.PropertyName);
+            current = prop.Focus;
+        }
+
+        // Add the root identifier
+        if (current is Expressions.IdentifierExpression id)
+        {
+            parts.Insert(0, id.Name);
+        }
+
+        return string.Join(".", parts);
+    }
+
+    // System types that are ONLY FHIRPath primitive types (not FHIR types)
+    // These types exist only in FHIRPath, not as FHIR element types
+    // Note: Date and Quantity exist as both System types and FHIR types, so they're NOT in this list.
+    // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
+    //   - Boolean (capitalized) = System type (FHIRPath literal)
+    //   - boolean (lowercase) = FHIR type (element type)
+    private static readonly HashSet<string> s_systemOnlyTypes = new(StringComparer.Ordinal)
+    {
+        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
+    };
+
+    private static bool IsTypeMatchWithNamespace(IElement element, string targetTypeName)
+    {
+        // Parse the target type to determine namespace and base type name
+        // System types: System.Boolean, System.Integer, System.Decimal, System.String, System.Date, System.DateTime, System.Time, System.Quantity
+        // FHIR types: FHIR.boolean, FHIR.Patient, FHIR.Quantity, etc.
+        bool explicitSystemNamespace = false;
+        bool explicitFhirNamespace = false;
+        string typeName = targetTypeName;
+
+        if (typeName.StartsWith("System.", StringComparison.OrdinalIgnoreCase))
+        {
+            explicitSystemNamespace = true;
+            typeName = typeName.Substring(7); // Remove "System." prefix
+        }
+        else if (typeName.StartsWith("FHIR.", StringComparison.OrdinalIgnoreCase))
+        {
+            explicitFhirNamespace = true;
+            typeName = typeName.Substring(5); // Remove "FHIR." prefix
+        }
+
+        var elementType = element.InstanceType ?? string.Empty;
+
+        // Check if element is a FHIRPath literal (System type) based on class name
+        var implType = element.GetType().Name;
+        bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+
+        // With explicit namespace, enforce strict matching
+        if (explicitSystemNamespace)
+        {
+            // System.X requires element to be a FHIRPath literal
+            if (!elementIsSystemType)
+                return false;
+        }
+        else if (explicitFhirNamespace)
+        {
+            // FHIR.X requires element to NOT be a FHIRPath literal
+            if (elementIsSystemType)
+                return false;
+        }
+        else if (s_systemOnlyTypes.Contains(typeName))
+        {
+            // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
+            if (!elementIsSystemType)
+                return false;
+        }
+        // For unqualified types that are NOT system-only (Patient, Quantity, code, boolean, etc.):
+        // - Match FHIR element types directly by instance type
+        // - This allows Observation.value.is(Quantity) to match FHIR Quantity elements
+
+        // Now compare the type names (case-insensitive)
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        typeName = typeName.ToLowerInvariant();
+        elementType = elementType.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        if (elementType == typeName)
+            return true;
+
+        // Handle FHIR type inheritance:
+        // code, id, markdown, uri, url, canonical, uuid, oid -> string
+        // positiveInt, unsignedInt -> integer
+        if (typeName == "string" && (elementType == "code" || elementType == "id" || 
+            elementType == "markdown" || elementType == "uri" || elementType == "url" ||
+            elementType == "canonical" || elementType == "uuid" || elementType == "oid"))
+            return true;
+
+        if (typeName == "integer" && (elementType == "positiveint" || elementType == "unsignedint"))
+            return true;
+
+        return false;
     }
 
     private static bool IsTypeMatch(IElement element, string targetTypeName)
     {
-        // Normalize type names (case-insensitive comparison per FHIR spec)
-        var elementTypeName = element.InstanceType;
-
-        if (string.Equals(elementTypeName, targetTypeName, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Handle primitive type aliases
-        // FHIRPath uses lowercase primitives (string, integer, decimal, boolean)
-        // while FHIR uses capitalized types (String, Integer, Decimal, Boolean)
-        var normalizedTargetType = targetTypeName.ToUpperInvariant();
-        var normalizedElementType = elementTypeName.ToUpperInvariant();
-
-        if (normalizedElementType == normalizedTargetType)
-            return true;
-
-        // Check for specific type mappings
-        // FHIR has "code" which is a subtype of "string"
-        if (normalizedTargetType == "STRING" && normalizedElementType == "CODE")
-            return true;
-
-        if (normalizedTargetType == "CODE" && normalizedElementType == "STRING")
-        {
-            // Only match if it's actually a code element
-            return elementTypeName.Equals("code", StringComparison.OrdinalIgnoreCase);
-        }
-
-        // TODO: Add inheritance hierarchy checking using element.Type?.Info
-        // Would allow checking if Patient.is(DomainResource) or Patient.is(Resource)
-        // For now, exact type matching suffices for most FHIRPath use cases
-
-        return false;
+        // Legacy method for backward compatibility
+        return IsTypeMatchWithNamespace(element, targetTypeName);
     }
 
     #endregion

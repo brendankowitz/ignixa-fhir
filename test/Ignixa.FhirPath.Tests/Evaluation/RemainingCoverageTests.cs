@@ -133,18 +133,19 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public void GivenCircularReference_WhenRepeat_ThenHandlesGracefully()
+    public void GivenEmptyProjection_WhenRepeat_ThenReturnsEmpty()
     {
         // Arrange
-        // Repeat with empty projection should return just the input
+        // Repeat returns only projection results, not the original input
+        // With empty projection {}, no results are produced
         var expr = _parser.Parse("(1 | 2).repeat({})");
         var root = CreateIntegerElement(0);
 
         // Act
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // Assert
-        Assert.Equal(2, result.Count);
+        // Assert - Per FHIRPath spec, repeat only returns projection results
+        Assert.Empty(result);
     }
 
     #endregion

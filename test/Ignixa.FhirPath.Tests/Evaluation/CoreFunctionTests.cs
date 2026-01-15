@@ -329,9 +329,10 @@ public class CoreFunctionTests
     }
 
     [Fact]
-    public void GivenNonBooleanValue_WhenNot_ThenReturnsEmpty()
+    public void GivenNonBooleanValue_WhenNot_ThenReturnsFalse()
     {
-        // Arrange
+        // Arrange - FHIRPath spec: non-boolean singletons are "truthy" (they exist)
+        // so not(5) = not(true) = false
         var expr = _parser.Parse("5.not()");
         var root = CreateIntegerElement(0);
 
@@ -339,11 +340,12 @@ public class CoreFunctionTests
         var result = _evaluator.Evaluate(root, expr).ToList();
 
         // Assert
-        Assert.Empty(result);
+        Assert.Single(result);
+        Assert.Equal(false, result[0].Value);
     }
 
     [Fact]
-    public void GivenMultipleItems_WhenNot_ThenReturnsEmpty()
+    public void GivenMultipleItems_WhenNot_ThenReturnsFalse()
     {
         // Arrange
         var expr = _parser.Parse("(true | false).not()");

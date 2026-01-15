@@ -59,13 +59,14 @@ internal static class QuantityEvaluator
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        // Handle quantity + quantity, quantity - quantity, quantity / quantity
+        // Handle quantity + quantity, quantity - quantity, quantity * quantity, quantity / quantity
         if (leftValue is Quantity leftQty && rightValue is Quantity rightQty)
         {
             return op switch
             {
                 "+" => EvaluateQuantityAddition(leftQty, rightQty),
                 "-" => EvaluateQuantitySubtraction(leftQty, rightQty),
+                "*" => EvaluateQuantityMultiplication(leftQty, rightQty),
                 "/" => EvaluateQuantityDivision(leftQty, rightQty),
                 _ => []
             };
@@ -221,6 +222,14 @@ internal static class QuantityEvaluator
             : [];
     }
 
+    private static IEnumerable<IElement> EvaluateQuantityMultiplication(Quantity left, Quantity right)
+    {
+        var result = UnitConverter.Multiply(left, right);
+        return result != null
+            ? [new QuantityElement(result)]
+            : [];
+    }
+
     private static IEnumerable<IElement> EvaluateQuantityScalarMultiply(Quantity quantity, decimal scalar)
     {
         var result = quantity.Multiply(scalar);
@@ -237,9 +246,9 @@ internal static class QuantityEvaluator
 
     private static IEnumerable<IElement> EvaluateQuantityDivision(Quantity left, Quantity right)
     {
-        var result = left.DivideBy(right, UnitConverter);
+        var result = UnitConverter.Divide(left, right);
         return result != null
-            ? [CreateDecimal(result.Value)]
+            ? [new QuantityElement(result)]
             : [];
     }
 

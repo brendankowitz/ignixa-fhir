@@ -67,6 +67,13 @@ public static class FhirXmlToJsonConverter
 
     private static void ConvertElement(XElement element, Utf8JsonWriter writer)
     {
+        // Handle extension/modifierExtension url attribute (FHIR XML uses attribute, JSON uses property)
+        var urlAttr = element.Attribute("url");
+        if (urlAttr != null && (element.Name.LocalName == "extension" || element.Name.LocalName == "modifierExtension"))
+        {
+            writer.WriteString("url", urlAttr.Value);
+        }
+
         var children = element.Elements().Where(e => e.Name.Namespace == FhirNamespace).ToList();
         var groupedChildren = children.GroupBy(e => e.Name.LocalName).ToList();
 

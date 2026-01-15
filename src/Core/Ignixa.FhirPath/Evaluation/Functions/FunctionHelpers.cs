@@ -107,6 +107,47 @@ internal static class FunctionHelpers
     }
 
     /// <summary>
+    /// Compares two IElements for equality (deep comparison for complex types).
+    /// </summary>
+    public static bool AreElementsEqual(IElement? left, IElement? right)
+    {
+        if (left == null && right == null) return true;
+        if (left == null || right == null) return false;
+
+        // Both have primitive values - compare values
+        if (left.Value != null && right.Value != null)
+        {
+            return AreEqual(left.Value, right.Value);
+        }
+
+        // One has value, one doesn't - not equal
+        if (left.Value != null || right.Value != null)
+        {
+            return false;
+        }
+
+        // Both are complex types - compare children recursively
+        var leftChildren = left.Children().OrderBy(c => c.Name, StringComparer.Ordinal).ToList();
+        var rightChildren = right.Children().OrderBy(c => c.Name, StringComparer.Ordinal).ToList();
+
+        if (leftChildren.Count != rightChildren.Count)
+            return false;
+
+        for (int i = 0; i < leftChildren.Count; i++)
+        {
+            // Children must have same name
+            if (!string.Equals(leftChildren[i].Name, rightChildren[i].Name, StringComparison.Ordinal))
+                return false;
+
+            // Recursively compare
+            if (!AreElementsEqual(leftChildren[i], rightChildren[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Normalizes date/time strings by ensuring consistent @ prefix handling.
     /// For date/time values, both "@2023-01-01" and "2023-01-01" should compare equal.
     /// </summary>
@@ -216,7 +257,7 @@ internal static class FunctionHelpers
         // Add all left elements
         foreach (var leftItem in left)
         {
-            if (!result.Any(r => AreEqual(r.Value, leftItem.Value)))
+            if (!result.Any(r => AreElementsEqual(r, leftItem)))
             {
                 result.Add(leftItem);
             }
@@ -225,7 +266,7 @@ internal static class FunctionHelpers
         // Add right elements that aren't duplicates
         foreach (var rightItem in right)
         {
-            if (!result.Any(r => AreEqual(r.Value, rightItem.Value)))
+            if (!result.Any(r => AreElementsEqual(r, rightItem)))
             {
                 result.Add(rightItem);
             }

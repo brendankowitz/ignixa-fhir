@@ -244,17 +244,19 @@ public class ConversionAndStringFunctionTests
     }
 
     [Fact]
-    public void GivenEmptyCondition_WhenIif_ThenReturnsEmpty()
+    public void GivenEmptyCondition_WhenIif_ThenReturnsOtherwiseResult()
     {
-        // Arrange
+        // Arrange - Per FHIRPath spec testCollectionBoolean2: iif({}, true, false) → false
+        // Empty criterion is treated as falsy, so returns otherwise-result
         var expr = _parser.Parse("iif({}, 'yes', 'no')");
         var root = CreateIntegerElement(0);
 
         // Act
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // Assert
-        Assert.Empty(result);
+        // Assert - Empty criterion returns the 'else' branch, not empty
+        Assert.Single(result);
+        Assert.Equal("no", result[0].Value);
     }
 
     #endregion
