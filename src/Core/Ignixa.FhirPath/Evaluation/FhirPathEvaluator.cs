@@ -888,7 +888,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             var leftVal = left[0].Value;
             var rightVal = right[0].Value;
 
-            if (leftVal is Types.Quantity || rightVal is Types.Quantity)
+#pragma warning disable CA1308 // Normalize strings to uppercase
+            var leftType = left[0].InstanceType?.ToLowerInvariant();
+            var rightType = right[0].InstanceType?.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+            // Handle quantity comparisons (both FhirPath literals and FHIR Quantity elements)
+            if (leftVal is Types.Quantity || rightVal is Types.Quantity ||
+                IsQuantityType(leftType) || IsQuantityType(rightType))
             {
                 var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
                 return result;
@@ -903,11 +910,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                     return equals ? ld == rd : ld != rd;
                 }
             }
-
-#pragma warning disable CA1308 // Normalize strings to uppercase
-            var leftType = left[0].InstanceType?.ToLowerInvariant();
-            var rightType = right[0].InstanceType?.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
 
             if ((leftType == "date" || leftType == "datetime" || leftType == "instant") &&
                 (rightType == "date" || rightType == "datetime" || rightType == "instant"))
@@ -983,6 +985,22 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             {
                 // They differ in a component specified in both - definitely not equal
                 return equals ? false : true;
+            }
+            
+            // They match in all specified components up to the less precise value's precision.
+            // Now check if the additional precision components in the more precise value are non-zero,
+            // but ONLY if both values are of the same general type (both DateTime or both have 'T').
+            // For Date vs DateTime comparisons (like @1974-12-25 vs @1974-12-25T12:34:00), 
+            // the result is uncertain per FHIRPath spec.
+            var additionalPart = rightNormalized.Substring(leftNormalized.Length);
+            if (!string.IsNullOrEmpty(additionalPart) && !additionalPart.StartsWith('T'))
+            {
+                // Additional precision in same type (e.g., seconds vs milliseconds)
+                // If non-zero, they're definitely different
+                if (HasNonZeroAdditionalPrecision(additionalPart))
+                {
+                    return equals ? false : true;
+                }
             }
             
             // They match in all specified components but have different precision - result is uncertain
@@ -1086,7 +1104,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             var leftValue = left[0].Value;
             var rightValue = right[0].Value;
     
-            if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+#pragma warning disable CA1308 // Normalize strings to uppercase
+            var leftType = left[0].InstanceType?.ToLowerInvariant();
+            var rightType = right[0].InstanceType?.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+            // Handle quantity comparisons (both FhirPath literals and FHIR Quantity elements)
+            if (leftValue is Types.Quantity || rightValue is Types.Quantity ||
+                IsQuantityType(leftType) || IsQuantityType(rightType))
             {
                 var op = (greater, orEqual) switch
                 {
@@ -1097,11 +1122,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 };
                 return QuantityEvaluator.EvaluateComparison(left, op, right);
             }
-    
-    #pragma warning disable CA1308 // Normalize strings to uppercase
-            var leftType = left[0].InstanceType?.ToLowerInvariant();
-            var rightType = right[0].InstanceType?.ToLowerInvariant();
-    #pragma warning restore CA1308 // Normalize strings to uppercase
     
             if ((leftType == "date" || leftType == "datetime" || leftType == "time") &&
                 (rightType == "date" || rightType == "datetime" || rightType == "time"))
@@ -1187,6 +1207,21 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
             return null;
+
+        // When comparing a DateTime to a Date, per FHIRPath spec the Date is implicitly
+        // promoted to DateTime at 00:00:00. This allows now() > today() to return true.
+        if (leftPrecision >= DateTimePrecision.Hour && rightPrecision == DateTimePrecision.Day)
+        {
+            // Right side is Date only, promote to DateTime at midnight
+            rightStr = rightStr + "T00:00:00";
+            rightPrecision = DateTimePrecision.Second;
+        }
+        else if (rightPrecision >= DateTimePrecision.Hour && leftPrecision == DateTimePrecision.Day)
+        {
+            // Left side is Date only, promote to DateTime at midnight
+            leftStr = leftStr + "T00:00:00";
+            leftPrecision = DateTimePrecision.Second;
+        }
 
         // Per FHIRPath spec: When comparing dates with different precision,
         // the result is null unless one interval completely precedes/follows the other.
@@ -1302,6 +1337,41 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         return DateTimePrecision.Invalid;
+    }
+
+    /// <summary>
+    /// Checks if a type name represents a FHIR Quantity type (or subtype).
+    /// </summary>
+    private static bool IsQuantityType(string? typeName)
+    {
+        if (string.IsNullOrEmpty(typeName))
+            return false;
+        
+        return typeName == "quantity" || typeName == "age" || typeName == "distance" || 
+               typeName == "duration" || typeName == "count" || typeName == "simplequantity" ||
+               typeName == "moneyquantity";
+    }
+
+    /// <summary>
+    /// Checks if the additional precision component contains non-zero values.
+    /// For example, ".1" has non-zero milliseconds, ":01" has non-zero seconds.
+    /// Used to determine if two values with different precision are definitely different.
+    /// </summary>
+    private static bool HasNonZeroAdditionalPrecision(string additionalPart)
+    {
+        if (string.IsNullOrEmpty(additionalPart))
+            return false;
+
+        // Check for non-zero digits in the additional part
+        // Examples: ".1", ".001", ":01", "-01", etc.
+        foreach (var c in additionalPart)
+        {
+            if (c >= '1' && c <= '9')
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool HasTimezone(string value)

@@ -255,7 +255,7 @@ public record EvaluationContext
     /// <summary>
     /// Gets an environment variable value.
     /// Returns the single element if collection has one item, otherwise returns the list.
-    /// Checks user-defined variables first (from defineVariable), then environment variables.
+    /// Checks standard FHIRPath constants, user-defined variables (from defineVariable), then environment variables.
     /// </summary>
     public object? GetEnvironmentVariable(string name)
     {
@@ -268,6 +268,23 @@ public record EvaluationContext
         {
             var idx = GetIndex();
             return idx.HasValue ? new IndexElement(idx.Value) : null;
+        }
+
+        // Standard FHIRPath external constants per http://hl7.org/fhirpath/#environment-variables
+        var standardValue = GetStandardConstant(name);
+        if (standardValue != null)
+        {
+            return new StringElement(standardValue);
+        }
+
+        if (name == "resource")
+        {
+            return Resource;
+        }
+
+        if (name == "rootResource")
+        {
+            return RootResource;
         }
 
         if (DefinedVariables.TryGetValue(name, out var definedValue))
@@ -284,12 +301,45 @@ public record EvaluationContext
     }
 
     /// <summary>
+    /// Gets the value for a standard FHIRPath external constant.
+    /// These are defined by the FHIRPath specification and have fixed values.
+    /// </summary>
+    private static string? GetStandardConstant(string name)
+    {
+        return name switch
+        {
+            "sct" => "http://snomed.info/sct",
+            "loinc" => "http://loinc.org",
+            "ucum" => "http://unitsofmeasure.org",
+            "vs-administrative-gender" => "http://hl7.org/fhir/ValueSet/administrative-gender",
+            "ext-patient-birthTime" => "http://hl7.org/fhir/StructureDefinition/patient-birthTime",
+            _ => null
+        };
+    }
+
+    /// <summary>
     /// Simple implementation of IElement for index values.
     /// </summary>
     private sealed class IndexElement(int value) : IElement
     {
         public string Name => string.Empty;
         public string InstanceType => "integer";
+        public object Value { get; } = value;
+        public string Location => string.Empty;
+        public IType? Type => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    /// <summary>
+    /// Simple implementation of IElement for string constant values.
+    /// </summary>
+    private sealed class StringElement(string value) : IElement
+    {
+        public string Name => string.Empty;
+        public string InstanceType => "string";
         public object Value { get; } = value;
         public string Location => string.Empty;
         public IType? Type => null;
