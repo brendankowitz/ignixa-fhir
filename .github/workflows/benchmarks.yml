@@ -79,7 +79,7 @@ jobs:
           if [ -f "$LATEST_FILE" ]; then
             # Add new run to existing latest.json
             TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-            python3 << 'PYTHON_EOF'
+            python3 << PYTHON_EOF
           import json
           import sys
 
@@ -89,15 +89,15 @@ jobs:
 
           # Add new run
           new_run = {
-              "directory": "$RUN_DIR",
+              "directory": "${RUN_DIR}",
               "branch": "${{ github.ref_name }}",
               "commit": "${{ github.sha }}",
-              "timestamp": "$TIMESTAMP",
+              "timestamp": "${TIMESTAMP}",
               "run_number": "${{ github.run_number }}"
           }
 
           # Update latest and prepend to runs list
-          data['latestRun'] = "$RUN_DIR"
+          data['latestRun'] = "${RUN_DIR}"
           data['runs'].insert(0, new_run)
 
           # Write back
