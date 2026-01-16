@@ -9,7 +9,7 @@ public class FhirPathTestSuiteParserTests
 
     public FhirPathTestSuiteParserTests()
     {
-        var projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+        var projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         _testSuiteFilePath = Path.Combine(projectRoot, "TestData", "fhir-test-cases", "r4", "fhirpath", "tests-fhir-r4.xml");
     }
 

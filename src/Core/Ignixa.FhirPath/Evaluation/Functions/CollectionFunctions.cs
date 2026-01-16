@@ -517,18 +517,7 @@ internal static class CollectionFunctions
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        // Handle qualified type names (e.g. FHIR.Patient -> Patient, System.String -> String)
-        if (typeName.Contains('.', StringComparison.Ordinal))
-        {
-            var parts = typeName.Split('.');
-            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
-            {
-                typeName = parts[1];
-            }
-        }
-
-        return focus.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&
-                               e.InstanceType.Equals(typeName, StringComparison.OrdinalIgnoreCase));
+        return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
     }
 
     /// <summary>
@@ -549,25 +538,11 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("as() requires a type argument");
 
-        if (arguments[0] is not IdentifierExpression idExpr)
+        var typeName = TypeMatcher.ExtractTypeName(arguments[0]);
+        if (string.IsNullOrEmpty(typeName))
             return [];
 
-        var typeName = idExpr.Name;
-
-        // Handle qualified type names
-        if (typeName.Contains('.', StringComparison.Ordinal))
-        {
-            var parts = typeName.Split('.');
-            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
-            {
-                typeName = parts[1];
-            }
-        }
-
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        typeName = typeName.ToLowerInvariant();
-        return focus.Where(e => e.InstanceType?.ToLowerInvariant() == typeName);
-#pragma warning restore CA1308 // Normalize strings to uppercase
+        return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
     }
 
     /// <summary>

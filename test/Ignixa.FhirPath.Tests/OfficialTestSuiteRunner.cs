@@ -1,5 +1,4 @@
 using System.Collections.Frozen;
-using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
@@ -17,18 +16,15 @@ namespace Ignixa.FhirPath.Tests;
 public class OfficialTestSuiteRunner(ITestOutputHelper output)
 {
     private readonly ITestOutputHelper _output = output;
-    private static readonly string _projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+    private static readonly string _projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4TestCases = new(() => LoadTestCases("r4"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
 
     // Functions that are not yet implemented. Tests using these are skipped to focus on supported functionality.
-    // Type introspection: is(), conformsTo()
-    // Collection operations: aggregate()
-    // Variable definition: defineVariable() (FHIRPath 2.0 feature)
+    // Type introspection: conformsTo()
     // Terminology services: %terminologies.expand, validateVS(), translate()
-    // Precision function: precision()
 
     private static readonly FrozenSet<string> _unsupportedFunctions = new[]
     {
@@ -37,13 +33,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         "validateVS(",
         "translate("
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    // Scopes that are not yet implemented
-    private static readonly FrozenSet<string> _unsupportedScopes = FrozenSet<string>.Empty;
-
-    // Matches the 'is' operator when used with type names (e.g., "value is Quantity")
-    // This is distinct from .is() function calls which are caught by _unsupportedFunctions
-    private static readonly Regex _isOperatorPattern = new(@"\bis\s+\w", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
 
     private readonly FhirPathParser _parser = new();
@@ -92,22 +81,9 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
     private static bool ShouldSkipTest(FhirPathTestCase testCase)
     {
-        if (_isOperatorPattern.IsMatch(testCase.Expression))
-        {
-            return true;
-        }
-
         foreach (var unsupportedFunction in _unsupportedFunctions)
         {
             if (testCase.Expression.Contains(unsupportedFunction, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        foreach (var unsupportedScope in _unsupportedScopes)
-        {
-            if (testCase.Expression.Contains(unsupportedScope, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

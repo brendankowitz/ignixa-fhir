@@ -514,140 +514,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [new PrimitiveElement(leftStr + rightStr, "string")];
     }
 
-    // System types that are ONLY FHIRPath primitive types (not FHIR types)
-    // These types exist only in FHIRPath, not as FHIR element types
-    // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
-    //   - Boolean (capitalized) = System type (FHIRPath literal)
-    //   - boolean (lowercase) = FHIR type (element type)
-    private static readonly HashSet<string> SystemOnlyTypes = new(StringComparer.Ordinal)
-    {
-        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
-    };
-
     private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr)
     {
         if (left.Count != 1)
             return [];
 
-        // Extract the full type name, including any namespace prefix
-        string? typeName = ExtractTypeName(typeExpr);
-
+        var typeName = TypeMatcher.ExtractTypeName(typeExpr);
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        // Parse the target type to determine namespace and base type name
-        // System types: System.Boolean, System.Integer, System.Decimal, System.String, System.Date, System.DateTime, System.Time, System.Quantity
-        // FHIR types: FHIR.boolean, FHIR.Patient, FHIR.Quantity, etc.
-        bool explicitSystemNamespace = false;
-        bool explicitFhirNamespace = false;
-
-        if (typeName.StartsWith("System.", StringComparison.OrdinalIgnoreCase))
-        {
-            explicitSystemNamespace = true;
-            typeName = typeName.Substring(7); // Remove "System." prefix
-        }
-        else if (typeName.StartsWith("FHIR.", StringComparison.OrdinalIgnoreCase))
-        {
-            explicitFhirNamespace = true;
-            typeName = typeName.Substring(5); // Remove "FHIR." prefix
-        }
-
-        var element = left[0];
-        var elementType = element.InstanceType ?? string.Empty;
-
-        // Check if element is a FHIRPath literal (System type) based on class name
-        var implType = element.GetType().Name;
-        bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
-
-        // With explicit namespace, enforce strict matching
-        if (explicitSystemNamespace)
-        {
-            // System.X requires element to be a FHIRPath literal
-            if (!elementIsSystemType)
-                return FunctionHelpers.ReturnBoolean(false);
-        }
-        else if (explicitFhirNamespace)
-        {
-            // FHIR.X requires element to NOT be a FHIRPath literal
-            if (elementIsSystemType)
-                return FunctionHelpers.ReturnBoolean(false);
-        }
-        else if (SystemOnlyTypes.Contains(typeName))
-        {
-            // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
-            if (!elementIsSystemType)
-                return FunctionHelpers.ReturnBoolean(false);
-        }
-        // For unqualified types that are NOT system-only (Patient, Quantity, code, boolean, etc.):
-        // - Match FHIR element types directly by instance type
-        // - This allows Observation.value.is(Quantity) to match FHIR Quantity elements
-
-        // Now compare the type names (case-insensitive)
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        typeName = typeName.ToLowerInvariant();
-        elementType = elementType.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
-
-        if (elementType == typeName)
-            return FunctionHelpers.ReturnBoolean(true);
-
-        // Handle FHIR type inheritance:
-        // code, id, markdown, uri, url, canonical, uuid, oid -> string
-        // positiveInt, unsignedInt -> integer
-        if (typeName == "string" && (elementType == "code" || elementType == "id" || 
-            elementType == "markdown" || elementType == "uri" || elementType == "url" ||
-            elementType == "canonical" || elementType == "uuid" || elementType == "oid"))
-            return FunctionHelpers.ReturnBoolean(true);
-
-        if (typeName == "integer" && (elementType == "positiveint" || elementType == "unsignedint"))
-            return FunctionHelpers.ReturnBoolean(true);
-
-        return FunctionHelpers.ReturnBoolean(false);
-    }
-
-    /// <summary>
-    /// Extracts the full type name from a type expression, including namespace prefixes.
-    /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`
-    /// </summary>
-    private static string? ExtractTypeName(Expression expr)
-    {
-        return expr switch
-        {
-            // Simple identifier: Boolean, Patient, boolean
-            IdentifierExpression idExpr => idExpr.Name,
-
-            // Property access: System.Boolean, FHIR.Patient
-            PropertyAccessExpression propExpr => ExtractPropertyAccessTypeName(propExpr),
-
-            // Function call (used for backtick escaping): `Patient`
-            FunctionCallExpression funcExpr => funcExpr.FunctionName,
-
-            // Constant (string literal type name)
-            ConstantExpression constExpr => constExpr.Value?.ToString(),
-
-            _ => null
-        };
-    }
-
-    private static string ExtractPropertyAccessTypeName(PropertyAccessExpression propExpr)
-    {
-        // Build the full qualified name: System.Boolean, FHIR.Patient
-        var parts = new List<string>();
-
-        Expression? current = propExpr;
-        while (current is PropertyAccessExpression prop)
-        {
-            parts.Insert(0, prop.PropertyName);
-            current = prop.Focus;
-        }
-
-        // Add the root identifier
-        if (current is IdentifierExpression id)
-        {
-            parts.Insert(0, id.Name);
-        }
-
-        return string.Join(".", parts);
+        return FunctionHelpers.ReturnBoolean(TypeMatcher.IsTypeMatch(left[0], typeName));
     }
 
     private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr)
@@ -655,34 +531,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left.Count != 1)
             return [];
 
-        string? typeName = typeExpr switch
-        {
-            IdentifierExpression idExpr => idExpr.Name,
-            PropertyAccessExpression propExpr => propExpr.PropertyName,
-            FunctionCallExpression funcExpr => funcExpr.FunctionName,
-            ConstantExpression constExpr => constExpr.Value?.ToString(),
-            _ => null
-        };
-
-        if (typeName == null)
+        var typeName = TypeMatcher.ExtractTypeName(typeExpr);
+        if (string.IsNullOrEmpty(typeName))
             return [];
 
-        // Handle qualified type names
-        if (typeName.Contains('.', StringComparison.Ordinal))
-        {
-            var parts = typeName.Split('.');
-            if (parts.Length == 2 && (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
-            {
-                typeName = parts[1];
-            }
-        }
-
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        typeName = typeName.ToLowerInvariant();
-        var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
-#pragma warning restore CA1308 // Normalize strings to uppercase
-
-        return elementType == typeName ? [left[0]] : [];
+        var strippedTypeName = TypeMatcher.StripNamespace(typeName);
+        return TypeMatcher.MatchesType(left[0], strippedTypeName) ? [left[0]] : [];
     }
 
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)
