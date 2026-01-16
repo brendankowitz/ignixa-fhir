@@ -19,7 +19,6 @@
   <ItemGroup>
     <PackageReference Include="Ensure.That" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
-    <PackageReference Include="System.Collections.Immutable" />
   </ItemGroup>
 
   <ItemGroup>
