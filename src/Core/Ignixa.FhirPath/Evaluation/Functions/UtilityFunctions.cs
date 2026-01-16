@@ -79,7 +79,9 @@ internal static class UtilityFunctions
         Description = "Returns current date without time component")]
     public static IEnumerable<IElement> Today(IEnumerable<IElement> focus)
     {
-        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        // Use UTC date to match now() which returns UTC datetime
+        // This ensures consistent comparison behavior (now() > today() returns uncertain, not true/false based on timezone)
+        var today = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
         return [FunctionHelpers.CreateDate(today)];
     }
 

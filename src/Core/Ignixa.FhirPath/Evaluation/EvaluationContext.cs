@@ -6,7 +6,6 @@
  */
 
 using System.Collections.Immutable;
-using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -68,7 +67,7 @@ public record EvaluationContext
         ImmutableDictionary<string, ImmutableList<IElement>> environment,
         IElement? resource,
         IElement? rootResource,
-        ConcurrentDictionary<string, ImmutableList<IElement>>? definedVariables = null)
+        Dictionary<string, ImmutableList<IElement>>? definedVariables = null)
     {
         Focus = focus;
         ThisStack = thisStack;
@@ -76,7 +75,7 @@ public record EvaluationContext
         Environment = environment;
         Resource = resource;
         RootResource = rootResource;
-        DefinedVariables = definedVariables ?? new ConcurrentDictionary<string, ImmutableList<IElement>>(StringComparer.OrdinalIgnoreCase);
+        DefinedVariables = definedVariables ?? new Dictionary<string, ImmutableList<IElement>>(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -130,8 +129,9 @@ public record EvaluationContext
     /// <summary>
     /// Mutable dictionary for user-defined variables created by defineVariable().
     /// This is shared across immutable context copies to allow defineVariable side effects.
+    /// Single-threaded: FHIRPath evaluation runs in a single thread, so no concurrent access needed.
     /// </summary>
-    public ConcurrentDictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
+    public Dictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
 
     /// <summary>
     /// Creates a new context with the specified focus.

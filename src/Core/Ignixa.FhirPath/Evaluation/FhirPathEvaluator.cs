@@ -120,10 +120,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             variableName = str;
         }
-        else if (nameExpr is IdentifierExpression idExpr)
-        {
-            variableName = idExpr.Name;
-        }
         else
         {
             var nameResult = EvaluateExpression(focus, nameExpr, context).ToList();
@@ -362,15 +358,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime + Quantity
-        if (leftValue is string leftStr && rightValue is Types.Quantity qty)
+        if (leftValue is string leftDateStr && rightValue is Types.Quantity rightQty)
         {
-            return EvaluateDateTimeArithmetic(leftStr, qty, add: true);
+            return EvaluateDateTimeArithmetic(leftDateStr, rightQty, add: true);
         }
 
         // Quantity + Date/DateTime
-        if (leftValue is Types.Quantity qty2 && rightValue is string rightStr)
+        if (leftValue is Types.Quantity leftQty && rightValue is string rightDateStr)
         {
-            return EvaluateDateTimeArithmetic(rightStr, qty2, add: true);
+            return EvaluateDateTimeArithmetic(rightDateStr, leftQty, add: true);
         }
 
         if (leftValue is Types.Quantity || rightValue is Types.Quantity)
@@ -378,9 +374,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
         }
 
-        if (leftValue is string leftStr2 && rightValue is string rightStr2)
+        // String concatenation via + operator
+        if (leftValue is string leftStringVal && rightValue is string rightStringVal)
         {
-            return [CreateString(leftStr2 + rightStr2)];
+            return [CreateString(leftStringVal + rightStringVal)];
         }
 
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
@@ -522,7 +519,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
     //   - Boolean (capitalized) = System type (FHIRPath literal)
     //   - boolean (lowercase) = FHIR type (element type)
-    private static readonly HashSet<string> s_systemOnlyTypes = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> SystemOnlyTypes = new(StringComparer.Ordinal)
     {
         "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
     };
@@ -575,7 +572,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             if (elementIsSystemType)
                 return FunctionHelpers.ReturnBoolean(false);
         }
-        else if (s_systemOnlyTypes.Contains(typeName))
+        else if (SystemOnlyTypes.Contains(typeName))
         {
             // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
             if (!elementIsSystemType)
@@ -997,28 +994,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         var value = context.GetEnvironmentVariable(expression.Name);
 
-        if (expression.Name is "this" or "index")
-        {
-            if (value == null)
-                return [];
-            if (value is IElement element)
-                return [element];
-            if (value is IEnumerable<IElement> elements)
-                return elements;
-            return [];
-        }
-
         if (value == null)
-        {
             return [];
-        }
 
-        if (value is IElement element2)
-            return [element2];
-        if (value is IEnumerable<IElement> elements2)
-            return elements2;
-
-        return [];
+        return value switch
+        {
+            IElement singleElement => [singleElement],
+            IEnumerable<IElement> elementCollection => elementCollection,
+            _ => []
+        };
     }
 
     public IEnumerable<IElement> VisitConstant(ConstantExpression expression, EvaluationContext context)
@@ -1063,29 +1047,28 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
     {
+        var collectionElements = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
+
         // Optimization: Fast path for constant integer indexes
         // Avoids creating IElement wrapper and context allocation for index evaluation
         if (expression.Index is ConstantExpression { Value: int constantIndex })
         {
-            var collection = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
-
-            if (constantIndex >= 0 && constantIndex < collection.Count)
+            if (constantIndex >= 0 && constantIndex < collectionElements.Count)
             {
-                return [collection[constantIndex]];
+                return [collectionElements[constantIndex]];
             }
 
             return [];
         }
 
         // General case: evaluate index expression dynamically
-        var collection2 = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
         var indexResults = EvaluateExpression(context.Focus, expression.Index, context).ToList();
 
         if (indexResults.Count == 1 && indexResults[0].Value is int index)
         {
-            if (index >= 0 && index < collection2.Count)
+            if (index >= 0 && index < collectionElements.Count)
             {
-                return [collection2[index]];
+                return [collectionElements[index]];
             }
         }
 

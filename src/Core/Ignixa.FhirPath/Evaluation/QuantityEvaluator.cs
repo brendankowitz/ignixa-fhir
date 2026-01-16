@@ -73,18 +73,18 @@ internal static class QuantityEvaluator
         }
 
         // Handle quantity * scalar, scalar * quantity
-        if (leftValue is Quantity qty1 && IsScalar(rightValue) && rightValue != null)
+        if (leftValue is Quantity leftQuantity && IsScalar(rightValue) && rightValue != null)
         {
             if (op == "*")
-                return EvaluateQuantityScalarMultiply(qty1, ToDecimal(rightValue));
+                return EvaluateQuantityScalarMultiply(leftQuantity, ToDecimal(rightValue));
             if (op == "/")
-                return EvaluateQuantityScalarDivide(qty1, ToDecimal(rightValue));
+                return EvaluateQuantityScalarDivide(leftQuantity, ToDecimal(rightValue));
         }
 
-        if (IsScalar(leftValue) && leftValue != null && rightValue is Quantity qty2)
+        if (IsScalar(leftValue) && leftValue != null && rightValue is Quantity rightQuantity)
         {
             if (op == "*")
-                return EvaluateQuantityScalarMultiply(qty2, ToDecimal(leftValue));
+                return EvaluateQuantityScalarMultiply(rightQuantity, ToDecimal(leftValue));
         }
 
         return [];

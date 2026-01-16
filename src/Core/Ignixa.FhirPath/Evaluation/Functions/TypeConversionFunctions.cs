@@ -547,7 +547,7 @@ internal static class TypeConversionFunctions
     // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
     //   - Boolean (capitalized) = System type (FHIRPath literal)
     //   - boolean (lowercase) = FHIR type (element type)
-    private static readonly HashSet<string> s_systemOnlyTypes = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> SystemOnlyTypes = new(StringComparer.Ordinal)
     {
         "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
     };
@@ -591,7 +591,7 @@ internal static class TypeConversionFunctions
             if (elementIsSystemType)
                 return false;
         }
-        else if (s_systemOnlyTypes.Contains(typeName))
+        else if (SystemOnlyTypes.Contains(typeName))
         {
             // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
             if (!elementIsSystemType)

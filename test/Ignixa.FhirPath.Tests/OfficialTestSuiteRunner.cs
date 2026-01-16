@@ -59,19 +59,21 @@ public class OfficialTestSuiteRunner
         return FhirPathTestSuiteParser.ParseTestSuite(testSuiteFilePath);
     }
 
-    public static IEnumerable<object[]> GetR4TestCases() => GetTestCasesForVersion("R4", _r4TestCases);
-    public static IEnumerable<object[]> GetR4BTestCases() => GetTestCasesForVersion("R4B", _r4bTestCases);
-    public static IEnumerable<object[]> GetR5TestCases() => GetTestCasesForVersion("R5", _r5TestCases);
+    public static IEnumerable<object[]> GetR4TestCases() => GetTestCasesForVersion("r4", _r4TestCases);
+    public static IEnumerable<object[]> GetR4BTestCases() => GetTestCasesForVersion("r4b", _r4bTestCases);
+    public static IEnumerable<object[]> GetR5TestCases() => GetTestCasesForVersion("r5", _r5TestCases);
 
     private static IEnumerable<object[]> GetTestCasesForVersion(string versionLabel, Lazy<IReadOnlyList<FhirPathTestCase>> testCasesLazy)
     {
         var testCases = testCasesLazy.Value;
+        var examplesDirectory = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", versionLabel, "examples");
 
         var filteredTests = testCases
             .Where(tc => !tc.IsInvalidTest)
             .Where(tc => tc.InputFile is not null)
             .Where(tc => !tc.Predicate)
-            .Where(tc => !ShouldSkipTest(tc));
+            .Where(tc => !ShouldSkipTest(tc))
+            .Where(tc => File.Exists(Path.Combine(examplesDirectory, tc.InputFile!)));
 
         var totalTests = testCases.Count;
         var afterBasicFiltering = testCases.Count(tc => !tc.IsInvalidTest && tc.InputFile is not null && !tc.Predicate);
@@ -173,11 +175,6 @@ public class OfficialTestSuiteRunner
 
         var examplesDirectory = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", versionString, "examples");
         var inputFilePath = Path.Combine(examplesDirectory, testCase.InputFile);
-
-        if (!File.Exists(inputFilePath))
-        {
-            Skip.If(true, $"Input file not found: {testCase.InputFile}");
-        }
 
         var schemaProvider = fhirVersion.GetSchemaProvider();
         var resourceJson = FhirXmlToJsonConverter.LoadResourceAsJson(inputFilePath);
