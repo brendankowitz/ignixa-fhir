@@ -20,7 +20,7 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </summary>
 internal static class BoundaryFunctions
 {
-    private const int DefaultPrecision = 8;
+    private const int DefaultPrecision = -1;  // -1 means derive from input value
 
     /// <summary>
     /// lowBoundary(precision) - Returns the lower boundary of a value at the specified precision.
@@ -62,8 +62,8 @@ internal static class BoundaryFunctions
             }
         }
 
-        // Validate precision
-        if (precision < -1 || precision > 31)
+        // Validate explicit precision if provided
+        if (precision != DefaultPrecision && (precision < 0 || precision > 31))
         {
             // Invalid precision: return empty
             yield break;
@@ -124,8 +124,8 @@ internal static class BoundaryFunctions
             }
         }
 
-        // Validate precision
-        if (precision < -1 || precision > 31)
+        // Validate explicit precision if provided
+        if (precision != DefaultPrecision && (precision < 0 || precision > 31))
         {
             // Invalid precision: return empty
             yield break;
@@ -158,18 +158,19 @@ internal static class BoundaryFunctions
         // Handle Quantity type (has both value and unit)
         if (element.InstanceType == "Quantity" && element.Value is decimal quantityValue)
         {
-            var boundaryValue = CalculateNumericLowBoundary(quantityValue, precision);
+            var effectivePrecision = precision == DefaultPrecision ? GetDecimalPrecision(quantityValue) : precision;
+            var boundaryValue = CalculateNumericLowBoundary(quantityValue, effectivePrecision);
             // For Quantity, we need to preserve the unit - this would typically be done by the type system
             return FunctionHelpers.CreateDecimal(boundaryValue);
         }
 
         return cleanValue switch
         {
-            // Numeric types
-            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary(d, precision)),
-            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)d, precision)),
-            int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)i, precision)),
-            long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)l, precision)),
+            // Numeric types - derive precision from value if not explicitly provided
+            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary(d, precision == DefaultPrecision ? GetDecimalPrecision(d) : precision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)d, precision == DefaultPrecision ? GetDecimalPrecision((decimal)d) : precision)),
+            int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)i, precision == DefaultPrecision ? 0 : precision)),
+            long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)l, precision == DefaultPrecision ? 0 : precision)),
 
             // DateTime strings (with @ prefix handled above)
             string str when IsDateTimeString(str) => CalculateDateTimeLowBoundary(str, precision, element.InstanceType),
@@ -191,17 +192,18 @@ internal static class BoundaryFunctions
         // Handle Quantity type (has both value and unit)
         if (element.InstanceType == "Quantity" && element.Value is decimal quantityValue)
         {
-            var boundaryValue = CalculateNumericHighBoundary(quantityValue, precision);
+            var effectivePrecision = precision == DefaultPrecision ? GetDecimalPrecision(quantityValue) : precision;
+            var boundaryValue = CalculateNumericHighBoundary(quantityValue, effectivePrecision);
             return FunctionHelpers.CreateDecimal(boundaryValue);
         }
 
         return cleanValue switch
         {
-            // Numeric types
-            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary(d, precision)),
-            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)d, precision)),
-            int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)i, precision)),
-            long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)l, precision)),
+            // Numeric types - derive precision from value if not explicitly provided
+            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary(d, precision == DefaultPrecision ? GetDecimalPrecision(d) : precision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)d, precision == DefaultPrecision ? GetDecimalPrecision((decimal)d) : precision)),
+            int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)i, precision == DefaultPrecision ? 0 : precision)),
+            long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)l, precision == DefaultPrecision ? 0 : precision)),
 
             // DateTime strings (with @ prefix handled above)
             string str when IsDateTimeString(str) => CalculateDateTimeHighBoundary(str, precision, element.InstanceType),
@@ -211,6 +213,19 @@ internal static class BoundaryFunctions
 
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Gets the implied precision of a decimal value based on its internal scale.
+    /// For example, 1.0 has precision 1, 1.00 has precision 2, 1 has precision 0.
+    /// Uses the internal scale of the decimal which is preserved when parsing from strings.
+    /// </summary>
+    private static int GetDecimalPrecision(decimal value)
+    {
+        // Extract the scale from the decimal's internal representation
+        // The scale is stored in bits 16-23 of the fourth 32-bit element
+        var bits = decimal.GetBits(value);
+        return (bits[3] >> 16) & 0xFF;
     }
 
     private static decimal CalculateNumericLowBoundary(decimal value, int precision)
@@ -250,15 +265,16 @@ internal static class BoundaryFunctions
     private static IElement? CalculateDateTimeLowBoundary(string dateTimeStr, int precision, string instanceType)
     {
         // Parse the date/time string to determine its components
-        // Precision for dates/times: 6=year-month, 8=date, 17=datetime with milliseconds
         var parsed = ParseDateTimeString(dateTimeStr);
         if (parsed == null) return null;
 
         string result;
-        if (precision <= 8)
+        // For dateTime type, always return full datetime with timezone
+        // For date type, return date only
+        if (instanceType == "date")
         {
-            // Date precision - return date only
-            result = FormatDateLowBoundary(parsed.Value, precision);
+            // Date precision - return date only, derive precision from input
+            result = FormatDateLowBoundary(parsed.Value, dateTimeStr);
         }
         else
         {
@@ -266,7 +282,7 @@ internal static class BoundaryFunctions
             result = FormatDateTimeLowBoundary(parsed.Value, precision, dateTimeStr);
         }
 
-        return FunctionHelpers.CreateString("@" + result);
+        return FunctionHelpers.CreateString(result);
     }
 
     private static IElement? CalculateDateTimeHighBoundary(string dateTimeStr, int precision, string instanceType)
@@ -275,10 +291,12 @@ internal static class BoundaryFunctions
         if (parsed == null) return null;
 
         string result;
-        if (precision <= 8)
+        // For dateTime type, always return full datetime with timezone
+        // For date type, return date only
+        if (instanceType == "date")
         {
-            // Date precision - return date only
-            result = FormatDateHighBoundary(parsed.Value, precision);
+            // Date precision - return date only, derive precision from input
+            result = FormatDateHighBoundary(parsed.Value, dateTimeStr);
         }
         else
         {
@@ -286,7 +304,7 @@ internal static class BoundaryFunctions
             result = FormatDateTimeHighBoundary(parsed.Value, precision, dateTimeStr);
         }
 
-        return FunctionHelpers.CreateString("@" + result);
+        return FunctionHelpers.CreateString(result);
     }
 
     private static IElement? CalculateTimeLowBoundary(string timeStr, int precision)
@@ -296,7 +314,7 @@ internal static class BoundaryFunctions
         if (parsed == null) return null;
 
         var result = FormatTimeLowBoundary(parsed.Value, precision);
-        return FunctionHelpers.CreateString("@" + result);
+        return FunctionHelpers.CreateString(result);
     }
 
     private static IElement? CalculateTimeHighBoundary(string timeStr, int precision)
@@ -305,7 +323,7 @@ internal static class BoundaryFunctions
         if (parsed == null) return null;
 
         var result = FormatTimeHighBoundary(parsed.Value, precision);
-        return FunctionHelpers.CreateString("@" + result);
+        return FunctionHelpers.CreateString(result);
     }
 
     private static (int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone)? ParseDateTimeString(string dateTimeStr)
@@ -358,27 +376,55 @@ internal static class BoundaryFunctions
         return (hour, minute, second, millisecond);
     }
 
-    private static string FormatDateLowBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision)
+    private static string FormatDateLowBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, string original)
     {
-        // precision 6 = month, precision 8 = day
-        if (precision <= 6)
-        {
-            return $"{parsed.year:D4}-{1:D2}";  // Start of year
-        }
+        // Determine the granularity of the input date from the original string
+        // YYYY -> start of year: YYYY-01-01
+        // YYYY-MM -> start of month: YYYY-MM-01
+        // YYYY-MM-DD -> same date (no expansion needed): YYYY-MM-DD
         
-        return $"{parsed.year:D4}-{parsed.month:D2}-{1:D2}";  // Start of month
+        var components = original.Split('-');
+        if (components.Length == 1)
+        {
+            // Year only: YYYY -> first day of year
+            return $"{parsed.year:D4}-01-01";
+        }
+        else if (components.Length == 2)
+        {
+            // Year-month: YYYY-MM -> first day of month
+            return $"{parsed.year:D4}-{parsed.month:D2}-01";
+        }
+        else
+        {
+            // Full date: YYYY-MM-DD -> return as-is
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}";
+        }
     }
 
-    private static string FormatDateHighBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision)
+    private static string FormatDateHighBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, string original)
     {
-        // precision 6 = month, precision 8 = day
-        if (precision <= 6)
-        {
-            return $"{parsed.year:D4}-{12:D2}";  // End of year
-        }
+        // Determine the granularity of the input date from the original string
+        // YYYY -> end of year: YYYY-12-31
+        // YYYY-MM -> end of month: YYYY-MM-{lastDay}
+        // YYYY-MM-DD -> same date (no expansion needed): YYYY-MM-DD
         
-        var daysInMonth = DateTime.DaysInMonth(parsed.year, parsed.month);
-        return $"{parsed.year:D4}-{parsed.month:D2}-{daysInMonth:D2}";  // End of month
+        var components = original.Split('-');
+        if (components.Length == 1)
+        {
+            // Year only: YYYY -> last day of year
+            return $"{parsed.year:D4}-12-31";
+        }
+        else if (components.Length == 2)
+        {
+            // Year-month: YYYY-MM -> last day of month
+            var daysInMonth = DateTime.DaysInMonth(parsed.year, parsed.month);
+            return $"{parsed.year:D4}-{parsed.month:D2}-{daysInMonth:D2}";
+        }
+        else
+        {
+            // Full date: YYYY-MM-DD -> return as-is
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}";
+        }
     }
 
     private static string FormatDateTimeLowBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision, string original)
@@ -412,21 +458,21 @@ internal static class BoundaryFunctions
         }
         else
         {
-            // Add UTC-12:00 for high boundary and set to end of hour
-            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:00:59.999-12:00";
+            // Add UTC-12:00 for high boundary and set to end of day (23:59:59.999)
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T23:59:59.999-12:00";
         }
     }
 
     private static string FormatTimeLowBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
     {
-        // precision 9 = millisecond level
-        return $"T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
+        // precision 9 = millisecond level - return without the @T prefix for raw time value
+        return $"{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
     }
 
     private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
     {
         // precision 9 = millisecond level - set to end of minute
-        return $"T{parsed.hour:D2}:{parsed.minute:D2}:59.999";
+        return $"{parsed.hour:D2}:{parsed.minute:D2}:59.999";
     }
 
     private static bool IsDateTimeString(string value)
