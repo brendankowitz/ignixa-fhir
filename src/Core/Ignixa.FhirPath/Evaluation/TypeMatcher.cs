@@ -17,9 +17,10 @@ namespace Ignixa.FhirPath.Evaluation;
 internal static class TypeMatcher
 {
     // System-only types that must match FHIRPath literals (capitalized)
+    // These are FHIRPath System types, not FHIR element types
     private static readonly FrozenSet<string> SystemOnlyTypes = new[]
     {
-        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
+        "Boolean", "Integer", "Decimal", "String", "Date", "DateTime", "Time"
     }.ToFrozenSet(StringComparer.Ordinal);
 
     // FHIR type inheritance mappings (subtype -> base type)
@@ -66,18 +67,19 @@ internal static class TypeMatcher
 
     private static string ExtractPropertyAccessTypeName(PropertyAccessExpression propExpr)
     {
-        var parts = new List<string>();
+        // Use Stack to avoid O(n²) from List.Insert(0, ...)
+        var parts = new Stack<string>();
         Expression? current = propExpr;
         
         while (current is PropertyAccessExpression prop)
         {
-            parts.Insert(0, prop.PropertyName);
+            parts.Push(prop.PropertyName);
             current = prop.Focus;
         }
 
         if (current is IdentifierExpression id)
         {
-            parts.Insert(0, id.Name);
+            parts.Push(id.Name);
         }
 
         return string.Join(".", parts);
@@ -107,14 +109,15 @@ internal static class TypeMatcher
     /// </summary>
     public static string StripNamespace(string typeName)
     {
-        if (typeName.Contains('.', StringComparison.Ordinal))
+        // Optimized to avoid string.Split allocation
+        var dotIndex = typeName.IndexOf('.', StringComparison.Ordinal);
+        if (dotIndex > 0 && typeName.LastIndexOf('.') == dotIndex)
         {
-            var parts = typeName.Split('.');
-            if (parts.Length == 2 && 
-                (parts[0].Equals("FHIR", StringComparison.OrdinalIgnoreCase) || 
-                 parts[0].Equals("System", StringComparison.OrdinalIgnoreCase)))
+            var prefix = typeName.AsSpan(0, dotIndex);
+            if (prefix.Equals("FHIR", StringComparison.OrdinalIgnoreCase) ||
+                prefix.Equals("System", StringComparison.OrdinalIgnoreCase))
             {
-                return parts[1];
+                return typeName.Substring(dotIndex + 1);
             }
         }
         return typeName;
@@ -135,20 +138,29 @@ internal static class TypeMatcher
     /// <summary>
     /// Checks if the element's type matches the target type, considering FHIR type inheritance.
     /// </summary>
+    /// <remarks>
+    /// NOTE: Currently only handles primitive type inheritance (e.g., code->string, positiveInt->integer)
+    /// and Quantity subtypes. Full FHIR resource hierarchy (e.g., Patient->DomainResource->Resource)
+    /// is not yet supported. To fully comply with FHIRPath spec for expressions like Patient.is(Resource),
+    /// this would need to be backed by StructureDefinition metadata from the loaded FHIR specification.
+    /// </remarks>
     public static bool MatchesTypeWithInheritance(IElement element, string typeName)
     {
-        var elementType = element.InstanceType;
-        if (string.IsNullOrEmpty(elementType))
+        var currentType = element.InstanceType;
+        if (string.IsNullOrEmpty(currentType))
             return false;
 
-        // Direct match
-        if (elementType.Equals(typeName, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Check inheritance: is the element's type a subtype of the target?
-        if (TypeInheritance.TryGetValue(elementType, out var baseType))
+        // Walk up the inheritance chain
+        while (!string.IsNullOrEmpty(currentType))
         {
-            return baseType.Equals(typeName, StringComparison.OrdinalIgnoreCase);
+            if (currentType.Equals(typeName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Check if there's a parent type in our inheritance map
+            if (!TypeInheritance.TryGetValue(currentType, out var baseType))
+                break;
+
+            currentType = baseType;
         }
 
         return false;
