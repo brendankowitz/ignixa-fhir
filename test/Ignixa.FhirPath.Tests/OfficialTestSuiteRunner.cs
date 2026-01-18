@@ -25,8 +25,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     // Functions that are not yet implemented. Tests using these are skipped to focus on supported functionality.
     // Type introspection: conformsTo()
     // Terminology services: %terminologies.expand, validateVS(), translate()
-    // Boundaries: lowBoundary(), highBoundary()
-    // Repeat function with complex paths
     // CDA-specific: hasTemplateIdOf()
 
     private static readonly FrozenSet<string> _unsupportedFunctions = new[]
@@ -35,9 +33,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         "%terminologies",
         "validateVS(",
         "translate(",
-        "lowBoundary(",
-        "highBoundary(",
-        ".repeat(",         // repeat() function not yet implemented
         "hasTemplateIdOf("  // CDA-specific function
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 

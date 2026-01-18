@@ -451,24 +451,32 @@ internal static class CollectionFunctions
             throw new ArgumentException("repeat() requires a projection argument");
 
         var projection = arguments[0];
-        var result = new HashSet<IElement>(new FunctionHelpers.ElementEqualityComparer());
-        var processed = new HashSet<IElement>(new FunctionHelpers.ElementEqualityComparer());
+        var result = new List<IElement>();
+        var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            if (processed.Add(current))
+            
+            // Check if we've already processed this element using deep equality comparison
+            if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, current)))
             {
+                processed.Add(current);
+                
                 var innerContext = context.PushThis(current);
                 var projected = evaluateExpression([current], projection, innerContext);
+                
                 foreach (var item in projected)
                 {
-                    // Add projection results to the output result set
-                    result.Add(item);
-                    
+                    // Add projection results to the output result set (avoiding duplicates)
+                    if (!result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
+                    {
+                        result.Add(item);
+                    }
+
                     // If this is a new item, add it to queue for further processing
-                    if (!processed.Contains(item))
+                    if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, item)))
                     {
                         queue.Enqueue(item);
                     }

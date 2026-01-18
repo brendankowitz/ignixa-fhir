@@ -1,74 +1,82 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * FhirPath boundary function implementations (Phase 23, Week 4).
+ * FhirPath boundary function implementations.
  * Implements lowBoundary() and highBoundary() for dates, times, and numeric values
- * per SQL on FHIR v2 specification.
+ * per FHIRPath specification.
  */
 
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
+using Ignixa.FhirPath.Expressions;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
 /// <summary>
 /// Boundary function implementations for FhirPath expressions.
-/// Supports lowBoundary() and highBoundary() for partial dates/times and numeric values.
+/// Supports lowBoundary(precision) and highBoundary(precision) for partial dates/times and numeric values.
 /// </summary>
 internal static class BoundaryFunctions
 {
+    private const int DefaultPrecision = 8;
+
     /// <summary>
-    /// lowBoundary() - Calculates the low boundary of a value.
-    /// For decimals: multiplies by 0.95 (5% lower)
-    /// For dates/times: returns the start of the period with UTC+14:00 offset
+    /// lowBoundary(precision) - Returns the lower boundary of a value at the specified precision.
+    /// For decimals: Returns value - 0.5 * 10^(-precision), truncated to precision decimal places.
+    /// For dates/times: Returns the start of the period at the given precision with UTC+14:00 offset.
     /// </summary>
     [FhirPathFunction("lowBoundary",
         SupportedContexts = "any-any",
         ReturnType = "any",
         MinArguments = 0,
-        MaxArguments = 0,
+        MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Boundary",
-        Description = "Calculates the low boundary of a value")]
-    public static IEnumerable<IElement> LowBoundary(IEnumerable<IElement> focus)
+        Description = "Returns the lower boundary of a value at the specified precision")]
+    public static IEnumerable<IElement> LowBoundary(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
+        int precision = DefaultPrecision;
+        
+        if (arguments.Count > 0)
+        {
+            var precisionResults = evaluateExpression(focus, arguments[0], context).ToList();
+            if (precisionResults.Count == 1 && precisionResults[0].Value is int p)
+            {
+                precision = p;
+            }
+            else if (precisionResults.Count == 1 && precisionResults[0].Value != null)
+            {
+#pragma warning disable CS8602 // Dereference of a possibly null reference - we checked Value is not null above
+                var valueStr = precisionResults[0].Value.ToString();
+#pragma warning restore CS8602
+                if (valueStr != null && int.TryParse(valueStr, out var parsedPrecision))
+                {
+                    precision = parsedPrecision;
+                }
+            }
+        }
+
+        // Validate precision
+        if (precision < -1 || precision > 31)
+        {
+            // Invalid precision: return empty
+            yield break;
+        }
+
         foreach (var element in focus)
         {
             if (element.Value == null)
             {
-                // Null values return no result (empty collection)
                 continue;
             }
 
-            // Strip @ prefix from FHIR date/time string values
-            var cleanValue = element.Value is string s && s.StartsWith('@')
-                ? s.Substring(1)
-                : element.Value;
-
-            var result = cleanValue switch
-            {
-                // Decimal boundary: 5% lower
-                decimal d => FunctionHelpers.CreateDecimal(d * 0.95m),
-                double d => FunctionHelpers.CreateDecimal((decimal)d * 0.95m),
-                int i => FunctionHelpers.CreateDecimal(i * 0.95m),
-                long l => FunctionHelpers.CreateDecimal(l * 0.95m),
-
-                // Date/DateTime boundary: start of period with UTC+14:00 offset
-                DateTime dt => FunctionHelpers.CreateString(GetDateTimeLowBoundary(dt)),
-                DateTimeOffset dto => FunctionHelpers.CreateString(GetDateTimeOffsetLowBoundary(dto)),
-
-                // String dateTime (when element type is dateTime)
-                string str when IsDateLike(str) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => FunctionHelpers.CreateString(GetStringDateTimeLowBoundary(str)),
-
-                // String dates (partial dates, when element type is date)
-                string str when IsDateLike(str) => FunctionHelpers.CreateString(GetStringDateLowBoundary(str)),
-
-                // String times (partial times)
-                string str when IsTimeLike(str) => FunctionHelpers.CreateString(GetStringTimeLowBoundary(str)),
-
-                // Unsupported type: return no result
-                _ => null
-            };
-
+            var result = CalculateLowBoundary(element, precision);
             if (result != null)
             {
                 yield return result;
@@ -77,57 +85,60 @@ internal static class BoundaryFunctions
     }
 
     /// <summary>
-    /// highBoundary() - Calculates the high boundary of a value.
-    /// For decimals: multiplies by 1.05 (5% higher)
-    /// For dates/times: returns the end of the period with UTC-12:00 offset
+    /// highBoundary(precision) - Returns the upper boundary of a value at the specified precision.
+    /// For decimals: Returns value + 0.5 * 10^(-precision), truncated to precision decimal places.
+    /// For dates/times: Returns the end of the period at the given precision with UTC-12:00 offset.
     /// </summary>
     [FhirPathFunction("highBoundary",
         SupportedContexts = "any-any",
         ReturnType = "any",
         MinArguments = 0,
-        MaxArguments = 0,
+        MaxArguments = 1,
+        TakesExpressionArguments = true,
         Category = "Boundary",
-        Description = "Calculates the high boundary of a value")]
-    public static IEnumerable<IElement> HighBoundary(IEnumerable<IElement> focus)
+        Description = "Returns the upper boundary of a value at the specified precision")]
+    public static IEnumerable<IElement> HighBoundary(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
+        int precision = DefaultPrecision;
+        
+        if (arguments.Count > 0)
+        {
+            var precisionResults = evaluateExpression(focus, arguments[0], context).ToList();
+            if (precisionResults.Count == 1 && precisionResults[0].Value is int p)
+            {
+                precision = p;
+            }
+            else if (precisionResults.Count == 1 && precisionResults[0].Value != null)
+            {
+#pragma warning disable CS8602 // Dereference of a possibly null reference - we checked Value is not null above
+                var valueStr = precisionResults[0].Value.ToString();
+#pragma warning restore CS8602
+                if (valueStr != null && int.TryParse(valueStr, out var parsedPrecision))
+                {
+                    precision = parsedPrecision;
+                }
+            }
+        }
+
+        // Validate precision
+        if (precision < -1 || precision > 31)
+        {
+            // Invalid precision: return empty
+            yield break;
+        }
+
         foreach (var element in focus)
         {
             if (element.Value == null)
             {
-                // Null values return no result (empty collection)
                 continue;
             }
 
-            // Strip @ prefix from FHIR date/time string values
-            var cleanValue = element.Value is string s && s.StartsWith('@')
-                ? s.Substring(1)
-                : element.Value;
-
-            var result = cleanValue switch
-            {
-                // Decimal boundary: 5% higher
-                decimal d => FunctionHelpers.CreateDecimal(d * 1.05m),
-                double d => FunctionHelpers.CreateDecimal((decimal)d * 1.05m),
-                int i => FunctionHelpers.CreateDecimal(i * 1.05m),
-                long l => FunctionHelpers.CreateDecimal(l * 1.05m),
-
-                // Date/DateTime boundary: end of period with UTC-12:00 offset
-                DateTime dt => FunctionHelpers.CreateString(GetDateTimeHighBoundary(dt)),
-                DateTimeOffset dto => FunctionHelpers.CreateString(GetDateTimeOffsetHighBoundary(dto)),
-
-                // String dateTime (when element type is dateTime)
-                string str when IsDateLike(str) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => FunctionHelpers.CreateString(GetStringDateTimeHighBoundary(str)),
-
-                // String dates (partial dates, when element type is date)
-                string str when IsDateLike(str) => FunctionHelpers.CreateString(GetStringDateHighBoundary(str)),
-
-                // String times (partial times)
-                string str when IsTimeLike(str) => FunctionHelpers.CreateString(GetStringTimeHighBoundary(str)),
-
-                // Unsupported type: return no result
-                _ => null
-            };
-
+            var result = CalculateHighBoundary(element, precision);
             if (result != null)
             {
                 yield return result;
@@ -135,251 +146,300 @@ internal static class BoundaryFunctions
         }
     }
 
-    #region DateTime Boundary Helpers
+    #region Helper Methods
 
-    private static string GetDateTimeLowBoundary(DateTime dt)
+    private static IElement? CalculateLowBoundary(IElement element, int precision)
     {
-        // For a partial date like "1970-06", expand to start with UTC+14:00 timezone
-        // If the date is incomplete (day/time missing), use the first possible value
-        // Example: "1970-06" becomes "1970-06-01T00:00:00.000+14:00"
-        if (dt.Kind == DateTimeKind.Unspecified)
+        // Strip @ prefix from FHIR date/time string values
+        var cleanValue = element.Value is string s && s.StartsWith('@')
+            ? s.Substring(1)
+            : element.Value;
+
+        // Handle Quantity type (has both value and unit)
+        if (element.InstanceType == "Quantity" && element.Value is decimal quantityValue)
         {
-            // Assume it's already the start of the period, just add UTC+14:00 offset
-            return dt.ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+            var boundaryValue = CalculateNumericLowBoundary(quantityValue, precision);
+            // For Quantity, we need to preserve the unit - this would typically be done by the type system
+            return FunctionHelpers.CreateDecimal(boundaryValue);
         }
 
-        // For fully specified DateTime, add UTC+14:00 offset
-        return dt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+        return cleanValue switch
+        {
+            // Numeric types
+            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary(d, precision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)d, precision)),
+            int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)i, precision)),
+            long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)l, precision)),
+
+            // DateTime strings (with @ prefix handled above)
+            string str when IsDateTimeString(str) => CalculateDateTimeLowBoundary(str, precision, element.InstanceType),
+
+            // Time strings
+            string str when IsTimeString(str) => CalculateTimeLowBoundary(str, precision),
+
+            _ => null
+        };
     }
 
-    private static string GetDateTimeHighBoundary(DateTime dt)
+    private static IElement? CalculateHighBoundary(IElement element, int precision)
     {
-        // For a partial date like "1970-06", expand to end with UTC-12:00 timezone
-        // If the date is incomplete (day/time missing), use the last possible value
-        // Example: "1970-06" becomes "1970-06-30T23:59:59.999-12:00"
-        if (dt.Kind == DateTimeKind.Unspecified)
+        // Strip @ prefix from FHIR date/time string values
+        var cleanValue = element.Value is string s && s.StartsWith('@')
+            ? s.Substring(1)
+            : element.Value;
+
+        // Handle Quantity type (has both value and unit)
+        if (element.InstanceType == "Quantity" && element.Value is decimal quantityValue)
         {
-            // For unspecified datetime, shift to end of period
-            var endDate = new DateTime(dt.Year, dt.Month, DateTime.DaysInMonth(dt.Year, dt.Month), 23, 59, 59, 999);
-            return endDate.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+            var boundaryValue = CalculateNumericHighBoundary(quantityValue, precision);
+            return FunctionHelpers.CreateDecimal(boundaryValue);
         }
 
-        // For fully specified DateTime, convert to end of period and add UTC-12:00 offset
-        var utcDt = dt.ToUniversalTime();
-        var endUtc = new DateTime(utcDt.Year, utcDt.Month, DateTime.DaysInMonth(utcDt.Year, utcDt.Month), 23, 59, 59, 999, DateTimeKind.Utc);
-        return endUtc.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+        return cleanValue switch
+        {
+            // Numeric types
+            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary(d, precision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)d, precision)),
+            int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)i, precision)),
+            long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)l, precision)),
+
+            // DateTime strings (with @ prefix handled above)
+            string str when IsDateTimeString(str) => CalculateDateTimeHighBoundary(str, precision, element.InstanceType),
+
+            // Time strings
+            string str when IsTimeString(str) => CalculateTimeHighBoundary(str, precision),
+
+            _ => null
+        };
     }
 
-    private static string GetDateTimeOffsetLowBoundary(DateTimeOffset dto)
+    private static decimal CalculateNumericLowBoundary(decimal value, int precision)
     {
-        // Similar to DateTime low boundary, but accounts for the offset
-        return dto.DateTime.ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+        // lowBoundary subtracts 0.5 * 10^(-precision) and truncates to precision decimal places
+        // Special case: precision 0 means round down to integer
+        if (precision == 0)
+        {
+            return Math.Floor(value);
+        }
+
+        var adjustment = 0.5m * (decimal)Math.Pow(10, -precision);
+        var result = value - adjustment;
+        
+        // Truncate to precision decimal places
+        var multiplier = (decimal)Math.Pow(10, precision);
+        return Math.Truncate(result * multiplier) / multiplier;
     }
 
-    private static string GetDateTimeOffsetHighBoundary(DateTimeOffset dto)
+    private static decimal CalculateNumericHighBoundary(decimal value, int precision)
     {
-        // Similar to DateTime high boundary, but accounts for the offset
-        var endDate = new DateTime(dto.Year, dto.Month, DateTime.DaysInMonth(dto.Year, dto.Month), 23, 59, 59, 999, DateTimeKind.Unspecified);
-        return endDate.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+        // highBoundary adds 0.5 * 10^(-precision) and truncates to precision decimal places
+        // Special case: precision 0 means round up to integer
+        if (precision == 0)
+        {
+            return Math.Ceiling(value);
+        }
+
+        var adjustment = 0.5m * (decimal)Math.Pow(10, -precision);
+        var result = value + adjustment;
+        
+        // Truncate to precision decimal places  
+        var multiplier = (decimal)Math.Pow(10, precision);
+        return Math.Truncate(result * multiplier) / multiplier;
     }
 
-    #endregion
-
-    #region String Date Boundary Helpers
-
-    private static string GetStringDateLowBoundary(string dateString)
+    private static IElement? CalculateDateTimeLowBoundary(string dateTimeStr, int precision, string instanceType)
     {
-        // Parse partial date string and expand to the start of the period
-        // Returns just a date (no time component) per SQL on FHIR v2 spec
-        // Examples:
-        // "1970" -> "1970-01-01"
-        // "1970-06" -> "1970-06-01"
-        // "1970-06-15" -> "1970-06-15" (already complete)
-        var parts = dateString.Split('-');
+        // Parse the date/time string to determine its components
+        // Precision for dates/times: 6=year-month, 8=date, 17=datetime with milliseconds
+        var parsed = ParseDateTimeString(dateTimeStr);
+        if (parsed == null) return null;
 
-        if (parts.Length < 1)
+        string result;
+        if (precision <= 8)
         {
-            return dateString;
+            // Date precision - return date only
+            result = FormatDateLowBoundary(parsed.Value, precision);
+        }
+        else
+        {
+            // DateTime precision - return datetime with timezone
+            result = FormatDateTimeLowBoundary(parsed.Value, precision, dateTimeStr);
         }
 
-        int year = int.Parse(parts[0]);
-        int month = parts.Length > 1 ? int.Parse(parts[1]) : 1;
-        int day = parts.Length > 2 ? int.Parse(parts[2]) : 1;
-
-        // Return date only (yyyy-MM-dd format)
-        return $"{year:D4}-{month:D2}-{day:D2}";
+        return FunctionHelpers.CreateString("@" + result);
     }
 
-    private static string GetStringDateHighBoundary(string dateString)
+    private static IElement? CalculateDateTimeHighBoundary(string dateTimeStr, int precision, string instanceType)
     {
-        // Parse partial date string and expand to the end of the period
-        // Returns just a date (no time component) per SQL on FHIR v2 spec
-        // Examples:
-        // "1970" -> "1970-12-31"
-        // "1970-06" -> "1970-06-30"
-        // "1970-06-15" -> "1970-06-15" (already complete)
-        var parts = dateString.Split('-');
+        var parsed = ParseDateTimeString(dateTimeStr);
+        if (parsed == null) return null;
 
-        if (parts.Length < 1)
+        string result;
+        if (precision <= 8)
         {
-            return dateString;
+            // Date precision - return date only
+            result = FormatDateHighBoundary(parsed.Value, precision);
+        }
+        else
+        {
+            // DateTime precision - return datetime with timezone
+            result = FormatDateTimeHighBoundary(parsed.Value, precision, dateTimeStr);
         }
 
-        int year = int.Parse(parts[0]);
-        int month = parts.Length > 1 ? int.Parse(parts[1]) : 12;
-        int day = parts.Length > 2 ? int.Parse(parts[2]) : DateTime.DaysInMonth(year, month);
-
-        // Return date only (yyyy-MM-dd format)
-        return $"{year:D4}-{month:D2}-{day:D2}";
+        return FunctionHelpers.CreateString("@" + result);
     }
 
-    private static string GetStringDateTimeLowBoundary(string dateString)
+    private static IElement? CalculateTimeLowBoundary(string timeStr, int precision)
     {
-        // Parse partial date string and expand to the start of the period with UTC+14:00 timezone
-        // Returns dateTime format (with time and timezone) per SQL on FHIR v2 spec
-        // Examples:
-        // "2010-10-10" -> "2010-10-10T00:00:00.000+14:00"
-        // "2010-10" -> "2010-10-01T00:00:00.000+14:00"
-        // "2010" -> "2010-01-01T00:00:00.000+14:00"
-        var parts = dateString.Split('-');
+        // Parse time and expand to start of period at given precision
+        var parsed = ParseTimeString(timeStr);
+        if (parsed == null) return null;
 
-        if (parts.Length < 1)
-        {
-            return dateString;
-        }
-
-        int year = int.Parse(parts[0]);
-        int month = parts.Length > 1 ? int.Parse(parts[1]) : 1;
-        int day = parts.Length > 2 ? int.Parse(parts[2]) : 1;
-
-        // Return dateTime with UTC+14:00 timezone (yyyy-MM-ddTHH:mm:ss.fff+14:00 format)
-        return $"{year:D4}-{month:D2}-{day:D2}T00:00:00.000+14:00";
+        var result = FormatTimeLowBoundary(parsed.Value, precision);
+        return FunctionHelpers.CreateString("@" + result);
     }
 
-    private static string GetStringDateTimeHighBoundary(string dateString)
+    private static IElement? CalculateTimeHighBoundary(string timeStr, int precision)
     {
-        // Parse partial date string and expand to the end of the period with UTC-12:00 timezone
-        // Returns dateTime format (with time and timezone) per SQL on FHIR v2 spec
-        // Examples:
-        // "2010-10-10" -> "2010-10-10T23:59:59.999-12:00"
-        // "2010-10" -> "2010-10-31T23:59:59.999-12:00"
-        // "2010" -> "2010-12-31T23:59:59.999-12:00"
-        var parts = dateString.Split('-');
+        var parsed = ParseTimeString(timeStr);
+        if (parsed == null) return null;
 
-        if (parts.Length < 1)
-        {
-            return dateString;
-        }
-
-        int year = int.Parse(parts[0]);
-        int month = parts.Length > 1 ? int.Parse(parts[1]) : 12;
-        int day = parts.Length > 2 ? int.Parse(parts[2]) : DateTime.DaysInMonth(year, month);
-
-        // Return dateTime with UTC-12:00 timezone (yyyy-MM-ddTHH:mm:ss.fff-12:00 format)
-        return $"{year:D4}-{month:D2}-{day:D2}T23:59:59.999-12:00";
+        var result = FormatTimeHighBoundary(parsed.Value, precision);
+        return FunctionHelpers.CreateString("@" + result);
     }
 
-    #endregion
-
-    #region String Time Boundary Helpers
-
-    private static string GetStringTimeLowBoundary(string timeString)
+    private static (int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone)? ParseDateTimeString(string dateTimeStr)
     {
-        // Parse partial time string and expand to the start of the period
-        // Examples:
-        // "12" -> "12:00:00.000"
-        // "12:34" -> "12:34:00.000"
-        // "12:34:56" -> "12:34:56.000"
-        // "12:34:56.789" -> "12:34:56.789" (already complete)
-        var parts = timeString.Split(':', '.');
+        // Parse FHIR date/dateTime format: YYYY[-MM[-DD[Thh[:mm[:ss[.fff]]]][+/-hh:mm]]]]
+        var match = Regex.Match(dateTimeStr, @"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?(?:[T ](\d{2})(?::(\d{2}))?(?::(\d{2}))?(?:\.(\d+))?)?([+-]\d{2}:\d{2}|Z)?$");
+        
+        if (!match.Success) return null;
 
-        if (parts.Length < 1)
+        int year = int.Parse(match.Groups[1].Value);
+        int month = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 1;
+        int day = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 1;
+        int hour = match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 0;
+        int minute = match.Groups[5].Success ? int.Parse(match.Groups[5].Value) : 0;
+        int second = match.Groups[6].Success ? int.Parse(match.Groups[6].Value) : 0;
+        int millisecond = 0;
+        
+        if (match.Groups[7].Success)
         {
-            return timeString;
+            var msStr = match.Groups[7].Value.PadRight(3, '0').Substring(0, 3);
+            millisecond = int.Parse(msStr);
         }
 
-        int hour = int.Parse(parts[0]);
-        int minute = parts.Length > 1 ? int.Parse(parts[1]) : 0;
-        int second = parts.Length > 2 ? int.Parse(parts[2]) : 0;
-        int millisecond = parts.Length > 3 ? int.Parse(parts[3].PadRight(3, '0').Substring(0, 3)) : 0;
+        string? timezone = match.Groups[8].Success ? match.Groups[8].Value : null;
 
-        // Return time with milliseconds (HH:mm:ss.fff format)
-        return $"{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}";
+        return (year, month, day, hour, minute, second, millisecond, timezone);
     }
 
-    private static string GetStringTimeHighBoundary(string timeString)
+    private static (int hour, int minute, int second, int millisecond)? ParseTimeString(string timeStr)
     {
-        // Parse partial time string and expand to the end of the period
-        // Examples:
-        // "12" -> "12:59:59.999"
-        // "12:34" -> "12:34:59.999"
-        // "12:34:56" -> "12:34:56.999"
-        // "12:34:56.789" -> "12:34:56.789" (already complete)
-        var parts = timeString.Split(':', '.');
+        // Parse FHIR time format: hh[:mm[:ss[.fff]]]
+        // Remove @T prefix if present
+        timeStr = timeStr.TrimStart('@').TrimStart('T');
 
-        if (parts.Length < 1)
+        var match = Regex.Match(timeStr, @"^(\d{2})(?::(\d{2}))?(?::(\d{2}))?(?:\.(\d+))?$");
+        
+        if (!match.Success) return null;
+
+        int hour = int.Parse(match.Groups[1].Value);
+        int minute = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 0;
+        int second = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
+        int millisecond = 0;
+        
+        if (match.Groups[4].Success)
         {
-            return timeString;
+            var msStr = match.Groups[4].Value.PadRight(3, '0').Substring(0, 3);
+            millisecond = int.Parse(msStr);
         }
 
-        int hour = int.Parse(parts[0]);
-        int minute = parts.Length > 1 ? int.Parse(parts[1]) : 59;
-        int second = parts.Length > 2 ? int.Parse(parts[2]) : 59;
-        int millisecond = parts.Length > 3 ? int.Parse(parts[3].PadRight(3, '0').Substring(0, 3)) : 999;
-
-        // Return time with milliseconds (HH:mm:ss.fff format)
-        return $"{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}";
+        return (hour, minute, second, millisecond);
     }
 
-    #endregion
-
-    #region Type Detection Helpers
-
-    private static bool IsTimeLike(string value)
+    private static string FormatDateLowBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision)
     {
-        // Check if string looks like a time (HH or HH:mm or HH:mm:ss or HH:mm:ss.fff)
-        // Time format uses colons and optional dot for milliseconds
-        if (value.Contains('-', StringComparison.Ordinal))
+        // precision 6 = month, precision 8 = day
+        if (precision <= 6)
         {
-            return false; // Has dashes, likely a date
+            return $"{parsed.year:D4}-{1:D2}";  // Start of year
         }
-
-        var parts = value.Split(':', '.');
-        if (parts.Length < 1 || parts.Length > 4)
-        {
-            return false;
-        }
-
-        // Check if all parts are numeric
-        foreach (var part in parts)
-        {
-            if (!int.TryParse(part, out _))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        
+        return $"{parsed.year:D4}-{parsed.month:D2}-{1:D2}";  // Start of month
     }
 
-    private static bool IsDateLike(string value)
+    private static string FormatDateHighBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision)
     {
-        // Check if string looks like a date (YYYY or YYYY-MM or YYYY-MM-DD)
-        var parts = value.Split('-');
-        if (parts.Length < 1 || parts.Length > 3)
+        // precision 6 = month, precision 8 = day
+        if (precision <= 6)
         {
-            return false;
+            return $"{parsed.year:D4}-{12:D2}";  // End of year
         }
+        
+        var daysInMonth = DateTime.DaysInMonth(parsed.year, parsed.month);
+        return $"{parsed.year:D4}-{parsed.month:D2}-{daysInMonth:D2}";  // End of month
+    }
 
-        foreach (var part in parts)
+    private static string FormatDateTimeLowBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision, string original)
+    {
+        // precision 17 = millisecond level
+        // For low boundary, use UTC+14:00 timezone (easternmost timezone)
+        var existingTimezone = parsed.timezone;
+        
+        if (existingTimezone != null)
         {
-            if (!int.TryParse(part, out _))
-            {
-                return false;
-            }
+            // Preserve existing timezone
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}{existingTimezone}";
         }
+        else
+        {
+            // Add UTC+14:00 for low boundary
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}+14:00";
+        }
+    }
 
-        return true;
+    private static string FormatDateTimeHighBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision, string original)
+    {
+        // precision 17 = millisecond level
+        // For high boundary, use UTC-12:00 timezone (westernmost timezone) and end of period
+        var existingTimezone = parsed.timezone;
+        
+        if (existingTimezone != null)
+        {
+            // Preserve existing timezone, but set to end of minute
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:{parsed.minute:D2}:59.999{existingTimezone}";
+        }
+        else
+        {
+            // Add UTC-12:00 for high boundary and set to end of hour
+            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:00:59.999-12:00";
+        }
+    }
+
+    private static string FormatTimeLowBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
+    {
+        // precision 9 = millisecond level
+        return $"T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
+    }
+
+    private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
+    {
+        // precision 9 = millisecond level - set to end of minute
+        return $"T{parsed.hour:D2}:{parsed.minute:D2}:59.999";
+    }
+
+    private static bool IsDateTimeString(string value)
+    {
+        // Check if looks like a date or datetime (YYYY or YYYY-MM or YYYY-MM-DD[T...])
+        return Regex.IsMatch(value, @"^\d{4}(-\d{2})?(-\d{2})?([T ]\d{2})?");
+    }
+
+    private static bool IsTimeString(string value)
+    {
+        // Check if looks like a time (hh:mm or @Thh:mm)
+        value = value.TrimStart('@').TrimStart('T');
+        return Regex.IsMatch(value, @"^\d{2}(:\d{2})?");
     }
 
     #endregion
