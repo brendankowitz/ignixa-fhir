@@ -481,6 +481,37 @@ public class CoreFunctionTests
         Assert.Equal(4, result.Count); // Should have 1, 2, 2, 3 (keeps duplicate)
     }
 
+    /// <summary>
+    /// Regression test for issue #193: combine() should evaluate argument from context element,
+    /// not from the result of the previous expression in the chain.
+    /// Expression: given.join(' ').combine(family) with context Patient.name[0] (HumanName)
+    /// </summary>
+    [Fact]
+    public void GivenHumanNameContext_WhenCombineWithPropertyAccess_ThenResolvesFromContext()
+    {
+        // Arrange - Create a HumanName element with given and family
+        var givenPeter = new PrimitiveElement("Peter", "string");
+        var givenJames = new PrimitiveElement("James", "string");
+        var familyChalmers = new PrimitiveElement("Chalmers", "string");
+
+        var humanName = new ComplexElement("HumanName", "name", new (string, IElement)[]
+        {
+            ("given", givenPeter),
+            ("given", givenJames),
+            ("family", familyChalmers)
+        });
+
+        // This is the expression from issue #193
+        var expr = _parser.Parse("given.join(' ').combine(family).join(', ')");
+
+        // Act
+        var result = _evaluator.Evaluate(humanName, expr).ToList();
+
+        // Assert - Should return "Peter James, Chalmers"
+        Assert.Single(result);
+        Assert.Equal("Peter James, Chalmers", result[0].Value);
+    }
+
     #endregion
 
     #region Filtering Function Tests

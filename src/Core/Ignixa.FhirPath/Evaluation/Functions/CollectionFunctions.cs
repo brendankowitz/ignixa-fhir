@@ -669,10 +669,11 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("combine() requires an other argument");
 
-        // Evaluate the argument from the root resource context (not current focus)
-        // This allows expressions like combine(name.family) to navigate from the root
-        var rootFocus = context.Resource != null ? [context.Resource] : context.Focus.AsEnumerable();
-        var other = evaluateExpression(rootFocus, arguments[0], context);
+        // Evaluate the argument from $this context if available (e.g., inside select())
+        // Otherwise use the original evaluation context Focus (not the current result collection)
+        var thisElement = context.GetThis();
+        var argFocus = thisElement != null ? [thisElement] : context.Focus.AsEnumerable();
+        var other = evaluateExpression(argFocus, arguments[0], context);
         return focus.Concat(other);
     }
 
