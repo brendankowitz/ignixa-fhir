@@ -34,11 +34,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("HumanName", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("HumanName", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -48,11 +50,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name.family");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert - The top-level expression should have inferred type
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("string", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("string", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -62,11 +66,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name.first()");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("HumanName", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("HumanName", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -76,12 +82,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        // name is a collection, so it should be HumanName[]
-        Assert.Contains("[]", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        // name is a collection
+        Assert.Contains(typeSet.Types, t => t.IsCollection);
     }
 
     [Fact]
@@ -91,24 +98,28 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name.first()");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("HumanName", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("HumanName", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void GivenAnalyzeWithoutPopulateFlag_WhenCalled_ThenInferredTypeIsNotSet()
+    public void GivenAnalyzeWithoutPopulateFlag_WhenCalled_ThenNodeTypesIsPopulated()
     {
         // Arrange
         var expression = _parser.Parse("Patient.name");
 
-        // Act - analyze WITHOUT populateInferredTypes
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: false);
+        // Act
+        var result = _analyzer.Analyze(expression, "Patient");
 
-        // Assert - InferredType should remain null
-        Assert.Null(expression.InferredType);
+        // Assert - NodeTypes should always be populated now
+        Assert.NotNull(result.NodeTypes);
+        Assert.NotEmpty(result.NodeTypes);
+        Assert.Contains(expression, result.NodeTypes.Keys);
     }
 
     [Fact]
@@ -118,11 +129,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("'test'");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("string", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("string", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -132,11 +145,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("1 + 2");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("integer", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("integer", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -146,11 +161,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name.where(use = 'official')");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("HumanName", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("HumanName", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -160,11 +177,13 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Patient.name.select(family)");
 
         // Act
-        _analyzer.Analyze(expression, "Patient", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Patient");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
-        Assert.Contains("string", expression.InferredType, StringComparison.Ordinal);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
+        var typeName = string.Join(", ", typeSet.Types.Select(t => t.TypeName));
+        Assert.Contains("string", typeName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -174,16 +193,12 @@ public class InferredTypePopulationTests
         var expression = _parser.Parse("Observation.value");
 
         // Act
-        _analyzer.Analyze(expression, "Observation", populateInferredTypes: true);
+        var result = _analyzer.Analyze(expression, "Observation");
 
         // Assert
-        Assert.NotNull(expression.InferredType);
+        Assert.True(result.NodeTypes.TryGetValue(expression, out var typeSet));
+        Assert.NotNull(typeSet);
         // Choice types should have multiple types
-        // The exact format depends on implementation but should have multiple type names
-        Assert.True(
-            expression.InferredType.Contains(',', StringComparison.Ordinal) ||
-            expression.InferredType.Contains('|', StringComparison.Ordinal) ||
-            expression.InferredType.Length > 20, // Multiple types would make a longer string
-            $"Expected multiple types for choice type, got: {expression.InferredType}");
+        Assert.True(typeSet.Types.Count > 1, $"Expected multiple types for choice type, got: {typeSet.Types.Count}");
     }
 }

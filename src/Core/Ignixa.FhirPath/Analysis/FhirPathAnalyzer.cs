@@ -67,41 +67,30 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         ArgumentNullException.ThrowIfNull(rootTypeName);
 
         var context = AnalysisContext.Create(_schema, rootTypeName);
+        var nodeTypes = new Dictionary<Expression, FhirPathTypeSet>(ReferenceEqualityComparer.Instance);
+        
+        // First pass: Analyze with the regular analyzer to get types and collect issues
         var types = expression.AcceptVisitor(this, context);
 
-        return AnalysisResult.FromContext(context, types);
-    }
+        // Second pass: Walk the tree again to collect types for each node
+        var typeCollector = new TypeCollectorVisitor(this, nodeTypes);
+        var contextForCollection = AnalysisContext.Create(_schema, rootTypeName);
+        expression.AcceptVisitor(typeCollector, contextForCollection);
 
-    /// <summary>
-    /// Analyzes a FhirPath expression and populates InferredType on each expression node.
-    /// </summary>
-    /// <param name="expression">The parsed FhirPath expression</param>
-    /// <param name="rootTypeName">The root type name (e.g., "Patient")</param>
-    /// <param name="populateInferredTypes">Whether to populate InferredType property on each node</param>
-    /// <returns>Analysis result with inferred types and validation issues</returns>
-    public AnalysisResult Analyze(Expression expression, string rootTypeName, bool populateInferredTypes)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-        ArgumentNullException.ThrowIfNull(rootTypeName);
-
-        var context = AnalysisContext.Create(_schema, rootTypeName);
-        var types = expression.AcceptVisitor(this, context);
-
-        if (populateInferredTypes)
+        // Create result with NodeTypes populated
+        var result = new AnalysisResult
         {
-            PopulateInferredTypes(expression, context);
+            InferredTypes = types,
+            NodeTypes = nodeTypes
+        };
+
+        // Copy issues from first pass context
+        foreach (var issue in context.Issues)
+        {
+            result.Issues.Add(issue);
         }
 
-        return AnalysisResult.FromContext(context, types);
-    }
-
-    /// <summary>
-    /// Populates InferredType property on all expression nodes by re-visiting the tree.
-    /// </summary>
-    private void PopulateInferredTypes(Expression expression, AnalysisContext context)
-    {
-        var populator = new InferredTypePopulatorVisitor(_schema);
-        expression.AcceptVisitor(populator, context);
+        return result;
     }
 
     /// <summary>
@@ -971,5 +960,94 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var result = new FhirPathTypeSet();
         result.AddPrimitiveType("boolean");
         return result;
+    }
+
+    /// <summary>
+    /// Internal visitor that wraps the analyzer to collect type information for each node.
+    /// Does NOT pre-visit children - lets the analyzer handle that with proper context.
+    /// </summary>
+    private sealed class TypeCollectorVisitor : IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet>
+    {
+        private readonly FhirPathAnalyzer _analyzer;
+        private readonly Dictionary<Expression, FhirPathTypeSet> _nodeTypes;
+
+        public TypeCollectorVisitor(FhirPathAnalyzer analyzer, Dictionary<Expression, FhirPathTypeSet> nodeTypes)
+        {
+            _analyzer = analyzer;
+            _nodeTypes = nodeTypes;
+        }
+
+        private FhirPathTypeSet VisitAndCollect(Expression expression, AnalysisContext context, 
+            Func<AnalysisContext, FhirPathTypeSet> visitFunc)
+        {
+            var result = visitFunc(context);
+            _nodeTypes[expression] = result;
+            return result;
+        }
+
+        public FhirPathTypeSet VisitBinary(BinaryExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitBinary(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitChild(ChildExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitChild(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitConstant(ConstantExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitConstant(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitEmpty(EmptyExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitEmpty(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitFunctionCall(FunctionCallExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitFunctionCall(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitIdentifier(IdentifierExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitIdentifier(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitIndexer(IndexerExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitIndexer(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitParenthesized(ParenthesizedExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitParenthesized(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitPropertyAccess(PropertyAccessExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitPropertyAccess(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitQuantity(QuantityExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitQuantity(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitScope(ScopeExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitScope(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitUnary(UnaryExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitUnary(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitVariable(VariableRefExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitVariable(expression, ctx));
+        }
     }
 }

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.ObjectModel;
+using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Visitors;
 
 namespace Ignixa.FhirPath.Analysis;
@@ -17,6 +18,13 @@ public sealed class AnalysisResult
     /// Gets or sets the inferred types for the expression.
     /// </summary>
     public FhirPathTypeSet InferredTypes { get; set; } = new();
+
+    /// <summary>
+    /// Maps each expression node to its inferred type set.
+    /// Uses reference equality for Expression keys.
+    /// </summary>
+    public IReadOnlyDictionary<Expression, FhirPathTypeSet> NodeTypes { get; init; } 
+        = new Dictionary<Expression, FhirPathTypeSet>(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// Gets the validation issues found during analysis.
