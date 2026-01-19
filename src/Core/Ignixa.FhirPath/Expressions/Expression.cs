@@ -36,6 +36,11 @@ public abstract class Expression
     public string? SourceText { get; set; }
 
     /// <summary>
+    /// Inferred return type from static analysis. Set by FhirPathAnalyzer.
+    /// </summary>
+    public string? InferredType { get; set; }
+
+    /// <summary>
     /// Sets position information and returns this expression for fluent chaining.
     /// </summary>
     public T SetPosition<T>(ISourcePositionInfo location) where T : Expression

@@ -73,6 +73,38 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     }
 
     /// <summary>
+    /// Analyzes a FhirPath expression and populates InferredType on each expression node.
+    /// </summary>
+    /// <param name="expression">The parsed FhirPath expression</param>
+    /// <param name="rootTypeName">The root type name (e.g., "Patient")</param>
+    /// <param name="populateInferredTypes">Whether to populate InferredType property on each node</param>
+    /// <returns>Analysis result with inferred types and validation issues</returns>
+    public AnalysisResult Analyze(Expression expression, string rootTypeName, bool populateInferredTypes)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        ArgumentNullException.ThrowIfNull(rootTypeName);
+
+        var context = AnalysisContext.Create(_schema, rootTypeName);
+        var types = expression.AcceptVisitor(this, context);
+
+        if (populateInferredTypes)
+        {
+            PopulateInferredTypes(expression, context);
+        }
+
+        return AnalysisResult.FromContext(context, types);
+    }
+
+    /// <summary>
+    /// Populates InferredType property on all expression nodes by re-visiting the tree.
+    /// </summary>
+    private void PopulateInferredTypes(Expression expression, AnalysisContext context)
+    {
+        var populator = new InferredTypePopulatorVisitor(_schema);
+        expression.AcceptVisitor(populator, context);
+    }
+
+    /// <summary>
     /// Analyzes a FhirPath expression string against the specified root type.
     /// </summary>
     public AnalysisResult Analyze(string expression, string rootTypeName)
@@ -939,5 +971,38 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var result = new FhirPathTypeSet();
         result.AddPrimitiveType("boolean");
         return result;
+    }
+
+    /// <summary>
+    /// Gets the AST with inferred return types populated for each expression node.
+    /// </summary>
+    /// <param name="expression">The expression to analyze</param>
+    /// <param name="rootTypeName">The root type name (e.g., "Patient")</param>
+    /// <returns>JSON object representation of the AST with ReturnType fields</returns>
+    public System.Text.Json.Nodes.JsonObject GetAstWithTypes(Expression expression, string rootTypeName)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        ArgumentNullException.ThrowIfNull(rootTypeName);
+
+        // Analyze and populate inferred types
+        Analyze(expression, rootTypeName, populateInferredTypes: true);
+
+        // Serialize to JSON
+        return AstJsonVisitor.Serialize(expression);
+    }
+
+    /// <summary>
+    /// Gets the AST with inferred return types populated for each expression node.
+    /// </summary>
+    /// <param name="expression">The FhirPath expression string</param>
+    /// <param name="rootTypeName">The root type name (e.g., "Patient")</param>
+    /// <returns>JSON object representation of the AST with ReturnType fields</returns>
+    public System.Text.Json.Nodes.JsonObject GetAstWithTypes(string expression, string rootTypeName)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        ArgumentNullException.ThrowIfNull(rootTypeName);
+
+        var parsed = _parser.Parse(expression);
+        return GetAstWithTypes(parsed, rootTypeName);
     }
 }
