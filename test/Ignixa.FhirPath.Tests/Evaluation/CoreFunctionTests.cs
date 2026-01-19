@@ -512,6 +512,47 @@ public class CoreFunctionTests
         Assert.Equal("Peter James, Chalmers", result[0].Value);
     }
 
+    /// <summary>
+    /// Additional regression test for issue #193: combine() within select() should use $this context.
+    /// Expression: name.select(given.join(' ').combine(family)) with context Patient
+    /// </summary>
+    [Fact]
+    public void GivenPatientWithMultipleNames_WhenCombineInsideSelect_ThenResolvesFromThisContext()
+    {
+        // Arrange - Create a Patient with two names
+        var name1 = new ComplexElement("HumanName", "name", new (string, IElement)[]
+        {
+            ("given", new PrimitiveElement("Peter", "string")),
+            ("given", new PrimitiveElement("James", "string")),
+            ("family", new PrimitiveElement("Chalmers", "string"))
+        });
+
+        var name2 = new ComplexElement("HumanName", "name", new (string, IElement)[]
+        {
+            ("given", new PrimitiveElement("Jim", "string")),
+            ("family", new PrimitiveElement("Windsor", "string"))
+        });
+
+        var patient = new ComplexElement("Patient", "Patient", new (string, IElement)[]
+        {
+            ("name", name1),
+            ("name", name2)
+        });
+
+        // This tests combine() within select() where $this is set to each HumanName
+        var expr = _parser.Parse("name.select(given.join(' ').combine(family))");
+
+        // Act
+        var result = _evaluator.Evaluate(patient, expr).ToList();
+
+        // Assert - Should return 4 elements: "Peter James", "Chalmers", "Jim", "Windsor"
+        Assert.Equal(4, result.Count);
+        Assert.Equal("Peter James", result[0].Value);
+        Assert.Equal("Chalmers", result[1].Value);
+        Assert.Equal("Jim", result[2].Value);
+        Assert.Equal("Windsor", result[3].Value);
+    }
+
     #endregion
 
     #region Filtering Function Tests
