@@ -5,6 +5,7 @@
  * Implements trace(), now(), today(), timeOfDay() according to FHIRPath 3.0.0 spec.
  */
 
+using System.Collections.Immutable;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
@@ -19,11 +20,13 @@ internal static class UtilityFunctions
 {
     /// <summary>
     /// trace() - Returns focus unchanged (for debugging/logging).
-    /// In a real implementation, this would log to a trace output.
+    /// When a TraceHandler is configured in the context, emits trace information.
+    /// Accepts an optional name parameter to identify the trace point.
     /// </summary>
     /// <param name="focus">Input collection</param>
     /// <param name="arguments">Optional trace name/message arguments</param>
     /// <param name="context">Evaluation context</param>
+    /// <param name="evaluateExpression">Function to evaluate expression arguments</param>
     /// <returns>Focus collection unchanged</returns>
     [FhirPathFunction("trace",
         SupportedContexts = "any-any",
@@ -36,11 +39,39 @@ internal static class UtilityFunctions
     public static IEnumerable<IElement> Trace(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
-        EvaluationContext context)
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        // Simplified: Just return focus unchanged
-        // In a real implementation, this would log to a trace output
-        return focus;
+        // Materialize focus to a list so we can both trace it and return it
+        var focusList = focus.ToImmutableList();
+
+        // If a trace handler is configured, invoke it
+        if (context.TraceHandler != null)
+        {
+            // Get trace name from first argument if provided
+            string traceName = "trace";
+            ISourcePositionInfo? location = null;
+
+            if (arguments.Count > 0)
+            {
+                var nameExpr = arguments[0];
+                location = nameExpr.Location;
+
+                // Evaluate the name expression to get the trace name
+                var nameResult = evaluateExpression(focusList, nameExpr, context).ToList();
+                if (nameResult.Count == 1 && nameResult[0].Value is string str)
+                {
+                    traceName = str;
+                }
+            }
+
+            // Create and emit trace entry
+            var traceEntry = new TraceEntry(traceName, focusList, location);
+            context.TraceHandler(traceEntry);
+        }
+
+        // Always return focus unchanged (trace is for side-effect logging only)
+        return focusList;
     }
 
     /// <summary>

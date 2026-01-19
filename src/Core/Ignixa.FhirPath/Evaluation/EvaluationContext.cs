@@ -134,6 +134,12 @@ public record EvaluationContext
     public Dictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
 
     /// <summary>
+    /// Optional callback for trace() function output.
+    /// When set, trace() calls will invoke this handler with trace information.
+    /// </summary>
+    public Action<TraceEntry>? TraceHandler { get; init; }
+
+    /// <summary>
     /// Creates a new context with the specified focus.
     /// </summary>
     public EvaluationContext WithFocus(IEnumerable<IElement> focus)
@@ -250,6 +256,15 @@ public record EvaluationContext
     public EvaluationContext WithRootResource(IElement rootResource)
     {
         return this with { RootResource = rootResource };
+    }
+
+    /// <summary>
+    /// Creates a new context with the specified trace handler.
+    /// The trace handler will be invoked when trace() function is called.
+    /// </summary>
+    public EvaluationContext WithTraceHandler(Action<TraceEntry> traceHandler)
+    {
+        return this with { TraceHandler = traceHandler };
     }
 
     /// <summary>
