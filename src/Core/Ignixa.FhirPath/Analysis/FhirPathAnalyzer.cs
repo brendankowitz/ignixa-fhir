@@ -972,37 +972,4 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         result.AddPrimitiveType("boolean");
         return result;
     }
-
-    /// <summary>
-    /// Gets the AST with inferred return types populated for each expression node.
-    /// </summary>
-    /// <param name="expression">The expression to analyze</param>
-    /// <param name="rootTypeName">The root type name (e.g., "Patient")</param>
-    /// <returns>JSON object representation of the AST with ReturnType fields</returns>
-    public System.Text.Json.Nodes.JsonObject GetAstWithTypes(Expression expression, string rootTypeName)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-        ArgumentNullException.ThrowIfNull(rootTypeName);
-
-        // Analyze and populate inferred types
-        Analyze(expression, rootTypeName, populateInferredTypes: true);
-
-        // Serialize to JSON
-        return AstJsonVisitor.Serialize(expression);
-    }
-
-    /// <summary>
-    /// Gets the AST with inferred return types populated for each expression node.
-    /// </summary>
-    /// <param name="expression">The FhirPath expression string</param>
-    /// <param name="rootTypeName">The root type name (e.g., "Patient")</param>
-    /// <returns>JSON object representation of the AST with ReturnType fields</returns>
-    public System.Text.Json.Nodes.JsonObject GetAstWithTypes(string expression, string rootTypeName)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-        ArgumentNullException.ThrowIfNull(rootTypeName);
-
-        var parsed = _parser.Parse(expression);
-        return GetAstWithTypes(parsed, rootTypeName);
-    }
 }
