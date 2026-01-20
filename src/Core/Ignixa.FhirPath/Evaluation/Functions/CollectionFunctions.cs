@@ -45,9 +45,10 @@ internal static class CollectionFunctions
 
         if (hasCriteria)
         {
+            var index = 0;
             exists = focus.Any(element =>
             {
-                var innerContext = context.PushThis(element);
+                var innerContext = context.PushThis(element).PushIndex(index++);
                 var result = evaluateExpression([element], arguments[0], innerContext);
                 return result.Any() && FunctionHelpers.IsTrue(result);
             });
@@ -284,10 +285,11 @@ internal static class CollectionFunctions
             throw new ArgumentException("where() requires a criteria argument");
 
         var criteria = arguments[0];
+        var index = 0;
 
         foreach (var element in focus)
         {
-            var innerContext = context.PushThis(element);
+            var innerContext = context.PushThis(element).PushIndex(index++);
             var result = evaluateExpression([element], criteria, innerContext);
             if (result.Any() && FunctionHelpers.IsTrue(result))
             {
@@ -356,10 +358,11 @@ internal static class CollectionFunctions
 
         var criteria = arguments[0];
         var foundEmpty = false;
+        var index = 0;
 
         foreach (var element in focus)
         {
-            var innerContext = context.PushThis(element);
+            var innerContext = context.PushThis(element).PushIndex(index++);
             var result = evaluateExpression([element], criteria, innerContext);
 
             if (!result.Any())
@@ -404,10 +407,11 @@ internal static class CollectionFunctions
 
         var criteria = arguments[0];
         var foundEmpty = false;
+        var index = 0;
 
         foreach (var element in focus)
         {
-            var innerContext = context.PushThis(element);
+            var innerContext = context.PushThis(element).PushIndex(index++);
             var result = evaluateExpression([element], criteria, innerContext);
 
             if (!result.Any())
@@ -704,10 +708,12 @@ internal static class CollectionFunctions
                 ? evaluateExpression(focus, arguments[1], context).ToList()
                 : [];
 
+        var index = 0;
         foreach (var element in focus)
         {
             var innerContext = context
                 .PushThis(element)
+                .PushIndex(index++)
                 .WithEnvironmentVariable("total", total);
 
             total = evaluateExpression(

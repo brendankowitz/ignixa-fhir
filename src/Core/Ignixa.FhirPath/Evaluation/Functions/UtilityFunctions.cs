@@ -48,26 +48,31 @@ internal static class UtilityFunctions
         // If a trace handler is configured, invoke it
         if (context.TraceHandler != null)
         {
-            // Get trace name from first argument if provided
-            string traceName = "trace";
-            ISourcePositionInfo? location = null;
-
-            if (arguments.Count > 0)
+            var index = 0;
+            foreach (var element in focusList)
             {
-                var nameExpr = arguments[0];
-                location = nameExpr.Location;
+                // Get trace name from first argument if provided
+                string traceName = "trace";
+                ISourcePositionInfo? location = null;
+                var innerContext = context.PushThis(element).PushIndex(index++);
 
-                // Evaluate the name expression to get the trace name
-                var nameResult = evaluateExpression(focusList, nameExpr, context).ToList();
-                if (nameResult.Count == 1 && nameResult[0].Value is string str)
+                if (arguments.Count > 0)
                 {
-                    traceName = str;
-                }
-            }
+                    var nameExpr = arguments[0];
+                    location = nameExpr.Location;
 
-            // Create and emit trace entry
-            var traceEntry = new TraceEntry(traceName, focusList, location);
-            context.TraceHandler(traceEntry);
+                    // Evaluate the name expression to get the trace name
+                    var nameResult = evaluateExpression([element], nameExpr, innerContext).ToList();
+                    if (nameResult.Count == 1 && nameResult[0].Value is string str)
+                    {
+                        traceName = str;
+                    }
+                }
+
+                // Create and emit trace entry
+                var traceEntry = new TraceEntry(traceName, [element], location);
+                context.TraceHandler(traceEntry);
+            }
         }
 
         // Always return focus unchanged (trace is for side-effect logging only)

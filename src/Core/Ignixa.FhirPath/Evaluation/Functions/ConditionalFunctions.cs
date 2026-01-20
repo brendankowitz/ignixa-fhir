@@ -41,9 +41,10 @@ internal static class ConditionalFunctions
         // For iif(), $this should refer to the focus collection
         // If focus is a single element, $this resolves to that element
         var focusList = focus.ToList();
-        var innerContext = focusList.Count == 1
+        var innerContext = (focusList.Count == 1
             ? context.PushThis(focusList[0])
-            : context;
+            : context)
+            .PushIndex(0);
 
         var criterion = evaluateExpression(focus, arguments[0], innerContext).ToList();
 
