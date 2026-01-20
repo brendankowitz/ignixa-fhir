@@ -113,7 +113,7 @@ internal static class FhirPathParseTreeGrammar
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> QualifiedIdentifier =
         from parts in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
-            .ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Dot))
+            .AtLeastOnceDelimitedBy(Token.EqualTo(FhirPathTokenKind.Dot))
         select (ParseNode)new IdentifierParseNode(
             string.Join(".", parts.Select(t => UnescapeIdentifier(t.ToStringValue()))),
             Loc(parts.First(), parts.Last()));
@@ -200,7 +200,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> InvocationExpression =
         from initial in Term
-        from invocations in DotInvocation.Or(IndexerInvocation).Many()
+        from invocations in DotInvocation.Try().Or(IndexerInvocation.Try()).Many()
         select invocations.Aggregate(initial, (current, invoke) => invoke(current));
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> PolarityExpression =

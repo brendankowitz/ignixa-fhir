@@ -44,6 +44,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     private readonly IFhirSchemaProvider _schema;
     private readonly SymbolTable _symbolTable;
     private readonly FhirPathParser _parser;
+    private IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet>? _childVisitor;
 
     /// <summary>
     /// Creates a new FhirPath analyzer with the specified schema provider.
@@ -53,6 +54,11 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _symbolTable = new SymbolTable(schema);
         _parser = new FhirPathParser();
+    }
+
+    internal void SetChildVisitor(IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet> visitor)
+    {
+        _childVisitor = visitor;
     }
 
     /// <summary>
@@ -70,13 +76,33 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var nodeTypes = new Dictionary<Expression, FhirPathTypeSet>(ReferenceEqualityComparer.Instance);
         
         // First pass: Analyze with the regular analyzer to get types and collect issues
-        var types = expression.AcceptVisitor(this, context);
+        FhirPathTypeSet types = new FhirPathTypeSet();
+        try
+        {
+            types = expression.AcceptVisitor(this, context);
+        }
+        catch (Exception ex)
+        {
+            context.AddIssue(ValidationIssueSeverity.Error, $"Analysis failed: {ex.Message}");
+        }
 
         // Second pass: Walk the tree again to collect types for each node
-        var typeCollector = new TypeCollectorVisitor(this, nodeTypes);
-        var contextForCollection = AnalysisContext.Create(_schema, rootTypeName);
-        expression.AcceptVisitor(typeCollector, contextForCollection);
-
+        // We use a new analyzer instance for the second pass to allow the collector to intercept child visits
+        try
+        {
+            var secondPassAnalyzer = new FhirPathAnalyzer(_schema);
+            var typeCollector = new TypeCollectorVisitor(secondPassAnalyzer, nodeTypes);
+            secondPassAnalyzer.SetChildVisitor(typeCollector);
+            
+            var contextForCollection = AnalysisContext.Create(_schema, rootTypeName);
+            expression.AcceptVisitor(typeCollector, contextForCollection);
+        }
+        catch (Exception)
+        {
+            // Ignore exceptions during type collection to ensure we return partial type information
+            // Validation errors are already captured in the first pass
+        }
+        
         // Create result with NodeTypes populated
         var result = new AnalysisResult
         {
@@ -154,11 +180,12 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitPropertyAccess(PropertyAccessExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
 
         FhirPathTypeSet focusTypes;
         if (expression.Focus != null)
         {
-            focusTypes = expression.Focus.AcceptVisitor(this, context);
+            focusTypes = expression.Focus.AcceptVisitor(visitor, context);
         }
         else
         {
@@ -227,11 +254,12 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitChild(ChildExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
 
         FhirPathTypeSet focusTypes;
         if (expression.Focus != null && expression.Focus is not ScopeExpression { ScopeName: "that" })
         {
-            focusTypes = expression.Focus.AcceptVisitor(this, context);
+            focusTypes = expression.Focus.AcceptVisitor(visitor, context);
         }
         else
         {
@@ -301,11 +329,12 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     {
         var result = new FhirPathTypeSet();
         var functionName = expression.FunctionName;
+        var visitor = _childVisitor ?? this;
 
         if (functionName == "builtin.children" && expression is not ChildExpression)
         {
             var focusResult = expression.Focus != null
-                ? expression.Focus.AcceptVisitor(this, context)
+                ? expression.Focus.AcceptVisitor(visitor, context)
                 : context.GetCurrentType();
             return focusResult;
         }
@@ -317,7 +346,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
-            focusTypes = expression.Focus.AcceptVisitor(this, context);
+            focusTypes = expression.Focus.AcceptVisitor(visitor, context);
         }
 
         var funcDef = _symbolTable.Get(functionName);
@@ -345,15 +374,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var argTypes = new List<FhirPathTypeSet>();
         foreach (var arg in expression.Arguments)
         {
-            argTypes.Add(arg.AcceptVisitor(this, innerContext));
+            argTypes.Add(arg.AcceptVisitor(visitor, innerContext));
         }
         if (funcDef != null)
         {
             var issues = new List<ValidationIssue>();
 
-            foreach (var validation in funcDef.Validations)
+            try
             {
-                validation(expression, funcDef, argTypes, issues);
+                foreach (var validation in funcDef.Validations)
+                {
+                    validation(expression, funcDef, argTypes, issues);
+                }
+            }
+            catch (Exception ex)
+            {
+                issues.Add(new ValidationIssue { Severity = ValidationIssueSeverity.Warning, Message = $"Validation failed for function '{functionName}': {ex.Message}" });
             }
 
             foreach (var issue in issues)
@@ -361,17 +397,25 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 context.AddIssue(issue.Severity, issue.Message, expression);
             }
 
-            if (funcDef.GetReturnType != null)
+            try
             {
-                var returnTypes = funcDef.GetReturnType(funcDef, focusTypes, argTypes, issues);
-                foreach (var rt in returnTypes)
+                if (funcDef.GetReturnType != null)
                 {
-                    result.Types.Add(rt);
+                    var returnTypes = funcDef.GetReturnType(funcDef, focusTypes, argTypes, issues);
+                    foreach (var rt in returnTypes)
+                    {
+                        result.Types.Add(rt);
+                    }
+                }
+                else
+                {
+                    result.CopyFrom(focusTypes);
                 }
             }
-            else
+            catch (Exception ex)
             {
-                result.CopyFrom(focusTypes);
+                context.AddIssue(ValidationIssueSeverity.Warning, $"Return type calculation failed for function '{functionName}': {ex.Message}", expression);
+                result.CopyFrom(focusTypes); // Fallback to focus types
             }
         }
         else
@@ -391,8 +435,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitBinary(BinaryExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
-        var leftResult = expression.Left?.AcceptVisitor(this, context) ?? new FhirPathTypeSet();
-        var rightResult = expression.Right?.AcceptVisitor(this, context) ?? new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
+        var leftResult = expression.Left?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
+        var rightResult = expression.Right?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
 
         switch (expression.Operator)
         {
@@ -449,7 +494,8 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
     public override FhirPathTypeSet VisitUnary(UnaryExpression expression, AnalysisContext context)
     {
-        var operandResult = expression.Operand?.AcceptVisitor(this, context) ?? new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
+        var operandResult = expression.Operand?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
 
         return expression.Operator switch
         {
@@ -577,15 +623,17 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
     public override FhirPathTypeSet VisitIndexer(IndexerExpression expression, AnalysisContext context)
     {
-        var collectionResult = expression.Collection?.AcceptVisitor(this, context) ?? new FhirPathTypeSet();
-        expression.Index?.AcceptVisitor(this, context);
+        var visitor = _childVisitor ?? this;
+        var collectionResult = expression.Collection?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
+        expression.Index?.AcceptVisitor(visitor, context);
 
         return collectionResult.AsSingle();
     }
 
     public override FhirPathTypeSet VisitParenthesized(ParenthesizedExpression expression, AnalysisContext context)
     {
-        return expression.InnerExpression?.AcceptVisitor(this, context) ?? new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
+        return expression.InnerExpression?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
     }
 
     public override FhirPathTypeSet VisitQuantity(QuantityExpression expression, AnalysisContext context)
