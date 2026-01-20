@@ -20,6 +20,9 @@ public enum FhirPathTokenKind
         /// <summary>42 - Integer number</summary>
         IntegerLiteral,
 
+        /// <summary>42L - Long integer number (64-bit)</summary>
+        LongLiteral,
+
         /// <summary>3.14 - Decimal number</summary>
         DecimalLiteral,
 

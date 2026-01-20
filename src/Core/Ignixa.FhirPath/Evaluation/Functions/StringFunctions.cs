@@ -54,6 +54,51 @@ internal static class StringFunctions
     }
 
     /// <summary>
+    /// lastIndexOf() - Returns the 0-based index of the last occurrence of a substring.
+    /// Returns -1 if substring is not found.
+    /// If substring is empty string, returns the length of the input string.
+    /// </summary>
+    [FhirPathFunction("lastIndexOf",
+        SupportedContexts = "string-integer",
+        ReturnType = "integer",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "String",
+        Description = "Returns the 0-based index of the last occurrence of a substring")]
+    public static IEnumerable<IElement> LastIndexOf(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        if (arguments.Count == 0)
+            throw new ArgumentException("lastIndexOf() requires a substring argument");
+
+        var list = focus.ToList();
+        if (list.Count == 0)
+            return [];
+
+        if (list.Count != 1)
+            throw new InvalidOperationException("lastIndexOf() requires a single input value");
+
+        if (list[0].Value is not string str)
+            return [];
+
+        var substringResult = evaluateExpression(focus, arguments[0], context).ToList();
+        if (substringResult.Count == 0)
+            return [];
+
+        if (substringResult[0].Value is not string substring)
+            return [];
+
+        if (substring.Length == 0)
+            return [FunctionHelpers.CreateInteger(str.Length)];
+
+        var index = str.LastIndexOf(substring, StringComparison.Ordinal);
+        return [FunctionHelpers.CreateInteger(index)];
+    }
+
+    /// <summary>
     /// substring() - Extracts a substring starting at a 0-based index.
     /// Optionally accepts a length parameter.
     /// </summary>
@@ -304,6 +349,76 @@ internal static class StringFunctions
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// matchesFull() - Tests if the entire input string matches a regular expression pattern.
+    /// Unlike matches(), this requires the entire string to match, not just a partial match.
+    /// </summary>
+    [FhirPathFunction("matchesFull",
+        SupportedContexts = "string-boolean",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 2,
+        Category = "String",
+        Description = "Tests if the entire input string matches a regular expression pattern")]
+    public static IEnumerable<IElement> MatchesFull(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        if (arguments.Count == 0)
+            throw new ArgumentException("matchesFull() requires a regex argument");
+
+        var list = focus.ToList();
+        if (list.Count == 0)
+            return [];
+
+        if (list.Count != 1 || list[0].Value is not string str)
+            return [];
+
+        var regexResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        if (regexResult?.Value is not string pattern)
+            return [];
+
+        var options = RegexOptions.None;
+        if (arguments.Count > 1)
+        {
+            var flagsResult = evaluateExpression(focus, arguments[1], context).SingleOrDefault();
+            if (flagsResult?.Value is string flags)
+            {
+                options = ParseRegexFlags(flags);
+            }
+        }
+
+        try
+        {
+            var anchoredPattern = "^(?:" + pattern + ")$";
+            var regex = new Regex(anchoredPattern, options);
+            return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static RegexOptions ParseRegexFlags(string flags)
+    {
+        var options = RegexOptions.None;
+        foreach (var c in flags)
+        {
+            options |= c switch
+            {
+                'i' => RegexOptions.IgnoreCase,
+                'm' => RegexOptions.Multiline,
+                's' => RegexOptions.Singleline,
+                'x' => RegexOptions.IgnorePatternWhitespace,
+                _ => RegexOptions.None
+            };
+        }
+        return options;
     }
 
     /// <summary>

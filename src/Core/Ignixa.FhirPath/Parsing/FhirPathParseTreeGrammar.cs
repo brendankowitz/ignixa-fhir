@@ -33,6 +33,16 @@ internal static class FhirPathParseTreeGrammar
         Token.EqualTo(FhirPathTokenKind.IntegerLiteral)
             .Select(t => new ConstantParseNode(int.Parse(t.ToStringValue()), Loc(t)));
 
+    private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> LongLiteral =
+        Token.EqualTo(FhirPathTokenKind.LongLiteral)
+            .Select(t =>
+            {
+                var value = t.ToStringValue();
+                // Remove the 'L' or 'l' suffix before parsing
+                var numericPart = value.Substring(0, value.Length - 1);
+                return new ConstantParseNode(long.Parse(numericPart), Loc(t));
+            });
+
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Select(t => new ConstantParseNode(decimal.Parse(t.ToStringValue()), Loc(t)));
@@ -81,6 +91,7 @@ internal static class FhirPathParseTreeGrammar
             .Or(DateLiteral.Select(c => (ParseNode)c))
             .Or(BooleanLiteral.Select(c => (ParseNode)c))
             .Or(DecimalLiteral.Select(c => (ParseNode)c))
+            .Or(LongLiteral.Select(c => (ParseNode)c))
             .Or(IntegerLiteral.Select(c => (ParseNode)c));
 
     private static readonly TokenListParser<FhirPathTokenKind, ScopeParseNode> Axis =

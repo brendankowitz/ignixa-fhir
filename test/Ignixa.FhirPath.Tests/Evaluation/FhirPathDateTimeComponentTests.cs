@@ -698,6 +698,224 @@ public class FhirPathDateTimeComponentTests
 
     #endregion
 
+    #region Duration Function Tests
+
+    [Fact]
+    public void GivenTwoDates_WhenDuration_ThenReturnsDayQuantity()
+    {
+        // Arrange - Full day precision dates
+        var expr = _parser.Parse("@2020-01-01.duration(@2020-01-11)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(10m, quantity.Value);
+        Assert.Equal("day", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenTwoYearOnlyDates_WhenDuration_ThenReturnsYearQuantity()
+    {
+        // Arrange - Year precision only
+        var expr = _parser.Parse("@2020.duration(@2022)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        // 2 years ≈ 730.5 days / 365.25 ≈ 2.0
+        Assert.True(quantity.Value >= 1.9m && quantity.Value <= 2.1m);
+        Assert.Equal("year", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenTwoMonthDates_WhenDuration_ThenReturnsMonthQuantity()
+    {
+        // Arrange - Month precision
+        var expr = _parser.Parse("@2020-01.duration(@2021-06)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        // 17 months ≈ 517 days / 30.4375 ≈ 17
+        Assert.True(quantity.Value >= 16m && quantity.Value <= 18m);
+        Assert.Equal("month", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenTwoDateTimes_WhenDuration_ThenReturnsHourQuantity()
+    {
+        // Arrange - Second precision (both have seconds specified)
+        var expr = _parser.Parse("@2020-01-01T10:00:00.duration(@2020-01-01T14:30:00)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert - Since both dates have second precision, result is in seconds
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(16200m, quantity.Value); // 4.5 hours = 16200 seconds
+        Assert.Equal("second", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenEmptyCollection_WhenDuration_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("{}.duration(@2020-01-01)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    #endregion
+
+    #region Difference Function Tests
+
+    [Fact]
+    public void GivenTwoDates_WhenDifference_ThenReturnsDayQuantity()
+    {
+        // Arrange - Full day precision dates
+        var expr = _parser.Parse("@2020-01-01.difference(@2020-01-11)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(10m, quantity.Value);
+        Assert.Equal("day", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenTwoYearOnlyDates_WhenDifference_ThenReturnsYearQuantity()
+    {
+        // Arrange - Year precision only
+        var expr = _parser.Parse("@2020.difference(@2022)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(2m, quantity.Value);  // Exactly 2 years
+        Assert.Equal("year", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenTwoMonthDates_WhenDifference_ThenReturnsMonthQuantity()
+    {
+        // Arrange - Month precision
+        var expr = _parser.Parse("@2020-01.difference(@2021-06)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(17m, quantity.Value);  // Exactly 17 months
+        Assert.Equal("month", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenTwoDateTimes_WhenDifference_ThenReturnsHourQuantity()
+    {
+        // Arrange - Second precision (both have seconds specified)
+        var expr = _parser.Parse("@2020-01-01T10:00:00.difference(@2020-01-01T14:00:00)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert - Since both dates have second precision, result is in seconds
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(14400m, quantity.Value);  // 4 hours = 14400 seconds
+        Assert.Equal("second", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenDifferenceReversed_WhenDifference_ThenReturnsAbsoluteValue()
+    {
+        // Arrange - Test that order doesn't matter (absolute value)
+        var expr = _parser.Parse("@2020-01-11.difference(@2020-01-01)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(10m, quantity.Value);  // Still 10 days, not -10
+        Assert.Equal("day", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenEmptyCollection_WhenDifference_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("{}.difference(@2020-01-01)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenDatesWithDifferentPrecision_WhenDifference_ThenUsesLowerPrecision()
+    {
+        // Arrange - Year vs full date: should use year precision
+        var expr = _parser.Parse("@2020.difference(@2022-06-15)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(2m, quantity.Value);  // 2 years (using year precision)
+        Assert.Equal("year", quantity.Unit);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private IElement CreateIntegerElement(int value)

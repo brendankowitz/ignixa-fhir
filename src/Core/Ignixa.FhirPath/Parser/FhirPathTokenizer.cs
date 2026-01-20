@@ -87,6 +87,8 @@ public static class FhirPathTokenizer
                        FhirPathTokenKind.Axis, requireDelimiters: false)
 
                 // Numeric literals (decimal must have '.' to distinguish from integer)
+                // Long literals must be matched before integer to capture the 'L' suffix
+                .Match(Span.Regex(@"[0-9]+[Ll]"), FhirPathTokenKind.LongLiteral, requireDelimiters: true)
                 .Match(Span.Regex(@"[0-9]+\.[0-9]+"), FhirPathTokenKind.DecimalLiteral, requireDelimiters: true)
                 .Match(Span.Regex(@"[0-9]+"), FhirPathTokenKind.IntegerLiteral, requireDelimiters: true)
 
@@ -190,6 +192,8 @@ public static class FhirPathTokenizer
                        FhirPathTokenKind.Axis, requireDelimiters: false)
 
                 // Numeric literals (decimal must have '.' to distinguish from integer)
+                // Long literals must be matched before integer to capture the 'L' suffix
+                .Match(Span.Regex(@"[0-9]+[Ll]"), FhirPathTokenKind.LongLiteral, requireDelimiters: true)
                 .Match(Span.Regex(@"[0-9]+\.[0-9]+"), FhirPathTokenKind.DecimalLiteral, requireDelimiters: true)
                 .Match(Span.Regex(@"[0-9]+"), FhirPathTokenKind.IntegerLiteral, requireDelimiters: true)
 

@@ -244,4 +244,68 @@ public class FhirPathParserTests
     }
 
     #endregion
+
+    #region Long Literal Tests
+
+    [Fact]
+    public void GivenLongLiteralLowercase_WhenParsed_ThenReturnsLongValue()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse("42l");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal(42L, constExpr.Value);
+        Assert.IsType<long>(constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenLongLiteralUppercase_WhenParsed_ThenReturnsLongValue()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse("42L");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal(42L, constExpr.Value);
+        Assert.IsType<long>(constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenZeroLongLiteral_WhenParsed_ThenReturnsZeroLong()
+    {
+        // Arrange & Act
+        var expression = _parser.Parse("0L");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal(0L, constExpr.Value);
+        Assert.IsType<long>(constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenLargeLongLiteral_WhenParsed_ThenReturnsLongValue()
+    {
+        // Arrange & Act - Use max int64 value
+        var expression = _parser.Parse("9223372036854775807L");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal(9223372036854775807L, constExpr.Value);
+        Assert.IsType<long>(constExpr.Value);
+    }
+
+    [Fact]
+    public void GivenValueBeyondIntRange_WhenParsedAsLong_ThenReturnsCorrectValue()
+    {
+        // Arrange & Act - Value larger than int.MaxValue (2147483647)
+        var expression = _parser.Parse("3000000000L");
+
+        // Assert
+        var constExpr = Assert.IsType<ConstantExpression>(expression);
+        Assert.Equal(3000000000L, constExpr.Value);
+        Assert.IsType<long>(constExpr.Value);
+    }
+
+    #endregion
 }

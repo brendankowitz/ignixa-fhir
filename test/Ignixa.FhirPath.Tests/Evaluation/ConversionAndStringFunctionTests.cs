@@ -137,6 +137,110 @@ public class ConversionAndStringFunctionTests
         Assert.Equal("time", result.InstanceType);
     }
 
+    [Fact]
+    public void GivenStringNumber_WhenToLong_ThenConvertsToLong()
+    {
+        // Arrange
+        var expr = _parser.Parse("'42'.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(42L, result.Value);
+        Assert.Equal("long", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenLargeStringNumber_WhenToLong_ThenConvertsToLong()
+    {
+        // Arrange - Value larger than int.MaxValue
+        var expr = _parser.Parse("'3000000000'.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(3000000000L, result.Value);
+        Assert.Equal("long", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenInteger_WhenToLong_ThenConvertsToLong()
+    {
+        // Arrange
+        var expr = _parser.Parse("42.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(42L, result.Value);
+        Assert.Equal("long", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenLongLiteral_WhenToLong_ThenReturnsLong()
+    {
+        // Arrange
+        var expr = _parser.Parse("42L.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(42L, result.Value);
+        Assert.Equal("long", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenBooleanTrue_WhenToLong_ThenReturnsOneLong()
+    {
+        // Arrange
+        var expr = _parser.Parse("true.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(1L, result.Value);
+        Assert.Equal("long", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenBooleanFalse_WhenToLong_ThenReturnsZeroLong()
+    {
+        // Arrange
+        var expr = _parser.Parse("false.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(0L, result.Value);
+        Assert.Equal("long", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenInvalidString_WhenToLong_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("'abc'.toLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
     #endregion
 
     #region Type Checking Function Tests
@@ -202,6 +306,90 @@ public class ConversionAndStringFunctionTests
     {
         // Arrange
         var expr = _parser.Parse("'2025-01-15'.convertsToDate()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenValidLongString_WhenConvertsToLong_ThenReturnsTrue()
+    {
+        // Arrange
+        var expr = _parser.Parse("'42'.convertsToLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenLargeLongString_WhenConvertsToLong_ThenReturnsTrue()
+    {
+        // Arrange - Value larger than int.MaxValue
+        var expr = _parser.Parse("'3000000000'.convertsToLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenInvalidString_WhenConvertsToLong_ThenReturnsFalse()
+    {
+        // Arrange
+        var expr = _parser.Parse("'abc'.convertsToLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenInteger_WhenConvertsToLong_ThenReturnsTrue()
+    {
+        // Arrange
+        var expr = _parser.Parse("42.convertsToLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenLongLiteral_WhenConvertsToLong_ThenReturnsTrue()
+    {
+        // Arrange
+        var expr = _parser.Parse("42L.convertsToLong()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenBoolean_WhenConvertsToLong_ThenReturnsTrue()
+    {
+        // Arrange
+        var expr = _parser.Parse("true.convertsToLong()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -291,6 +479,76 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Equal(-1, result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenLastIndexOf_ThenReturnsLastIndex()
+    {
+        // Arrange
+        var expr = _parser.Parse("'abc abc'.`lastIndexOf`('a')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(4, result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenLastIndexOfNotFound_ThenReturnsNegativeOne()
+    {
+        // Arrange
+        var expr = _parser.Parse("'abcdefg'.`lastIndexOf`('x')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(-1, result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenLastIndexOfEmptyString_ThenReturnsLength()
+    {
+        // Arrange
+        var expr = _parser.Parse("'0123'.`lastIndexOf`('')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(4, result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenLastIndexOfSubstring_ThenReturnsFirstOccurrence()
+    {
+        // Arrange
+        var expr = _parser.Parse("'abcdefg'.`lastIndexOf`('bc')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(1, result.Value);
+    }
+
+    [Fact]
+    public void GivenEmptyCollection_WhenLastIndexOf_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("{}.`lastIndexOf`('a')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -435,6 +693,76 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Equal("HelloNUMWorldNUM", result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenMatchesFull_ThenReturnsTrueForFullMatch()
+    {
+        // Arrange
+        var expr = _parser.Parse("'Hello123'.matchesFull('[A-Za-z]+[0-9]+')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenString_WhenMatchesFullPartialMatch_ThenReturnsFalse()
+    {
+        // Arrange - 'Hello123World' does not fully match pattern for letters then digits
+        var expr = _parser.Parse("'Hello123World'.matchesFull('[A-Za-z]+[0-9]+')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenString_WhenMatchesFullNoMatch_ThenReturnsFalse()
+    {
+        // Arrange
+        var expr = _parser.Parse("'Hello'.matchesFull('[0-9]+')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenString_WhenMatchesFullWithFlags_ThenIgnoresCase()
+    {
+        // Arrange
+        var expr = _parser.Parse("'HELLO'.matchesFull('hello', 'i')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenEmptyCollection_WhenMatchesFull_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("{}.matchesFull('[a-z]+')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
     }
 
     [Fact]

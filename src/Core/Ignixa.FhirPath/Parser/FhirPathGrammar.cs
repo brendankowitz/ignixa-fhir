@@ -51,6 +51,18 @@ public static class FhirPathGrammar
                 int.Parse(t.ToStringValue()),
                 CreatePosition(t)));
 
+    private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> LongLiteral =
+        Token.EqualTo(FhirPathTokenKind.LongLiteral)
+            .Select(t =>
+            {
+                var value = t.ToStringValue();
+                // Remove the 'L' or 'l' suffix before parsing
+                var numericPart = value.Substring(0, value.Length - 1);
+                return new ConstantExpression(
+                    long.Parse(numericPart),
+                    CreatePosition(t));
+            });
+
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Select(t => new ConstantExpression(
@@ -112,6 +124,7 @@ public static class FhirPathGrammar
     // Literal: any constant value
     // CalendarDuration and Quantity must be tried first before DecimalLiteral/IntegerLiteral
     // to properly parse "1 year", "5 'mg'" vs "5"
+    // LongLiteral must come before IntegerLiteral to match the 'L' suffix
     private static readonly TokenListParser<FhirPathTokenKind, Expression> Literal =
         CalendarDuration.Select(q => (Expression)q).Try()
             .Or(Quantity.Select(q => (Expression)q).Try())
@@ -121,6 +134,7 @@ public static class FhirPathGrammar
             .Or(DateLiteral.Select(c => (Expression)c))
             .Or(BooleanLiteral.Select(c => (Expression)c))
             .Or(DecimalLiteral.Select(c => (Expression)c))
+            .Or(LongLiteral.Select(c => (Expression)c))
             .Or(IntegerLiteral.Select(c => (Expression)c));
 
 

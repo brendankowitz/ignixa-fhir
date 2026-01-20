@@ -53,6 +53,46 @@ public class FhirPathTokenizerTests
     }
 
     [Fact]
+    public void GivenLongLiteralLowercase_WhenTokenizing_ThenProducesLongLiteralToken()
+    {
+        var tokens = Tokenize("42l");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.LongLiteral, tokens[0].Kind);
+        Assert.Equal("42l", tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenLongLiteralUppercase_WhenTokenizing_ThenProducesLongLiteralToken()
+    {
+        var tokens = Tokenize("42L");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.LongLiteral, tokens[0].Kind);
+        Assert.Equal("42L", tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenLargeLongLiteral_WhenTokenizing_ThenProducesLongLiteralToken()
+    {
+        var tokens = Tokenize("9223372036854775807L");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.LongLiteral, tokens[0].Kind);
+        Assert.Equal("9223372036854775807L", tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenZeroLongLiteral_WhenTokenizing_ThenProducesLongLiteralToken()
+    {
+        var tokens = Tokenize("0L");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.LongLiteral, tokens[0].Kind);
+        Assert.Equal("0L", tokens[0].ToStringValue());
+    }
+
+    [Fact]
     public void GivenBooleanTrue_WhenTokenizing_ThenProducesBooleanLiteralToken()
     {
         var tokens = Tokenize("true");

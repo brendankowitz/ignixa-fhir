@@ -57,6 +57,47 @@ internal static class TypeConversionFunctions
     }
 
     /// <summary>
+    /// toLong() - Converts a value to a 64-bit integer (Long).
+    /// Per FHIRPath spec:
+    /// - If input is Integer or Long, return as Long
+    /// - If input is String convertible to 64-bit integer, return Long
+    /// - If input is Boolean, true → 1L, false → 0L
+    /// - Otherwise return empty
+    /// </summary>
+    [FhirPathFunction("toLong",
+        SupportedContexts = "any-long",
+        ReturnType = "long",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Converts a value to a 64-bit integer (Long)")]
+    public static IEnumerable<IElement> ToLong(IEnumerable<IElement> focus)
+    {
+        var list = focus.ToList();
+        if (list.Count != 1)
+            return [];
+
+        var value = list[0].Value;
+        if (value is long l)
+            return [FunctionHelpers.CreateLong(l)];
+
+        if (value is int i)
+            return [FunctionHelpers.CreateLong(i)];
+
+        if (value is string s)
+        {
+            s = s.Trim();
+            if (long.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                return [FunctionHelpers.CreateLong(parsed)];
+        }
+
+        if (value is bool b)
+            return [FunctionHelpers.CreateLong(b ? 1L : 0L)];
+
+        return [];
+    }
+
+    /// <summary>
     /// toDecimal() - Converts a value to a decimal.
     /// </summary>
     [FhirPathFunction("toDecimal",
@@ -78,6 +119,9 @@ internal static class TypeConversionFunctions
 
         if (value is int i)
             return [FunctionHelpers.CreateDecimal(i)];
+
+        if (value is long l)
+            return [FunctionHelpers.CreateDecimal(l)];
 
         if (value is bool b)
             return [FunctionHelpers.CreateDecimal(b ? 1 : 0)];
@@ -647,6 +691,26 @@ internal static class TypeConversionFunctions
     public static IEnumerable<IElement> ConvertsToInteger(IEnumerable<IElement> focus)
     {
         var result = ToInteger(focus);
+        return FunctionHelpers.ReturnBoolean(result.Any());
+    }
+
+    /// <summary>
+    /// convertsToLong() - Returns true if value can be converted to Long.
+    /// Returns true if:
+    /// - Item is Integer or Long
+    /// - Item is String convertible to Long
+    /// - Item is Boolean
+    /// </summary>
+    [FhirPathFunction("convertsToLong",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        MinArguments = 0,
+        MaxArguments = 0,
+        Category = "TypeConversion",
+        Description = "Returns true if value can be converted to Long")]
+    public static IEnumerable<IElement> ConvertsToLong(IEnumerable<IElement> focus)
+    {
+        var result = ToLong(focus);
         return FunctionHelpers.ReturnBoolean(result.Any());
     }
 

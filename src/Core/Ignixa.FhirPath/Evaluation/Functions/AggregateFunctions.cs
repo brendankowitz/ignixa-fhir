@@ -39,9 +39,9 @@ internal static class AggregateFunctions
     {
         var list = elements.Where(e => e != null).ToList();
 
-        // Empty collection returns empty (not 0)
+        // Per FHIRPath spec: Empty collection returns 0
         if (list.Count == 0)
-            return [];
+            return [FunctionHelpers.CreateInteger(0)];
 
         // Single item returns that item
         if (list.Count == 1)

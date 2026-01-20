@@ -27,6 +27,11 @@ internal static class FunctionHelpers
     public static IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
 
     /// <summary>
+    /// Creates an IElement representing a long (64-bit integer) value.
+    /// </summary>
+    public static IElement CreateLong(long value) => new PrimitiveElement(value, "long");
+
+    /// <summary>
     /// Creates an IElement representing a decimal value.
     /// </summary>
     public static IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");

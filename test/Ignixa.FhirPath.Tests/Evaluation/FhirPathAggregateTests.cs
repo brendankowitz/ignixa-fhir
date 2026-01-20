@@ -84,10 +84,10 @@ public class FhirPathAggregateTests
     }
 
     [Fact]
-    public void GivenEmptyCollection_WhenSum_ThenReturnsEmpty()
+    public void GivenEmptyCollection_WhenSum_ThenReturnsZero()
     {
         // Arrange
-        // Official test: {}.sum() = empty
+        // Per FHIRPath spec: sum() on empty collection returns 0
         var expr = _parser.Parse("{}.sum()");
         var root = CreateIntegerElement(0);
 
@@ -95,7 +95,8 @@ public class FhirPathAggregateTests
         var result = _evaluator.Evaluate(root, expr).ToList();
 
         // Assert
-        Assert.Empty(result);
+        Assert.Single(result);
+        Assert.Equal(0, result[0].Value);
     }
 
     [Fact]

@@ -40,11 +40,17 @@ internal static class ConditionalFunctions
 
         // For iif(), $this should refer to the focus collection
         // If focus is a single element, $this resolves to that element
+        // Per spec: When iif is the primary scoped function, $index = 0.
+        // But when nested inside another scoped function (like select), preserve outer $index.
         var focusList = focus.ToList();
-        var innerContext = (focusList.Count == 1
+        var innerContext = focusList.Count == 1
             ? context.PushThis(focusList[0])
-            : context)
-            .PushIndex(0);
+            : context;
+        // Only push index if not already in a scoped context (i.e., index stack is empty)
+        if (context.GetIndex() is null)
+        {
+            innerContext = innerContext.PushIndex(0);
+        }
 
         var criterion = evaluateExpression(focus, arguments[0], innerContext).ToList();
 

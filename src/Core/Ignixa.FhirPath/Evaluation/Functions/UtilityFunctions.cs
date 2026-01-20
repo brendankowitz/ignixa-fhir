@@ -48,30 +48,52 @@ internal static class UtilityFunctions
         // If a trace handler is configured, invoke it
         if (context.TraceHandler != null)
         {
-            var index = 0;
-            foreach (var element in focusList)
+            // Per spec: If no projection argument is provided, the input collection is logged without scoping.
+            // If the projection argument is provided (2nd arg), it is evaluated for each item with $this and $index.
+            if (arguments.Count < 2)
             {
-                // Get trace name from first argument if provided
+                // No projection - single trace with full focus
                 string traceName = "trace";
                 ISourcePositionInfo? location = null;
-                var innerContext = context.PushThis(element).PushIndex(index++);
 
                 if (arguments.Count > 0)
                 {
                     var nameExpr = arguments[0];
                     location = nameExpr.Location;
-
-                    // Evaluate the name expression to get the trace name
-                    var nameResult = evaluateExpression([element], nameExpr, innerContext).ToList();
+                    var nameResult = evaluateExpression(focusList, nameExpr, context).ToList();
                     if (nameResult.Count == 1 && nameResult[0].Value is string str)
                     {
                         traceName = str;
                     }
                 }
 
-                // Create and emit trace entry
-                var traceEntry = new TraceEntry(traceName, [element], location);
+                var traceEntry = new TraceEntry(traceName, focusList, location);
                 context.TraceHandler(traceEntry);
+            }
+            else
+            {
+                // Has projection - iterate and trace per item with $this and $index
+                var index = 0;
+                foreach (var element in focusList)
+                {
+                    string traceName = "trace";
+                    ISourcePositionInfo? location = null;
+                    var innerContext = context.PushThis(element).PushIndex(index++);
+
+                    // First argument is the name
+                    var nameExpr = arguments[0];
+                    location = nameExpr.Location;
+                    var nameResult = evaluateExpression([element], nameExpr, innerContext).ToList();
+                    if (nameResult.Count == 1 && nameResult[0].Value is string str)
+                    {
+                        traceName = str;
+                    }
+
+                    // Second argument is the projection - evaluate it for the trace output
+                    var projectionResult = evaluateExpression([element], arguments[1], innerContext).ToImmutableList();
+                    var traceEntry = new TraceEntry(traceName, projectionResult, location);
+                    context.TraceHandler(traceEntry);
+                }
             }
         }
 
@@ -139,5 +161,69 @@ internal static class UtilityFunctions
     {
         var time = DateTime.Now.TimeOfDay.ToString(@"hh\:mm\:ss");
         return [FunctionHelpers.CreateTime(time)];
+    }
+
+    /// <summary>
+    /// defineVariable(name, expr) - Evaluates expr and stores result in a variable.
+    /// The variable can be accessed later in the expression using %name.
+    /// Returns the input collection unchanged (pass-through).
+    /// </summary>
+    /// <param name="focus">Input collection (returned unchanged)</param>
+    /// <param name="arguments">Variable name and optional value expression</param>
+    /// <param name="context">Evaluation context (used to store the variable)</param>
+    /// <param name="evaluateExpression">Function to evaluate expression arguments</param>
+    /// <returns>Focus collection unchanged</returns>
+    /// <remarks>
+    /// Note: This function is registered via [FhirPathFunction] but is handled specially
+    /// in FhirPathEvaluator.EvaluateDefineVariable() because it needs to mutate the context.
+    /// The attribute registration enables function discovery and validation.
+    /// </remarks>
+    [FhirPathFunction("defineVariable",
+        SupportedContexts = "any-any",
+        ReturnType = "context",
+        MinArguments = 1,
+        MaxArguments = 2,
+        TakesExpressionArguments = true,
+        Category = "Utility",
+        Description = "Stores expression result in a named variable accessible via %name")]
+    public static IEnumerable<IElement> DefineVariable(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        // Note: Actual implementation is in FhirPathEvaluator.EvaluateDefineVariable()
+        // because it requires mutable context access. This method exists for attribute-based
+        // function discovery. If this method is called directly, fall through to the evaluator.
+        var focusList = focus.ToImmutableList();
+
+        if (arguments.Count < 1 || arguments.Count > 2)
+        {
+            throw new InvalidOperationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
+        }
+
+        // Evaluate the name argument
+        var nameResult = evaluateExpression(focusList, arguments[0], context).ToList();
+        if (nameResult.Count != 1 || nameResult[0].Value is not string variableName)
+        {
+            throw new InvalidOperationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
+        }
+
+        // Evaluate the value expression (or use focus if not provided)
+        ImmutableList<IElement> valueResult;
+        if (arguments.Count == 2)
+        {
+            valueResult = evaluateExpression(focusList, arguments[1], context).ToImmutableList();
+        }
+        else
+        {
+            valueResult = focusList;
+        }
+
+        // Store in context's DefinedVariables dictionary
+        context.DefinedVariables[variableName] = valueResult;
+
+        // Return focus unchanged
+        return focusList;
     }
 }
