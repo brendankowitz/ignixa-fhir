@@ -153,13 +153,12 @@ public class IndexScopedFunctionTests
     public void GivenDefineVariableWithNestedWhere_WhenOuterThisNeeded_ThenVariablePreservesIt()
     {
         // Use defineVariable to preserve outer $this when inner scope shadows it
-        // defineVariable returns focus unchanged, then we chain to the inner expression
-        var expr = _parser.Parse("(0 | 1 | 2).select(defineVariable('outer', $this).where(false) | (10 | 20 | 30).where($index = %outer).first())");
+        // Chain via select: defineVariable -> select to access variable in inner where
+        var expr = _parser.Parse("(0 | 1 | 2).select(defineVariable('outer', $this).select((10 | 20 | 30).where($index = %outer).first()).first())");
         var root = new TestIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // defineVariable returns focus, but .where(false) filters it out
         // For outer $this=0: %outer=0, where($index=0) -> 10
         // For outer $this=1: %outer=1, where($index=1) -> 20
         // For outer $this=2: %outer=2, where($index=2) -> 30

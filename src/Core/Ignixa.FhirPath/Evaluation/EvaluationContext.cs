@@ -128,8 +128,8 @@ public record EvaluationContext
 
     /// <summary>
     /// Mutable dictionary for user-defined variables created by defineVariable().
-    /// This is shared across immutable context copies to allow defineVariable side effects.
-    /// Single-threaded: FHIRPath evaluation runs in a single thread, so no concurrent access needed.
+    /// Variables flow forward in chains but are isolated across union branches.
+    /// Use <see cref="ForkForBranch"/> when evaluating parallel branches like union.
     /// </summary>
     public Dictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
 
@@ -138,6 +138,24 @@ public record EvaluationContext
     /// When set, trace() calls will invoke this handler with trace information.
     /// </summary>
     public Action<TraceEntry>? TraceHandler { get; init; }
+
+    /// <summary>
+    /// Creates a forked context for evaluating a branch expression (e.g., union operands).
+    /// The forked context has its own copy of DefinedVariables so that variables defined
+    /// in one branch don't leak to sibling branches.
+    /// </summary>
+    /// <remarks>
+    /// Per FHIRPath spec, defineVariable affects "subsequent expressions on the output collection".
+    /// Union branches are NOT subsequent - they're parallel evaluations from the same input.
+    /// </remarks>
+    public EvaluationContext ForkForBranch()
+    {
+        return this with
+        {
+            DefinedVariables = new Dictionary<string, ImmutableList<IElement>>(
+                DefinedVariables, StringComparer.OrdinalIgnoreCase)
+        };
+    }
 
     /// <summary>
     /// Creates a new context with the specified focus.

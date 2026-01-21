@@ -436,8 +436,13 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     {
         var result = new FhirPathTypeSet();
         var visitor = _childVisitor ?? this;
-        var leftResult = expression.Left?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
-        var rightResult = expression.Right?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
+
+        // For union operator, fork context so defineVariable in one branch doesn't leak to sibling
+        var leftContext = expression.Operator == "|" ? context.ForkForBranch() : context;
+        var rightContext = expression.Operator == "|" ? context.ForkForBranch() : context;
+
+        var leftResult = expression.Left?.AcceptVisitor(visitor, leftContext) ?? new FhirPathTypeSet();
+        var rightResult = expression.Right?.AcceptVisitor(visitor, rightContext) ?? new FhirPathTypeSet();
 
         switch (expression.Operator)
         {

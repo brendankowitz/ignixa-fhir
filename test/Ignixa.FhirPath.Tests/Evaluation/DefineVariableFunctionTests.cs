@@ -19,14 +19,15 @@ public class DefineVariableFunctionTests
     [Fact]
     public void GivenDefineVariable_WhenReferencingVariable_ThenReturnsDefinedValue()
     {
-        var expr = _parser.Parse("defineVariable('x', 5) | %x");
+        // Use a chain: defineVariable sets x=5, then .select accesses %x
+        var expr = _parser.Parse("5.defineVariable('x').select(%x + 10)");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        Assert.Equal(2, result.Count);
-        Assert.Equal(0, result[0].Value);
-        Assert.Equal(5, result[1].Value);
+        // 5 is passed through defineVariable, then select adds 10 -> 15
+        Assert.Single(result);
+        Assert.Equal(15, result[0].Value);
     }
 
     [Fact]
@@ -45,8 +46,9 @@ public class DefineVariableFunctionTests
     [Fact]
     public void GivenDefineVariableWithExpression_WhenReferencingVariable_ThenEvaluatesExpression()
     {
-        var expr = _parser.Parse("defineVariable('doubled', 5 * 2) | %doubled");
-        var root = CreateIntegerElement(10);
+        // Chain: defineVariable evaluates 5*2=10, stores as 'doubled', then select accesses it
+        var expr = _parser.Parse("1.defineVariable('doubled', 5 * 2).select(%doubled)");
+        var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
@@ -57,40 +59,42 @@ public class DefineVariableFunctionTests
     [Fact]
     public void GivenDefineVariable_WhenVariableIsString_ThenStoresStringValue()
     {
-        var expr = _parser.Parse("defineVariable('name', 'test') | %name");
+        // Chain: defineVariable stores 'test' as 'name', then select accesses it
+        var expr = _parser.Parse("'hello'.defineVariable('name', 'test').select(%name)");
         var root = CreateStringElement("root");
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        Assert.Equal(2, result.Count);
-        Assert.Equal("root", result[0].Value);
-        Assert.Equal("test", result[1].Value);
+        Assert.Single(result);
+        Assert.Equal("test", result[0].Value);
     }
 
     [Fact]
     public void GivenDefineVariableChained_WhenMultipleVariables_ThenBothAvailable()
     {
-        var expr = _parser.Parse("defineVariable('a', 1).defineVariable('b', 2) | %a + %b");
+        // Chain: defineVariable a, then defineVariable b, then select uses both
+        var expr = _parser.Parse("1.defineVariable('a', 10).defineVariable('b', 20).select(%a + %b)");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        Assert.Equal(2, result.Count);
-        Assert.Equal(0, result[0].Value);
-        Assert.Equal(3, result[1].Value);
+        // %a=10, %b=20, so result is 30
+        Assert.Single(result);
+        Assert.Equal(30, result[0].Value);
     }
 
     [Fact]
     public void GivenDefineVariableWithCollection_WhenReferencingVariable_ThenReturnsCollection()
     {
-        var expr = _parser.Parse("defineVariable('items', 1 | 2 | 3) | %items.count()");
+        // Chain: defineVariable stores collection, then select accesses count
+        var expr = _parser.Parse("1.defineVariable('items', 1 | 2 | 3).select(%items.count())");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        Assert.Equal(2, result.Count);
-        Assert.Equal(0, result[0].Value);
-        Assert.Equal(3, result[1].Value);
+        // %items has 3 elements
+        Assert.Single(result);
+        Assert.Equal(3, result[0].Value);
     }
 
     [Fact]
@@ -160,16 +164,15 @@ public class DefineVariableFunctionTests
     [Fact]
     public void GivenDefineVariable_WhenUsedInNestedSelect_ThenVariableAccessible()
     {
-        // defineVariable value is accessible in nested select
-        var expr = _parser.Parse("defineVariable('x', 100) | %x + 1");
+        // defineVariable value is accessible in chained select
+        var expr = _parser.Parse("1.defineVariable('x', 100).select(%x + 1)");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // defineVariable returns focus (0), then union with %x + 1 = 101
-        Assert.Equal(2, result.Count);
-        Assert.Equal(0, result[0].Value);
-        Assert.Equal(101, result[1].Value);
+        // %x = 100, so result is 101
+        Assert.Single(result);
+        Assert.Equal(101, result[0].Value);
     }
 
     [Fact]
@@ -188,19 +191,17 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenShadowingExistingVariable_ThenInnerScopeSeesNewValue()
+    public void GivenDefineVariable_WhenRedefinedInChain_ThenLaterValueUsed()
     {
-        // Inner defineVariable can shadow outer variable
-        var expr = _parser.Parse("defineVariable('x', 10).where(false) | defineVariable('x', %x + 5).where(false) | %x");
+        // Later defineVariable in chain overwrites earlier value
+        var expr = _parser.Parse("1.defineVariable('x', 10).defineVariable('x', 20).select(%x)");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // First defineVariable sets x=10
-        // Second defineVariable sets x=%x+5 = 10+5 = 15
-        // %x returns 15
+        // Second defineVariable overwrites x to 20
         Assert.Single(result);
-        Assert.Equal(15, result[0].Value);
+        Assert.Equal(20, result[0].Value);
     }
 
     [Fact]
@@ -222,7 +223,7 @@ public class DefineVariableFunctionTests
     public void GivenDefineVariable_WhenMultipleVariablesChained_ThenAllAccessible()
     {
         // Multiple chained defineVariable calls, all accessible
-        var expr = _parser.Parse("defineVariable('a', 10).defineVariable('b', 20).defineVariable('c', %a + %b).where(false) | %c");
+        var expr = _parser.Parse("1.defineVariable('a', 10).defineVariable('b', 20).defineVariable('c', %a + %b).select(%c)");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
@@ -250,17 +251,15 @@ public class DefineVariableFunctionTests
     public void GivenDefineVariable_WhenOneArgument_ThenUsesFocusAsValue()
     {
         // Single argument form: defineVariable('name') uses current focus as value
-        var expr = _parser.Parse("(5 | 10 | 15).defineVariable('items') | %items.sum()");
+        // Then chain to access it
+        var expr = _parser.Parse("(5 | 10 | 15).defineVariable('items').select(%items.sum())");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // defineVariable returns focus (5, 10, 15), then union with %items.sum() = 30
-        Assert.Equal(4, result.Count);
-        Assert.Equal(5, result[0].Value);
-        Assert.Equal(10, result[1].Value);
-        Assert.Equal(15, result[2].Value);
-        Assert.Equal(30, result[3].Value);
+        // For each item, %items.sum() = 30 (sum of original collection)
+        Assert.Equal(3, result.Count);
+        Assert.All(result, r => Assert.Equal(30, r.Value));
     }
 
     [Fact]
@@ -294,6 +293,139 @@ public class DefineVariableFunctionTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         Assert.True((bool)result.Value!);
+    }
+
+    #endregion
+
+    #region Variable Scoping Tests - Forward Chain Only
+
+    [Fact]
+    public void GivenDefineVariable_WhenDefinedInChain_ThenVisibleDownstream()
+    {
+        // Variables defined in chain are visible to subsequent operations
+        var expr = _parser.Parse("1.defineVariable('x', 10).select(%x + $this)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // %x = 10, $this = 1, so result = 11
+        Assert.Single(result);
+        Assert.Equal(11, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenDefinedInUnionBranch_ThenNotVisibleInOtherBranch()
+    {
+        // Per FHIRPath spec: Variables are only visible in direct chains, not sibling union branches
+        // Each union branch gets isolated variable scope
+        var expr = _parser.Parse("defineVariable('x', 5) | %x + 10");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // First branch: defineVariable returns focus (0)
+        // Second branch: %x is NOT visible (returns empty), so %x + 10 = empty
+        Assert.Single(result);
+        Assert.Equal(0, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenDefinedBeforeUnion_ThenVisibleInBothBranches()
+    {
+        // Variables defined BEFORE the union ARE visible in both branches
+        // because the variable is in scope when the union is evaluated
+        var expr = _parser.Parse("1.defineVariable('x', 5).select((%x + 1) | (%x + 2))");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // %x = 5, union of (6, 7)
+        Assert.Equal(2, result.Count);
+        Assert.Equal(6, result[0].Value);  // 5 + 1
+        Assert.Equal(7, result[1].Value);  // 5 + 2
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenNotYetDefined_ThenReturnsEmptyBeforeDefinition()
+    {
+        // If we try to use a variable before it's defined, it returns empty
+        // Each union branch is isolated, so the middle branch's define doesn't affect others
+        var expr = _parser.Parse("%notYetDefined | defineVariable('notYetDefined', 42) | %notYetDefined");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // First %notYetDefined: empty (not defined)
+        // defineVariable: returns focus (0)
+        // Third %notYetDefined: empty (isolated scope)
+        Assert.Single(result);
+        Assert.Equal(0, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenDefinedInsideWhere_ThenVisibleInSameWhere()
+    {
+        // Variable defined inside where() is visible in the same where clause
+        var expr = _parser.Parse("(1 | 2 | 3).where(defineVariable('limit', 2).count() > 0 and $this > %limit)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Note: defineVariable returns focus (which is the single item being tested)
+        // %limit = 2, so items > 2 are: 3
+        Assert.Single(result);
+        Assert.Equal(3, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenMultipleDefinitions_ThenLaterOverwritesEarlier()
+    {
+        // Later definitions in chain overwrite earlier ones
+        var expr = _parser.Parse("1.defineVariable('x', 10).defineVariable('x', 20).select(%x)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // %x was overwritten from 10 to 20
+        Assert.Single(result);
+        Assert.Equal(20, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenDefinedInSelectChain_ThenVisibleInSelectProjection()
+    {
+        // Variable defined in select() chain is visible in the same chain
+        var expr = _parser.Parse("(1 | 2 | 3).select(defineVariable('doubled', $this * 2).select(%doubled + 100).first())");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // For each item: defineVariable sets doubled, chain to select %doubled + 100
+        // Item 1: doubled=2, result 102
+        // Item 2: doubled=4, result 104
+        // Item 3: doubled=6, result 106
+        Assert.Equal(3, result.Count);
+        Assert.Equal(102, result[0].Value);
+        Assert.Equal(104, result[1].Value);
+        Assert.Equal(106, result[2].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenChainedWithMultipleFunctions_ThenVisibleThroughoutChain()
+    {
+        // Variable is visible through entire chain after definition
+        var expr = _parser.Parse("(1 | 2 | 3 | 4 | 5).defineVariable('mid', 3).where($this != %mid).select($this + %mid)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Filter: keep items != 3: (1, 2, 4, 5)
+        // Project: add 3 to each: (4, 5, 7, 8)
+        Assert.Equal(4, result.Count);
+        Assert.Equal(4, result[0].Value);   // 1 + 3
+        Assert.Equal(5, result[1].Value);   // 2 + 3
+        Assert.Equal(7, result[2].Value);   // 4 + 3
+        Assert.Equal(8, result[3].Value);   // 5 + 3
     }
 
     #endregion

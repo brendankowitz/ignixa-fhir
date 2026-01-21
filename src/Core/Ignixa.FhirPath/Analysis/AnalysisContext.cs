@@ -315,6 +315,22 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
+    /// Creates a forked context for analyzing a branch expression (e.g., union operands).
+    /// The forked context has its own copy of DefinedVariables so that variables defined
+    /// in one branch don't leak to sibling branches during static analysis.
+    /// </summary>
+    /// <remarks>
+    /// Per FHIRPath spec, defineVariable affects "subsequent expressions on the output collection".
+    /// Union branches are NOT subsequent - they're parallel evaluations from the same input.
+    /// </remarks>
+    public AnalysisContext ForkForBranch()
+    {
+        return new AnalysisContext(Schema, RootType, _issues, Variables,
+            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.OrdinalIgnoreCase),
+            TypeStack, ExpressionContextStack, AggregateTotalStack, CurrentFocus);
+    }
+
+    /// <summary>
     /// Resolves a variable by name.
     /// </summary>
     public FhirPathTypeSet? ResolveVariable(string name)

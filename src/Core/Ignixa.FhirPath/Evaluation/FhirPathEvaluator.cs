@@ -198,43 +198,57 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitBinary(BinaryExpression expression, EvaluationContext context)
     {
-        var left = EvaluateExpression(context.Focus, expression.Left, context).ToList();
-        var right = EvaluateExpression(context.Focus, expression.Right, context).ToList();
+        // For union operator, each branch should have isolated variable scope
+        // Variables defined in left branch should NOT be visible in right branch
+        if (expression.Operator == "|")
+        {
+            // For union operator, each branch should have isolated variable scope
+            // Variables defined in one branch should NOT be visible in sibling branches
+            // Use ForkForBranch() to give each branch its own copy of DefinedVariables
+            var leftContext = context.ForkForBranch();
+            var rightContext = context.ForkForBranch();
+
+            var left = EvaluateExpression(context.Focus, expression.Left, leftContext).ToList();
+            var right = EvaluateExpression(context.Focus, expression.Right, rightContext).ToList();
+
+            return EvaluateUnion(left, right);
+        }
+
+        var leftResult = EvaluateExpression(context.Focus, expression.Left, context).ToList();
+        var rightResult = EvaluateExpression(context.Focus, expression.Right, context).ToList();
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
         return expression.Operator.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            "|" => EvaluateUnion(left, right),
+            "+" => EvaluateAddition(leftResult, rightResult),
+            "-" => EvaluateSubtraction(leftResult, rightResult),
+            "*" => EvaluateMultiplication(leftResult, rightResult),
+            "/" => EvaluateDivision(leftResult, rightResult),
+            "div" => EvaluateIntegerDivision(leftResult, rightResult),
+            "mod" => EvaluateModulo(leftResult, rightResult),
 
-            "+" => EvaluateAddition(left, right),
-            "-" => EvaluateSubtraction(left, right),
-            "*" => EvaluateMultiplication(left, right),
-            "/" => EvaluateDivision(left, right),
-            "div" => EvaluateIntegerDivision(left, right),
-            "mod" => EvaluateModulo(left, right),
+            "&" => EvaluateStringConcatenation(leftResult, rightResult),
 
-            "&" => EvaluateStringConcatenation(left, right),
+            "is" => EvaluateTypeIs(leftResult, expression.Right),
+            "as" => EvaluateTypeAs(leftResult, expression.Right),
 
-            "is" => EvaluateTypeIs(left, expression.Right),
-            "as" => EvaluateTypeAs(left, expression.Right),
+            "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true)),
+            "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: false)),
 
-            "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(left, right, isIn: true)),
-            "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(left, right, isIn: false)),
+            "=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: true)),
+            "!=" => FunctionHelpers.ReturnBoolean(CompareEquality(leftResult, rightResult, equals: false)),
+            "~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: true)),
+            "!~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(leftResult, rightResult, equivalent: false)),
+            ">" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: false)),
+            ">=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: true, orEqual: true)),
+            "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false)),
+            "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: true)),
 
-            "=" => FunctionHelpers.ReturnBoolean(CompareEquality(left, right, equals: true)),
-            "!=" => FunctionHelpers.ReturnBoolean(CompareEquality(left, right, equals: false)),
-            "~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(left, right, equivalent: true)),
-            "!~" => FunctionHelpers.ReturnBoolean(CompareEquivalence(left, right, equivalent: false)),
-            ">" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: true, orEqual: false)),
-            ">=" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: true, orEqual: true)),
-            "<" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: false, orEqual: false)),
-            "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(left, right, greater: false, orEqual: true)),
-
-            "and" => EvaluateAnd(left, right),
-            "or" => EvaluateOr(left, right),
-            "xor" => EvaluateXor(left, right),
-            "implies" => EvaluateImplies(left, right),
+            "and" => EvaluateAnd(leftResult, rightResult),
+            "or" => EvaluateOr(leftResult, rightResult),
+            "xor" => EvaluateXor(leftResult, rightResult),
+            "implies" => EvaluateImplies(leftResult, rightResult),
 
             _ => throw new NotSupportedException($"Binary operator '{expression.Operator}' is not yet implemented")
         };

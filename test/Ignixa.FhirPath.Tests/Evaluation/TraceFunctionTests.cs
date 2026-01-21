@@ -362,6 +362,35 @@ public class TraceFunctionTests
         Assert.Equal(6, traces[2].Focus[0].Value);  // 3 * 2 = 6
     }
 
+    [Fact]
+    public void GivenTraceWithIndexProjection_WhenEvaluate_ThenTracesIndexForEachElement()
+    {
+        // Arrange - trace with $index in projection: trace('name', $index)
+        // Per FHIRPath 3.0, $index should be available in trace projection
+        var expr = _parser.Parse("('a' | 'b' | 'c').trace('index', $index)");
+        var root = CreateIntegerElement(0);
+        
+        var traces = new List<TraceEntry>();
+        var context = new EvaluationContext()
+            .WithTraceHandler(entry => traces.Add(entry));
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert - result should be original values ('a', 'b', 'c')
+        Assert.Equal(3, result.Count);
+        Assert.Equal("a", result[0].Value);
+        Assert.Equal("b", result[1].Value);
+        Assert.Equal("c", result[2].Value);
+        
+        // Trace should have captured index values (0, 1, 2) - one trace per element
+        Assert.Equal(3, traces.Count);
+        Assert.All(traces, t => Assert.Equal("index", t.Name));
+        Assert.Equal(0, traces[0].Focus[0].Value);  // index 0
+        Assert.Equal(1, traces[1].Focus[0].Value);  // index 1
+        Assert.Equal(2, traces[2].Focus[0].Value);  // index 2
+    }
+
     #endregion
 
     #region Helper Methods
