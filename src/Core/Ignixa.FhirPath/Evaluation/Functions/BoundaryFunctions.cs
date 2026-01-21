@@ -9,6 +9,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
+using Ignixa.FhirPath.Types;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -20,7 +21,7 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </summary>
 internal static class BoundaryFunctions
 {
-    private const int DefaultPrecision = -1;  // -1 means derive from input value
+    private const int DefaultPrecision = 8;  // Default precision is 8 for decimals when no argument given
 
     /// <summary>
     /// lowBoundary(precision) - Returns the lower boundary of a value at the specified precision.
@@ -63,8 +64,8 @@ internal static class BoundaryFunctions
             }
         }
 
-        // Validate explicit precision if provided
-        if (precision != DefaultPrecision && (precision < 0 || precision > 31))
+        // Validate explicit precision if provided (< 0 or > 31 is invalid)
+        if (precision < 0 || precision > 31)
         {
             // Invalid precision: return empty
             yield break;
@@ -126,8 +127,8 @@ internal static class BoundaryFunctions
             }
         }
 
-        // Validate explicit precision if provided
-        if (precision != DefaultPrecision && (precision < 0 || precision > 31))
+        // Validate explicit precision if provided (< 0 or > 31 is invalid)
+        if (precision < 0 || precision > 31)
         {
             // Invalid precision: return empty
             yield break;
@@ -150,7 +151,7 @@ internal static class BoundaryFunctions
 
     #region Helper Methods
 
-    private static IElement? CalculateLowBoundary(IElement element, int precision)
+    private static IElement? CalculateLowBoundary(IElement element, int outputPrecision)
     {
         // Strip @ prefix from FHIR date/time string values
         var cleanValue = element.Value is string s && s.StartsWith('@')
@@ -158,33 +159,41 @@ internal static class BoundaryFunctions
             : element.Value;
 
         // Handle Quantity type (has both value and unit)
+        if (element.Value is Quantity qty)
+        {
+            var inputPrecision = GetDecimalPrecision(qty.Value);
+            var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
+            return new QuantityElement(new Quantity(boundaryValue, qty.Unit));
+        }
+
+        // Handle FHIR Quantity element with decimal value
         if (element.InstanceType == "Quantity" && element.Value is decimal quantityValue)
         {
-            var effectivePrecision = precision == DefaultPrecision ? GetDecimalPrecision(quantityValue) : precision;
-            var boundaryValue = CalculateNumericLowBoundary(quantityValue, effectivePrecision);
-            // For Quantity, we need to preserve the unit - this would typically be done by the type system
-            return FunctionHelpers.CreateDecimal(boundaryValue);
+            var inputPrecision = GetDecimalPrecision(quantityValue);
+            var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
+            var unit = ExtractUnitFromQuantityElement(element) ?? "1";
+            return new QuantityElement(new Quantity(boundaryValue, unit));
         }
 
         return cleanValue switch
         {
-            // Numeric types - derive precision from value if not explicitly provided
-            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary(d, precision == DefaultPrecision ? GetDecimalPrecision(d) : precision)),
-            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)d, precision == DefaultPrecision ? GetDecimalPrecision((decimal)d) : precision)),
-            int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)i, precision == DefaultPrecision ? 0 : precision)),
-            long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundary((decimal)l, precision == DefaultPrecision ? 0 : precision)),
+            // Numeric types - get input precision from value, use outputPrecision for formatting
+            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions(d, GetDecimalPrecision(d), outputPrecision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)d, GetDecimalPrecision((decimal)d), outputPrecision)),
+            int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
+            long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
             // DateTime strings (with @ prefix handled above)
-            string str when IsDateTimeString(str) => CalculateDateTimeLowBoundary(str, precision, element.InstanceType),
+            string str when IsDateTimeString(str) => CalculateDateTimeLowBoundary(str, outputPrecision, element.InstanceType),
 
             // Time strings
-            string str when IsTimeString(str) => CalculateTimeLowBoundary(str, precision),
+            string str when IsTimeString(str) => CalculateTimeLowBoundary(str, outputPrecision),
 
             _ => null
         };
     }
 
-    private static IElement? CalculateHighBoundary(IElement element, int precision)
+    private static IElement? CalculateHighBoundary(IElement element, int outputPrecision)
     {
         // Strip @ prefix from FHIR date/time string values
         var cleanValue = element.Value is string s && s.StartsWith('@')
@@ -192,29 +201,51 @@ internal static class BoundaryFunctions
             : element.Value;
 
         // Handle Quantity type (has both value and unit)
+        if (element.Value is Quantity qty)
+        {
+            var inputPrecision = GetDecimalPrecision(qty.Value);
+            var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
+            return new QuantityElement(new Quantity(boundaryValue, qty.Unit));
+        }
+
+        // Handle FHIR Quantity element with decimal value
         if (element.InstanceType == "Quantity" && element.Value is decimal quantityValue)
         {
-            var effectivePrecision = precision == DefaultPrecision ? GetDecimalPrecision(quantityValue) : precision;
-            var boundaryValue = CalculateNumericHighBoundary(quantityValue, effectivePrecision);
-            return FunctionHelpers.CreateDecimal(boundaryValue);
+            var inputPrecision = GetDecimalPrecision(quantityValue);
+            var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
+            var unit = ExtractUnitFromQuantityElement(element) ?? "1";
+            return new QuantityElement(new Quantity(boundaryValue, unit));
         }
 
         return cleanValue switch
         {
-            // Numeric types - derive precision from value if not explicitly provided
-            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary(d, precision == DefaultPrecision ? GetDecimalPrecision(d) : precision)),
-            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)d, precision == DefaultPrecision ? GetDecimalPrecision((decimal)d) : precision)),
-            int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)i, precision == DefaultPrecision ? 0 : precision)),
-            long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundary((decimal)l, precision == DefaultPrecision ? 0 : precision)),
+            // Numeric types - get input precision from value, use outputPrecision for formatting
+            decimal d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions(d, GetDecimalPrecision(d), outputPrecision)),
+            double d => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)d, GetDecimalPrecision((decimal)d), outputPrecision)),
+            int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
+            long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
             // DateTime strings (with @ prefix handled above)
-            string str when IsDateTimeString(str) => CalculateDateTimeHighBoundary(str, precision, element.InstanceType),
+            string str when IsDateTimeString(str) => CalculateDateTimeHighBoundary(str, outputPrecision, element.InstanceType),
 
             // Time strings
-            string str when IsTimeString(str) => CalculateTimeHighBoundary(str, precision),
+            string str when IsTimeString(str) => CalculateTimeHighBoundary(str, outputPrecision),
 
             _ => null
         };
+    }
+
+    private static string? ExtractUnitFromQuantityElement(IElement element)
+    {
+        var unitChildren = element.Children("unit");
+        if (unitChildren.Count > 0 && unitChildren[0].Value is string unit)
+            return unit;
+
+        var codeChildren = element.Children("code");
+        if (codeChildren.Count > 0 && codeChildren[0].Value is string code)
+            return code;
+
+        return null;
     }
 
     /// <summary>
@@ -230,38 +261,79 @@ internal static class BoundaryFunctions
         return (bits[3] >> 16) & 0xFF;
     }
 
-    private static decimal CalculateNumericLowBoundary(decimal value, int precision)
+    /// <summary>
+    /// Calculates the low boundary of a numeric value.
+    /// The input precision determines the boundary calculation, the output precision determines formatting.
+    /// Per FHIRPath spec: lowBoundary returns the minimum possible value.
+    /// - For positive results: round DOWN (floor behavior)
+    /// - For negative results: round DOWN (more negative, floor behavior)
+    /// </summary>
+    private static decimal CalculateNumericLowBoundaryWithPrecisions(decimal value, int inputPrecision, int outputPrecision)
     {
-        // lowBoundary subtracts 0.5 * 10^(-precision) and truncates to precision decimal places
-        // Special case: precision 0 means round down to integer
-        if (precision == 0)
-        {
-            return Math.Floor(value);
-        }
+        // Calculate boundary using input precision (the precision of the incoming value)
+        var boundaryAdjustment = 0.5m * (decimal)Math.Pow(10, -inputPrecision);
+        var result = value - boundaryAdjustment;
 
-        var adjustment = 0.5m * (decimal)Math.Pow(10, -precision);
-        var result = value - adjustment;
+        // Special case: output precision 0 means return an integer
+        if (outputPrecision == 0)
+        {
+            return Math.Floor(result);
+        }
         
-        // Truncate to precision decimal places
-        var multiplier = (decimal)Math.Pow(10, precision);
-        return Math.Truncate(result * multiplier) / multiplier;
+        // For lowBoundary: always floor (round toward negative infinity)
+        // This gives the minimum possible value at the output precision
+        var multiplier = (decimal)Math.Pow(10, outputPrecision);
+        var floored = Math.Floor(result * multiplier) / multiplier;
+        
+        // Ensure the decimal has exactly the output precision number of decimal places
+        return SetDecimalScale(floored, outputPrecision);
     }
 
-    private static decimal CalculateNumericHighBoundary(decimal value, int precision)
+    /// <summary>
+    /// Calculates the high boundary of a numeric value.
+    /// The input precision determines the boundary calculation, the output precision determines formatting.
+    /// Per FHIRPath spec: highBoundary returns the maximum possible value.
+    /// - For positive results: round UP (ceiling behavior)
+    /// - For negative results: round UP (toward zero, ceiling behavior)
+    /// </summary>
+    private static decimal CalculateNumericHighBoundaryWithPrecisions(decimal value, int inputPrecision, int outputPrecision)
     {
-        // highBoundary adds 0.5 * 10^(-precision) and truncates to precision decimal places
-        // Special case: precision 0 means round up to integer
-        if (precision == 0)
-        {
-            return Math.Ceiling(value);
-        }
+        // Calculate boundary using input precision (the precision of the incoming value)
+        var boundaryAdjustment = 0.5m * (decimal)Math.Pow(10, -inputPrecision);
+        var result = value + boundaryAdjustment;
 
-        var adjustment = 0.5m * (decimal)Math.Pow(10, -precision);
-        var result = value + adjustment;
+        // Special case: output precision 0 means return an integer
+        if (outputPrecision == 0)
+        {
+            return Math.Ceiling(result);
+        }
         
-        // Truncate to precision decimal places  
-        var multiplier = (decimal)Math.Pow(10, precision);
-        return Math.Truncate(result * multiplier) / multiplier;
+        // For highBoundary: always ceiling (round toward positive infinity)
+        // This gives the maximum possible value at the output precision
+        var multiplier = (decimal)Math.Pow(10, outputPrecision);
+        var ceiled = Math.Ceiling(result * multiplier) / multiplier;
+        
+        // Ensure the decimal has exactly the output precision number of decimal places
+        return SetDecimalScale(ceiled, outputPrecision);
+    }
+
+    /// <summary>
+    /// Sets the scale of a decimal to ensure it has exactly the specified number of decimal places.
+    /// This is important because FHIRPath boundary functions must return values with exactly
+    /// the precision number of decimal places, including trailing zeros.
+    /// </summary>
+    private static decimal SetDecimalScale(decimal value, int scale)
+    {
+        if (scale <= 0)
+        {
+            return Math.Truncate(value);
+        }
+        
+        // To force a specific scale with trailing zeros, we need to construct the decimal manually
+        // by parsing a formatted string representation
+        var format = "0." + new string('0', scale);
+        var formatted = value.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
+        return decimal.Parse(formatted, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static IElement? CalculateDateTimeLowBoundary(string dateTimeStr, int precision, string instanceType)
@@ -270,21 +342,9 @@ internal static class BoundaryFunctions
         var parsed = ParseDateTimeString(dateTimeStr);
         if (parsed == null) return null;
 
-        string result;
-        // For dateTime type, always return full datetime with timezone
-        // For date type, return date only
-        if (instanceType == "date")
-        {
-            // Date precision - return date only, derive precision from input
-            result = FormatDateLowBoundary(parsed.Value, dateTimeStr);
-        }
-        else
-        {
-            // DateTime precision - return datetime with timezone
-            result = FormatDateTimeLowBoundary(parsed.Value, precision, dateTimeStr);
-        }
-
-        return FunctionHelpers.CreateString(result);
+        // Boundary functions on date/dateTime always return dateTime type
+        string result = FormatDateTimeLowBoundary(parsed.Value, precision, dateTimeStr);
+        return FunctionHelpers.CreateDateTime(result);
     }
 
     private static IElement? CalculateDateTimeHighBoundary(string dateTimeStr, int precision, string instanceType)
@@ -292,21 +352,9 @@ internal static class BoundaryFunctions
         var parsed = ParseDateTimeString(dateTimeStr);
         if (parsed == null) return null;
 
-        string result;
-        // For dateTime type, always return full datetime with timezone
-        // For date type, return date only
-        if (instanceType == "date")
-        {
-            // Date precision - return date only, derive precision from input
-            result = FormatDateHighBoundary(parsed.Value, dateTimeStr);
-        }
-        else
-        {
-            // DateTime precision - return datetime with timezone
-            result = FormatDateTimeHighBoundary(parsed.Value, precision, dateTimeStr);
-        }
-
-        return FunctionHelpers.CreateString(result);
+        // Boundary functions on date/dateTime always return dateTime type
+        string result = FormatDateTimeHighBoundary(parsed.Value, precision, dateTimeStr);
+        return FunctionHelpers.CreateDateTime(result);
     }
 
     private static IElement? CalculateTimeLowBoundary(string timeStr, int precision)
@@ -316,7 +364,7 @@ internal static class BoundaryFunctions
         if (parsed == null) return null;
 
         var result = FormatTimeLowBoundary(parsed.Value, precision);
-        return FunctionHelpers.CreateString(result);
+        return FunctionHelpers.CreateTime(result);
     }
 
     private static IElement? CalculateTimeHighBoundary(string timeStr, int precision)
@@ -325,7 +373,7 @@ internal static class BoundaryFunctions
         if (parsed == null) return null;
 
         var result = FormatTimeHighBoundary(parsed.Value, precision);
-        return FunctionHelpers.CreateString(result);
+        return FunctionHelpers.CreateTime(result);
     }
 
     private static (int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone)? ParseDateTimeString(string dateTimeStr)
@@ -431,50 +479,120 @@ internal static class BoundaryFunctions
 
     private static string FormatDateTimeLowBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision, string original)
     {
-        // precision 17 = millisecond level
-        // For low boundary, use UTC+14:00 timezone (easternmost timezone)
-        var existingTimezone = parsed.timezone;
+        // Per FHIRPath spec: boundary functions on date/dateTime always return full dateTime precision
+        // with timezone (UTC+14:00 for lowBoundary) for comparison purposes.
+        // The precision parameter only applies to numeric values, not dates/times.
         
-        if (existingTimezone != null)
-        {
-            // Preserve existing timezone
-            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}{existingTimezone}";
-        }
-        else
-        {
-            // Add UTC+14:00 for low boundary
-            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}+14:00";
-        }
+        // Determine input precision from the original string
+        var inputPrecision = GetDateTimePrecision(original);
+        
+        // For dates/times, always output at full millisecond precision
+        return FormatFullDateTimeLow(parsed, 17, inputPrecision);
+    }
+
+    private static string FormatFullDateTimeLow((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int outputPrecision, int inputPrecision)
+    {
+        var tz = parsed.timezone ?? "+14:00";
+        
+        // Per FHIRPath spec: lowBoundary returns the lowest possible value within the range.
+        // For partial dates (year/month/day precision), fill in missing components with low values.
+        // For year precision (4), use January 1.
+        // For month precision (6), use the 1st day.
+        // For time components not specified, use 00:00:00.000.
+        var month = inputPrecision <= 4 ? 1 : parsed.month;
+        var day = inputPrecision <= 6 ? 1 : parsed.day;
+        var hour = inputPrecision <= 8 ? 0 : parsed.hour;
+        var minute = inputPrecision <= 10 ? 0 : parsed.minute;
+        var second = inputPrecision <= 12 ? 0 : parsed.second;
+        var millisecond = inputPrecision <= 14 ? 0 : parsed.millisecond;
+        
+        return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
     }
 
     private static string FormatDateTimeHighBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int precision, string original)
     {
-        // precision 17 = millisecond level
-        // For high boundary, use UTC-12:00 timezone (westernmost timezone) and end of period
-        var existingTimezone = parsed.timezone;
+        // Per FHIRPath spec: boundary functions on date/dateTime always return full dateTime precision
+        // with timezone (UTC-12:00 for highBoundary) for comparison purposes.
+        // The precision parameter only applies to numeric values, not dates/times.
         
-        if (existingTimezone != null)
-        {
-            // Preserve existing timezone, but set to end of minute
-            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T{parsed.hour:D2}:{parsed.minute:D2}:59.999{existingTimezone}";
-        }
-        else
-        {
-            // Add UTC-12:00 for high boundary and set to end of day (23:59:59.999)
-            return $"{parsed.year:D4}-{parsed.month:D2}-{parsed.day:D2}T23:59:59.999-12:00";
-        }
+        // Determine input precision from the original string
+        var inputPrecision = GetDateTimePrecision(original);
+        
+        // For dates/times, always output at full millisecond precision
+        return FormatFullDateTimeHigh(parsed, 17, inputPrecision);
+    }
+
+    private static string FormatDateHighWithDay((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int inputPrecision)
+    {
+        // For high boundary day: use last day of month when input precision doesn't include day
+        var month = inputPrecision <= 4 ? 12 : parsed.month;
+        var day = inputPrecision <= 6 ? DateTime.DaysInMonth(parsed.year, month) : parsed.day;
+        return $"@{parsed.year:D4}-{month:D2}-{day:D2}";
+    }
+
+    private static string FormatFullDateTimeHigh((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int outputPrecision, int inputPrecision)
+    {
+        var tz = parsed.timezone ?? "-12:00";
+        
+        // Per FHIRPath spec: highBoundary returns the highest possible value within the range.
+        // For second precision (inputPrecision == 14), the high boundary is the end of that second (add .999).
+        // For minute precision (12), it's the end of that minute (:59.999).
+        // For hour precision (10), it's the end of that hour (59:59.999).
+        // For day precision (8), it's the end of that day (23:59:59.999).
+        // For month precision (6), use last day of month.
+        // For year precision (4), use December 31.
+        var month = inputPrecision <= 4 ? 12 : parsed.month;
+        var day = inputPrecision <= 6 ? DateTime.DaysInMonth(parsed.year, month) : parsed.day;
+        var hour = inputPrecision <= 8 ? 23 : parsed.hour;
+        var minute = inputPrecision <= 10 ? 59 : parsed.minute;
+        var second = inputPrecision <= 12 ? 59 : parsed.second;
+        
+        return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.999{tz}";
+    }
+
+    private static int GetDateTimePrecision(string dateTimeStr)
+    {
+        // Count the precision based on components present
+        // YYYY = 4, YYYY-MM = 6, YYYY-MM-DD = 8, YYYY-MM-DDTHH = 10, etc.
+        var str = dateTimeStr.TrimStart('@');
+        
+        if (!str.Contains('-', StringComparison.Ordinal)) return 4; // Year only
+        
+        var parts = str.Split('T');
+        var datePart = parts[0];
+        var dateComponents = datePart.Split('-').Length;
+        
+        if (dateComponents == 2) return 6; // Year-month
+        if (parts.Length == 1) return 8; // Year-month-day only
+        
+        var timePart = parts[1];
+        // Remove timezone
+        if (timePart.Contains('+', StringComparison.Ordinal)) timePart = timePart.Split('+')[0];
+        if (timePart.Contains('-', StringComparison.Ordinal) && timePart.LastIndexOf('-') > 0) timePart = timePart.Substring(0, timePart.LastIndexOf('-'));
+        if (timePart.EndsWith('Z')) timePart = timePart.TrimEnd('Z');
+        
+        var timeComponents = timePart.Split(':').Length;
+        if (timeComponents == 1) return 10; // Hour only
+        if (timeComponents == 2) return 12; // Hour:minute
+        
+        // Check for milliseconds
+        if (timePart.Contains('.', StringComparison.Ordinal)) return 17;
+        
+        return 14; // Hour:minute:second
     }
 
     private static string FormatTimeLowBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
     {
-        // precision 9 = millisecond level - return without the @T prefix for raw time value
-        return $"{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
+        // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
+        // For low boundary, start of period (00:00:00.000)
+        return $"@T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
     }
 
     private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
     {
-        // precision 9 = millisecond level - set to end of minute
-        return $"{parsed.hour:D2}:{parsed.minute:D2}:59.999";
+        // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
+        // For high boundary, end of period (XX:XX:59.999)
+        return $"@T{parsed.hour:D2}:{parsed.minute:D2}:59.999";
     }
 
     private static bool IsDateTimeString(string value)
@@ -488,6 +606,31 @@ internal static class BoundaryFunctions
         // Check if looks like a time (hh:mm or @Thh:mm)
         value = value.TrimStart('@').TrimStart('T');
         return Regex.IsMatch(value, @"^\d{2}(:\d{2})?");
+    }
+
+    #endregion
+
+    #region QuantityElement
+
+    /// <summary>
+    /// IElement wrapper for Quantity values used by boundary functions.
+    /// </summary>
+    private sealed class QuantityElement : IElement
+    {
+        private readonly Quantity _quantity;
+
+        public QuantityElement(Quantity quantity)
+        {
+            _quantity = quantity;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType => "Quantity";
+        public object Value => _quantity;
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

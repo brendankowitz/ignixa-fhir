@@ -534,4 +534,87 @@ public class SchemaAwareElementTests
     }
 
     #endregion
+
+    #region Primitive Extensions Tests
+
+    /// <summary>
+    /// Test that null values in arrays are preserved when they have shadow extensions.
+    /// This is critical for FHIRPath expressions like Patient.name.given.select($this.hasValue())
+    /// which need to return results for both null and non-null array elements.
+    /// </summary>
+    [Fact]
+    public void GivenPatientWithNullGivenNameAndExtension_WhenNavigatingToGiven_ThenReturnsBothElements()
+    {
+        // Arrange - FHIR allows null values in arrays when there's extension data
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "pat1",
+          "name": [{
+            "given": [null, "James"],
+            "_given": [
+              {"extension": [{"url": "http://example.org/ext", "valueString": "five"}]},
+              null
+            ]
+          }]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var names = typedElement.Children("name").ToList();
+        var givenNames = names.SelectMany(n => n.Children("given")).ToList();
+
+        // Assert - both elements should be present (null with extension, and "James")
+        Assert.Equal(2, givenNames.Count);
+
+        // First element has no value but has extension
+        Assert.Null(givenNames[0].Value);
+
+        // Second element has value "James"
+        Assert.Equal("James", givenNames[1].Value);
+    }
+
+    /// <summary>
+    /// Test that extension data is accessible on null-valued primitive array elements.
+    /// </summary>
+    [Fact]
+    public void GivenPatientWithNullGivenNameAndExtension_WhenAccessingExtension_ThenExtensionIsAvailable()
+    {
+        // Arrange
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "pat1",
+          "name": [{
+            "given": [null, "James"],
+            "_given": [
+              {"extension": [{"url": "http://example.org/ext", "valueString": "five"}]},
+              null
+            ]
+          }]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var givenNames = typedElement.Children("name")
+            .SelectMany(n => n.Children("given"))
+            .ToList();
+
+        // Get extensions from first given name (the null one with extension)
+        var firstGivenExtensions = givenNames[0].Children("extension").ToList();
+
+        // Assert
+        Assert.Single(firstGivenExtensions);
+        var extensionUrls = firstGivenExtensions[0].Children("url").ToList();
+        Assert.Single(extensionUrls);
+        Assert.Equal("http://example.org/ext", extensionUrls[0].Value);
+    }
+
+    #endregion
 }

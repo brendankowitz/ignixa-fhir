@@ -578,6 +578,20 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
+    public void GivenPredicateReturnsEmpty_WhenAll_ThenReturnsFalse()
+    {
+        // Per FHIRPath spec: all() returns true only if criteria evaluates to true for every element.
+        // If criteria returns empty (uncertain) for any element, all() returns false (not empty).
+        // This tests the Period invariant scenario where comparing dates of different precision returns empty.
+        var expr = _parser.Parse("(1 | 2).all($this > {})");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
     public void GivenEmptyCollection_WhenAny_ThenReturnsFalse()
     {
         // Arrange

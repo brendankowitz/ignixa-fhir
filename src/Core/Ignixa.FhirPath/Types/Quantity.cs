@@ -223,14 +223,36 @@ public sealed class Quantity : IEquatable<Quantity>, IComparable<Quantity>
     /// </summary>
     public override string ToString()
     {
+        // Format value with trailing zeros preserved (decimal scale determines precision)
+        var formattedValue = FormatDecimalWithPrecision(Value);
+
         // If the unit is already a calendar keyword (year, month, week, etc.), use it directly
         if (IsCalendarKeyword(Unit))
         {
-            return $"{Value} {Unit}";
+            return $"{formattedValue} {Unit}";
         }
 
         // For all other units (including UCUM time units like 'wk', 'a', 'mo'), use quoted form
-        return $"{Value} '{Unit}'";
+        return $"{formattedValue} '{Unit}'";
+    }
+
+    /// <summary>
+    /// Formats a decimal value preserving its scale (trailing zeros).
+    /// </summary>
+    private static string FormatDecimalWithPrecision(decimal value)
+    {
+        // Extract the scale from the decimal's internal representation
+        var bits = decimal.GetBits(value);
+        var scale = (bits[3] >> 16) & 0xFF;
+
+        if (scale == 0)
+        {
+            return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        // Format with exactly the scale number of decimal places
+        var format = "0." + new string('0', scale);
+        return value.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>

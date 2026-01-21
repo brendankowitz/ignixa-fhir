@@ -309,6 +309,7 @@ internal static class StringFunctions
 
     /// <summary>
     /// matches() - Tests if a string matches a regular expression pattern.
+    /// Per FHIRPath spec, uses single-line mode where '.' matches any character including newlines.
     /// </summary>
     [FhirPathFunction("matches",
         SupportedContexts = "string-boolean",
@@ -336,7 +337,8 @@ internal static class StringFunctions
 
         try
         {
-            var regex = new Regex(pattern);
+            // FHIRPath uses single-line mode where '.' matches any character including newlines
+            var regex = new Regex(pattern, RegexOptions.Singleline);
             return FunctionHelpers.ReturnBoolean(regex.IsMatch(str));
         }
         catch

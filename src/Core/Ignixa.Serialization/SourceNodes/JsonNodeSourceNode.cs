@@ -224,10 +224,10 @@ public class JsonNodeSourceNode : ISourceNavigator
         JsonNode item,
         JsonNode? shadowItem = null)
     {
-        (IReadOnlyList<JsonNode> List, bool ArrayProperty) itemList = ExpandArray(item);
-        (IReadOnlyList<JsonNode> List, bool ArrayProperty)? shadowItemList = shadowItem != null
+        (IReadOnlyList<JsonNode?> List, bool ArrayProperty) itemList = ExpandArray(item);
+        (IReadOnlyList<JsonNode?> List, bool ArrayProperty)? shadowItemList = shadowItem != null
             ? ExpandArray(shadowItem)
-            : (Array.Empty<JsonNode>(), false);
+            : (Array.Empty<JsonNode?>(), false);
 
         bool isArray = shadowItemList.Value.ArrayProperty || itemList.ArrayProperty;
         int maxCount = Math.Max(itemList.List.Count, shadowItemList.Value.List.Count);
@@ -263,7 +263,7 @@ public class JsonNodeSourceNode : ISourceNavigator
                 itemLocation);
         }
 
-        static (IReadOnlyList<JsonNode> List, bool ArrayProperty) ExpandArray(JsonNode prop)
+        static (IReadOnlyList<JsonNode?> List, bool ArrayProperty) ExpandArray(JsonNode prop)
         {
             if (prop == null)
             {
@@ -272,14 +272,14 @@ public class JsonNodeSourceNode : ISourceNavigator
 
             if (prop is JsonArray array)
             {
-                // Filter out nulls from the array
-                return (array.OfType<JsonNode>().ToList(), true);
+                // Preserve nulls in the array - they may have shadow properties with extensions
+                return (array.ToList(), true);
             }
 
             return ([prop], false);
         }
 
-        static JsonNode? ItemAt(IReadOnlyList<JsonNode> list, int i)
+        static JsonNode? ItemAt(IReadOnlyList<JsonNode?> list, int i)
         {
             return list?.Count > i ? list[i] : null;
         }

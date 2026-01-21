@@ -359,7 +359,6 @@ internal static class CollectionFunctions
             throw new ArgumentException("all() requires a criteria argument");
 
         var criteria = arguments[0];
-        var foundEmpty = false;
         var index = 0;
 
         foreach (var element in focus)
@@ -367,20 +366,13 @@ internal static class CollectionFunctions
             var innerContext = context.PushThis(element).PushIndex(index++);
             var result = evaluateExpression([element], criteria, innerContext);
 
-            if (!result.Any())
-            {
-                foundEmpty = true;
-                continue;
-            }
-
+            // Per FHIRPath spec: all() returns true only if criteria evaluates to true for every element.
+            // If criteria returns empty or false for any element, all() returns false (not empty).
             if (!FunctionHelpers.IsTrue(result))
             {
                 return [(IElement)FunctionHelpers.CreateBoolean(false)];
             }
         }
-
-        if (foundEmpty)
-            return [];
 
         return [(IElement)FunctionHelpers.CreateBoolean(true)];
     }

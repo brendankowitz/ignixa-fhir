@@ -767,8 +767,16 @@ internal static class TypeConversionFunctions
             return true;
 
         // Handle FHIR type inheritance:
-        // code, id, markdown, uri, url, canonical, uuid, oid -> string
-        // positiveInt, unsignedInt -> integer
+        // URI subtypes: url, canonical, uuid, oid -> uri -> string
+        // String subtypes: code, id, markdown, uri -> string
+        // Integer subtypes: positiveInt, unsignedInt -> integer
+        
+        // URI subtypes inherit from uri
+        if (typeName == "uri" && (elementType == "url" || elementType == "canonical" ||
+            elementType == "uuid" || elementType == "oid"))
+            return true;
+
+        // String subtypes (including uri and its subtypes) inherit from string
         if (typeName == "string" && (elementType == "code" || elementType == "id" || 
             elementType == "markdown" || elementType == "uri" || elementType == "url" ||
             elementType == "canonical" || elementType == "uuid" || elementType == "oid"))
