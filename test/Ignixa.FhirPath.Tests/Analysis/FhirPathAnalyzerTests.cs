@@ -556,5 +556,30 @@ public class FhirPathAnalyzerTests
         Assert.Contains("boolean", result.TypeNames);
     }
 
+    [Fact]
+    public void GivenLengthOnPatient_WhenAnalyzing_ThenReportsError()
+    {
+        // The exact Firely test case: '123456789'.contains(trace('t').length().toString())
+        // trace('t') returns $this which is Patient (outer context), not string
+        // length() on Patient should report an error
+        var result = _analyzer.Analyze("'123456789'.contains($this.length().toString())", "Patient");
+
+        // Should report error: length() is not supported on Patient
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i =>
+            i.Message.Contains("length", StringComparison.OrdinalIgnoreCase) &&
+            i.Message.Contains("Patient", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void GivenLengthOnString_WhenAnalyzing_ThenIsValid()
+    {
+        // Contrast: length() on a string should be valid
+        var result = _analyzer.Analyze("Patient.name.family.first().length()", "Patient");
+
+        Assert.True(result.IsValid);
+        Assert.Contains("integer", result.TypeNames);
+    }
+
     #endregion
 }

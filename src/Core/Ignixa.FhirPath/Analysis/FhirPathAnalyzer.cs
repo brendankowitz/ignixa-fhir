@@ -384,6 +384,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         {
             var issues = new List<ValidationIssue>();
 
+            // Validate that focus type is supported by this function
+            ValidateFocusType(expression, funcDef, focusTypes, issues);
+
             try
             {
                 foreach (var validation in funcDef.Validations)
@@ -1011,6 +1014,82 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         };
     }
 
+    /// <summary>
+    /// Validates that the focus type is supported by the function.
+    /// Reports an error if the function doesn't support the given context type.
+    /// </summary>
+    private static void ValidateFocusType(
+        FunctionCallExpression expression,
+        FunctionDefinition funcDef,
+        FhirPathTypeSet focusTypes,
+        ICollection<ValidationIssue> issues)
+    {
+        // Skip validation if function accepts any type
+        if (funcDef.SupportedContexts.Count == 0 ||
+            funcDef.SupportedContexts.Any(c => c.ContextType.Equals("any", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        // Check each focus type against supported contexts
+        foreach (var focusType in focusTypes.Types)
+        {
+            var typeName = focusType.TypeName;
+            if (string.IsNullOrEmpty(typeName))
+            {
+                continue;
+            }
+
+            // Check if this type or a compatible type is supported
+            var isSupported = funcDef.SupportedContexts.Any(c =>
+                c.ContextType.Equals(typeName, StringComparison.OrdinalIgnoreCase) ||
+                IsCompatibleType(typeName, c.ContextType));
+
+            if (!isSupported)
+            {
+                var supportedTypes = string.Join(", ", funcDef.SupportedContexts.Select(c => c.ContextType));
+                issues.Add(new ValidationIssue
+                {
+                    Severity = ValidationIssueSeverity.Error,
+                    Message = $"Function '{funcDef.Name}' is not supported on context type '{typeName}'. Supported types: {supportedTypes}",
+                    Location = expression.Location?.ToString(),
+                    Expression = expression.ToString()
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks if a type is compatible with a supported context type.
+    /// Handles type hierarchies and aliases (e.g., "number" matches "integer" and "decimal").
+    /// </summary>
+    private static bool IsCompatibleType(string actualType, string supportedType)
+    {
+        // Handle "number" which includes integer, decimal, and long
+        if (supportedType.Equals("number", StringComparison.OrdinalIgnoreCase))
+        {
+            return actualType.Equals("integer", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("decimal", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("long", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Handle primitive type aliases
+        if (supportedType.Equals("string", StringComparison.OrdinalIgnoreCase))
+        {
+            // FHIR primitive types that are string-based
+            return actualType.Equals("string", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("id", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("code", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("uri", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("url", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("canonical", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("oid", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("uuid", StringComparison.OrdinalIgnoreCase) ||
+                   actualType.Equals("markdown", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
 
     private static FhirPathTypeSet CreateBooleanTypeSet()
     {
