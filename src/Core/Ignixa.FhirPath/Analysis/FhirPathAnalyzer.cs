@@ -371,10 +371,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return HandleIsFunction(expression, focusTypes, innerContext, result);
         }
 
+        // For scoped functions (TakesExpressionArguments=true), analyze arguments with innerContext
+        // which has $this set to focus items. For non-scoped functions, analyze arguments with
+        // the original context so $this remains the outer context (per FHIRPath spec).
+        var argContext = funcDef?.TakesExpressionArguments == true ? innerContext : context;
         var argTypes = new List<FhirPathTypeSet>();
         foreach (var arg in expression.Arguments)
         {
-            argTypes.Add(arg.AcceptVisitor(visitor, innerContext));
+            argTypes.Add(arg.AcceptVisitor(visitor, argContext));
         }
         if (funcDef != null)
         {

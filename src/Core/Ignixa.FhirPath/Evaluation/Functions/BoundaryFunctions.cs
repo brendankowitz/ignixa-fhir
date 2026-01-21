@@ -45,7 +45,8 @@ internal static class BoundaryFunctions
         
         if (arguments.Count > 0)
         {
-            var precisionResults = evaluateExpression(focus, arguments[0], context).ToList();
+            // Non-scoped function: evaluate argument in outer context (don't change $this)
+            var precisionResults = evaluateExpression(context.Focus, arguments[0], context).ToList();
             if (precisionResults.Count == 1 && precisionResults[0].Value is int p)
             {
                 precision = p;
@@ -107,7 +108,8 @@ internal static class BoundaryFunctions
         
         if (arguments.Count > 0)
         {
-            var precisionResults = evaluateExpression(focus, arguments[0], context).ToList();
+            // Non-scoped function: evaluate argument in outer context (don't change $this)
+            var precisionResults = evaluateExpression(context.Focus, arguments[0], context).ToList();
             if (precisionResults.Count == 1 && precisionResults[0].Value is int p)
             {
                 precision = p;

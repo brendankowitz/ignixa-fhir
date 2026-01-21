@@ -228,7 +228,8 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("skip() requires a num argument");
 
-        var numResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
         if (numResult?.Value is not int num)
             return [];
 
@@ -255,7 +256,8 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("take() requires a num argument");
 
-        var numResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
         if (numResult?.Value is not int num)
             return [];
 
@@ -564,9 +566,10 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("coalesce() requires at least one argument");
 
+        // Non-scoped function: evaluate arguments in outer context (don't change $this)
         foreach (var arg in arguments)
         {
-            var result = evaluateExpression(focus, arg, context).ToList();
+            var result = evaluateExpression(context.Focus, arg, context).ToList();
             if (result.Count > 0)
                 return result;
         }
@@ -602,7 +605,8 @@ internal static class CollectionFunctions
         }
         else
         {
-            var result = evaluateExpression(focus, arguments[0], context).ToList();
+            // Non-scoped function: evaluate argument in outer context (don't change $this)
+            var result = evaluateExpression(context.Focus, arguments[0], context).ToList();
             if (result.Count > 0)
             {
                 typeName = result[0].Value?.ToString();
@@ -660,7 +664,8 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("intersect() requires an other argument");
 
-        var other = evaluateExpression(focus, arguments[0], context).ToList();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
         var result = new List<IElement>();
 
         foreach (var item in focus)
@@ -694,7 +699,8 @@ internal static class CollectionFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("exclude() requires an other argument");
 
-        var other = evaluateExpression(focus, arguments[0], context).ToList();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
         var result = new List<IElement>();
 
         foreach (var item in focus)
@@ -786,9 +792,10 @@ internal static class CollectionFunctions
             throw new ArgumentException("aggregate() requires an aggregator expression");
 
         // Initialize $total: initial-value if provided, otherwise empty
+        // Per spec: init argument is evaluated on the outer context (before $this/$index are set)
         List<IElement> total =
             arguments.Count > 1
-                ? evaluateExpression(focus, arguments[1], context).ToList()
+                ? evaluateExpression(context.Focus, arguments[1], context).ToList()
                 : [];
 
         var index = 0;
@@ -830,7 +837,8 @@ internal static class CollectionFunctions
             throw new ArgumentException("subsetOf() requires an other argument");
 
         var focusList = focus.ToList();
-        var other = evaluateExpression(focus, arguments[0], context).ToList();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
 
         if (focusList.Count == 0)
             return [(IElement)FunctionHelpers.CreateBoolean(true)];
@@ -861,7 +869,8 @@ internal static class CollectionFunctions
             throw new ArgumentException("supersetOf() requires an other argument");
 
         var focusList = focus.ToList();
-        var other = evaluateExpression(focus, arguments[0], context).ToList();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
 
         if (other.Count == 0)
             return [(IElement)FunctionHelpers.CreateBoolean(true)];

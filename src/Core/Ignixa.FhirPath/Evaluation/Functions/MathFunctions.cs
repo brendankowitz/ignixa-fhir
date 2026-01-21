@@ -42,7 +42,8 @@ internal static class MathFunctions
         int precision = 0;
         if (arguments.Count > 0)
         {
-            var precisionResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+            // Non-scoped function: evaluate argument in outer context (don't change $this)
+            var precisionResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
             if (precisionResult?.Value is int p)
                 precision = p;
             else
@@ -83,7 +84,8 @@ internal static class MathFunctions
         if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var baseValue))
             return [];
 
-        var exponentResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var exponentResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
         if (!FunctionHelpers.TryConvertToDecimal(exponentResult?.Value, out var exponent))
             return [];
 
@@ -302,7 +304,8 @@ internal static class MathFunctions
         if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
             return [];
 
-        var baseResult = evaluateExpression(focus, arguments[0], context).SingleOrDefault();
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
+        var baseResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
         if (!FunctionHelpers.TryConvertToDecimal(baseResult?.Value, out var baseValue))
             return [];
 

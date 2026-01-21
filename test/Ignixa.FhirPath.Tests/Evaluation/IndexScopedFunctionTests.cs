@@ -222,4 +222,62 @@ public class IndexScopedFunctionTests
         Assert.Equal(10, result[2].Value);
         Assert.Equal(31, result[3].Value);
     }
+
+    #region Non-Scoped Function Context Tests
+
+    [Fact]
+    public void GivenNonScopedFunction_WhenTraceInArgument_ThenUsesOuterContext()
+    {
+        // Per FHIRPath spec: Non-scoped functions (like contains) should NOT change $this
+        // In: 'abc'.contains(trace('t').length().toString())
+        // - trace('t') returns $this which should be the outer context (integer root), not 'abc'
+        // - Since our root is an integer, trace returns the integer, and length() on integer fails
+        // The expression should return empty (or error) because length() is invalid on integer
+        
+        var expr = _parser.Parse("'abc'.contains(trace('t').length().toString())");
+        var root = new TestIntegerElement(42);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Should be empty because trace() returns $this (integer 42), 
+        // and length() is not valid on integers
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenNonScopedFunction_WhenThisInArgument_ThenUsesOuterContext()
+    {
+        // $this inside non-scoped function argument should be outer context
+        // In: 'hello'.contains($this.toString())
+        // $this should be the integer root (42), not 'hello'
+        
+        var expr = _parser.Parse("'hello42'.contains($this.toString())");
+        var root = new TestIntegerElement(42);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // $this is 42, '42'.toString() = '42'
+        // 'hello42'.contains('42') = true
+        Assert.Single(result);
+        Assert.Equal(true, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenScopedFunction_WhenThisInCriteria_ThenUsesCurrentItem()
+    {
+        // Contrast: scoped function SHOULD change $this
+        // In: ('abc' | 'xyz').where($this = 'abc')
+        // $this should be each item being tested
+        
+        var expr = _parser.Parse("('abc' | 'xyz').where($this = 'abc')");
+        var root = new TestIntegerElement(42);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // where() is scoped - $this is each item
+        Assert.Single(result);
+        Assert.Equal("abc", result[0].Value);
+    }
+
+    #endregion
 }

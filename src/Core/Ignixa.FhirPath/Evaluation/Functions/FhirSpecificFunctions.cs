@@ -41,9 +41,9 @@ internal static class FhirSpecificFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("extension() requires a url argument");
 
-        // Evaluate the url argument to get the string value
+        // Non-scoped function: evaluate argument in outer context (don't change $this)
         var urlArgument = arguments[0];
-        var urlResult = evaluateExpression(focus, urlArgument, context).FirstOrDefault();
+        var urlResult = evaluateExpression(context.Focus, urlArgument, context).FirstOrDefault();
 
         if (urlResult == null)
             yield break;
@@ -226,8 +226,8 @@ internal static class FhirSpecificFunctions
             }
             else
             {
-                // Fallback: evaluate the expression to get the type name
-                var result = evaluateExpression(focus, arguments[0], context).ToList();
+                // Non-scoped function: evaluate argument in outer context (don't change $this)
+                var result = evaluateExpression(context.Focus, arguments[0], context).ToList();
                 if (result.Count > 0)
                 {
                     filterType = result[0].Value?.ToString();
