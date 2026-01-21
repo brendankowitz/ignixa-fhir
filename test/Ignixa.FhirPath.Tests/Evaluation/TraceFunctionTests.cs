@@ -332,6 +332,36 @@ public class TraceFunctionTests
         Assert.Equal(2, traces[1].Focus.Count);
     }
 
+    [Fact]
+    public void GivenTraceWithProjection_WhenEvaluate_ThenTracesProjectionResult()
+    {
+        // Arrange - trace with projection: trace('name', projection)
+        // The projection is evaluated for each element, and that result is traced
+        // But the original focus is still returned unchanged
+        var expr = _parser.Parse("(1 | 2 | 3).trace('doubled', $this * 2)");
+        var root = CreateIntegerElement(0);
+        
+        var traces = new List<TraceEntry>();
+        var context = new EvaluationContext()
+            .WithTraceHandler(entry => traces.Add(entry));
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert - result should be original values (1, 2, 3)
+        Assert.Equal(3, result.Count);
+        Assert.Equal(1, result[0].Value);
+        Assert.Equal(2, result[1].Value);
+        Assert.Equal(3, result[2].Value);
+        
+        // Trace should have captured projected values (2, 4, 6) - one trace per element
+        Assert.Equal(3, traces.Count);
+        Assert.All(traces, t => Assert.Equal("doubled", t.Name));
+        Assert.Equal(2, traces[0].Focus[0].Value);  // 1 * 2 = 2
+        Assert.Equal(4, traces[1].Focus[0].Value);  // 2 * 2 = 4
+        Assert.Equal(6, traces[2].Focus[0].Value);  // 3 * 2 = 6
+    }
+
     #endregion
 
     #region Helper Methods

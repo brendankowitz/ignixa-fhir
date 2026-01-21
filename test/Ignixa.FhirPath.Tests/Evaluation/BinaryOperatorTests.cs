@@ -248,6 +248,108 @@ public class BinaryOperatorTests
 
     #endregion
 
+    #region Quantity Equivalence Operator Tests
+
+    [Fact]
+    public void GivenSameQuantityDifferentPrecision_WhenEquivalent_ThenReturnsTrue()
+    {
+        // Arrange - 5.0 'mg' ~ 5.00 'mg' (same value, different precision notation)
+        var expr = _parser.Parse("5.0 'mg' ~ 5.00 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenDifferentQuantitiesAtOnePrecision_WhenEquivalent_ThenReturnsFalse()
+    {
+        // Arrange - 5.0 'mg' ~ 5.1 'mg' (different values at 1 decimal precision)
+        var expr = _parser.Parse("5.0 'mg' ~ 5.1 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenDifferentQuantitiesAtTwoPrecision_WhenEquivalent_ThenReturnsFalse()
+    {
+        // Arrange - 5.00 'mg' ~ 5.01 'mg' (different at 2 decimal precision)
+        var expr = _parser.Parse("5.00 'mg' ~ 5.01 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenQuantitiesRoundToSame_WhenEquivalent_ThenReturnsTrue()
+    {
+        // Arrange - 5 'mg' ~ 5.4 'mg' (5.4 rounds to 5 at 0 precision)
+        var expr = _parser.Parse("5 'mg' ~ 5.4 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenQuantitiesRoundToDifferent_WhenEquivalent_ThenReturnsFalse()
+    {
+        // Arrange - 5 'mg' ~ 5.5 'mg' (5.5 rounds to 6 at 0 precision with AwayFromZero)
+        var expr = _parser.Parse("5 'mg' ~ 5.5 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenQuantitiesExactMatch_WhenEquivalent_ThenReturnsTrue()
+    {
+        // Arrange - 4 'g' ~ 4000 'mg' (exact match after conversion)
+        var expr = _parser.Parse("4 'g' ~ 4000 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenQuantitiesNotEquivalent_WhenNotEquivalentOperator_ThenReturnsTrue()
+    {
+        // Arrange - 5.0 'mg' !~ 5.1 'mg' (different values)
+        var expr = _parser.Parse("5.0 'mg' !~ 5.1 'mg'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    #endregion
+
     #region Type Operator Tests
 
     [Fact]

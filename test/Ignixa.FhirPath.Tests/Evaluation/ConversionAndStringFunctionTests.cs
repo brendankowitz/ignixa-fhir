@@ -566,6 +566,48 @@ public class ConversionAndStringFunctionTests
     }
 
     [Fact]
+    public void GivenString_WhenSubstringWithZeroLength_ThenReturnsEmptyString()
+    {
+        // Arrange - per FHIRPath spec, zero length returns empty string
+        var expr = _parser.Parse("'abcdefg'.substring(3, 0)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(string.Empty, result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenSubstringWithNegativeLength_ThenReturnsEmptyString()
+    {
+        // Arrange - per FHIRPath spec, negative length returns empty string
+        var expr = _parser.Parse("'abcdefg'.substring(3, -1)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(string.Empty, result.Value);
+    }
+
+    [Fact]
+    public void GivenString_WhenSubstringWithNegativeStart_ThenReturnsEmptyCollection()
+    {
+        // Arrange - per FHIRPath spec, start outside string returns empty collection
+        var expr = _parser.Parse("'abcdefg'.substring(-1, 2)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
     public void GivenString_WhenStartsWith_ThenReturnsTrue()
     {
         // Arrange
@@ -877,6 +919,173 @@ public class ConversionAndStringFunctionTests
         // Assert
         Assert.NotNull(result.Value);
         Assert.Equal("time", result.InstanceType);
+    }
+
+    #endregion
+
+    #region toQuantity Unit Conversion Tests
+
+    [Fact]
+    public void GivenQuantityInYears_WhenToQuantityWithMonths_ThenConvertsCorrectly()
+    {
+        // Arrange - 1 year = 12 months
+        var expr = _parser.Parse("(1 year).toQuantity('month')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(12m, quantity.Value);
+        Assert.Equal("month", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantityInMonths_WhenToQuantityWithDays_ThenConvertsCorrectly()
+    {
+        // Arrange - 1 month = 30 days (per FHIRPath spec)
+        var expr = _parser.Parse("(1 month).toQuantity('day')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(30m, quantity.Value);
+        Assert.Equal("day", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantityInDays_WhenToQuantityWithHours_ThenConvertsCorrectly()
+    {
+        // Arrange - 1 day = 24 hours
+        var expr = _parser.Parse("(1 day).toQuantity('hour')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(24m, quantity.Value);
+        Assert.Equal("hour", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantityInHours_WhenToQuantityWithMinutes_ThenConvertsCorrectly()
+    {
+        // Arrange - 1 hour = 60 minutes
+        var expr = _parser.Parse("(1 hour).toQuantity('minute')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(60m, quantity.Value);
+        Assert.Equal("minute", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantityInMinutes_WhenToQuantityWithSeconds_ThenConvertsCorrectly()
+    {
+        // Arrange - 1 minute = 60 seconds
+        var expr = _parser.Parse("(1 minute).toQuantity('second')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(60m, quantity.Value);
+        Assert.Equal("second", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantityInYears_WhenToQuantityWithDays_ThenConvertsCorrectly()
+    {
+        // Arrange - 1 year = 365 days (per FHIRPath spec)
+        var expr = _parser.Parse("(1 year).toQuantity('day')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(365m, quantity.Value);
+        Assert.Equal("day", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantityInDays_WhenToQuantityWithWeek_ThenConvertsCorrectly()
+    {
+        // Arrange - 7 days = 1 week
+        var expr = _parser.Parse("(7 days).toQuantity('week')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(1m, quantity.Value);
+        Assert.Equal("week", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantity_WhenToQuantityWithSameUnit_ThenReturnsUnchanged()
+    {
+        // Arrange - same unit conversion should return same value
+        var expr = _parser.Parse("(5 day).toQuantity('day')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(5m, quantity.Value);
+        Assert.Equal("day", quantity.Unit);
+    }
+
+    [Fact]
+    public void GivenQuantity_WhenToQuantityWithNoUnit_ThenReturnsOriginal()
+    {
+        // Arrange - no unit argument should return original quantity
+        var expr = _parser.Parse("(5 day).toQuantity()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        Assert.NotNull(quantity);
+        Assert.Equal(5m, quantity.Value);
+        // Calendar keyword "day" is preserved as-is when no unit conversion requested
+        Assert.Equal("day", quantity.Unit);
     }
 
     #endregion

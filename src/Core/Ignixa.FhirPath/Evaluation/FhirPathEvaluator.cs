@@ -678,21 +678,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             if (convertedRight == null)
                 return false;
 
-            // For quantities, equivalence (~) uses a tolerance-based comparison
-            // Per FHIRPath spec and official test suite:
-            // - 4g ~ 4000mg should be true (exact match)
-            // - 4g ~ 4040mg should be true (within 1% tolerance)
-            // - 4g != 4040mg should be true (equality is stricter)
-            //
-            // Use a 1% relative tolerance for equivalence
-            var diff = Math.Abs(leftQty.Value - convertedRight.Value);
-            var maxAbs = Math.Max(Math.Abs(leftQty.Value), Math.Abs(convertedRight.Value));
+            // For quantities, equivalence (~) uses precision-based comparison per FHIRPath 3.0 spec:
+            // "For Quantity values, equivalence compares values with respect to their stated precision."
+            // Compare values when rounded to the lesser precision (fewer decimal places).
+            int precision1 = GetDecimalPrecision(leftQty.Value);
+            int precision2 = GetDecimalPrecision(convertedRight.Value);
+            int minPrecision = Math.Min(Math.Min(precision1, precision2), 28); // Clamp to max decimal precision
 
-            if (maxAbs == 0)
-                return diff == 0; // Both zero - must be exact
-
-            const decimal relativeTolerance = 0.01m; // 1%
-            return (diff / maxAbs) <= relativeTolerance;
+            decimal rounded1 = Math.Round(leftQty.Value, minPrecision, MidpointRounding.AwayFromZero);
+            decimal rounded2 = Math.Round(convertedRight.Value, minPrecision, MidpointRounding.AwayFromZero);
+            return rounded1 == rounded2;
         }
 
         if (left is string leftStr && right is string rightStr)
@@ -963,6 +958,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
     {
+        // Per FHIRPath official tests: {} = {} and {} != {} both return empty
+        // Any comparison involving empty collection returns empty (three-valued logic)
         if (left.Count == 0 || right.Count == 0)
             return null;
 

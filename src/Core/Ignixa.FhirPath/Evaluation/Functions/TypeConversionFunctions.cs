@@ -380,7 +380,9 @@ internal static class TypeConversionFunctions
     }
 
     /// <summary>
-    /// toQuantity() - Converts a value to a quantity.
+    /// toQuantity([unit]) - Converts a value to a quantity, optionally converting to specified unit.
+    /// When unit argument is provided, converts the quantity to the target unit using UCUM conversion rules.
+    /// Returns empty if conversion is not possible.
     /// </summary>
     [FhirPathFunction("toQuantity",
         SupportedContexts = "any-any",
@@ -388,39 +390,149 @@ internal static class TypeConversionFunctions
         MinArguments = 0,
         MaxArguments = 1,
         Category = "TypeConversion",
-        Description = "Converts a value to a quantity")]
-    public static IEnumerable<IElement> ToQuantity(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
+        Description = "Converts a value to a quantity, optionally converting to a specified unit")]
+    public static IEnumerable<IElement> ToQuantity(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         var list = focus.ToList();
         if (list.Count != 1)
             return [];
 
         var value = list[0].Value;
+        Quantity? quantity = null;
 
-        // If already a quantity, return it
-        if (value is Quantity)
-            return list;
-
-        // Try to parse from string
-        if (value is string s)
+        // If already a quantity, use it
+        if (value is Quantity q)
         {
-            var parsed = TryParseQuantity(s);
-            if (parsed != null)
-                return [new QuantityElement(parsed)];
+            quantity = q;
+        }
+        // Try to parse from string
+        else if (value is string s)
+        {
+            quantity = TryParseQuantity(s);
+        }
+        // Convert numeric to dimensionless quantity with unit "1"
+        else if (value is int i)
+        {
+            quantity = new Quantity(i, "1");
+        }
+        else if (value is decimal d)
+        {
+            quantity = new Quantity(d, "1");
+        }
+        // Convert boolean to dimensionless quantity (true=1, false=0)
+        else if (value is bool b)
+        {
+            quantity = new Quantity(b ? 1 : 0, "1");
         }
 
-        // Convert numeric to dimensionless quantity with unit "1"
-        if (value is int i)
-            return [new QuantityElement(new Quantity(i, "1"))];
+        if (quantity == null)
+            return [];
 
-        if (value is decimal d)
-            return [new QuantityElement(new Quantity(d, "1"))];
+        // If unit argument is provided, convert to target unit
+        if (arguments.Count > 0)
+        {
+            var unitResult = evaluateExpression(list, arguments[0], context).ToList();
+            if (unitResult.Count == 1 && unitResult[0].Value is string targetUnit)
+            {
+                var converted = ConvertQuantityToUnit(quantity, targetUnit);
+                if (converted == null)
+                    return []; // Conversion not possible
+                return [new QuantityElement(converted)];
+            }
+            return []; // Invalid unit argument
+        }
 
-        // Convert boolean to dimensionless quantity (true=1, false=0)
-        if (value is bool b)
-            return [new QuantityElement(new Quantity(b ? 1 : 0, "1"))];
+        return [new QuantityElement(quantity)];
+    }
 
-        return [];
+    /// <summary>
+    /// Converts a quantity to the specified target unit.
+    /// Supports calendar duration conversions (year/month/day/hour/minute/second).
+    /// </summary>
+    private static Quantity? ConvertQuantityToUnit(Quantity source, string targetUnit)
+    {
+        // Normalize target unit (handle calendar keywords like 'year' → 'a')
+        var normalizedTarget = CalendarDuration.GetUcumUnit(targetUnit) ?? targetUnit;
+        var normalizedSource = CalendarDuration.GetUcumUnit(source.Unit) ?? source.Unit;
+
+        // Same unit - no conversion needed
+        if (string.Equals(normalizedSource, normalizedTarget, StringComparison.Ordinal))
+            return new Quantity(source.Value, targetUnit);
+
+        // Try calendar duration conversion
+        var converted = TryCalendarDurationConversion(source.Value, normalizedSource, normalizedTarget);
+        if (converted.HasValue)
+        {
+            // Use the target unit as specified (preserve keyword form if given)
+            return new Quantity(converted.Value, targetUnit);
+        }
+
+        // Try UCUM conversion via the unit converter
+        var converter = QuantityUnitConverter.Instance;
+        var convertedValue = converter.Convert(source.Value, normalizedSource, normalizedTarget);
+        if (convertedValue.HasValue)
+            return new Quantity(convertedValue.Value, targetUnit);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to convert between calendar duration units using FHIRPath conversion factors.
+    /// Per FHIRPath spec: 1 year = 12 months = 365 days, 1 month = 30 days,
+    /// 1 day = 24 hours, 1 hour = 60 minutes, 1 minute = 60 seconds.
+    /// </summary>
+    private static decimal? TryCalendarDurationConversion(decimal value, string fromUnit, string toUnit)
+    {
+        // Check if both are calendar duration units
+        if (!CalendarDuration.IsCalendarDurationUnit(fromUnit) ||
+            !CalendarDuration.IsCalendarDurationUnit(toUnit))
+        {
+            return null;
+        }
+
+        // Direct conversions per FHIRPath spec
+        // Year-Month chain: 1 year = 12 months
+        // Month-Day-Hour chain: 1 month = 30 days, 1 day = 24 hours, 1 hour = 60 min, 1 min = 60 sec
+        // Year-Day: 1 year = 365 days (NOT 12*30=360)
+        // Week: 1 week = 7 days
+
+        // Convert to a common unit (seconds) using FHIRPath-specific factors
+        // Note: year→month and month→day use different day counts (365/12 vs 30)
+        
+        // First, handle the special year↔month conversion directly
+        if (fromUnit == "a" && toUnit == "mo")
+            return value * 12m; // 1 year = 12 months
+        if (fromUnit == "mo" && toUnit == "a")
+            return value / 12m; // 12 months = 1 year
+
+        // For all other conversions, use seconds as the intermediate unit
+        // Year and month have different "day equivalents" depending on context:
+        // - year→days: 365 days
+        // - month→days: 30 days
+        var toSeconds = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            { "a", 365m * 24m * 60m * 60m },      // year = 365 days in seconds
+            { "mo", 30m * 24m * 60m * 60m },      // month = 30 days in seconds
+            { "wk", 7m * 24m * 60m * 60m },       // week = 7 days in seconds
+            { "d", 24m * 60m * 60m },             // day in seconds
+            { "h", 60m * 60m },                   // hour in seconds
+            { "min", 60m },                       // minute in seconds
+            { "s", 1m },                          // second
+            { "ms", 0.001m }                      // millisecond
+        };
+
+        if (!toSeconds.TryGetValue(fromUnit, out var fromFactor) ||
+            !toSeconds.TryGetValue(toUnit, out var toFactor))
+        {
+            return null; // Not calendar duration units
+        }
+
+        // Convert: value * fromFactor / toFactor
+        return value * fromFactor / toFactor;
     }
 
     /// <summary>
@@ -820,9 +932,13 @@ internal static class TypeConversionFunctions
         MaxArguments = 1,
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to quantity")]
-    public static IEnumerable<IElement> ConvertsToQuantity(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
+    public static IEnumerable<IElement> ConvertsToQuantity(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var result = ToQuantity(focus, arguments);
+        var result = ToQuantity(focus, arguments, context, evaluateExpression);
         return FunctionHelpers.ReturnBoolean(result.Any());
     }
 

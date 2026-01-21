@@ -114,6 +114,8 @@ internal static class MathFunctions
             return [];
 
         var result = Math.Floor(value);
+        if (result < int.MinValue || result > int.MaxValue)
+            return [];
         return [FunctionHelpers.CreateInteger((int)result)];
     }
 
@@ -137,6 +139,8 @@ internal static class MathFunctions
             return [];
 
         var result = Math.Ceiling(value);
+        if (result < int.MinValue || result > int.MaxValue)
+            return [];
         return [FunctionHelpers.CreateInteger((int)result)];
     }
 
@@ -160,6 +164,8 @@ internal static class MathFunctions
             return [];
 
         var result = Math.Truncate(value);
+        if (result < int.MinValue || result > int.MaxValue)
+            return [];
         return [FunctionHelpers.CreateInteger((int)result)];
     }
 

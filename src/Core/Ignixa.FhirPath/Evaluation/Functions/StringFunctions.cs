@@ -137,6 +137,9 @@ internal static class StringFunctions
                 length = len;
         }
 
+        if (length.HasValue && length.Value <= 0)
+            return [FunctionHelpers.CreateString(string.Empty)];
+
         var result = length.HasValue
             ? str.Substring(start, Math.Min(length.Value, str.Length - start))
             : str.Substring(start);

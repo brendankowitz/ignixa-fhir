@@ -249,8 +249,37 @@ public class EdgeCaseAndErrorTests
     [Fact]
     public void GivenEmptyCollections_WhenEquality_ThenReturnsEmpty()
     {
-        // Arrange
+        // Arrange - FHIRPath official tests: {} = {} returns empty (three-valued logic)
         var expr = _parser.Parse("{} = {}");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert - empty collection
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenEmptyCollections_WhenNotEquals_ThenReturnsEmpty()
+    {
+        // Arrange - FHIRPath spec: {} != {} returns empty (indeterminate)
+        // This is different from {} = {} which returns true
+        var expr = _parser.Parse("{} != {}");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert - empty collection
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenEmptyAndNonEmpty_WhenEquality_ThenReturnsEmpty()
+    {
+        // Arrange - FHIRPath spec: {} = X returns {}
+        var expr = _parser.Parse("{} = 5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -261,10 +290,24 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenEmptyAndNonEmpty_WhenEquality_ThenReturnsEmpty()
+    public void GivenNonEmptyAndEmpty_WhenEquality_ThenReturnsEmpty()
     {
-        // Arrange
-        var expr = _parser.Parse("{} = 5");
+        // Arrange - FHIRPath spec: X = {} returns {}
+        var expr = _parser.Parse("5 = {}");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenEmptyAndNonEmpty_WhenNotEquals_ThenReturnsEmpty()
+    {
+        // Arrange - FHIRPath spec: {} != X returns {} (not true!)
+        var expr = _parser.Parse("{} != 5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -592,6 +635,122 @@ public class EdgeCaseAndErrorTests
 
         // Assert
         Assert.Empty(result);
+    }
+
+    #endregion
+
+    #region Math Function Overflow Edge Cases
+
+    [Fact]
+    public void GivenDecimalLargerThanIntMax_WhenFloor_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("2147483648.5.floor()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Overflow returns empty per FHIRPath spec
+    }
+
+    [Fact]
+    public void GivenDecimalSmallerThanIntMin_WhenFloor_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("(-2147483649.5).floor()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Overflow returns empty per FHIRPath spec
+    }
+
+    [Fact]
+    public void GivenDecimalLargerThanIntMax_WhenCeiling_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("2147483647.5.ceiling()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Overflow returns empty per FHIRPath spec
+    }
+
+    [Fact]
+    public void GivenDecimalSmallerThanIntMin_WhenCeiling_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("(-2147483649.5).ceiling()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Overflow returns empty per FHIRPath spec
+    }
+
+    [Fact]
+    public void GivenDecimalLargerThanIntMax_WhenTruncate_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("2147483648.9.truncate()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Overflow returns empty per FHIRPath spec
+    }
+
+    [Fact]
+    public void GivenDecimalSmallerThanIntMin_WhenTruncate_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _parser.Parse("(-2147483649.9).truncate()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Overflow returns empty per FHIRPath spec
+    }
+
+    [Fact]
+    public void GivenDecimalAtIntMax_WhenFloor_ThenReturnsValue()
+    {
+        // Arrange - int.MaxValue = 2147483647
+        var expr = _parser.Parse("2147483647.9.floor()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(2147483647, result.Value);
+    }
+
+    [Fact]
+    public void GivenDecimalAtIntMin_WhenCeiling_ThenReturnsValue()
+    {
+        // Arrange - int.MinValue = -2147483648
+        var expr = _parser.Parse("(-2147483648.9).ceiling()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(-2147483648, result.Value);
     }
 
     #endregion
