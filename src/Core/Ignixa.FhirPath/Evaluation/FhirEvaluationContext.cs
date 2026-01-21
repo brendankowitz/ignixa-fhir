@@ -28,13 +28,6 @@ public sealed record FhirEvaluationContext : EvaluationContext
     }
 
     /// <summary>
-    /// Private constructor for creating derived instances.
-    /// </summary>
-    private FhirEvaluationContext(EvaluationContext baseContext) : base()
-    {
-    }
-
-    /// <summary>
     /// A function that is invoked when resolve() is called in FhirPath expressions.
     /// Should return the IElement for the given reference (e.g., "Patient/1234").
     /// Should return null if the resource cannot be found.

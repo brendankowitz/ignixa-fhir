@@ -60,7 +60,7 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </remarks>
 public record EvaluationContext
 {
-    private EvaluationContext(
+    protected EvaluationContext(
         ImmutableList<IElement> focus,
         ImmutableStack<IElement> thisStack,
         ImmutableStack<IElement> indexStack,

@@ -32,7 +32,7 @@ public sealed record AnalysisContext
         string rootType,
         List<ValidationIssue> issues,
         ImmutableDictionary<string, FhirPathTypeSet> variables,
-        ImmutableDictionary<string, FhirPathTypeSet> definedVariables,
+        Dictionary<string, FhirPathTypeSet>? definedVariables,
         ImmutableStack<FhirPathTypeSet> typeStack,
         ImmutableStack<FhirPathTypeSet> expressionContextStack,
         ImmutableStack<FhirPathTypeSet> aggregateTotalStack,
@@ -42,7 +42,7 @@ public sealed record AnalysisContext
         RootType = rootType;
         _issues = issues;
         Variables = variables;
-        DefinedVariables = definedVariables;
+        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.OrdinalIgnoreCase);
         TypeStack = typeStack;
         ExpressionContextStack = expressionContextStack;
         AggregateTotalStack = aggregateTotalStack;
@@ -71,8 +71,9 @@ public sealed record AnalysisContext
 
     /// <summary>
     /// Gets the user-defined variables from defineVariable() function.
+    /// Mutable dictionary shared across context copies to allow defineVariable side effects during analysis.
     /// </summary>
-    public ImmutableDictionary<string, FhirPathTypeSet> DefinedVariables { get; init; }
+    public Dictionary<string, FhirPathTypeSet> DefinedVariables { get; init; }
 
     /// <summary>
     /// Gets the type stack for nested navigation.
@@ -134,7 +135,7 @@ public sealed record AnalysisContext
             rootTypeName,
             [],
             variables,
-            ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase),
+            null,  // Will create new mutable dictionary in constructor
             ImmutableStack<FhirPathTypeSet>.Empty,
             ImmutableStack<FhirPathTypeSet>.Empty,
             ImmutableStack<FhirPathTypeSet>.Empty,
@@ -304,12 +305,13 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
-    /// Returns a new context with a defined variable added.
+    /// Adds a defined variable to the shared mutable dictionary.
+    /// Unlike other With* methods, this mutates the shared dictionary for analysis of subsequent operations.
     /// </summary>
     public AnalysisContext WithDefinedVariable(string name, FhirPathTypeSet value)
     {
-        return new AnalysisContext(Schema, RootType, _issues, Variables, DefinedVariables.SetItem(name, value),
-            TypeStack, ExpressionContextStack, AggregateTotalStack, CurrentFocus);
+        DefinedVariables[name] = value;
+        return this;
     }
 
     /// <summary>

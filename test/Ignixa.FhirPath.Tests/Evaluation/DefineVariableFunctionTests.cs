@@ -155,6 +155,149 @@ public class DefineVariableFunctionTests
         Assert.Equal(10, result[1].Value);
     }
 
+    #region Complex Scoping Tests
+
+    [Fact]
+    public void GivenDefineVariable_WhenUsedInNestedSelect_ThenVariableAccessible()
+    {
+        // defineVariable value is accessible in nested select
+        var expr = _parser.Parse("defineVariable('x', 100) | %x + 1");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // defineVariable returns focus (0), then union with %x + 1 = 101
+        Assert.Equal(2, result.Count);
+        Assert.Equal(0, result[0].Value);
+        Assert.Equal(101, result[1].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenUsedAcrossChainedOperations_ThenVariableAccessible()
+    {
+        // Variable defined early is accessible in later operations
+        var expr = _parser.Parse("(1 | 2 | 3 | 4).defineVariable('threshold', 2).where($this > %threshold).select($this * 10)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // where filters to 3, 4 -> select multiplies to 30, 40
+        Assert.Equal(2, result.Count);
+        Assert.Equal(30, result[0].Value);
+        Assert.Equal(40, result[1].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenShadowingExistingVariable_ThenInnerScopeSeesNewValue()
+    {
+        // Inner defineVariable can shadow outer variable
+        var expr = _parser.Parse("defineVariable('x', 10).where(false) | defineVariable('x', %x + 5).where(false) | %x");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // First defineVariable sets x=10
+        // Second defineVariable sets x=%x+5 = 10+5 = 15
+        // %x returns 15
+        Assert.Single(result);
+        Assert.Equal(15, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenUsedInAggregate_ThenVariableAccessibleInAccumulator()
+    {
+        // defineVariable should be accessible within aggregate expression
+        var expr = _parser.Parse("(1 | 2 | 3).defineVariable('base', 100).aggregate($total + $this + %base, 0)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Iteration 0: 0 + 1 + 100 = 101
+        // Iteration 1: 101 + 2 + 100 = 203
+        // Iteration 2: 203 + 3 + 100 = 306
+        Assert.Equal(306, result.Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenMultipleVariablesChained_ThenAllAccessible()
+    {
+        // Multiple chained defineVariable calls, all accessible
+        var expr = _parser.Parse("defineVariable('a', 10).defineVariable('b', 20).defineVariable('c', %a + %b).where(false) | %c");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Single(result);
+        Assert.Equal(30, result[0].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenUsedInIif_ThenVariableAccessible()
+    {
+        var expr = _parser.Parse("(1 | 2 | 3 | 4).defineVariable('threshold', 2).select(iif($this > %threshold, 'high', 'low'))");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Equal(4, result.Count);
+        Assert.Equal("low", result[0].Value);  // 1 <= 2
+        Assert.Equal("low", result[1].Value);  // 2 <= 2
+        Assert.Equal("high", result[2].Value); // 3 > 2
+        Assert.Equal("high", result[3].Value); // 4 > 2
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenOneArgument_ThenUsesFocusAsValue()
+    {
+        // Single argument form: defineVariable('name') uses current focus as value
+        var expr = _parser.Parse("(5 | 10 | 15).defineVariable('items') | %items.sum()");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // defineVariable returns focus (5, 10, 15), then union with %items.sum() = 30
+        Assert.Equal(4, result.Count);
+        Assert.Equal(5, result[0].Value);
+        Assert.Equal(10, result[1].Value);
+        Assert.Equal(15, result[2].Value);
+        Assert.Equal(30, result[3].Value);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenReferencingUndefinedVariable_ThenReturnsEmpty()
+    {
+        var expr = _parser.Parse("%undefined");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenUsedWithExists_ThenVariableAccessible()
+    {
+        var expr = _parser.Parse("(1 | 2 | 3 | 4 | 5).defineVariable('target', 3).exists($this = %target)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenDefineVariable_WhenUsedWithAll_ThenVariableAccessible()
+    {
+        var expr = _parser.Parse("(5 | 10 | 15).defineVariable('min', 4).all($this > %min)");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    #endregion
+
     private static IElement CreateIntegerElement(int value)
     {
         return new TestElement(value, "integer");
