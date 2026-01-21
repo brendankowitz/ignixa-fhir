@@ -98,15 +98,31 @@ internal static class FhirSpecificFunctions
 
         foreach (var element in focus)
         {
-            // resolve() only works on Reference types
-            if (element.InstanceType != "Reference" && element.InstanceType != "ResourceReference")
+            string? referenceValue = null;
+
+            // resolve() works on Reference types
+            if (element.InstanceType == "Reference" || element.InstanceType == "ResourceReference")
+            {
+                // Try to extract the reference string from the "reference" child element
+                referenceValue = element.Scalar("reference") as string;
+
+                // If no nested child, check if Value is the reference string directly
+                // This happens when navigating to .reference which returns the Reference with its value
+                if (string.IsNullOrEmpty(referenceValue) && element.Value is string valueStr)
+                {
+                    referenceValue = valueStr;
+                }
+            }
+            // Also handle string values directly (common in FHIRPath expressions like entry.reference.where(resolve() is ...))
+            else if (element.InstanceType is "string" or "uri" or "canonical" or "url" && element.Value is string strValue)
+            {
+                referenceValue = strValue;
+            }
+            else
             {
                 // Not a reference - skip
                 continue;
             }
-
-            // Extract the reference string (e.g., "Patient/123" or "http://example.org/fhir/Patient/123")
-            var referenceValue = element.Scalar("reference") as string;
             if (string.IsNullOrEmpty(referenceValue))
             {
                 // No reference value - skip
@@ -275,4 +291,108 @@ internal static class FhirSpecificFunctions
             yield return FunctionHelpers.CreateString(reference);
         }
     }
+
+    #region Not Implemented Functions
+
+    /// <summary>
+    /// conformsTo() - Tests whether a resource conforms to a StructureDefinition.
+    /// NOT IMPLEMENTED: Requires profile validation infrastructure.
+    /// </summary>
+    [FhirPathFunction("conformsTo",
+        SupportedContexts = "Resource-Resource",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "FHIR",
+        Description = "Tests whether a resource conforms to a StructureDefinition (NOT IMPLEMENTED)")]
+    public static IEnumerable<IElement> ConformsTo(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        throw new NotImplementedException("Function 'conformsTo' is not implemented. It requires profile validation infrastructure.");
+    }
+
+    /// <summary>
+    /// memberOf() - Tests whether a code is in a value set.
+    /// NOT IMPLEMENTED: Requires terminology service.
+    /// </summary>
+    [FhirPathFunction("memberOf",
+        SupportedContexts = "code-Coding-CodeableConcept",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "FHIR",
+        Description = "Tests whether a code is in a value set (NOT IMPLEMENTED)")]
+    public static IEnumerable<IElement> MemberOf(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        throw new NotImplementedException("Function 'memberOf' is not implemented. It requires terminology service integration.");
+    }
+
+    /// <summary>
+    /// validateVS() - Validates a code against a value set.
+    /// NOT IMPLEMENTED: Requires terminology service.
+    /// </summary>
+    [FhirPathFunction("validateVS",
+        SupportedContexts = "code-Coding-CodeableConcept",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 2,
+        Category = "FHIR",
+        Description = "Validates a code against a value set (NOT IMPLEMENTED)")]
+    public static IEnumerable<IElement> ValidateVS(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        throw new NotImplementedException("Function 'validateVS' is not implemented. It requires terminology service integration.");
+    }
+
+    /// <summary>
+    /// translate() - Translates a code from one value set to another using a ConceptMap.
+    /// NOT IMPLEMENTED: Requires terminology service.
+    /// </summary>
+    [FhirPathFunction("translate",
+        SupportedContexts = "code-Coding-CodeableConcept",
+        ReturnType = "Coding",
+        MinArguments = 2,
+        MaxArguments = 3,
+        Category = "FHIR",
+        Description = "Translates a code using a ConceptMap (NOT IMPLEMENTED)")]
+    public static IEnumerable<IElement> Translate(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        throw new NotImplementedException("Function 'translate' is not implemented. It requires terminology service integration.");
+    }
+
+    /// <summary>
+    /// hasTemplateIdOf() - CDA-specific function to check template IDs.
+    /// NOT IMPLEMENTED: CDA support is out of scope.
+    /// </summary>
+    [FhirPathFunction("hasTemplateIdOf",
+        SupportedContexts = "any-any",
+        ReturnType = "boolean",
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "CDA",
+        Description = "CDA-specific template ID check (NOT IMPLEMENTED)")]
+    public static IEnumerable<IElement> HasTemplateIdOf(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        throw new NotImplementedException("Function 'hasTemplateIdOf' is not implemented. CDA support is out of scope.");
+    }
+
+    #endregion
 }

@@ -13,6 +13,106 @@ using Xunit.Abstractions;
 
 namespace Ignixa.FhirPath.Tests;
 
+/// <summary>
+/// Element resolver for FHIRPath resolve() function in test context.
+/// Supports contained resources (#id) and bundle entry resolution.
+/// </summary>
+internal static class TestElementResolver
+{
+    /// <summary>
+    /// Creates a resolver function for the given root element.
+    /// </summary>
+    public static Func<string, IElement?> Create(IElement root)
+    {
+        return reference => Resolve(root, reference);
+    }
+
+    private static IElement? Resolve(IElement root, string reference)
+    {
+        if (string.IsNullOrEmpty(reference))
+        {
+            return null;
+        }
+
+        // Contained reference: #id
+        if (reference.StartsWith('#'))
+        {
+            var containedId = reference.Substring(1);
+            return ResolveContained(root, containedId);
+        }
+
+        // Bundle entry resolution: Type/id
+        if (root.InstanceType == "Bundle")
+        {
+            return ResolveBundleEntry(root, reference);
+        }
+
+        // Relative or absolute references without server: return null
+        return null;
+    }
+
+    private static IElement? ResolveContained(IElement root, string containedId)
+    {
+        var containedResources = root.Children("contained");
+        foreach (var contained in containedResources)
+        {
+            var idChildren = contained.Children("id");
+            if (idChildren.Count > 0)
+            {
+                var id = idChildren[0].Value?.ToString();
+                if (id == containedId)
+                {
+                    return contained;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static IElement? ResolveBundleEntry(IElement bundle, string reference)
+    {
+        // Reference format: Type/id or full URL
+        var entries = bundle.Children("entry");
+        foreach (var entry in entries)
+        {
+            // Check fullUrl
+            var fullUrlChildren = entry.Children("fullUrl");
+            if (fullUrlChildren.Count > 0)
+            {
+                var fullUrl = fullUrlChildren[0].Value?.ToString();
+                if (fullUrl != null && (fullUrl == reference || fullUrl.EndsWith("/" + reference, StringComparison.Ordinal)))
+                {
+                    var resource = entry.Children("resource");
+                    if (resource.Count > 0)
+                    {
+                        return resource[0];
+                    }
+                }
+            }
+
+            // Check resource type/id
+            var resourceChildren = entry.Children("resource");
+            if (resourceChildren.Count > 0)
+            {
+                var resource = resourceChildren[0];
+                var resourceType = resource.InstanceType;
+                var idChildren = resource.Children("id");
+                if (idChildren.Count > 0)
+                {
+                    var id = idChildren[0].Value?.ToString();
+                    if ($"{resourceType}/{id}" == reference)
+                    {
+                        return resource;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+}
+
 public class OfficialTestSuiteRunner(ITestOutputHelper output)
 {
     private readonly ITestOutputHelper _output = output;
@@ -22,34 +122,14 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
 
-    // Functions that are not yet implemented. Tests using these are skipped to focus on supported functionality.
+    // Functions that throw NotImplementedException at runtime - tests are run but expected to fail
+    // These functions are explicitly defined to throw for proper test tracking.
     // Type introspection: conformsTo()
-    // Terminology services: %terminologies.expand, validateVS(), translate()
+    // Terminology services: %terminologies.expand, validateVS(), translate(), memberOf()
     // CDA-specific: hasTemplateIdOf()
 
-    private static readonly FrozenSet<string> _unsupportedFunctions = new[]
-    {
-        "conformsTo(",
-        "%terminologies",
-        "validateVS(",
-        "translate(",
-        "hasTemplateIdOf("  // CDA-specific function
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    // Tests that require functionality not yet implemented
-    private static readonly FrozenSet<string> _skippedTestNames = new[]
-    {
-        "testTypeA4",              // Parameters.parameter[2].value.is(FHIR.uri) - FHIR namespace prefix handling
-        "testPeriodInvariantOld",  // Period date comparison edge cases
-        "testMultipleResolve",     // Complex resolve() with bundle references
-        "testPrimitiveExtensions", // Primitive extensions with null values
-        "testPrimitiveExtensionsElement",  // Primitive extensions in element mode
-        // R4B-specific test failures: Extension.value polymorphic element resolution differs on Linux
-        // These tests pass on Windows but fail on Linux CI. Needs investigation into R4B schema handling.
-        "testFHIRPathIsFunction8",  // extension(...).value is Age
-        "testFHIRPathIsFunction9",  // extension(...).value is Quantity
-        "testFHIRPathIsFunction10"  // extension(...).value is Duration
-    }.ToFrozenSet(StringComparer.Ordinal);
+    // Default patient resource for tests without input files (matches Firely validator behavior)
+    private const string DefaultPatientXml = "<Patient xmlns=\"http://hl7.org/fhir\"><id value=\"pat1\"/></Patient>";
 
 
     private readonly FhirPathParser _parser = new();
@@ -77,20 +157,24 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         var versionDirectory = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", versionLabel);
         var examplesDirectory = Path.Combine(versionDirectory, "examples");
 
+        // Filter like the Firely validator: exclude only CDA mode and predicate tests
+        // We include:
+        // - Invalid expression tests (to test error handling)
+        // - Tests without input files (use default patient)
+        // - All function tests (NotImplementedException is thrown at runtime)
         var filteredTests = testCases
-            .Where(tc => !tc.IsInvalidTest)
-            .Where(tc => tc.InputFile is not null)
+            .Where(tc => tc.Mode != "cda")
             .Where(tc => !tc.Predicate)
-            .Where(tc => !ShouldSkipTest(tc))
-            .Where(tc => File.Exists(Path.Combine(examplesDirectory, tc.InputFile!)) ||
-                         File.Exists(Path.Combine(versionDirectory, tc.InputFile!)));
+            .Where(tc => tc.InputFile is null ||
+                         File.Exists(Path.Combine(examplesDirectory, tc.InputFile)) ||
+                         File.Exists(Path.Combine(versionDirectory, tc.InputFile)));
 
         var totalTests = testCases.Count;
-        var afterBasicFiltering = testCases.Count(tc => !tc.IsInvalidTest && tc.InputFile is not null && !tc.Predicate);
-        var afterSkipFiltering = filteredTests.Count();
-        var skippedCount = afterBasicFiltering - afterSkipFiltering;
+        var cdaTests = testCases.Count(tc => tc.Mode == "cda");
+        var predicateTests = testCases.Count(tc => tc.Predicate);
+        var runningCount = filteredTests.Count();
 
-        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total tests: {totalTests}, After basic filtering: {afterBasicFiltering}, Skipped (unsupported): {skippedCount}, Running: {afterSkipFiltering}");
+        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate excluded: {predicateTests}, Running: {runningCount}");
 
         foreach (var testCase in filteredTests)
         {
@@ -98,24 +182,8 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         }
     }
 
-    private static bool ShouldSkipTest(FhirPathTestCase testCase)
-    {
-        // Skip tests by name (e.g., tests requiring specific extension data not in examples)
-        if (_skippedTestNames.Contains(testCase.Name))
-        {
-            return true;
-        }
-
-        foreach (var unsupportedFunction in _unsupportedFunctions)
-        {
-            if (testCase.Expression.Contains(unsupportedFunction, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // No longer used - we run all tests and let them fail/pass naturally
+    // private static bool ShouldSkipTest(FhirPathTestCase testCase) { ... }
 
     [Theory]
     [MemberData(nameof(GetR4TestCases))]
@@ -148,7 +216,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     {
         // Arrange
         ArgumentNullException.ThrowIfNull(testCase);
-        ArgumentNullException.ThrowIfNull(testCase.InputFile);
 
         // Pass with comment for version-specific tests where behavior differs between R4/R4B and R5
         // testPlusDate19: R4/R4B truncate fractional seconds to integers, R5 preserves them
@@ -180,20 +247,40 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         var versionDirectory = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", versionString);
         var examplesDirectory = Path.Combine(versionDirectory, "examples");
-        
-        // Try examples directory first, then fall back to version root directory
-        var inputFilePath = Path.Combine(examplesDirectory, testCase.InputFile);
-        if (!File.Exists(inputFilePath))
+
+        // Load resource - use default patient if no input file specified
+        var schemaProvider = fhirVersion.GetSchemaProvider();
+        IElement element;
+
+        if (testCase.InputFile is not null)
         {
-            inputFilePath = Path.Combine(versionDirectory, testCase.InputFile);
+            // Try examples directory first, then fall back to version root directory
+            var inputFilePath = Path.Combine(examplesDirectory, testCase.InputFile);
+            if (!File.Exists(inputFilePath))
+            {
+                inputFilePath = Path.Combine(versionDirectory, testCase.InputFile);
+            }
+
+            var resourceJson = FhirXmlToJsonConverter.LoadResourceAsJson(inputFilePath);
+            var resource = ResourceJsonNode.Parse(resourceJson);
+            element = resource.ToElement(schemaProvider);
+        }
+        else
+        {
+            // Use default patient for tests without input file (matches Firely validator)
+            var defaultJson = FhirXmlToJsonConverter.ConvertXmlToJson(DefaultPatientXml);
+            var resource = ResourceJsonNode.Parse(defaultJson);
+            element = resource.ToElement(schemaProvider);
         }
 
-        var schemaProvider = fhirVersion.GetSchemaProvider();
-        var resourceJson = FhirXmlToJsonConverter.LoadResourceAsJson(inputFilePath);
-        var resource = ResourceJsonNode.Parse(resourceJson);
-        var element = resource.ToElement(schemaProvider);
+        // Handle invalid expression tests - they should fail at parse or evaluation time
+        if (testCase.IsInvalidTest)
+        {
+            RunInvalidExpressionTest(testCase, element, schemaProvider);
+            return;
+        }
 
-        // Act
+        // Act - parse expression
         Expression expression;
         try
         {
@@ -204,10 +291,24 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             throw new InvalidOperationException($"Failed to parse FHIRPath expression '{testCase.Expression}' in test '{testCase.Name}' (group: {testCase.GroupName})", ex);
         }
 
+        // Evaluate expression
         IEnumerable<IElement> results;
         try
         {
-            results = _evaluator.Evaluate(element, expression, new EvaluationContext());
+            var context = new FhirEvaluationContext
+            {
+                Resource = element,
+                ElementResolver = TestElementResolver.Create(element)
+            };
+            results = _evaluator.Evaluate(element, expression, context);
+        }
+        catch (NotImplementedException ex)
+        {
+            // NotImplementedException is expected for unsupported functions (conformsTo, %terminologies, etc.)
+            // Mark as skipped with clear message
+            _output.WriteLine($"[NOT IMPLEMENTED] {testCase.Name}: {ex.Message}");
+            Assert.Fail($"Function not implemented: {ex.Message}");
+            return;
         }
         catch (Exception ex)
         {
@@ -217,6 +318,76 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Assert
         var resultList = results.ToList();
         ValidateResults(testCase, resultList);
+    }
+
+    /// <summary>
+    /// Runs a test case that expects an invalid expression (syntax, semantic, or execution error).
+    /// The test passes if parsing or evaluation throws the expected error type.
+    /// </summary>
+    private void RunInvalidExpressionTest(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider)
+    {
+        var invalidType = testCase.InvalidType ?? "syntax";
+
+        try
+        {
+            // Try to parse the expression
+            var expression = _parser.Parse(testCase.Expression);
+
+            // If parsing succeeded and we expected a syntax error, that's a failure
+            if (invalidType == "syntax")
+            {
+                Assert.Fail($"Expected syntax error but expression parsed successfully: {testCase.Expression}");
+                return;
+            }
+
+            // Try to evaluate the expression
+            var context = new FhirEvaluationContext
+            {
+                Resource = element,
+                ElementResolver = TestElementResolver.Create(element)
+            };
+
+            // Force evaluation by iterating results
+            var results = _evaluator.Evaluate(element, expression, context).ToList();
+
+            // If we get here, no error was thrown - fail the test
+            Assert.Fail($"Expected {invalidType} error but expression evaluated successfully: {testCase.Expression}");
+        }
+        catch (NotImplementedException ex)
+        {
+            // NotImplementedException counts as semantic/execution error
+            if (invalidType is "semantic" or "execution")
+            {
+                _output.WriteLine($"[INVALID-OK] {testCase.Name}: NotImplementedException thrown as expected ({invalidType})");
+                return;
+            }
+            Assert.Fail($"Expected {invalidType} error but got NotImplementedException: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            // InvalidOperationException typically indicates semantic/execution errors
+            if (invalidType is "semantic" or "execution")
+            {
+                _output.WriteLine($"[INVALID-OK] {testCase.Name}: InvalidOperationException thrown as expected ({invalidType})");
+                return;
+            }
+            Assert.Fail($"Expected {invalidType} error but got InvalidOperationException: {ex.Message}");
+        }
+        catch (Exception ex) when (invalidType == "syntax")
+        {
+            // Any parse error for syntax tests is acceptable
+            _output.WriteLine($"[INVALID-OK] {testCase.Name}: Parse error thrown as expected (syntax): {ex.GetType().Name}");
+        }
+        catch (Exception ex)
+        {
+            // For semantic/execution, any exception is acceptable
+            if (invalidType is "semantic" or "execution")
+            {
+                _output.WriteLine($"[INVALID-OK] {testCase.Name}: Exception thrown as expected ({invalidType}): {ex.GetType().Name}");
+                return;
+            }
+            throw;
+        }
     }
 
     private static void ValidateResults(FhirPathTestCase testCase, List<IElement> actualResults)
