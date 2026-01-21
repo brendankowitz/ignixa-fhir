@@ -32,11 +32,7 @@ internal static class MathFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "round", out var value))
             return [];
 
         int precision = 0;
@@ -52,7 +48,8 @@ internal static class MathFunctions
 
         var rounded = Math.Round(value, precision, MidpointRounding.AwayFromZero);
 
-        if (precision == 0 && list[0].Value is int)
+        var firstElement = focus.First();
+        if (precision == 0 && firstElement.Value is int)
             return [FunctionHelpers.CreateInteger((int)rounded)];
 
         return [FunctionHelpers.CreateDecimal(rounded)];
@@ -77,11 +74,7 @@ internal static class MathFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("power() requires an exponent argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var baseValue))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "power", out var baseValue))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -108,11 +101,7 @@ internal static class MathFunctions
         Description = "Rounds down to the nearest integer")]
     public static IEnumerable<IElement> Floor(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "floor", out var value))
             return [];
 
         var result = Math.Floor(value);
@@ -133,11 +122,7 @@ internal static class MathFunctions
         Description = "Rounds up to the nearest integer")]
     public static IEnumerable<IElement> Ceiling(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "ceiling", out var value))
             return [];
 
         var result = Math.Ceiling(value);
@@ -158,11 +143,7 @@ internal static class MathFunctions
         Description = "Removes the decimal part of a number")]
     public static IEnumerable<IElement> Truncate(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "truncate", out var value))
             return [];
 
         var result = Math.Truncate(value);
@@ -184,8 +165,11 @@ internal static class MathFunctions
     public static IEnumerable<IElement> Abs(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
-        if (list.Count != 1)
+        if (list.Count == 0)
             return [];
+
+        if (list.Count > 1)
+            throw new InvalidOperationException("abs() requires a single input value");
 
         // Handle Quantity types
         if (list[0].Value is Types.Quantity qty)
@@ -197,10 +181,11 @@ internal static class MathFunctions
         if (list[0].Value is int intValue)
             return [FunctionHelpers.CreateInteger(Math.Abs(intValue))];
 
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
-            return [];
+        if (FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+            return [FunctionHelpers.CreateDecimal(Math.Abs(value))];
 
-        return [FunctionHelpers.CreateDecimal(Math.Abs(value))];
+        var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
+        throw new InvalidOperationException($"Function 'abs' is not supported on context type '{typeName}'");
     }
 
     /// <summary>
@@ -215,11 +200,7 @@ internal static class MathFunctions
         Description = "Returns the square root of a number")]
     public static IEnumerable<IElement> Sqrt(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "sqrt", out var value))
             return [];
 
         if (value < 0)
@@ -241,11 +222,7 @@ internal static class MathFunctions
         Description = "Returns e raised to the specified power")]
     public static IEnumerable<IElement> Exp(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "exp", out var value))
             return [];
 
         var result = (decimal)Math.Exp((double)value);
@@ -264,11 +241,7 @@ internal static class MathFunctions
         Description = "Returns the natural logarithm of a number")]
     public static IEnumerable<IElement> Ln(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "ln", out var value))
             return [];
 
         if (value <= 0)
@@ -297,11 +270,7 @@ internal static class MathFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("log() requires a base argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        if (!FunctionHelpers.TryConvertToDecimal(list[0].Value, out var value))
+        if (!FunctionHelpers.TryGetSingleNumber(focus, "log", out var value))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)

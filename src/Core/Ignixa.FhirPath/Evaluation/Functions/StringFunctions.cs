@@ -41,8 +41,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("indexOf() requires a substring argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "indexOf", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -75,14 +74,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("lastIndexOf() requires a substring argument");
 
-        var list = focus.ToList();
-        if (list.Count == 0)
-            return [];
-
-        if (list.Count != 1)
-            throw new InvalidOperationException("lastIndexOf() requires a single input value");
-
-        if (list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "lastIndexOf", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -120,8 +112,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("substring() requires a start argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "substring", out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -169,8 +160,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("startsWith() requires a prefix argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "startsWith", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -200,8 +190,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("endsWith() requires a suffix argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "endsWith", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -224,8 +213,7 @@ internal static class StringFunctions
         Description = "Converts a string to uppercase")]
     public static IEnumerable<IElement> Upper(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "upper", out var str))
             return [];
 
         return [FunctionHelpers.CreateString(str.ToUpperInvariant())];
@@ -243,8 +231,7 @@ internal static class StringFunctions
         Description = "Converts a string to lowercase")]
     public static IEnumerable<IElement> Lower(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "lower", out var str))
             return [];
 
         // FhirPath lower() function explicitly requires lowercase, ToLowerInvariant is intentional
@@ -265,8 +252,7 @@ internal static class StringFunctions
         Description = "Returns the number of characters in a string")]
     public static IEnumerable<IElement> Length(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "length", out var str))
             return [];
 
         return [FunctionHelpers.CreateInteger(str.Length)];
@@ -291,8 +277,7 @@ internal static class StringFunctions
         if (arguments.Count < 2)
             throw new ArgumentException("replace() requires pattern and substitution arguments");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "replace", out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -341,8 +326,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("matches() requires a regex argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "matches", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -381,11 +365,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("matchesFull() requires a regex argument");
 
-        var list = focus.ToList();
-        if (list.Count == 0)
-            return [];
-
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "matchesFull", out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -451,8 +431,7 @@ internal static class StringFunctions
         if (arguments.Count < 2)
             throw new ArgumentException("replaceMatches() requires pattern and substitution arguments");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "replaceMatches", out var str))
             return [];
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
@@ -492,8 +471,7 @@ internal static class StringFunctions
         Description = "Splits a string into individual characters")]
     public static IEnumerable<IElement> ToChars(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "toChars", out var str))
             return [];
 
         return str.Select(c => FunctionHelpers.CreateString(c.ToString()));
@@ -553,8 +531,7 @@ internal static class StringFunctions
         Description = "Removes leading and trailing whitespace")]
     public static IEnumerable<IElement> Trim(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "trim", out var str))
             return [];
 
         return [FunctionHelpers.CreateString(str.Trim())];
@@ -580,8 +557,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("split() requires a delimiter argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "split", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -612,8 +588,7 @@ internal static class StringFunctions
         if (arguments.Count == 0)
             throw new ArgumentException("contains() requires a substring argument");
 
-        var list = focus.ToList();
-        if (list.Count != 1 || list[0].Value is not string str)
+        if (!FunctionHelpers.TryGetSingleString(focus, "contains", out var str))
             return [];
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)

@@ -169,6 +169,65 @@ internal static class FunctionHelpers
 
     #endregion
 
+    #region Type Validation Helpers
+
+    /// <summary>
+    /// Validates that the focus collection contains a single string value.
+    /// </summary>
+    /// <param name="focus">The input collection</param>
+    /// <param name="functionName">The function name for error messages</param>
+    /// <param name="str">The extracted string value if valid</param>
+    /// <returns>True if valid, false if empty collection</returns>
+    /// <exception cref="InvalidOperationException">If collection has multiple items or non-string value</exception>
+    public static bool TryGetSingleString(IEnumerable<IElement> focus, string functionName, out string str)
+    {
+        str = string.Empty;
+        var list = focus.ToList();
+
+        if (list.Count == 0)
+            return false;
+
+        if (list.Count > 1)
+            throw new InvalidOperationException($"{functionName}() requires a single input value");
+
+        if (list[0].Value is string s)
+        {
+            str = s;
+            return true;
+        }
+
+        var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
+        throw new InvalidOperationException($"Function '{functionName}' is not supported on context type '{typeName}'");
+    }
+
+    /// <summary>
+    /// Validates that the focus collection contains a single numeric value.
+    /// </summary>
+    /// <param name="focus">The input collection</param>
+    /// <param name="functionName">The function name for error messages</param>
+    /// <param name="value">The extracted decimal value if valid</param>
+    /// <returns>True if valid, false if empty collection</returns>
+    /// <exception cref="InvalidOperationException">If collection has multiple items or non-numeric value</exception>
+    public static bool TryGetSingleNumber(IEnumerable<IElement> focus, string functionName, out decimal value)
+    {
+        value = 0;
+        var list = focus.ToList();
+
+        if (list.Count == 0)
+            return false;
+
+        if (list.Count > 1)
+            throw new InvalidOperationException($"{functionName}() requires a single input value");
+
+        if (TryConvertToDecimal(list[0].Value, out value))
+            return true;
+
+        var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
+        throw new InvalidOperationException($"Function '{functionName}' is not supported on context type '{typeName}'");
+    }
+
+    #endregion
+
     #region Type Conversion Helpers
 
     /// <summary>

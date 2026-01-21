@@ -406,17 +406,17 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenNonString_WhenStringFunction_ThenReturnsEmpty()
+    public void GivenNonString_WhenStringFunction_ThenThrowsError()
     {
         // Arrange
         var expr = _parser.Parse("42.upper()");
         var root = CreateIntegerElement(0);
 
-        // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        // Assert
-        Assert.Empty(result); // String functions on non-strings return empty
+        // Act & Assert - String functions on non-strings throw (matching Firely/fhirpath.js behavior)
+        var ex = Assert.Throws<InvalidOperationException>(() => 
+            _evaluator.Evaluate(root, expr).ToList());
+        
+        Assert.Contains("upper", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     #endregion

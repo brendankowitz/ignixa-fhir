@@ -231,17 +231,18 @@ public class IndexScopedFunctionTests
         // Per FHIRPath spec: Non-scoped functions (like contains) should NOT change $this
         // In: 'abc'.contains(trace('t').length().toString())
         // - trace('t') returns $this which should be the outer context (integer root), not 'abc'
-        // - Since our root is an integer, trace returns the integer, and length() on integer fails
-        // The expression should return empty (or error) because length() is invalid on integer
+        // - Since our root is an integer, trace returns the integer, and length() on integer throws
         
         var expr = _parser.Parse("'abc'.contains(trace('t').length().toString())");
         var root = new TestIntegerElement(42);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        // Should be empty because trace() returns $this (integer 42), 
+        // Should throw because trace() returns $this (integer 42), 
         // and length() is not valid on integers
-        Assert.Empty(result);
+        var ex = Assert.Throws<InvalidOperationException>(() => 
+            _evaluator.Evaluate(root, expr).ToList());
+        
+        Assert.Contains("length", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("integer", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
