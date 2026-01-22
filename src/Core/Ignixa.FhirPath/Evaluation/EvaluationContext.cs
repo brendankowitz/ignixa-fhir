@@ -320,10 +320,10 @@ public record EvaluationContext
             return RootResource;
         }
 
-        // Not-implemented environment variables that require external services
+        // Not-supported environment variables that require external services
         if (name == "terminologies")
         {
-            throw new NotImplementedException("Environment variable '%terminologies' is not implemented. It requires terminology service integration.");
+            throw new NotSupportedException("Environment variable '%terminologies' is not supported. It requires terminology service integration.");
         }
 
         if (DefinedVariables.TryGetValue(name, out var definedValue))
