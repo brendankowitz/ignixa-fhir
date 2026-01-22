@@ -244,7 +244,7 @@ internal static class AggregateFunctions
         // Sum all values
         decimal sum = quantities.Sum(q => q!.Value);
         var resultQuantity = new Quantity(sum, firstUnit);
-        return [new QuantityElement(resultQuantity)];
+        return [FunctionHelpers.CreateQuantity(resultQuantity)];
     }
 
     private static IEnumerable<IElement> SumNumeric(List<IElement> list)
@@ -311,7 +311,7 @@ internal static class AggregateFunctions
             ? quantities.MaxBy(q => q!.Value)
             : quantities.MinBy(q => q!.Value);
 
-        return result != null ? [new QuantityElement(result)] : [];
+        return result != null ? [FunctionHelpers.CreateQuantity(result)] : [];
     }
 
     private static IEnumerable<IElement> MinMaxNumeric(List<IElement> list, bool isMax)
@@ -429,7 +429,7 @@ internal static class AggregateFunctions
 
         if (extremeValue != null && extremeType != null)
         {
-            return [new PrimitiveElement(extremeValue, extremeType)];
+            return [new FunctionHelpers.PrimitiveElement(extremeValue, extremeType)];
         }
 
         return [];
@@ -453,7 +453,7 @@ internal static class AggregateFunctions
         // Average all values
         decimal avg = quantities.Average(q => q!.Value);
         var resultQuantity = new Quantity(avg, firstUnit);
-        return [new QuantityElement(resultQuantity)];
+        return [FunctionHelpers.CreateQuantity(resultQuantity)];
     }
 
     private static IEnumerable<IElement> AvgNumeric(List<IElement> list)
@@ -534,75 +534,8 @@ internal static class AggregateFunctions
             out result);
     }
 
-    private static IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
-    private static IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
-
-    #endregion
-
-    #region IElement Implementations
-
-    /// <summary>
-    /// IElement wrapper for Quantity values.
-    /// </summary>
-    private class QuantityElement : IElement
-    {
-        private readonly Quantity _quantity;
-
-        public QuantityElement(Quantity quantity)
-        {
-            ArgumentNullException.ThrowIfNull(quantity);
-            _quantity = quantity;
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType => "Quantity";
-        public object Value => _quantity;
-        public string Location => string.Empty;
-        public IType? Definition => null;
-        public IType? Type => null;
-
-        public T? Meta<T>() where T : class => null;
-
-        public IReadOnlyList<IElement> Children(string? name = null)
-        {
-            // Quantity can have child elements: value, unit, system, code
-            var children = new List<IElement>();
-
-            if (name == null || name == "value")
-                children.Add(new PrimitiveElement(_quantity.Value, "decimal"));
-
-            if (name == null || name == "unit" || name == "code")
-                children.Add(new PrimitiveElement(_quantity.Unit, "string"));
-
-            if (name == null || name == "system")
-                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri"));
-
-            return children;
-        }
-    }
-
-    /// <summary>
-    /// IElement wrapper for primitive values.
-    /// </summary>
-    private class PrimitiveElement : IElement
-    {
-        public PrimitiveElement(object value, string type)
-        {
-            Value = value;
-            InstanceType = type;
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType { get; }
-        public object Value { get; }
-        public string Location => string.Empty;
-        public IType? Definition => null;
-        public IType? Type => null;
-
-        public T? Meta<T>() where T : class => null;
-
-        public IReadOnlyList<IElement> Children(string? name = null) => [];
-    }
+    private static IElement CreateInteger(int value) => new FunctionHelpers.PrimitiveElement(value, "integer");
+    private static IElement CreateDecimal(decimal value) => new FunctionHelpers.PrimitiveElement(value, "decimal");
 
     #endregion
 }

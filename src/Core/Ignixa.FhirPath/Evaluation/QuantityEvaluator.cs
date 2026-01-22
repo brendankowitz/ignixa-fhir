@@ -37,7 +37,7 @@ internal static class QuantityEvaluator
         var quantity = new Quantity(quantityExpr.Value, quantityExpr.Unit);
 
         // Wrap in a QuantityElement (IElement implementation)
-        yield return new QuantityElement(quantity);
+        yield return Functions.FunctionHelpers.CreateQuantity(quantity);
     }
 
     /// <summary>
@@ -210,7 +210,7 @@ internal static class QuantityEvaluator
     {
         var result = left.Add(right, UnitConverter);
         return result != null
-            ? [new QuantityElement(result)]
+            ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
@@ -218,7 +218,7 @@ internal static class QuantityEvaluator
     {
         var result = left.Subtract(right, UnitConverter);
         return result != null
-            ? [new QuantityElement(result)]
+            ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
@@ -226,21 +226,21 @@ internal static class QuantityEvaluator
     {
         var result = UnitConverter.Multiply(left, right);
         return result != null
-            ? [new QuantityElement(result)]
+            ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
     private static IEnumerable<IElement> EvaluateQuantityScalarMultiply(Quantity quantity, decimal scalar)
     {
         var result = quantity.Multiply(scalar);
-        return [new QuantityElement(result)];
+        return [Functions.FunctionHelpers.CreateQuantity(result)];
     }
 
     private static IEnumerable<IElement> EvaluateQuantityScalarDivide(Quantity quantity, decimal scalar)
     {
         var result = quantity.DivideByScalar(scalar);
         return result != null
-            ? [new QuantityElement(result)]
+            ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
@@ -248,7 +248,7 @@ internal static class QuantityEvaluator
     {
         var result = UnitConverter.Divide(left, right);
         return result != null
-            ? [new QuantityElement(result)]
+            ? [Functions.FunctionHelpers.CreateQuantity(result)]
             : [];
     }
 
@@ -270,72 +270,7 @@ internal static class QuantityEvaluator
         };
     }
 
-    private static IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
-
-    #endregion
-
-    #region IElement Implementations
-
-    /// <summary>
-    /// IElement wrapper for Quantity values.
-    /// </summary>
-    private class QuantityElement : IElement
-    {
-        private readonly Quantity _quantity;
-
-        public QuantityElement(Quantity quantity)
-        {
-            ArgumentNullException.ThrowIfNull(quantity);
-            _quantity = quantity;
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType => "Quantity";
-        public object Value => _quantity;
-        public string Location => string.Empty;
-        public IType? Type => null;
-
-        public T? Meta<T>() where T : class => null;
-
-        public IReadOnlyList<IElement> Children(string? name = null)
-        {
-            // Quantity can have child elements: value, unit, system, code
-            var children = new List<IElement>();
-
-            if (name == null || name == "value")
-                children.Add(new PrimitiveElement(_quantity.Value, "decimal"));
-
-            if (name == null || name == "unit" || name == "code")
-                children.Add(new PrimitiveElement(_quantity.Unit, "string"));
-
-            if (name == null || name == "system")
-                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri"));
-
-            return children;
-        }
-    }
-
-    /// <summary>
-    /// IElement wrapper for primitive values.
-    /// </summary>
-    private class PrimitiveElement : IElement
-    {
-        public PrimitiveElement(object value, string type)
-        {
-            Value = value;
-            InstanceType = type;
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType { get; }
-        public object Value { get; }
-        public string Location => string.Empty;
-        public IType? Type => null;
-
-        public T? Meta<T>() where T : class => null;
-
-        public IReadOnlyList<IElement> Children(string? name = null) => [];
-    }
+    private static IElement CreateDecimal(decimal value) => new Functions.FunctionHelpers.PrimitiveElement(value, "decimal");
 
     #endregion
 }

@@ -41,6 +41,22 @@ namespace Ignixa.FhirPath.Analysis;
 /// </remarks>
 public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet>
 {
+    /// <summary>
+    /// FHIR primitive types that are string-based and compatible with 'string' type.
+    /// </summary>
+    private static readonly HashSet<string> StringSubtypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "string", "id", "code", "uri", "url", "canonical", "oid", "uuid", "markdown"
+    };
+
+    /// <summary>
+    /// Numeric types compatible with numeric operations.
+    /// </summary>
+    private static readonly HashSet<string> NumericTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "integer", "decimal", "long"
+    };
+
     private readonly IFhirSchemaProvider _schema;
     private readonly SymbolTable _symbolTable;
     private readonly FhirPathParser _parser;
@@ -1068,24 +1084,13 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         // Handle "number" which includes integer, decimal, and long
         if (supportedType.Equals("number", StringComparison.OrdinalIgnoreCase))
         {
-            return actualType.Equals("integer", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("decimal", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("long", StringComparison.OrdinalIgnoreCase);
+            return NumericTypes.Contains(actualType);
         }
 
         // Handle primitive type aliases
         if (supportedType.Equals("string", StringComparison.OrdinalIgnoreCase))
         {
-            // FHIR primitive types that are string-based
-            return actualType.Equals("string", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("id", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("code", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("uri", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("url", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("canonical", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("oid", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("uuid", StringComparison.OrdinalIgnoreCase) ||
-                   actualType.Equals("markdown", StringComparison.OrdinalIgnoreCase);
+            return StringSubtypes.Contains(actualType);
         }
 
         return false;

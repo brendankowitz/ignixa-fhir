@@ -366,4 +366,55 @@ internal static class FunctionHelpers
     }
 
     #endregion
+
+    #region QuantityElement Implementation
+
+    /// <summary>
+    /// IElement wrapper for Quantity values.
+    /// Used by aggregate, math, boundary, and conversion functions.
+    /// </summary>
+    public sealed class QuantityElement : IElement
+    {
+        private readonly Types.Quantity _quantity;
+
+        public QuantityElement(Types.Quantity quantity)
+        {
+            ArgumentNullException.ThrowIfNull(quantity);
+            _quantity = quantity;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType => "Quantity";
+        public object Value => _quantity;
+        public string Location => string.Empty;
+        public IType? Type => null;
+
+        public T? Meta<T>() where T : class => null;
+
+        /// <summary>
+        /// Returns child elements for the Quantity: value, unit/code, and system.
+        /// </summary>
+        public IReadOnlyList<IElement> Children(string? name = null)
+        {
+            var children = new List<IElement>();
+
+            if (name == null || name == "value")
+                children.Add(new PrimitiveElement(_quantity.Value, "decimal"));
+
+            if (name == null || name == "unit" || name == "code")
+                children.Add(new PrimitiveElement(_quantity.Unit, "string"));
+
+            if (name == null || name == "system")
+                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri"));
+
+            return children;
+        }
+    }
+
+    /// <summary>
+    /// Creates an IElement wrapping a Quantity value.
+    /// </summary>
+    public static IElement CreateQuantity(Types.Quantity quantity) => new QuantityElement(quantity);
+
+    #endregion
 }

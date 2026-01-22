@@ -441,12 +441,12 @@ internal static class TypeConversionFunctions
                 var converted = ConvertQuantityToUnit(quantity, targetUnit);
                 if (converted == null)
                     return []; // Conversion not possible
-                return [new QuantityElement(converted)];
+                return [FunctionHelpers.CreateQuantity(converted)];
             }
             return []; // Invalid unit argument
         }
 
-        return [new QuantityElement(quantity)];
+        return [FunctionHelpers.CreateQuantity(quantity)];
     }
 
     /// <summary>
@@ -586,27 +586,6 @@ internal static class TypeConversionFunctions
         // Unquoted non-keyword unit is not valid per FHIRPath spec
         // (e.g., "1 wk" without quotes is not valid, "1 'wk'" is)
         return null;
-    }
-
-    /// <summary>
-    /// IElement implementation for Quantity values.
-    /// </summary>
-    private class QuantityElement : IElement
-    {
-        private readonly Quantity _quantity;
-
-        public QuantityElement(Quantity quantity)
-        {
-            _quantity = quantity ?? throw new ArgumentNullException(nameof(quantity));
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType => "Quantity";
-        public object Value => _quantity;
-        public string Location => string.Empty;
-        public IType? Type => null;
-        public IReadOnlyList<IElement> Children(string? name = null) => [];
-        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

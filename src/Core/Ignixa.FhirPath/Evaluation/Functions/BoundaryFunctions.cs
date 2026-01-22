@@ -220,7 +220,7 @@ internal static class BoundaryFunctions
         {
             var inputPrecision = GetDecimalPrecision(qty.Value);
             var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
-            return new QuantityElement(new Quantity(boundaryValue, qty.Unit));
+            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, qty.Unit));
         }
 
         // Handle FHIR Quantity element with decimal value
@@ -229,7 +229,7 @@ internal static class BoundaryFunctions
             var inputPrecision = GetDecimalPrecision(quantityValue);
             var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
             var unit = ExtractUnitFromQuantityElement(element) ?? "1";
-            return new QuantityElement(new Quantity(boundaryValue, unit));
+            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, unit));
         }
 
         return cleanValue switch
@@ -262,7 +262,7 @@ internal static class BoundaryFunctions
         {
             var inputPrecision = GetDecimalPrecision(qty.Value);
             var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
-            return new QuantityElement(new Quantity(boundaryValue, qty.Unit));
+            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, qty.Unit));
         }
 
         // Handle FHIR Quantity element with decimal value
@@ -271,7 +271,7 @@ internal static class BoundaryFunctions
             var inputPrecision = GetDecimalPrecision(quantityValue);
             var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
             var unit = ExtractUnitFromQuantityElement(element) ?? "1";
-            return new QuantityElement(new Quantity(boundaryValue, unit));
+            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, unit));
         }
 
         return cleanValue switch
@@ -799,31 +799,6 @@ internal static class BoundaryFunctions
         // Check if looks like a time (hh:mm or @Thh:mm)
         value = value.TrimStart('@').TrimStart('T');
         return Regex.IsMatch(value, @"^\d{2}(:\d{2})?");
-    }
-
-    #endregion
-
-    #region QuantityElement
-
-    /// <summary>
-    /// IElement wrapper for Quantity values used by boundary functions.
-    /// </summary>
-    private sealed class QuantityElement : IElement
-    {
-        private readonly Quantity _quantity;
-
-        public QuantityElement(Quantity quantity)
-        {
-            _quantity = quantity;
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType => "Quantity";
-        public object Value => _quantity;
-        public string Location => string.Empty;
-        public IType? Type => null;
-        public IReadOnlyList<IElement> Children(string? name = null) => [];
-        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

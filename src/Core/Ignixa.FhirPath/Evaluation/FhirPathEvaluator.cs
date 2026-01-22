@@ -897,15 +897,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (dateTimeValue.StartsWith("T", StringComparison.Ordinal))
         {
-            return new PrimitiveElement(value, "time");
+            return new PrimitiveElement(dateTimeValue, "time");
         }
 
         if (dateTimeValue.Contains('T', StringComparison.Ordinal))
         {
-            return new PrimitiveElement(value, "dateTime");
+            return new PrimitiveElement(dateTimeValue, "dateTime");
         }
 
-        return new PrimitiveElement(value, "date");
+        return new PrimitiveElement(dateTimeValue, "date");
     }
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
@@ -1611,7 +1611,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         // Format result to match input precision
         var resultStr = FormatDateTimeWithPrecision(result, precision, dateTimeStr);
-        return [new PrimitiveElement("@" + resultStr, isTimeOnly ? "time" : (dateTimeStr.Contains('T', StringComparison.Ordinal) ? "dateTime" : "date"))];
+        return [new PrimitiveElement(resultStr, isTimeOnly ? "time" : (dateTimeStr.Contains('T', StringComparison.Ordinal) ? "dateTime" : "date"))];
     }
 
     private string FormatDateTimeWithPrecision(DateTimeOffset dt, DateTimePrecision precision, string originalStr)

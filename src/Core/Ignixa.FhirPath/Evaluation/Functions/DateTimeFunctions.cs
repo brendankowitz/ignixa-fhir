@@ -530,12 +530,12 @@ public static class DateTimeFunctions
         var element = list[0];
         var value = element.Value;
 
-        // Handle date/time literals (stored as strings with @ prefix)
-        if (value is string str && str.StartsWith("@", StringComparison.Ordinal))
+        // Handle date/time literals - check InstanceType instead of @ prefix
+        // (values no longer include @ prefix after parsing)
+        if (value is string str && (element.InstanceType == "date" || element.InstanceType == "dateTime" || element.InstanceType == "time"))
         {
-            // Remove @ prefix and count digits only
-            var dateTimeStr = str.Substring(1);
-            var digitCount = dateTimeStr.Count(c => char.IsDigit(c));
+            // Count digits only (no @ prefix in stored values)
+            var digitCount = str.Count(c => char.IsDigit(c));
             return [CreateInteger(digitCount)];
         }
 
@@ -835,43 +835,7 @@ public static class DateTimeFunctions
     /// </summary>
     private static IElement CreateQuantityElement(decimal value, string unit)
     {
-        return new QuantityElement(new Quantity(value, unit));
-    }
-
-    /// <summary>
-    /// IElement wrapper for Quantity values used by duration/difference functions.
-    /// </summary>
-    private sealed class QuantityElement : IElement
-    {
-        private readonly Quantity _quantity;
-
-        public QuantityElement(Quantity quantity)
-        {
-            _quantity = quantity;
-        }
-
-        public string Name => string.Empty;
-        public string InstanceType => "Quantity";
-        public object Value => _quantity;
-        public string Location => string.Empty;
-        public IType? Type => null;
-
-        public IReadOnlyList<IElement> Children(string? name = null)
-        {
-            if (name == null || name == "value")
-            {
-                return [new PrimitiveElement(_quantity.Value, "decimal")];
-            }
-
-            if (name == "unit")
-            {
-                return [new PrimitiveElement(_quantity.Unit, "string")];
-            }
-
-            return [];
-        }
-
-        public T? Meta<T>() where T : class => null;
+        return FunctionHelpers.CreateQuantity(new Quantity(value, unit));
     }
 
     #endregion
