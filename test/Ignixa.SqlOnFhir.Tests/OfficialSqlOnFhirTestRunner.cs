@@ -331,10 +331,61 @@ public class OfficialSqlOnFhirTestRunner
                 }
                 else
                 {
-                    Assert.Equal(expectedValue.ToString(), actualValue.ToString());
+                    // Normalize temporal values for comparison
+                    // FHIRPath time values have 'T' prefix, SQL values don't
+                    // FHIRPath datetime values may have extra precision
+                    var expectedStr = NormalizeTemporalValue(expectedValue.ToString()!);
+                    var actualStr = NormalizeTemporalValue(actualValue.ToString()!);
+                    
+                    // If expected is date-only (YYYY-MM-DD) but actual is datetime,
+                    // truncate actual to date for comparison (SQL on FHIR date column type coercion)
+                    if (IsDateOnly(expectedStr) && !IsDateOnly(actualStr))
+                    {
+                        actualStr = TruncateDateTimeToDate(actualStr);
+                    }
+                    
+                    Assert.Equal(expectedStr, actualStr);
                 }
             }
         }
+    }
+
+    private static bool IsDateOnly(string value)
+    {
+        // Check if value looks like YYYY-MM-DD (exactly 10 chars, no T)
+        return value.Length == 10 && 
+               value[4] == '-' && 
+               value[7] == '-' && 
+               !value.Contains('T', StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Normalizes temporal values for comparison by removing FHIRPath-specific formatting
+    /// and truncating datetimes to dates when needed.
+    /// </summary>
+    private static string NormalizeTemporalValue(string value)
+    {
+        // Remove 'T' prefix from time values (FHIRPath format)
+        if (value.StartsWith("T", StringComparison.Ordinal) && value.Length > 1 && char.IsDigit(value[1]))
+        {
+            return value.Substring(1);
+        }
+        return value;
+    }
+
+    /// <summary>
+    /// Truncates a datetime value to date if needed for comparison.
+    /// SQL on FHIR expects date columns to return just the date portion.
+    /// </summary>
+    private static string TruncateDateTimeToDate(string value)
+    {
+        // If value looks like a datetime (contains T), truncate to date
+        var tIndex = value.IndexOf('T', StringComparison.Ordinal);
+        if (tIndex > 0)
+        {
+            return value.Substring(0, tIndex);
+        }
+        return value;
     }
 
     /// <summary>

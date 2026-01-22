@@ -159,7 +159,10 @@ internal static class BoundaryFunctions
     {
         var instanceType = element.InstanceType;
         
-        // Check for date/time types by instance type (case-insensitive comparison)
+        // For date/time types, default to full precision for boundary comparisons
+        // Per FHIRPath spec and Firely implementation:
+        // - @2014.lowBoundary() = @2014-01-01T00:00:00.000 (full datetime)
+        // - @T10:30.lowBoundary() = @T10:30:00.000 (full time)
         if (string.Equals(instanceType, "date", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(instanceType, "dateTime", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(instanceType, "instant", StringComparison.OrdinalIgnoreCase))
@@ -188,6 +191,21 @@ internal static class BoundaryFunctions
         
         // Default to decimal precision for numeric types
         return DefaultDecimalPrecision;
+    }
+
+    private static int GetTimePrecision(string timeStr)
+    {
+        // Time format: HH[:mm[:ss[.fff]]]
+        // Returns: 2=hour, 4=minute, 6=second, 9=millisecond
+        var cleanStr = timeStr.TrimStart('T');
+        var parts = cleanStr.Split(':');
+        
+        if (parts.Length == 1) return 2; // Hour only
+        if (parts.Length == 2) return 4; // Hour:minute
+        
+        // Check for milliseconds in the seconds part
+        if (parts[2].Contains('.', StringComparison.Ordinal)) return 9;
+        return 6; // Hour:minute:second
     }
 
     private static IElement? CalculateLowBoundary(IElement element, int outputPrecision)
@@ -425,7 +443,8 @@ internal static class BoundaryFunctions
 
         string result = FormatDateTimeLowBoundary(parsed.Value, outputPrecision, dateTimeStr);
         
-        // Boundary functions on date/dateTime always return dateTime type
+        // FHIRPath spec: boundary functions on dates always return dateTime type
+        // Even partial dates like "2014-01" are typed as dateTime in FHIRPath
         return FunctionHelpers.CreateDateTime(result);
     }
 
@@ -436,7 +455,7 @@ internal static class BoundaryFunctions
 
         string result = FormatDateTimeHighBoundary(parsed.Value, outputPrecision, dateTimeStr);
         
-        // Boundary functions on date/dateTime always return dateTime type
+        // FHIRPath spec: boundary functions on dates always return dateTime type
         return FunctionHelpers.CreateDateTime(result);
     }
 
@@ -572,19 +591,19 @@ internal static class BoundaryFunctions
         
         if (outputPrecision <= 4)
         {
-            return $"@{parsed.year:D4}";
+            return $"{parsed.year:D4}";
         }
         
         var month = inputPrecision <= 4 ? 1 : parsed.month;
         if (outputPrecision <= 6)
         {
-            return $"@{parsed.year:D4}-{month:D2}";
+            return $"{parsed.year:D4}-{month:D2}";
         }
         
         var day = inputPrecision <= 6 ? 1 : parsed.day;
         if (outputPrecision <= 8)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}";
         }
         
         // For time components, need timezone
@@ -592,24 +611,24 @@ internal static class BoundaryFunctions
         var hour = inputPrecision <= 8 ? 0 : parsed.hour;
         if (outputPrecision <= 10)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}{tz}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}{tz}";
         }
         
         var minute = inputPrecision <= 10 ? 0 : parsed.minute;
         if (outputPrecision <= 12)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}{tz}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}{tz}";
         }
         
         var second = inputPrecision <= 12 ? 0 : parsed.second;
         if (outputPrecision <= 14)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}{tz}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}{tz}";
         }
         
         // Full millisecond precision (17+)
         var millisecond = inputPrecision <= 14 ? 0 : parsed.millisecond;
-        return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
+        return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
     }
 
     private static string FormatFullDateTimeLow((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int outputPrecision, int inputPrecision)
@@ -628,7 +647,7 @@ internal static class BoundaryFunctions
         var second = inputPrecision <= 12 ? 0 : parsed.second;
         var millisecond = inputPrecision <= 14 ? 0 : parsed.millisecond;
         
-        return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
+        return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
     }
 
     private static string FormatDateTimeHighBoundary((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int outputPrecision, string original)
@@ -643,51 +662,51 @@ internal static class BoundaryFunctions
         
         if (outputPrecision <= 4)
         {
-            return $"@{parsed.year:D4}";
+            return $"{parsed.year:D4}";
         }
         
         // For month: maximize only if output precision is exactly at month level (6) AND input doesn't have month
         var month = (outputPrecision == 6 && inputPrecision <= 4) ? 12 : parsed.month;
         if (outputPrecision <= 6)
         {
-            return $"@{parsed.year:D4}-{month:D2}";
+            return $"{parsed.year:D4}-{month:D2}";
         }
         
-        // For day: maximize only if output precision is exactly at day level (8) AND input doesn't have day
-        var day = (outputPrecision == 8 && inputPrecision <= 6) ? DateTime.DaysInMonth(parsed.year, month) : parsed.day;
+        // For day: maximize if we're outputting at day level or finer AND input doesn't have day
+        var day = (outputPrecision >= 8 && inputPrecision <= 6) ? DateTime.DaysInMonth(parsed.year, month) : parsed.day;
         if (outputPrecision <= 8)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}";
         }
         
         // For time components, need timezone
         var tz = parsed.timezone ?? "-12:00";
         
-        // For hour: maximize only if output precision is exactly at hour level (10) AND input doesn't have hour
-        var hour = (outputPrecision == 10 && inputPrecision <= 8) ? 23 : parsed.hour;
+        // For hour: maximize if we're outputting time AND input doesn't have hour
+        var hour = (outputPrecision >= 10 && inputPrecision <= 8) ? 23 : parsed.hour;
         if (outputPrecision <= 10)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}{tz}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}{tz}";
         }
         
-        // For minute: maximize only if output precision is exactly at minute level (12) AND input doesn't have minute
-        var minute = (outputPrecision == 12 && inputPrecision <= 10) ? 59 : parsed.minute;
+        // For minute: maximize if we're outputting at minute level or finer AND input doesn't have minute
+        var minute = (outputPrecision >= 12 && inputPrecision <= 10) ? 59 : parsed.minute;
         if (outputPrecision <= 12)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}{tz}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}{tz}";
         }
         
         // For second: maximize to 59 if input doesn't have seconds
         var second = inputPrecision <= 12 ? 59 : parsed.second;
         if (outputPrecision <= 14)
         {
-            return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}{tz}";
+            return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}{tz}";
         }
         
         // Full millisecond precision (17+)
         // For milliseconds, if input had seconds but not milliseconds, the high boundary is .999
         var millisecond = inputPrecision <= 14 ? 999 : parsed.millisecond;
-        return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
+        return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}{tz}";
     }
 
     private static string FormatDateHighWithDay((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int inputPrecision)
@@ -695,7 +714,7 @@ internal static class BoundaryFunctions
         // For high boundary day: use last day of month when input precision doesn't include day
         var month = inputPrecision <= 4 ? 12 : parsed.month;
         var day = inputPrecision <= 6 ? DateTime.DaysInMonth(parsed.year, month) : parsed.day;
-        return $"@{parsed.year:D4}-{month:D2}-{day:D2}";
+        return $"{parsed.year:D4}-{month:D2}-{day:D2}";
     }
 
     private static string FormatFullDateTimeHigh((int year, int month, int day, int hour, int minute, int second, int millisecond, string? timezone) parsed, int outputPrecision, int inputPrecision)
@@ -715,7 +734,7 @@ internal static class BoundaryFunctions
         var minute = inputPrecision <= 10 ? 59 : parsed.minute;
         var second = inputPrecision <= 12 ? 59 : parsed.second;
         
-        return $"@{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.999{tz}";
+        return $"{parsed.year:D4}-{month:D2}-{day:D2}T{hour:D2}:{minute:D2}:{second:D2}.999{tz}";
     }
 
     private static int GetDateTimePrecision(string dateTimeStr)
@@ -740,7 +759,9 @@ internal static class BoundaryFunctions
         if (timePart.EndsWith('Z')) timePart = timePart.TrimEnd('Z');
         
         var timeComponents = timePart.Split(':').Length;
-        if (timeComponents == 1) return 10; // Hour only
+        // Note: Hour-only time (T08) is not valid FHIR, so it's internally converted to T08:00
+        // This means we treat it as minute precision (12), not hour precision (10)
+        if (timeComponents == 1) return 12; // Hour only → treated as hour:minute=00
         if (timeComponents == 2) return 12; // Hour:minute
         
         // Check for milliseconds
@@ -753,14 +774,18 @@ internal static class BoundaryFunctions
     {
         // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
         // For low boundary, start of period (00:00:00.000)
-        return $"@T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
+        // Per official HL7 test cases: time values include 'T' prefix
+        // e.g., @T10:30.lowBoundary(9) returns 'T10:30:00.000'
+        return $"T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
     }
 
     private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
     {
         // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
         // For high boundary, end of period (XX:XX:59.999)
-        return $"@T{parsed.hour:D2}:{parsed.minute:D2}:59.999";
+        // Per official HL7 test cases: time values include 'T' prefix
+        // e.g., @T10:30.highBoundary(9) returns 'T10:30:59.999'
+        return $"T{parsed.hour:D2}:{parsed.minute:D2}:59.999";
     }
 
     private static bool IsDateTimeString(string value)

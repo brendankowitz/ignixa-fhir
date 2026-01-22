@@ -9,8 +9,27 @@ public class FhirPathTestSuiteParserTests
 
     public FhirPathTestSuiteParserTests()
     {
-        var projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+        var projectRoot = FindProjectRoot();
         _testSuiteFilePath = Path.Combine(projectRoot, "TestData", "fhir-test-cases", "r4", "fhirpath", "tests-fhir-r4.xml");
+    }
+
+    private static string FindProjectRoot()
+    {
+        // Navigate up from base directory until we find TestData folder
+        var current = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(current))
+        {
+            var testDataPath = Path.Combine(current, "TestData", "fhir-test-cases");
+            if (Directory.Exists(testDataPath))
+            {
+                return current;
+            }
+            var parent = Path.GetDirectoryName(current);
+            if (parent == current) break; // Reached root
+            current = parent;
+        }
+        // Fallback to old calculation (3 levels up)
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
     }
 
     [Fact]

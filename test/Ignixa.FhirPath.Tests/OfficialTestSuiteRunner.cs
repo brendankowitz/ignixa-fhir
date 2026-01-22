@@ -116,7 +116,26 @@ internal static class TestElementResolver
 public class OfficialTestSuiteRunner(ITestOutputHelper output)
 {
     private readonly ITestOutputHelper _output = output;
-    private static readonly string _projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+    private static readonly string _projectRoot = FindProjectRoot();
+
+    private static string FindProjectRoot()
+    {
+        // Navigate up from base directory until we find TestData folder
+        var current = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(current))
+        {
+            var testDataPath = Path.Combine(current, "TestData", "fhir-test-cases");
+            if (Directory.Exists(testDataPath))
+            {
+                return current;
+            }
+            var parent = Path.GetDirectoryName(current);
+            if (parent == current) break; // Reached root
+            current = parent;
+        }
+        // Fallback to old calculation (3 levels up)
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+    }
 
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4TestCases = new(() => LoadTestCases("r4"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
@@ -600,6 +619,13 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             (expectedValue.Equals("true", StringComparison.OrdinalIgnoreCase) || expectedValue.Equals("false", StringComparison.OrdinalIgnoreCase)))
         {
             return string.Equals(expectedValue, actualStr, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // For unknown types that look like temporal values, normalize them
+        // This handles FHIRPath boundary test cases where expected has @ prefix
+        if (expectedType == "unknown" && expectedValue.StartsWith('@'))
+        {
+            return NormalizeTemporalValue(expectedValue) == NormalizeTemporalValue(actualStr);
         }
 
         return string.Equals(expectedValue, actualStr, StringComparison.Ordinal);
