@@ -539,16 +539,13 @@ public static class DateTimeFunctions
             return [CreateInteger(digitCount)];
         }
 
-        // Handle decimal values - count significant figures
+        // Handle decimal values - return number of decimal places (scale)
         if (value is decimal decValue)
         {
-            // Convert to string to preserve trailing zeros
-            var decStr = decValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-            // Remove decimal point and count digits
-            var digits = decStr.Replace(".", "", StringComparison.Ordinal)
-                              .Replace("-", "", StringComparison.Ordinal);
-            return [CreateInteger(digits.Length)];
+            // Use decimal.GetBits to extract the scale (number of decimal places)
+            var bits = decimal.GetBits(decValue);
+            var scale = (bits[3] >> 16) & 0x7F;
+            return [CreateInteger(scale)];
         }
 
         // Handle integer values
