@@ -348,13 +348,14 @@ internal static class FunctionHelpers
     /// </summary>
     public class PrimitiveElement : IElement
     {
-        public PrimitiveElement(object value, string type)
+        public PrimitiveElement(object value, string type, string name = "")
         {
             Value = value;
             InstanceType = type;
+            Name = name;
         }
 
-        public string Name => string.Empty;
+        public string Name { get; }
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
@@ -399,13 +400,16 @@ internal static class FunctionHelpers
             var children = new List<IElement>();
 
             if (name == null || name == "value")
-                children.Add(new PrimitiveElement(_quantity.Value, "decimal"));
+                children.Add(new PrimitiveElement(_quantity.Value, "decimal", "value"));
 
             if (name == null || name == "unit" || name == "code")
-                children.Add(new PrimitiveElement(_quantity.Unit, "string"));
+            {
+                children.Add(new PrimitiveElement(_quantity.Unit, "string", "unit"));
+                children.Add(new PrimitiveElement(_quantity.Unit, "string", "code"));
+            }
 
             if (name == null || name == "system")
-                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri"));
+                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri", "system"));
 
             return children;
         }
