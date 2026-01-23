@@ -71,6 +71,13 @@ public class TypeCheck : IValidationCheck
         var text = fieldNode.Value?.ToString();
         var location = fieldNode.Location;
 
+        // Check if there's a value first - empty/null text means no value (only extensions via shadow property)
+        // FHIR allows elements with only extensions and no value (e.g., _birthDate without birthDate)
+        if (string.IsNullOrEmpty(text))
+        {
+            return ValidationResult.Success();
+        }
+
         // Check JSON type before value validation
         // Access the underlying JsonNode to check the original JSON type (before deserialization coercion)
         var jsonNode = fieldNode.Meta<JsonNode>();
@@ -85,12 +92,6 @@ public class TypeCheck : IValidationCheck
                         $"JSON type mismatch: expected {GetExpectedJsonTypeDescription(_expectedType)} for FHIR type '{_expectedType}', but got {jsonKind}",
                         location));
             }
-        }
-
-        if (string.IsNullOrEmpty(text))
-        {
-            // Empty text is valid for complex types (objects)
-            return ValidationResult.Success();
         }
 
         // Element-name-based validation: Some FHIR types inherit from base types but have specialized rules.
