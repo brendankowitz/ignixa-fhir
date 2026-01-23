@@ -67,6 +67,14 @@ internal class JsonElementSourceNode : ISourceNavigator
 
     public string Location { get; }
 
+    /// <summary>
+    /// Indicates whether this node has an actual primitive value (not just extensions).
+    /// </summary>
+    public bool HasPrimitiveValue => _valueElement.HasValue &&
+        _valueElement.Value.ValueKind != JsonValueKind.Object &&
+        _valueElement.Value.ValueKind != JsonValueKind.Array &&
+        _valueElement.Value.ValueKind != JsonValueKind.Undefined;
+
     public T? Meta<T>() where T : class
     {
         if (this is T typed)

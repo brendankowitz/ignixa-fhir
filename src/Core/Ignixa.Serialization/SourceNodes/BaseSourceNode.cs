@@ -29,6 +29,11 @@ public abstract class BaseSourceNode<T> : ISourceNavigator
 
     public abstract string Location { get; }
 
+    /// <summary>
+    /// Resource-level nodes don't have primitive values.
+    /// </summary>
+    public virtual bool HasPrimitiveValue => false;
+
     public TMeta? Meta<TMeta>() where TMeta : class
     {
         if (this is TMeta typed)

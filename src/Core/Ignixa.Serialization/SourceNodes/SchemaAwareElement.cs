@@ -412,6 +412,11 @@ internal class SchemaAwareElement : IElement
     {
         return _source.Meta<T>();
     }
+
+    /// <summary>
+    /// Indicates whether this element has an actual primitive value (not just extensions).
+    /// </summary>
+    public bool HasPrimitiveValue => _source.HasPrimitiveValue;
 }
 
 /// <summary>

@@ -496,6 +496,7 @@ public static class DateTimeFunctions
         public object Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
 
         public T? Meta<T>() where T : class => null;
 

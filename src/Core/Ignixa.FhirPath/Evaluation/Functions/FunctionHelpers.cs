@@ -359,6 +359,7 @@ internal static class FunctionHelpers
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
+        public bool HasPrimitiveValue => true;
 
         // IElement members
         public IType? Type => null;
@@ -389,6 +390,7 @@ internal static class FunctionHelpers
         public object Value => _quantity;
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => false; // Quantity is a complex type, not a primitive
 
         public T? Meta<T>() where T : class => null;
 

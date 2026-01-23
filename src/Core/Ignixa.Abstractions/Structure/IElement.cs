@@ -84,4 +84,18 @@ public interface IElement
     /// <typeparam name="T">Metadata type to retrieve</typeparam>
     /// <returns>Metadata instance or null if not present</returns>
     T? Meta<T>() where T : class;
+
+    /// <summary>
+    /// Indicates whether this element has a primitive value node in the source.
+    /// </summary>
+    /// <remarks>
+    /// In FHIR JSON, a primitive element can have:
+    /// - A value only: {"birthDate": "1974-12-25"}
+    /// - Extensions only (shadow property): {"_birthDate": {"extension": [...]}}
+    /// - Both: {"birthDate": "1974-12-25", "_birthDate": {"extension": [...]}}
+    ///
+    /// This property returns true only when there's an actual primitive value,
+    /// not just a shadow property with extensions.
+    /// </remarks>
+    bool HasPrimitiveValue { get; }
 }

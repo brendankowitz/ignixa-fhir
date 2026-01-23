@@ -58,6 +58,13 @@ public class SourceNavigatorAdapter : ISourceNavigator
 
     /// <inheritdoc/>
     /// <remarks>
+    /// For Firely SDK nodes, we check if Text is not null to determine if there's a primitive value.
+    /// Firely handles shadow properties internally, so if Text has a value, it's the actual primitive.
+    /// </remarks>
+    public bool HasPrimitiveValue => _firelyNode.Text != null;
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Firely's ISourceNode doesn't have a ResourceType property.
     /// This implementation derives it from the "resourceType" child element if present.
     /// </remarks>

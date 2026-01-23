@@ -82,6 +82,11 @@ public class JsonNodeSourceNode : ISourceNavigator
 
     public string Location { get; }
 
+    /// <summary>
+    /// Indicates whether this node has an actual primitive value (not just extensions).
+    /// </summary>
+    public bool HasPrimitiveValue => _valueNode is JsonValue;
+
     public T? Meta<T>() where T : class
     {
         if (this is T typed)

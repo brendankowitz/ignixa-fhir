@@ -1091,6 +1091,7 @@ internal static class CollectionFunctions
         public object Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => false; // ClassInfo is a complex type
 
         public T? Meta<T>() where T : class => null;
 
