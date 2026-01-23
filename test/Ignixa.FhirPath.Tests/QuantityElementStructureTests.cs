@@ -84,19 +84,17 @@ public class QuantityElementStructureTests
         Assert.Equal("value", valueChildren[0].Name);
         Assert.Equal(5.5m, valueChildren[0].Value);
 
-        // Act & Assert: Filter by "unit" - returns both "unit" and "code" (they share the same value)
+        // Act & Assert: Filter by "unit" - should return only "unit" child
         var unitChildren = quantityElement.Children("unit").ToList();
-        Assert.Equal(2, unitChildren.Count);
-        Assert.Contains(unitChildren, c => c.Name == "unit");
-        Assert.Contains(unitChildren, c => c.Name == "code");
-        Assert.All(unitChildren, c => Assert.Equal("cm", c.Value));
+        Assert.Single(unitChildren);
+        Assert.Equal("unit", unitChildren[0].Name);
+        Assert.Equal("cm", unitChildren[0].Value);
 
-        // Act & Assert: Filter by "code" - also returns both "unit" and "code"
+        // Act & Assert: Filter by "code" - should return only "code" child
         var codeChildren = quantityElement.Children("code").ToList();
-        Assert.Equal(2, codeChildren.Count);
-        Assert.Contains(codeChildren, c => c.Name == "unit");
-        Assert.Contains(codeChildren, c => c.Name == "code");
-        Assert.All(codeChildren, c => Assert.Equal("cm", c.Value));
+        Assert.Single(codeChildren);
+        Assert.Equal("code", codeChildren[0].Name);
+        Assert.Equal("cm", codeChildren[0].Value);
 
         // Act & Assert: Filter by "system"
         var systemChildren = quantityElement.Children("system").ToList();

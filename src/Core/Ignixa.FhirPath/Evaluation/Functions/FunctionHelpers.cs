@@ -402,11 +402,11 @@ internal static class FunctionHelpers
             if (name == null || name == "value")
                 children.Add(new PrimitiveElement(_quantity.Value, "decimal", "value"));
 
-            if (name == null || name == "unit" || name == "code")
-            {
+            if (name == null || name == "unit")
                 children.Add(new PrimitiveElement(_quantity.Unit, "string", "unit"));
+
+            if (name == null || name == "code")
                 children.Add(new PrimitiveElement(_quantity.Unit, "string", "code"));
-            }
 
             if (name == null || name == "system")
                 children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri", "system"));
