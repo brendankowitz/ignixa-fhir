@@ -9,6 +9,7 @@ using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Tests.Schema;
 
@@ -345,6 +346,41 @@ public class StructureDefinitionSchemaBuilderTests
         schema.Checks.OfType<TypeCheck>().ShouldNotBeEmpty();
         schema.Checks.OfType<ReferenceFormatCheck>().ShouldNotBeEmpty();
         schema.Checks.OfType<CodingStructureCheck>().ShouldNotBeEmpty();
+    }
+
+    #endregion
+
+    #region Nested Type Resolution
+
+    [Fact]
+    public void GivenTimingStructure_WhenBuildingSchema_ThenResolvesNestedRepeatTypeCorrectly()
+    {
+        // Arrange
+        var typeDefinition = _schema.GetTypeDefinition("Timing");
+
+        // Act
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        // Assert
+        var nestedChecks = schema.Checks.OfType<NestedComplexTypeCheck>().ToList();
+
+        // Timing has a 'repeat' element which is of type Element in the definition
+        // but should be resolved to Timing.Repeat backbone element
+        var repeatCheck = nestedChecks.FirstOrDefault(c => c.ElementName == "repeat");
+
+        repeatCheck.ShouldNotBeNull("Should find a NestedComplexTypeCheck for 'repeat'");
+
+        // The nested schema for 'repeat' should have its own checks
+        repeatCheck.NestedSchema.Checks.ShouldNotBeEmpty();
+
+        // Verify we have cardinality checks for fields of Timing.Repeat
+        // Timing.Repeat children: bounds[x], count, countMax, duration, durationMax, durationUnit, frequency, etc.
+        // Generic Element only has extension, id - so if resolved correctly, we should have many more checks
+        var cardinalityChecks = repeatCheck.NestedSchema.Checks.OfType<CardinalityCheck>().ToList();
+        cardinalityChecks.ShouldNotBeEmpty();
+
+        // Timing.Repeat has ~10 elements, generic Element only has 2
+        cardinalityChecks.Count.ShouldBeGreaterThan(5, "Should have checks for Timing.Repeat properties, not just Element");
     }
 
     #endregion

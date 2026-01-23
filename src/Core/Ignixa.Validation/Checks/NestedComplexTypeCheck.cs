@@ -24,9 +24,20 @@ namespace Ignixa.Validation.Checks;
 /// </remarks>
 public class NestedComplexTypeCheck : IValidationCheck
 {
-    private readonly string _elementName;
-    private readonly bool _isCollection;
-    private readonly ValidationSchema _nestedSchema;
+    /// <summary>
+    /// Gets the name of the element containing nested types (e.g., "agent", "address").
+    /// </summary>
+    internal string ElementName { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this element is a collection (array).
+    /// </summary>
+    internal bool IsCollection { get; }
+
+    /// <summary>
+    /// Gets the pre-built validation schema for the nested type.
+    /// </summary>
+    internal ValidationSchema NestedSchema { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NestedComplexTypeCheck"/> class.
@@ -37,9 +48,9 @@ public class NestedComplexTypeCheck : IValidationCheck
     /// <exception cref="ArgumentNullException">Thrown if elementName or nestedSchema is null.</exception>
     public NestedComplexTypeCheck(string elementName, bool isCollection, ValidationSchema nestedSchema)
     {
-        _elementName = elementName ?? throw new ArgumentNullException(nameof(elementName));
-        _isCollection = isCollection;
-        _nestedSchema = nestedSchema ?? throw new ArgumentNullException(nameof(nestedSchema));
+        ElementName = elementName ?? throw new ArgumentNullException(nameof(elementName));
+        IsCollection = isCollection;
+        NestedSchema = nestedSchema ?? throw new ArgumentNullException(nameof(nestedSchema));
     }
 
     /// <summary>
@@ -54,7 +65,7 @@ public class NestedComplexTypeCheck : IValidationCheck
         var issues = new List<ValidationIssue>();
 
         // Get all instances of this element (may be array)
-        var elementNodes = element.Children(_elementName).ToList();
+        var elementNodes = element.Children(ElementName).ToList();
 
         if (!elementNodes.Any())
         {
@@ -63,18 +74,18 @@ public class NestedComplexTypeCheck : IValidationCheck
         }
 
         // If this is a collection, validate each element with index
-        if (_isCollection)
+        if (IsCollection)
         {
             for (int i = 0; i < elementNodes.Count; i++)
             {
                 var elementNode = elementNodes[i];
 
                 // Build path: "agent[0]", "agent[1]", etc.
-                string elementPath = $"{_elementName}[{i}]";
+                string elementPath = $"{ElementName}[{i}]";
                 var nestedState = state.WithLocation(elementPath);
 
                 // Validate nested element using the nested schema
-                var nestedResult = _nestedSchema.Validate(elementNode, settings, nestedState);
+                var nestedResult = NestedSchema.Validate(elementNode, settings, nestedState);
                 if (!nestedResult.IsValid)
                 {
                     issues.AddRange(nestedResult.Issues);
@@ -85,10 +96,10 @@ public class NestedComplexTypeCheck : IValidationCheck
         {
             // Single nested object
             var elementNode = elementNodes[0];
-            var nestedState = state.WithLocation(_elementName);
+            var nestedState = state.WithLocation(ElementName);
 
             // Validate nested element using the nested schema
-            var nestedResult = _nestedSchema.Validate(elementNode, settings, nestedState);
+            var nestedResult = NestedSchema.Validate(elementNode, settings, nestedState);
             if (!nestedResult.IsValid)
             {
                 issues.AddRange(nestedResult.Issues);

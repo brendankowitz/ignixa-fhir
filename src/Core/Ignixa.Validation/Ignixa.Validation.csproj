@@ -19,5 +19,9 @@
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.Validation.Tests" />
+  </ItemGroup>
+
 </Project>
 

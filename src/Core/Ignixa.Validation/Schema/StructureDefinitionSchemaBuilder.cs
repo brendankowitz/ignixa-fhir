@@ -371,15 +371,12 @@ public class StructureDefinitionSchemaBuilder
                 // Element type might be a BackboneElement in complex datatypes (e.g., Timing.repeat)
                 // Try to find a specific type like "Timing.Repeat" first
                 var potentialBackboneType = $"{typeDefinition.Info.Name}.{CapitalizeFirst(element.Info.Name)}";
-                if (schema.GetTypeDefinition(potentialBackboneType) != null)
-                {
-                    nestedTypeName = potentialBackboneType;
-                }
-                else
+                if (schema.GetTypeDefinition(potentialBackboneType) == null)
                 {
                     // No specific BackboneElement type found, skip Element type
                     continue;
                 }
+                nestedTypeName = potentialBackboneType;
             }
             else
             {
