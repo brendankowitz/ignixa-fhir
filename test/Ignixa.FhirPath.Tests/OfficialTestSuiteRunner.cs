@@ -588,7 +588,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         if (expectedType is "date" or "dateTime" or "time")
         {
-            return NormalizeTemporalValue(expectedValue) == NormalizeTemporalValue(actualStr);
+            return string.Equals(expectedValue, actualStr, StringComparison.Ordinal);
         }
 
         if (expectedType == "boolean")
@@ -633,7 +633,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
     private static string NormalizeTemporalValue(string value)
     {
-        return value.TrimStart('@');
+        // Strip @ prefix (FHIRPath literal syntax)
+        value = value.TrimStart('@');
+        // Strip T prefix from time values (FHIRPath syntax, not part of value)
+        if (value.StartsWith('T'))
+            value = value.Substring(1);
+        return value;
     }
 
     private static string FormatExpectedOutputs(IReadOnlyList<ExpectedOutput> outputs)

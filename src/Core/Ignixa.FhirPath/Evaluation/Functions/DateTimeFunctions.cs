@@ -286,7 +286,13 @@ public static class DateTimeFunctions
 
         var parsed = new ParsedDateTime();
 
-        // Check for time-only literal (@T...)
+        // Check for time-only value by InstanceType (time values no longer have T prefix)
+        if (element.InstanceType == "time")
+        {
+            return ParseTime(value);
+        }
+
+        // Legacy: Also check for T prefix for backwards compatibility
         if (value.StartsWith("T", StringComparison.Ordinal))
         {
             return ParseTime(value.Substring(1));

@@ -56,10 +56,22 @@ public static class FhirPathTestSuiteParser
         var isInvalidTest = invalidAttr is not null;
 
         var expectedOutputs = test.Elements("output")
-            .Select(output => new ExpectedOutput(
-                output.Attribute("type")?.Value ?? "unknown",
-                output.Value
-            ))
+            .Select(output =>
+            {
+                var type = output.Attribute("type")?.Value ?? "unknown";
+                var value = output.Value;
+
+                // Strip FHIRPath literal syntax from expected values
+                // The test XML uses @T03:00:00 syntax, but FHIRPath evaluation should return 03:00:00
+                if (type is "date" or "dateTime" or "time" or "instant")
+                {
+                    value = value.TrimStart('@');
+                    if (type == "time" && value.StartsWith('T'))
+                        value = value.Substring(1);
+                }
+
+                return new ExpectedOutput(type, value);
+            })
             .ToList();
 
         return new FhirPathTestCase(

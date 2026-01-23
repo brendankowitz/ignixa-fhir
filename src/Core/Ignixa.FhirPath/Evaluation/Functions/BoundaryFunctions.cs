@@ -774,18 +774,18 @@ internal static class BoundaryFunctions
     {
         // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
         // For low boundary, start of period (00:00:00.000)
-        // Per official HL7 test cases: time values include 'T' prefix
-        // e.g., @T10:30.lowBoundary(9) returns 'T10:30:00.000'
-        return $"T{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
+        // Time values are stored without T prefix per FHIR spec (HH:mm:ss format)
+        // e.g., @T10:30.lowBoundary(9) returns '10:30:00.000'
+        return $"{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
     }
 
     private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
     {
         // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
         // For high boundary, end of period (XX:XX:59.999)
-        // Per official HL7 test cases: time values include 'T' prefix
-        // e.g., @T10:30.highBoundary(9) returns 'T10:30:59.999'
-        return $"T{parsed.hour:D2}:{parsed.minute:D2}:59.999";
+        // Time values are stored without T prefix per FHIR spec (HH:mm:ss format)
+        // e.g., @T10:30.highBoundary(9) returns '10:30:59.999'
+        return $"{parsed.hour:D2}:{parsed.minute:D2}:59.999";
     }
 
     private static bool IsDateTimeString(string value)
