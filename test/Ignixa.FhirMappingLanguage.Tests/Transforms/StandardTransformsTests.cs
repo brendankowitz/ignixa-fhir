@@ -34,6 +34,7 @@ public class StandardTransformsTests
         public string Location => string.Empty;
         public IType? Type => null;
         public IType? Definition => null;
+        public bool HasPrimitiveValue => Value != null;
 
         public IReadOnlyList<IElement> Children(string? name) => new List<IElement>();
 

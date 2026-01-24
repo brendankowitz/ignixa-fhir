@@ -546,6 +546,7 @@ public class SecurityLimitsTests
         public object? Value { get; }
         public string Location => $"{InstanceType}.{Name}";
         public IType? Type => null;
+        public bool HasPrimitiveValue => Value != null;
 
         public void AddChild(string propertyName, IElement child)
         {

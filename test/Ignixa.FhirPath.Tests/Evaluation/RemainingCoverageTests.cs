@@ -468,6 +468,7 @@ public class RemainingCoverageTests
         public object? Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
 
@@ -490,6 +491,7 @@ public class RemainingCoverageTests
         public object? Value => null;
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => false;
 
         public IReadOnlyList<IElement> Children(string? name = null)
         {

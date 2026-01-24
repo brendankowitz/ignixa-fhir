@@ -732,6 +732,7 @@ public class FirelySdkInteropTests
         public string InstanceType { get; init; } = string.Empty;
         public string Location { get; init; } = string.Empty;
         public IType? Type { get; init; }
+        public bool HasPrimitiveValue => Value != null;
         public List<IElement> ChildElements { get; init; } = new List<IElement>();
         public object? Metadata { get; init; }
 

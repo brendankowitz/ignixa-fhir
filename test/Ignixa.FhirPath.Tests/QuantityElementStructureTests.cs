@@ -27,6 +27,7 @@ public class QuantityElementStructureTests
         public object Value => 0;
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
         public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
         public T? Meta<T>() where T : class => default;
     }

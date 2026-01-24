@@ -204,10 +204,11 @@ public class FhirPathEvaluatorWithTimeoutTests
         public string InstanceType { get; }
         public object Value => null!;
         public string Location => string.Empty;
-        public IType Type => null;
+        public IType Type => null!;
+        public bool HasPrimitiveValue => false;
 
-        public IReadOnlyList<IElement> Children(string name = null) => [];
-        public T Meta<T>() where T : class => null;
+        public IReadOnlyList<IElement> Children(string name = null!) => [];
+        public T Meta<T>() where T : class => null!;
     }
 
     #endregion

@@ -47,6 +47,9 @@ public class IgnixaElementAdapter : IElement
     public string Location => _firelyElement.Location;
 
     /// <inheritdoc/>
+    public bool HasPrimitiveValue => _firelyElement.Value != null;
+
+    /// <inheritdoc/>
     public IType? Type => _firelyElement.Definition != null
         ? new TypeAdapter(_firelyElement.Definition)
         : null;

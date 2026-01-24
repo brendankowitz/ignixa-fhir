@@ -1319,6 +1319,7 @@ public class MappingEvaluator
         public object Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name) => Array.Empty<IElement>();
         public T? Meta<T>() where T : class => null;
@@ -1342,6 +1343,7 @@ public class MappingEvaluator
         public object? Value => null;
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => false;
 
         public IReadOnlyList<IElement> Children(string? name)
         {
@@ -1659,6 +1661,7 @@ public class MappingEvaluator
         public object? Value => _wrapped.Value;
         public string Location => _wrapped.Location ?? string.Empty;
         public IType? Type => _wrapped.Type;
+        public bool HasPrimitiveValue => _wrapped.HasPrimitiveValue;
 
         public IReadOnlyList<IElement> Children(string? name)
         {

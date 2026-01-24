@@ -32,6 +32,7 @@ public class ConceptMapTests
         public object? Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => Value != null;
 
         public IReadOnlyList<IElement> Children(string? name = null) => new List<IElement>();
 
@@ -54,6 +55,7 @@ public class ConceptMapTests
         public object? Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => Value != null;
 
         public void AddChild(IElement child) => _children.Add(child);
 

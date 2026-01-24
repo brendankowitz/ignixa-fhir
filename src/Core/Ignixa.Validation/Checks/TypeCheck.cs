@@ -67,19 +67,11 @@ public class TypeCheck : IValidationCheck
         }
 
         var fieldNode = fieldChildren[0];
-
-        // Check if there's an actual primitive value (not just extensions via shadow property)
-        // FHIR allows elements with only extensions and no value (e.g., _birthDate without birthDate)
-        if (!fieldNode.HasPrimitiveValue)
-        {
-            return ValidationResult.Success();
-        }
-
-        var text = fieldNode.Value?.ToString();
         var location = fieldNode.Location;
 
         // Check JSON type before value validation
         // Access the underlying JsonNode to check the original JSON type (before deserialization coercion)
+        // This must run before HasPrimitiveValue check to catch type mismatches (e.g., Object where String expected)
         var jsonNode = fieldNode.Meta<JsonNode>();
         if (jsonNode is not null)
         {
@@ -94,10 +86,19 @@ public class TypeCheck : IValidationCheck
             }
         }
 
-        if (string.IsNullOrEmpty(text))
+        // Check if there's an actual primitive value (not just extensions via shadow property)
+        // FHIR allows elements with only extensions and no value (e.g., _birthDate without birthDate)
+        if (!fieldNode.HasPrimitiveValue)
         {
-            // HasPrimitiveValue was true but text is empty - this shouldn't normally happen
-            // but handle gracefully
+            return ValidationResult.Success();
+        }
+
+        var text = fieldNode.Value?.ToString();
+
+        if (text is null)
+        {
+            // A primitive value can be null in FHIR JSON, which is valid.
+            // An empty string, however, should be validated against the type's rules.
             return ValidationResult.Success();
         }
 

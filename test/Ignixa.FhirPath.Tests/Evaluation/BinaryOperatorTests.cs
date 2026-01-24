@@ -585,6 +585,7 @@ public class BinaryOperatorTests
         public object? Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
 

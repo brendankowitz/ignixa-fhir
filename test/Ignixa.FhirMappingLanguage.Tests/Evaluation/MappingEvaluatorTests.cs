@@ -32,6 +32,7 @@ public class MappingEvaluatorTests
         public object? Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => Value != null;
 
         public void AddChild(IElement child)
         {

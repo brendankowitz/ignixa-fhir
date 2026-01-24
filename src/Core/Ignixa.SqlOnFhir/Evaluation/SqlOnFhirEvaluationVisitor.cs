@@ -463,6 +463,7 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         public string InstanceType => _type;
         public string Location => "";
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
         public T? Meta<T>() where T : class => null;

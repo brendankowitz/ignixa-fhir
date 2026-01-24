@@ -676,6 +676,7 @@ internal class MockTypedElement : IElement
     public object? Value { get; set; }
     public string Location => "[mock]";
     public IType? Type => null;
+    public bool HasPrimitiveValue => Value != null;
 
     /// <summary>
     /// Allows setting up the mock's children dictionary for test setup.

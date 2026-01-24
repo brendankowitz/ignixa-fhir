@@ -25,6 +25,7 @@ public class IndexScopedFunctionTests
         public object Value { get; }
         public string Location => "";
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
         public IReadOnlyList<IElement> Children(string? name = null) => [];
         public T? Meta<T>() where T : class => null;
     }
