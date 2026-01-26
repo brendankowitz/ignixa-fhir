@@ -24,7 +24,7 @@
     <PackageVersion Include="Azure.Storage.Common" Version="12.25.0" />
     <PackageVersion Include="Microsoft.Extensions.Azure" Version="1.13.1" />
     <!-- Memory Management -->
-    <PackageVersion Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Http" Version="2.3.9" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.11" />
@@ -44,9 +44,9 @@
     <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="6.4.0" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.3" />
     <!-- ASP.NET Core -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.9" />
     <!-- Model Context Protocol (MCP) - AI Integration -->
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
     <!-- Microsoft.Health legacy dependencies - using 7.1.5 from Directory.Build.props -->
@@ -76,7 +76,7 @@
     <PackageVersion Include="FluentAssertions" Version="8.8.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.12" />
     <!-- Microsoft Health FHIR E2E Tests (from Azure DevOps feed) -->
     <PackageVersion Include="Microsoft.Health.Fhir.R4.Tests.E2E" Version="4.0.559" />
     <!-- Benchmarking -->
