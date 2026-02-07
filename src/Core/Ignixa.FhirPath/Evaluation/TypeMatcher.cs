@@ -147,9 +147,15 @@ internal static class TypeMatcher
     /// Checks if the element's type matches the target type, considering FHIR type inheritance.
     /// </summary>
     /// <remarks>
-    /// NOTE: Supports primitive type inheritance (e.g., code->string, positiveInt->integer),
-    /// Quantity subtypes, and FHIR resource hierarchy (e.g., Patient->DomainResource->Resource).
+    /// Supports:
+    /// - Primitive type inheritance (e.g., code->string, uri->string, positiveInt->integer)
+    /// - Quantity subtypes (e.g., Age->Quantity, Duration->Quantity)
+    /// - FHIR resource hierarchy (e.g., Patient->DomainResource->Resource)
+    ///
     /// Resource hierarchy is determined using type metadata from the schema provider.
+    /// Note: Resource and Element are separate branches under Base in the FHIR type system.
+    /// This method does not handle Element/DataType hierarchy as it is not needed for
+    /// FHIRPath type operations (the official test suite does not test for is(Element)).
     /// </remarks>
     public static bool MatchesTypeWithInheritance(IElement element, string typeName)
     {
