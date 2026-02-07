@@ -18,9 +18,10 @@ internal static class TypeMatcher
 {
     // System-only types that must match FHIRPath literals (capitalized)
     // These are FHIRPath System types, not FHIR element types
+    // Note: Date and Quantity exist as both System types and FHIR types, so they're NOT in this list.
     private static readonly FrozenSet<string> SystemOnlyTypes = new[]
     {
-        "Boolean", "Integer", "Decimal", "String", "Date", "DateTime", "Time"
+        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
     }.ToFrozenSet(StringComparer.Ordinal);
 
     // FHIR type inheritance mappings (subtype -> base type)
@@ -31,15 +32,17 @@ internal static class TypeMatcher
         ["id"] = "string",
         ["markdown"] = "string",
         ["uri"] = "string",
-        ["url"] = "string",
-        ["canonical"] = "string",
-        ["uuid"] = "string",
-        ["oid"] = "string",
-        
+
+        // URI subtypes (uri -> string)
+        ["url"] = "uri",
+        ["canonical"] = "uri",
+        ["uuid"] = "uri",
+        ["oid"] = "uri",
+
         // Integer subtypes
         ["positiveInt"] = "integer",
         ["unsignedInt"] = "integer",
-        
+
         // Quantity subtypes
         ["Age"] = "Quantity",
         ["Count"] = "Quantity",
@@ -48,6 +51,11 @@ internal static class TypeMatcher
         ["Money"] = "Quantity",
         ["SimpleQuantity"] = "Quantity"
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly FrozenSet<string> ResourcesNotExtendingDomainResource = new[]
+    {
+        "Bundle", "Parameters", "Binary"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Extracts the type name from a FhirPath expression.
@@ -139,10 +147,9 @@ internal static class TypeMatcher
     /// Checks if the element's type matches the target type, considering FHIR type inheritance.
     /// </summary>
     /// <remarks>
-    /// NOTE: Currently only handles primitive type inheritance (e.g., code->string, positiveInt->integer)
-    /// and Quantity subtypes. Full FHIR resource hierarchy (e.g., Patient->DomainResource->Resource)
-    /// is not yet supported. To fully comply with FHIRPath spec for expressions like Patient.is(Resource),
-    /// this would need to be backed by StructureDefinition metadata from the loaded FHIR specification.
+    /// NOTE: Supports primitive type inheritance (e.g., code->string, positiveInt->integer),
+    /// Quantity subtypes, and FHIR resource hierarchy (e.g., Patient->DomainResource->Resource).
+    /// Resource hierarchy is determined using type metadata from the schema provider.
     /// </remarks>
     public static bool MatchesTypeWithInheritance(IElement element, string typeName)
     {
@@ -150,17 +157,27 @@ internal static class TypeMatcher
         if (string.IsNullOrEmpty(currentType))
             return false;
 
-        // Walk up the inheritance chain
         while (!string.IsNullOrEmpty(currentType))
         {
             if (currentType.Equals(typeName, StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            // Check if there's a parent type in our inheritance map
             if (!TypeInheritance.TryGetValue(currentType, out var baseType))
                 break;
 
             currentType = baseType;
+        }
+
+        if (element.Type?.Info is { IsResource: true })
+        {
+            if (typeName.Equals("Resource", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (typeName.Equals("DomainResource", StringComparison.OrdinalIgnoreCase))
+            {
+                var instanceType = element.InstanceType;
+                return !ResourcesNotExtendingDomainResource.Contains(instanceType);
+            }
         }
 
         return false;

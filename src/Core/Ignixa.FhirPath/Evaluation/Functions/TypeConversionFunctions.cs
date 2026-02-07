@@ -736,35 +736,7 @@ internal static class TypeConversionFunctions
         // - Match FHIR element types directly by instance type
         // - This allows Observation.value.is(Quantity) to match FHIR Quantity elements
 
-        // Now compare the type names (case-insensitive)
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        typeName = typeName.ToLowerInvariant();
-        elementType = elementType.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
-
-        if (elementType == typeName)
-            return true;
-
-        // Handle FHIR type inheritance:
-        // URI subtypes: url, canonical, uuid, oid -> uri -> string
-        // String subtypes: code, id, markdown, uri -> string
-        // Integer subtypes: positiveInt, unsignedInt -> integer
-        
-        // URI subtypes inherit from uri
-        if (typeName == "uri" && (elementType == "url" || elementType == "canonical" ||
-            elementType == "uuid" || elementType == "oid"))
-            return true;
-
-        // String subtypes (including uri and its subtypes) inherit from string
-        if (typeName == "string" && (elementType == "code" || elementType == "id" || 
-            elementType == "markdown" || elementType == "uri" || elementType == "url" ||
-            elementType == "canonical" || elementType == "uuid" || elementType == "oid"))
-            return true;
-
-        if (typeName == "integer" && (elementType == "positiveint" || elementType == "unsignedint"))
-            return true;
-
-        return false;
+        return TypeMatcher.MatchesTypeWithInheritance(element, typeName);
     }
 
     private static bool IsTypeMatch(IElement element, string targetTypeName)

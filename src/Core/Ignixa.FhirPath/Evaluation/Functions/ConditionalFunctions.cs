@@ -20,7 +20,6 @@ internal static class ConditionalFunctions
     /// iif() - Conditional expression (if-then-else).
     /// Syntax: iif(criterion, true-result [, false-result])
     /// </summary>
-    // Force rebuild
     [FhirPathFunction("iif",
         SupportedContexts = "any-any",
         ReturnType = "fromArgument",
@@ -38,11 +37,14 @@ internal static class ConditionalFunctions
         if (arguments.Count < 2)
             throw new ArgumentException("iif() requires at least criterion and true-result arguments");
 
-        // For iif(), $this should refer to the focus collection
-        // If focus is a single element, $this resolves to that element
-        // Per spec: When iif is the primary scoped function, $index = 0.
-        // But when nested inside another scoped function (like select), preserve outer $index.
         var focusList = focus.ToList();
+
+        if (focusList.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"iif() cannot be invoked on a collection with {focusList.Count} items - it requires empty or single item focus");
+        }
+
         var innerContext = focusList.Count == 1
             ? context.PushThis(focusList[0])
             : context;
@@ -54,23 +56,25 @@ internal static class ConditionalFunctions
 
         var criterion = evaluateExpression(focus, arguments[0], innerContext).ToList();
 
-        // Evaluate condition using FHIRPath boolean semantics
-        // Per FHIRPath spec: If criterion is false OR an empty collection, return otherwise-result
         bool? condition;
 
         if (criterion.Count == 0)
         {
-            // Empty collection is treated as false for iif
             condition = false;
         }
         else if (criterion.Count == 1 && criterion[0].Value is bool b)
         {
             condition = b;
         }
+        else if (criterion.Count == 1)
+        {
+            throw new InvalidOperationException(
+                $"iif() condition must evaluate to a Boolean, but got a single {criterion[0].InstanceType ?? "unknown"} value");
+        }
         else
         {
-            // Non-empty collection (including non-boolean values) is truthy per FHIRPath
-            condition = true;
+            throw new InvalidOperationException(
+                $"iif() condition must evaluate to a single Boolean, but got a collection with {criterion.Count} items");
         }
 
         // True condition returns true branch

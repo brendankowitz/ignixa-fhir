@@ -447,6 +447,54 @@ public class ConversionAndStringFunctionTests
         Assert.Equal("no", result[0].Value);
     }
 
+    [Fact]
+    public void GivenBooleanExpression_WhenIifCondition_ThenEvaluatesCorrectly()
+    {
+        // Arrange - Boolean expression (1 = 1) evaluates to true boolean, should work
+        var expr = _parser.Parse("iif(1 = 1, 'yes', 'no')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("yes", result[0].Value);
+    }
+
+    [Fact]
+    public void GivenCollectionOfIntegers_WhenIifCondition_ThenShouldRejectAsSemanticError()
+    {
+        // Arrange
+        var expr = _parser.Parse("iif(1 | 2 | 3, true, false)");
+        var root = CreateIntegerElement(0);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+    }
+
+    [Fact]
+    public void GivenCollectionFocus_WhenIifCalled_ThenShouldRejectAsSemanticError()
+    {
+        // Arrange
+        var expr = _parser.Parse("('item1' | 'item2').iif(true, 'true-result', 'false-result')");
+        var root = CreateIntegerElement(0);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+    }
+
+    [Fact]
+    public void GivenNonBooleanSingleValue_WhenIifCondition_ThenShouldRejectAsSemanticError()
+    {
+        // Arrange
+        var expr = _parser.Parse("iif('non boolean criteria', 'true-result', 'false-result')");
+        var root = CreateIntegerElement(0);
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+    }
+
     #endregion
 
     #region String Manipulation Function Tests

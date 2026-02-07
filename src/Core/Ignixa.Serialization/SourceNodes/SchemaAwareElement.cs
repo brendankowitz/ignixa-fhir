@@ -191,7 +191,7 @@ internal class SchemaAwareElement : IElement
 
     public string Location => _source.Location;
 
-    public IType? Type => _definition;
+    public IType? Type => _definition ?? _typeDefinition.Value;
 
     public IReadOnlyList<IElement> Children(string? name)
     {

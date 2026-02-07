@@ -403,20 +403,21 @@ public class JsonNodeMutator : IJsonNodeMutator
                 ? SerializePrimitive(child.Value)
                 : SerializeComplexElement(child);
 
-            // Handle array properties (multiple children with same name)
             if (obj.ContainsKey(child.Name))
             {
-                // Convert to array or append to existing array
                 if (obj[child.Name] is JsonArray existingArray)
                 {
                     existingArray.Add(childValue);
                 }
                 else
                 {
-                    // First duplicate - convert single value to array
                     var existingValue = obj[child.Name];
                     obj[child.Name] = new JsonArray { existingValue, childValue };
                 }
+            }
+            else if (child.Type?.IsCollection == true)
+            {
+                obj[child.Name] = new JsonArray { childValue };
             }
             else
             {
