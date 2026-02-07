@@ -48,41 +48,45 @@ public static class SortTestScenario
 
         var baseDate = DateTime.UtcNow.Date;
 
+        var robinsonDate = baseDate.AddDays(-90);
         data.PatientRobinson = new PatientBuilder(schemaProvider)
             .WithTag(tag)
             .WithFamilyName("Robinson")
             .WithGivenName("John")
-            .WithBirthDate(baseDate.Year, baseDate.Month, baseDate.AddDays(-90).Day > 0 ? baseDate.AddDays(-90).Day : 1)
+            .WithBirthDate(robinsonDate.Year, robinsonDate.Month, robinsonDate.Day)
             .WithGender(g => g.Male)
             .WithCity("Seattle")
             .WithState("Washington")
             .Build();
 
+        var williamsDate = baseDate.AddDays(-60);
         data.PatientWilliams = new PatientBuilder(schemaProvider)
             .WithTag(tag)
             .WithFamilyName("Williams")
             .WithGivenName("Jane")
-            .WithBirthDate(baseDate.Year, baseDate.Month, baseDate.AddDays(-60).Day > 0 ? baseDate.AddDays(-60).Day : 1)
+            .WithBirthDate(williamsDate.Year, williamsDate.Month, williamsDate.Day)
             .WithGender(g => g.Female)
             .WithCity("Boston")
             .WithState("Massachusetts")
             .Build();
 
+        var williamasDate = baseDate.AddDays(-40);
         data.PatientWilliamas = new PatientBuilder(schemaProvider)
             .WithTag(tag)
             .WithFamilyName("Williamas")
             .WithGivenName("Alex")
-            .WithBirthDate(baseDate.Year, baseDate.Month, baseDate.AddDays(-40).Day > 0 ? baseDate.AddDays(-40).Day : 1)
+            .WithBirthDate(williamasDate.Year, williamasDate.Month, williamasDate.Day)
             .WithGender(g => g.Other)
             .WithCity("Chicago")
             .WithState("Illinois")
             .Build();
 
+        var jonesDate = baseDate.AddDays(-30);
         data.PatientJones = new PatientBuilder(schemaProvider)
             .WithTag(tag)
             .WithFamilyName("Jones")
             .WithGivenName("Bob")
-            .WithBirthDate(baseDate.Year, baseDate.Month, baseDate.AddDays(-30).Day > 0 ? baseDate.AddDays(-30).Day : 1)
+            .WithBirthDate(jonesDate.Year, jonesDate.Month, jonesDate.Day)
             .WithGender(g => g.Male)
             .WithCity("Seattle")
             .WithState("Washington")
