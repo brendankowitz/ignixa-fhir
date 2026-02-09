@@ -720,9 +720,50 @@ public class TypeCheckTests
 
     [Trait("Category", "Regression")]
     [Fact]
+    public void GivenTimeWithoutTimezone_WhenValidatingAtSpecDepth_ThenReturnsSuccess()
+    {
+        // Arrange - Permissive pattern allows time without timezone
+        var json = JsonNode.Parse("""{"resourceType":"Condition","recordedDate":"2023-01-01T12:00:00"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recordedDate", "dateTime");
+        var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenTimeWithoutTimezone_WhenValidatingAtFullDepth_ThenReturnsError()
+    {
+        // Arrange - R4 spec regex requires timezone when time is present
+        // The R4 dateTime regex nests timezone inside the time group without `?`:
+        //   (T hh:mm:ss(.s+)? (Z|offset) )?
+        // This means timezone is mandatory whenever a time component exists
+        var json = JsonNode.Parse("""{"resourceType":"Condition","recordedDate":"2023-01-01T12:00:00"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recordedDate", "dateTime");
+        var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Full };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
     public void GivenStandardDateTimeFormats_WhenValidating_ThenStillReturnsSuccess()
     {
-        // Arrange - Existing behavior: standard dateTime formats should still pass
+        // Arrange - Standard dateTime formats valid at all depths
         var testCases = new[]
         {
             "2021",
@@ -738,14 +779,14 @@ public class TypeCheckTests
             var json = JsonNode.Parse($$"""{"resourceType":"Condition","recordedDate":"{{dateTime}}"}""");
             var sourceNode = JsonNodeSourceNode.Create(json);
             var check = new TypeCheck("recordedDate", "dateTime");
-            var settings = new ValidationSettings();
+            var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Full };
             var state = new ValidationState();
 
             // Act
             var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
             // Assert
-            result.IsValid.ShouldBeTrue($"dateTime '{dateTime}' should be valid");
+            result.IsValid.ShouldBeTrue($"dateTime '{dateTime}' should be valid even at Full depth");
             result.Issues.ShouldBeEmpty();
         }
     }

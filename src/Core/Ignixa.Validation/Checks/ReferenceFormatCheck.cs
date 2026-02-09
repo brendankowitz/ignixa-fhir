@@ -99,27 +99,6 @@ public class ReferenceFormatCheck : IValidationCheck
             return true;
         }
 
-        if (reference.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            reference.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            var parts = reference.Split('/');
-            return parts.Length >= 2;
-        }
-
-        var segments = reference.Split('/');
-
-        if (segments.Length == 2)
-        {
-            return !string.IsNullOrEmpty(segments[0]) && !string.IsNullOrEmpty(segments[1]);
-        }
-
-        if (segments.Length == 4 && segments[2] == "_history")
-        {
-            return !string.IsNullOrEmpty(segments[0]) &&
-                   !string.IsNullOrEmpty(segments[1]) &&
-                   !string.IsNullOrEmpty(segments[3]);
-        }
-
         return !string.IsNullOrWhiteSpace(reference);
     }
 }
