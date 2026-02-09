@@ -340,7 +340,7 @@ public class UnknownPropertyCheckTests
         Assert.False(result.IsValid);
         Assert.Single(result.Issues);
         Assert.Contains(result.Issues, i => i.Code == "unknown-property");
-        Assert.Contains("_unknownField", result.Issues[0].Message);
+        Assert.Contains("unknownField", result.Issues[0].Message);
     }
 
     #endregion

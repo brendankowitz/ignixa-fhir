@@ -1508,7 +1508,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private static string TruncateTimePortion(string value, string datePart, string tzSuffix, DateTimePrecision precision)
     {
-        var tIndex = value.IndexOf('T', StringComparison.Ordinal);        var rawTime = value.Substring(tIndex + 1);
+        var tIndex = value.IndexOf('T', StringComparison.Ordinal);
+        var rawTime = value.Substring(tIndex + 1);
         // Strip timezone from time for component extraction
         if (!string.IsNullOrEmpty(tzSuffix))
             rawTime = rawTime.Substring(0, rawTime.Length - tzSuffix.Length);
