@@ -248,6 +248,117 @@ public class BinaryOperatorTests
 
     #endregion
 
+    #region Date/DateTime Equivalence Operator Tests (Issue #214)
+
+    [Fact]
+    public void GivenSamePrecisionDates_WhenEquivalent_ThenReturnsTrue()
+    {
+        var expr = _parser.Parse("@2010 ~ @2010");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateYearAndDay_WhenEquivalent_ThenReturnsTrue()
+    {
+        // @2010-01-01 ~ @2010 should compare at year precision → true
+        var expr = _parser.Parse("@2010-01-01 ~ @2010");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateDayAndYear_WhenEquivalent_ThenReturnsTrue()
+    {
+        // @2010 ~ @2010-01-02 should compare at year precision → true
+        var expr = _parser.Parse("@2010 ~ @2010-01-02");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateDifferentYear_WhenEquivalent_ThenReturnsFalse()
+    {
+        // @2010-01-01 ~ @2011 should compare at year precision → false
+        var expr = _parser.Parse("@2010-01-01 ~ @2011");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateYearAndMonth_WhenEquivalent_ThenReturnsTrue()
+    {
+        // @2010-03 ~ @2010 should compare at year precision → true
+        var expr = _parser.Parse("@2010-03 ~ @2010");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateMonthAndDay_WhenEquivalent_ThenReturnsTrue()
+    {
+        // @2010-03-15 ~ @2010-03 should compare at month precision → true
+        var expr = _parser.Parse("@2010-03-15 ~ @2010-03");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateMonthAndDayDifferentMonth_WhenEquivalent_ThenReturnsFalse()
+    {
+        // @2010-03-15 ~ @2010-04 should compare at month precision → false
+        var expr = _parser.Parse("@2010-03-15 ~ @2010-04");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionDateTimeAndDate_WhenEquivalent_ThenReturnsFalse()
+    {
+        // @2010-01-01T12:30:00 ~ @2010-01-01 — Date vs DateTime are different types → false
+        var expr = _parser.Parse("@2010-01-01T12:30:00 ~ @2010-01-01");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenCrossPrecisionNotEquivalent_WhenNotEquivalentOperator_ThenReturnsTrue()
+    {
+        // @2010-01-01 !~ @2011 should be true (not equivalent at year precision)
+        var expr = _parser.Parse("@2010-01-01 !~ @2011");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.True((bool)result.Value!);
+    }
+
+    #endregion
+
     #region Quantity Equivalence Operator Tests
 
     [Fact]

@@ -77,11 +77,20 @@ public class TypeCheck : IValidationCheck
             var isObjectOrArray = jsonKind is JsonValueKind.Object or JsonValueKind.Array;
             if (!(isObjectOrArray && fieldNode.HasPrimitiveValue) && !IsValidJsonType(jsonKind, _expectedType))
             {
-                return ValidationResult.Failure(
-                    ValidationIssue.InvariantFailure(
-                        "type-1",
-                        $"JSON type mismatch: expected {GetExpectedJsonTypeDescription(_expectedType)} for FHIR type '{_expectedType}', but got {jsonKind}",
-                        location));
+                // Skip the type check for shadow-only elements (extension content with no primitive value).
+                // FHIR JSON shadow properties (e.g., _birthDate) have extension/id children, not arbitrary content.
+                if (isObjectOrArray && !fieldNode.HasPrimitiveValue && HasExtensionContent(fieldNode))
+                {
+                    // Shadow-only element: valid extension content, no value to type-check.
+                }
+                else
+                {
+                    return ValidationResult.Failure(
+                        ValidationIssue.InvariantFailure(
+                            "type-1",
+                            $"JSON type mismatch: expected {GetExpectedJsonTypeDescription(_expectedType)} for FHIR type '{_expectedType}', but got {jsonKind}",
+                            location));
+                }
             }
         }
 
@@ -242,4 +251,14 @@ public class TypeCheck : IValidationCheck
             _ => "compatible type"
         };
     }
+
+    /// <summary>
+    /// Checks whether an element contains FHIR shadow content (extension/id children).
+    /// Shadow-only elements (e.g., _birthDate without birthDate) have extension or id children
+    /// from the shadow JSON object, distinguishing them from invalid Object-typed values.
+    /// </summary>
+    private static bool HasExtensionContent(IElement element) =>
+        element.Children("extension").Count > 0
+        || element.Children("modifierExtension").Count > 0
+        || element.Children("id").Count > 0;
 }

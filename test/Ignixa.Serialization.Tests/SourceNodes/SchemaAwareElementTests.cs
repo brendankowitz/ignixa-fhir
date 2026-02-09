@@ -617,4 +617,88 @@ public class SchemaAwareElementTests
     }
 
     #endregion
+
+    #region Shadow-Only Element Tests (Issue #216)
+
+    [Fact]
+    public void GivenPatientWithShadowBirthDateOnly_WhenNavigatingToExtension_ThenChildrenHaveCorrectTypes()
+    {
+        // Arrange - _birthDate WITHOUT birthDate
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "example",
+          "_birthDate": {
+            "extension": [{
+              "url": "http://hl7.org/fhir/StructureDefinition/patient-birthTime",
+              "valueDateTime": "2000-01-01T01:01:01-01:00"
+            }]
+          }
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var birthDateList = typedElement.Children("birthDate");
+
+        // Assert - the shadow element should be accessible as "birthDate"
+        Assert.Single(birthDateList);
+        var birthDate = birthDateList[0];
+
+        var extensions = birthDate.Children("extension").ToList();
+        Assert.Single(extensions);
+        Assert.Equal("Extension", extensions[0].InstanceType);
+
+        var urls = extensions[0].Children("url");
+        Assert.Single(urls);
+        Assert.NotEmpty(urls[0].InstanceType);
+        Assert.Equal("http://hl7.org/fhir/StructureDefinition/patient-birthTime", urls[0].Value);
+
+        var valueDateTimes = extensions[0].Children("valueDateTime");
+        Assert.Single(valueDateTimes);
+        Assert.Equal("dateTime", valueDateTimes[0].InstanceType);
+        Assert.Equal("2000-01-01T01:01:01-01:00", valueDateTimes[0].Value);
+    }
+
+    [Fact]
+    public void GivenPatientWithBothBirthDateAndShadow_WhenNavigating_ThenChildrenHaveCorrectTypes()
+    {
+        // Arrange - both birthDate AND _birthDate (working case for comparison)
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "example",
+          "birthDate": "2010-05-07",
+          "_birthDate": {
+            "extension": [{
+              "url": "http://hl7.org/fhir/StructureDefinition/patient-birthTime",
+              "valueDateTime": "2010-05-07T01:01:01-01:00"
+            }]
+          }
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var birthDateList = typedElement.Children("birthDate");
+
+        // Assert
+        Assert.Single(birthDateList);
+        var birthDate = birthDateList[0];
+        Assert.Equal("2010-05-07", birthDate.Value);
+
+        var extensions = birthDate.Children("extension").ToList();
+        Assert.Single(extensions);
+        Assert.Equal("Extension", extensions[0].InstanceType);
+
+        var valueDateTimes = extensions[0].Children("valueDateTime");
+        Assert.Single(valueDateTimes);
+        Assert.Equal("dateTime", valueDateTimes[0].InstanceType);
+    }
+
+    #endregion
 }

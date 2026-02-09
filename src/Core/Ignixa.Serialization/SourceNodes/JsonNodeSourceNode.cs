@@ -192,13 +192,27 @@ public class JsonNodeSourceNode : ISourceNavigator
         {
             if (item.Count() == 1)
             {
-                // Single property (no shadow)
                 (string Name, JsonNode? Value) innerItem = item.First();
-                (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (
-                    innerItem.Name,
-                    new Lazy<IEnumerable<ISourceNavigator>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!).ToList())
-                );
-                list.Add(values);
+
+                if (innerItem.Name.StartsWith(_shadowNodePrefix))
+                {
+                    // Shadow-only property (e.g., _birthDate without birthDate).
+                    // Use the base name for schema lookup and pass value as shadow content.
+                    string baseName = innerItem.Name.TrimStart(_shadowNodePrefix);
+                    (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (
+                        baseName,
+                        new Lazy<IEnumerable<ISourceNavigator>>(() => JsonNodeToSourceNodes(baseName, location, innerItem.Value!, null).ToList())
+                    );
+                    list.Add(values);
+                }
+                else
+                {
+                    (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (
+                        innerItem.Name,
+                        new Lazy<IEnumerable<ISourceNavigator>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!).ToList())
+                    );
+                    list.Add(values);
+                }
             }
             else if (item.Count() == 2)
             {
