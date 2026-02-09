@@ -384,4 +384,171 @@ public class StructureDefinitionSchemaBuilderTests
     }
 
     #endregion
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationStructure_WhenBuildingSchema_ThenDoesNotCreateNestedComplexTypeCheckForChoiceElements()
+    {
+        // Arrange - Bug #210-2: Choice elements (value[x], effective[x]) should NOT get NestedComplexTypeCheck
+        // ExtractNestedTypeChecks resolves GetTypeName for choice elements using Types[0].Code (e.g., "Quantity"),
+        // then creates a NestedComplexTypeCheck with the wrong type schema applied to all value[x] variants.
+        // Choice elements should be validated by ChoiceElementCheck instead.
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
+
+        // Act
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        // Assert
+        var nestedChecks = schema.Checks.OfType<NestedComplexTypeCheck>().ToList();
+        var choiceChecks = schema.Checks.OfType<ChoiceElementCheck>().ToList();
+
+        // Observation has choice elements: value[x], effective[x], component.value[x]
+        // These should have ChoiceElementCheck, NOT NestedComplexTypeCheck
+        choiceChecks.ShouldNotBeEmpty("Observation should have ChoiceElementChecks for value[x] and effective[x]");
+
+        // Verify no NestedComplexTypeCheck exists for choice element base names
+        // The choice element base names (without [x]) should not appear as NestedComplexTypeCheck targets
+        var choiceElementBaseNames = new[] { "value", "effective" };
+        foreach (var baseName in choiceElementBaseNames)
+        {
+            var wronglyNestedCheck = nestedChecks.FirstOrDefault(c => c.ElementName == baseName);
+            wronglyNestedCheck.ShouldBeNull(
+                $"Choice element '{baseName}[x]' should NOT have a NestedComplexTypeCheck - " +
+                "it should be validated by ChoiceElementCheck instead");
+        }
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenMedicationRequestStructure_WhenBuildingSchema_ThenDoesNotCreateNestedComplexTypeCheckForMedicationChoice()
+    {
+        // Arrange - MedicationRequest has medication[x] which can be CodeableConcept or Reference
+        // NestedComplexTypeCheck should NOT be created for this choice element
+        var typeDefinition = _schema.GetTypeDefinition("MedicationRequest");
+
+        // Act
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        // Assert
+        var nestedChecks = schema.Checks.OfType<NestedComplexTypeCheck>().ToList();
+        var wrongCheck = nestedChecks.FirstOrDefault(c => c.ElementName == "medication");
+        wrongCheck.ShouldBeNull(
+            "Choice element 'medication[x]' should NOT have NestedComplexTypeCheck");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationStructure_WhenBuildingSchema_ThenNoTypeCheckForChoiceElements()
+    {
+        // Bug #210-2: Choice elements should NOT get TypeCheck because their concrete type
+        // varies at runtime (e.g., effective[x] can be dateTime, Period, Timing, or Instant)
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        var typeChecks = schema.Checks.OfType<TypeCheck>().ToList();
+        foreach (var check in typeChecks)
+        {
+            var elementNameField = typeof(TypeCheck).GetField("_elementName",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var elementName = (string)elementNameField!.GetValue(check)!;
+
+            var choiceBaseNames = new[] { "value", "effective" };
+            choiceBaseNames.ShouldNotContain(elementName,
+                $"TypeCheck should not be created for choice element '{elementName}' - " +
+                "concrete type depends on runtime data");
+        }
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationStructure_WhenBuildingSchema_ThenNoNestedComplexTypeCheckForChoiceElements()
+    {
+        // Choice elements should NOT get NestedComplexTypeCheck
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        var nestedChecks = schema.Checks.OfType<NestedComplexTypeCheck>().ToList();
+        foreach (var check in nestedChecks)
+        {
+            var choiceBaseNames = new[] { "value", "effective" };
+            choiceBaseNames.ShouldNotContain(check.ElementName,
+                $"NestedComplexTypeCheck exists for choice element base name '{check.ElementName}'");
+        }
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationComponentStructure_WhenBuildingSchema_ThenNoTypeOrNestedCheckForValueChoiceElement()
+    {
+        // Observation.Component has value[x] which is a choice element
+        // It should NOT get TypeCheck or NestedComplexTypeCheck
+        var typeDefinition = _schema.GetTypeDefinition("Observation.Component");
+        typeDefinition.ShouldNotBeNull("Observation.Component should exist in schema");
+
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        // No NestedComplexTypeCheck for value
+        var nestedChecks = schema.Checks.OfType<NestedComplexTypeCheck>().ToList();
+        var wrongNestedCheck = nestedChecks.FirstOrDefault(c => c.ElementName == "value");
+        wrongNestedCheck.ShouldBeNull(
+            "Observation.Component.value[x] should NOT have a NestedComplexTypeCheck");
+
+        // No TypeCheck for value (defaultTypeName is Quantity, a non-primitive, so this shouldn't
+        // normally happen - but verify the pattern is correct)
+        var typeChecks = schema.Checks.OfType<TypeCheck>().ToList();
+        foreach (var check in typeChecks)
+        {
+            var elementNameField = typeof(TypeCheck).GetField("_elementName",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var elementName = (string)elementNameField!.GetValue(check)!;
+            elementName.ShouldNotBe("value",
+                "TypeCheck should not be created for choice element 'value'");
+        }
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenExtensionStructure_WhenBuildingSchema_ThenNoTypeCheckForValueChoiceElement()
+    {
+        // Extension has value[x] with many types including primitives (base64Binary, boolean, etc.)
+        // and complex types (Coding, Address, etc.)
+        // TypeCheck should NOT be created for choice elements even when defaultTypeName is primitive
+        var typeDefinition = _schema.GetTypeDefinition("Extension");
+        typeDefinition.ShouldNotBeNull("Extension should exist in schema");
+
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        var typeChecks = schema.Checks.OfType<TypeCheck>().ToList();
+        foreach (var check in typeChecks)
+        {
+            var elementNameField = typeof(TypeCheck).GetField("_elementName",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var elementName = (string)elementNameField!.GetValue(check)!;
+            elementName.ShouldNotBe("value",
+                "TypeCheck should not be created for choice element 'value' in Extension - " +
+                "value[x] can be valueCoding, valueAddress, etc. (not just primitive types)");
+        }
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationStructure_WhenBuildingSchema_ThenChoiceElementBasesAreInUnknownPropertyCheck()
+    {
+        // Verify that UnknownPropertyCheck recognizes choice element property names
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        var unknownPropertyChecks = schema.Checks.OfType<UnknownPropertyCheck>().ToList();
+        unknownPropertyChecks.ShouldNotBeEmpty();
+
+        // Verify the UnknownPropertyCheck has choice element bases
+        var check = unknownPropertyChecks[0];
+        var choiceBasesField = typeof(UnknownPropertyCheck).GetField("_choiceElementBases",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        choiceBasesField.ShouldNotBeNull();
+
+        var choiceBases = (HashSet<string>)choiceBasesField.GetValue(check)!;
+        choiceBases.ShouldContain("value");
+        choiceBases.ShouldContain("effective");
+    }
 }

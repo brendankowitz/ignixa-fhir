@@ -99,8 +99,10 @@ public class StructureDefinitionSchemaBuilder
         // Extract type checks (only for primitive types, moved to Fast tier)
         // This covers ID format validation and other primitive type checks
         // Use element name as the first parameter, and the actual FHIR type from ITypeExtended
+        // IMPORTANT: Skip choice elements - they may have a primitive DefaultTypeName (e.g., dateTime)
+        // but the actual concrete type depends on the runtime data (e.g., effectivePeriod is a Period object)
         var typeChecks = elements
-            .Where(e => e.Info.IsPrimitive)
+            .Where(e => e.Info.IsPrimitive && !e.Info.IsChoiceElement)
             .Select(e => new TypeCheck(e.Info.Name, GetTypeName(e)));
         universalChecks.AddRange(typeChecks);
 
@@ -108,14 +110,17 @@ public class StructureDefinitionSchemaBuilder
         var specChecks = new List<IValidationCheck>();
 
         // Extract reference format checks - check the type name, not element name
+        // Skip choice elements: their DefaultTypeName may be Reference but the actual type
+        // depends on runtime data (e.g., medication[x] could be medicationCodeableConcept)
         var referenceChecks = elements
-            .Where(e => GetTypeName(e) == "Reference")
+            .Where(e => !e.Info.IsChoiceElement && GetTypeName(e) == "Reference")
             .Select(e => new ReferenceFormatCheck(e.Info.Name));
         specChecks.AddRange(referenceChecks);
 
         // Extract coding structure checks - check the type name, not element name
+        // Skip choice elements for the same reason as reference checks
         var codingChecks = elements
-            .Where(e => GetTypeName(e) is "CodeableConcept" or "Coding")
+            .Where(e => !e.Info.IsChoiceElement && GetTypeName(e) is "CodeableConcept" or "Coding")
             .Select(e => new CodingStructureCheck(e.Info.Name));
         specChecks.AddRange(codingChecks);
 
@@ -335,13 +340,16 @@ public class StructureDefinitionSchemaBuilder
 
         foreach (var element in elements)
         {
-            // Skip if primitive type
             if (element.Info.IsPrimitive)
             {
                 continue;
             }
 
-            // Get the type name from extended metadata using GetTypeName helper
+            if (element.Info.IsChoiceElement)
+            {
+                continue;
+            }
+
             var typeName = GetTypeName(element);
 
             if (string.IsNullOrEmpty(typeName) || typeName == element.Info.Name)

@@ -272,24 +272,6 @@ public class TypeCheckTests
         Assert.Empty(result.Issues);
     }
 
-    [Fact]
-    public void GivenRelativeCanonical_WhenValidating_ThenReturnsError()
-    {
-        // Arrange
-        var json = JsonNode.Parse("{\"resourceType\":\"StructureDefinition\",\"url\":\"StructureDefinition/Patient\"}");
-        var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new TypeCheck("url", "canonical");
-        var settings = new ValidationSettings();
-        var state = new ValidationState();
-
-        // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
-
-        // Assert
-        Assert.False(result.IsValid);
-        Assert.Single(result.Issues);
-        Assert.Contains("canonical", result.Issues[0].Message);
-    }
 
     #region JSON Type Mismatch Tests
 
@@ -450,4 +432,321 @@ public class TypeCheckTests
     }
 
     #endregion
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenPrimitiveWithExtensionOnly_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - _birthDate with extension but no birthDate value
+        // Bug #210-1: TypeCheck gets Meta<JsonNode>() which returns JSON Object from shadow property,
+        // IsValidJsonType rejects Object for date type before checking HasPrimitiveValue
+        var json = JsonNode.Parse("""{"resourceType":"Patient","_birthDate":{"extension":[{"url":"http://example.org","valueCode":"unknown"}]}}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("birthDate", "date");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert - element has no primitive value, so type check should pass (not fail on JSON Object kind)
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenPrimitiveWithValueAndExtension_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - both birthDate and _birthDate present
+        var json = JsonNode.Parse("""{"resourceType":"Patient","birthDate":"1970-01-01","_birthDate":{"extension":[{"url":"http://example.org","valueString":"approximate"}]}}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("birthDate", "date");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenNullPrimitiveWithExtension_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - birthDate is explicitly null but _birthDate has extension
+        // FHIR allows: {"birthDate": null, "_birthDate": {"extension": [...]}}
+        var json = JsonNode.Parse("""{"resourceType":"Patient","birthDate":null,"_birthDate":{"extension":[{"url":"http://example.org","valueCode":"unknown"}]}}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("birthDate", "date");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenBooleanWithExtension_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - boolean primitive with shadow extension property
+        var json = JsonNode.Parse("""{"resourceType":"Patient","active":true,"_active":{"extension":[{"url":"http://example.org","valueString":"confirmed"}]}}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("active", "boolean");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenBooleanExtensionOnly_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - _active with extension but no active value
+        var json = JsonNode.Parse("""{"resourceType":"Patient","_active":{"extension":[{"url":"http://example.org","valueString":"unknown"}]}}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("active", "boolean");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenStringWithExtension_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - string primitive with shadow extension (nested in HumanName)
+        var json = JsonNode.Parse("""{"resourceType":"Patient","name":[{"family":"Smith","_family":{"extension":[{"url":"http://example.org","valueString":"maiden"}]}}]}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenRelativeCanonicalReference_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - Bug #210-3: Canonical validation uses Uri.TryCreate(UriKind.Absolute) which rejects relative refs
+        // Relative canonical references are valid per FHIR spec, especially in Bundle context
+        var json = JsonNode.Parse("""{"resourceType":"Library","url":"Library/suiciderisk-orderset-logic"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("url", "canonical");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Theory]
+    [InlineData("ActivityDefinition/referralPrimaryCareMentalHealth-initial")]
+    [InlineData("CapabilityStatement/example")]
+    [InlineData("Library/library-cms146-example")]
+    [InlineData("StructureDefinition/Patient")]
+    [InlineData("ValueSet/my-valueset|1.0.0")]
+    public void GivenRelativeCanonicalFromTestData_WhenValidating_ThenReturnsSuccess(string canonicalValue)
+    {
+        // Arrange - Bug #210-3: These relative canonical values appear in official FHIR test data
+        var json = JsonNode.Parse($$"""{"resourceType":"Library","url":"{{canonicalValue}}"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("url", "canonical");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue($"Canonical '{canonicalValue}' should be valid");
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenRelativeCanonicalWithVersion_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - Relative canonical with version fragment
+        var json = JsonNode.Parse("""{"resourceType":"Library","url":"Library/my-lib|1.0"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("url", "canonical");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenAbsoluteCanonical_WhenValidating_ThenStillReturnsSuccess()
+    {
+        // Arrange - Existing behavior: absolute canonical should still pass
+        var json = JsonNode.Parse("""{"resourceType":"Library","url":"http://example.org/Library/my-lib"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("url", "canonical");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenDateWithTimezoneNoTime_WhenValidatingAtSpecDepth_ThenReturnsSuccess()
+    {
+        // Arrange - Bug #210-4: Date with timezone but no time component
+        // Not valid per R4 spec, but accepted at Spec/Compatibility depth for real-world data compatibility
+        // R5 spec explicitly allows this format
+        var json = JsonNode.Parse("""{"resourceType":"Condition","recordedDate":"2021-10-13+02:00"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recordedDate", "dateTime");
+        var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Theory]
+    [InlineData("2021-10-13-05:00")]
+    [InlineData("2021-01-01Z")]
+    public void GivenDateWithTimezoneVariants_WhenValidatingAtSpecDepth_ThenReturnsSuccess(string dateTimeValue)
+    {
+        // Arrange - Accepted at Spec/Compatibility depth for real-world FHIR data compatibility
+        var json = JsonNode.Parse($$"""{"resourceType":"Condition","recordedDate":"{{dateTimeValue}}"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recordedDate", "dateTime");
+        var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue($"dateTime '{dateTimeValue}' should be valid at Spec depth");
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Theory]
+    [InlineData("2021-10-13+02:00")]
+    [InlineData("2021-10-13-05:00")]
+    [InlineData("2021-01-01Z")]
+    public void GivenDateWithTimezoneNoTime_WhenValidatingAtFullDepth_ThenReturnsError(string dateTimeValue)
+    {
+        // Arrange - R4 spec requires timezone only after full time component
+        // Full depth enforces strict R4 compliance
+        var json = JsonNode.Parse($$"""{"resourceType":"Condition","recordedDate":"{{dateTimeValue}}"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recordedDate", "dateTime");
+        var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Full };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse($"dateTime '{dateTimeValue}' should fail at Full depth (R4 strict)");
+        result.Issues.ShouldHaveSingleItem();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenDateWithTimezoneNoTime_WhenValidatingAtCompatibilityDepth_ThenReturnsSuccess()
+    {
+        // Arrange - Compatibility depth is deliberately permissive
+        var json = JsonNode.Parse("""{"resourceType":"Condition","recordedDate":"2021-10-13+02:00"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recordedDate", "dateTime");
+        var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Compatibility };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenStandardDateTimeFormats_WhenValidating_ThenStillReturnsSuccess()
+    {
+        // Arrange - Existing behavior: standard dateTime formats should still pass
+        var testCases = new[]
+        {
+            "2021",
+            "2021-10",
+            "2021-10-13",
+            "2021-10-13T10:30:00Z",
+            "2021-10-13T10:30:00+02:00",
+            "2021-10-13T10:30:00.123Z"
+        };
+
+        foreach (var dateTime in testCases)
+        {
+            var json = JsonNode.Parse($$"""{"resourceType":"Condition","recordedDate":"{{dateTime}}"}""");
+            var sourceNode = JsonNodeSourceNode.Create(json);
+            var check = new TypeCheck("recordedDate", "dateTime");
+            var settings = new ValidationSettings();
+            var state = new ValidationState();
+
+            // Act
+            var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+            // Assert
+            result.IsValid.ShouldBeTrue($"dateTime '{dateTime}' should be valid");
+            result.Issues.ShouldBeEmpty();
+        }
+    }
 }

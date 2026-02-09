@@ -25,7 +25,8 @@ public class TypeCheck : IValidationCheck
     // Regex patterns for primitive type validation (from FHIR spec)
     private static readonly Regex IdPattern = new(@"^[A-Za-z0-9\-\.]{1,64}$", RegexOptions.Compiled);
     private static readonly Regex DatePattern = new(@"^\d{4}(-\d{2}(-\d{2})?)?$", RegexOptions.Compiled);
-    private static readonly Regex DateTimePattern = new(@"^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[\+\-]\d{2}:\d{2})?)?)?)?$", RegexOptions.Compiled);
+    private static readonly Regex DateTimePatternStrict = new(@"^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[\+\-]\d{2}:\d{2}))?)?)?$", RegexOptions.Compiled);
+    private static readonly Regex DateTimePatternPermissive = new(@"^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?)?(Z|[\+\-]\d{2}:\d{2})?)?)?$", RegexOptions.Compiled);
     private static readonly Regex TimePattern = new(@"^\d{2}:\d{2}:\d{2}(\.\d+)?$", RegexOptions.Compiled);
 
     // FHIR instant: YYYY-MM-DDThh:mm:ss.sss(Z|+/-HH:MM) - timezone REQUIRED
@@ -69,14 +70,12 @@ public class TypeCheck : IValidationCheck
         var fieldNode = fieldChildren[0];
         var location = fieldNode.Location;
 
-        // Check JSON type before value validation
-        // Access the underlying JsonNode to check the original JSON type (before deserialization coercion)
-        // This must run before HasPrimitiveValue check to catch type mismatches (e.g., Object where String expected)
         var jsonNode = fieldNode.Meta<JsonNode>();
         if (jsonNode is not null)
         {
             var jsonKind = jsonNode.GetValueKind();
-            if (!IsValidJsonType(jsonKind, _expectedType))
+            var isObjectOrArray = jsonKind is JsonValueKind.Object or JsonValueKind.Array;
+            if (!(isObjectOrArray && fieldNode.HasPrimitiveValue) && !IsValidJsonType(jsonKind, _expectedType))
             {
                 return ValidationResult.Failure(
                     ValidationIssue.InvariantFailure(
@@ -86,8 +85,6 @@ public class TypeCheck : IValidationCheck
             }
         }
 
-        // Check if there's an actual primitive value (not just extensions via shadow property)
-        // FHIR allows elements with only extensions and no value (e.g., _birthDate without birthDate)
         if (!fieldNode.HasPrimitiveValue)
         {
             return ValidationResult.Success();
@@ -106,7 +103,7 @@ public class TypeCheck : IValidationCheck
         // Check element name first to apply specialized validation for inherited types.
         // Example: "id" inherits from string but requires ID format validation.
         var elementNameValidation = GetValidationByElementName(text);
-        var isValid = elementNameValidation ?? GetValidationByType(text);
+        var isValid = elementNameValidation ?? GetValidationByType(text, settings);
 
         if (!isValid)
         {
@@ -152,7 +149,7 @@ public class TypeCheck : IValidationCheck
             "url" => UrlPattern.IsMatch(text),
             "oid" => UriPattern.IsMatch(text),
             "uuid" => IsValidUuid(text),
-            "canonical" => Uri.TryCreate(text, UriKind.Absolute, out _),
+            "canonical" => Uri.TryCreate(text, UriKind.RelativeOrAbsolute, out _),
 
             // Code-like types
             "code" => true,
@@ -166,7 +163,7 @@ public class TypeCheck : IValidationCheck
     /// <summary>
     /// Gets validation result based on the expected FHIR type.
     /// </summary>
-    private bool GetValidationByType(string text)
+    private bool GetValidationByType(string text, ValidationSettings settings)
     {
         return _expectedType switch
         {
@@ -178,11 +175,11 @@ public class TypeCheck : IValidationCheck
             "integer" => int.TryParse(text, out _),
             "decimal" => decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out _),
             "date" => DatePattern.IsMatch(text),
-            "dateTime" => DateTimePattern.IsMatch(text),
+            "dateTime" => (settings.Depth == ValidationDepth.Full ? DateTimePatternStrict : DateTimePatternPermissive).IsMatch(text),
             "instant" => InstantPattern.IsMatch(text), // Requires timezone (Z or +/-HH:MM)
             "time" => TimePattern.IsMatch(text),
             "uri" or "url" or "oid" or "uuid" or "code" or "markdown" or "base64Binary" => true, // Permissive for general URIs
-            "canonical" => Uri.TryCreate(text, UriKind.Absolute, out _), // Canonical MUST be absolute
+            "canonical" => Uri.TryCreate(text, UriKind.RelativeOrAbsolute, out _),
             _ => true // Unknown types pass
         };
     }
@@ -206,29 +203,21 @@ public class TypeCheck : IValidationCheck
     {
         return fhirType switch
         {
-            // String-based FHIR types require JSON String
             "string" or "code" or "id" or "markdown" or "uri" or "url" or "canonical" or "oid" or "uuid"
                 => jsonKind == JsonValueKind.String,
 
-            // Date/time types are represented as JSON strings in FHIR
             "date" or "dateTime" or "instant" or "time"
                 => jsonKind == JsonValueKind.String,
 
-            // base64Binary is a string in JSON
             "base64Binary"
                 => jsonKind == JsonValueKind.String,
 
-            // Numeric types require JSON Number
             "integer" or "unsignedInt" or "positiveInt" or "decimal"
                 => jsonKind == JsonValueKind.Number,
 
-            // Boolean requires JSON True or False
             "boolean"
                 => jsonKind is JsonValueKind.True or JsonValueKind.False,
 
-            // Complex types are objects (but we don't validate those here - they have no Value)
-            // Arrays are validated by cardinality checks
-            // Unknown types pass through (permissive for extensibility)
             _ => true
         };
     }

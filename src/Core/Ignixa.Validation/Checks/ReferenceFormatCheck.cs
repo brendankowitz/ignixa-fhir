@@ -84,39 +84,35 @@ public class ReferenceFormatCheck : IValidationCheck
 
     private static bool IsValidReferenceFormat(string reference)
     {
-        // Valid formats:
-        // - ResourceType/id
-        // - http(s)://server/ResourceType/id
-        // - urn:uuid:...
-        // - #fragment
         if (reference.StartsWith('#'))
         {
-            return true; // Fragment reference
+            return true;
         }
 
         if (reference.StartsWith("urn:uuid:", StringComparison.OrdinalIgnoreCase))
         {
-            return true; // UUID reference
+            return true;
+        }
+
+        if (reference.StartsWith("urn:oid:", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
         }
 
         if (reference.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
             reference.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            // Absolute URL - should have ResourceType/id at the end
             var parts = reference.Split('/');
-            return parts.Length >= 2; // At minimum: http://server/Type/id
+            return parts.Length >= 2;
         }
 
-        // Relative reference: ResourceType/id or ResourceType/id/_history/version
         var segments = reference.Split('/');
 
-        // Simple relative reference: ResourceType/id (2 segments)
         if (segments.Length == 2)
         {
             return !string.IsNullOrEmpty(segments[0]) && !string.IsNullOrEmpty(segments[1]);
         }
 
-        // Versioned relative reference: ResourceType/id/_history/version (4 segments)
         if (segments.Length == 4 && segments[2] == "_history")
         {
             return !string.IsNullOrEmpty(segments[0]) &&
@@ -124,6 +120,6 @@ public class ReferenceFormatCheck : IValidationCheck
                    !string.IsNullOrEmpty(segments[3]);
         }
 
-        return false;
+        return !string.IsNullOrWhiteSpace(reference);
     }
 }

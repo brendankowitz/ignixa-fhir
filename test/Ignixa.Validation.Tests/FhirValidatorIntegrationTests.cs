@@ -173,9 +173,9 @@ public class FhirValidatorIntegrationTests
     #region Schema-Driven Checks
 
     [Fact]
-    public void GivenInvalidReference_WhenValidating_ThenDetectsReferenceFormatViolation()
+    public void GivenBareStringReference_WhenValidating_ThenPasses()
     {
-        // Arrange & Act
+        // Arrange & Act - Bug #210-5: Bare string references should pass (MS FHIR Server behavior)
         var result = ValidateResource(@"{
             ""resourceType"": ""Observation"",
             ""id"": ""example"",
@@ -187,13 +187,12 @@ public class FhirValidatorIntegrationTests
                 }]
             },
             ""subject"": {
-                ""reference"": ""invalid-reference-format""
+                ""reference"": ""ijk""
             }
         }");
 
         // Assert
-        result.IsValid.ShouldBeFalse();
-        result.Issues.ShouldContain(i => i.Path.Contains("subject.reference"));
+        result.IsValid.ShouldBeTrue();
     }
 
     [Fact]
@@ -217,6 +216,285 @@ public class FhirValidatorIntegrationTests
 
         // Assert
         result.IsValid.ShouldBeTrue();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationWithValueCodeableConcept_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-2: Choice type value[x] with CodeableConcept should pass
+        // Previously failed with "Property 'coding' is not defined in StructureDefinition for Quantity"
+        // because the wrong type (Quantity) was applied to validate the CodeableConcept children
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""example"",
+            ""status"": ""final"",
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://loinc.org"",
+                    ""code"": ""8310-5""
+                }]
+            },
+            ""valueCodeableConcept"": {
+                ""coding"": [{
+                    ""system"": ""http://snomed.info/sct"",
+                    ""code"": ""12345""
+                }],
+                ""text"": ""Test value""
+            }
+        }");
+
+        // Assert
+        result.IsValid.ShouldBeTrue(
+            $"Observation with valueCodeableConcept should pass. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationWithValueQuantity_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - value[x] with Quantity type
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""example"",
+            ""status"": ""final"",
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://loinc.org"",
+                    ""code"": ""8310-5""
+                }]
+            },
+            ""valueQuantity"": {
+                ""value"": 6.3,
+                ""unit"": ""mmol/l"",
+                ""system"": ""http://unitsofmeasure.org"",
+                ""code"": ""mmol/L""
+            }
+        }");
+
+        // Assert
+        result.IsValid.ShouldBeTrue(
+            $"Observation with valueQuantity should pass. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationWithEffectivePeriod_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - effective[x] with Period type
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""example"",
+            ""status"": ""final"",
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://loinc.org"",
+                    ""code"": ""8310-5""
+                }]
+            },
+            ""effectivePeriod"": {
+                ""start"": ""2023-01-01"",
+                ""end"": ""2023-12-31""
+            }
+        }");
+
+        // Assert
+        result.IsValid.ShouldBeTrue(
+            $"Observation with effectivePeriod should pass. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenExtensionWithValueCoding_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-5: Extension.value[x] with Coding type should be recognized
+        // Previously failed with "Unknown member 'valueCoding'"
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""extension"": [{
+                ""url"": ""http://example.org/fhir/StructureDefinition/test"",
+                ""valueCoding"": {
+                    ""system"": ""http://example.org"",
+                    ""code"": ""test-code""
+                }
+            }]
+        }");
+
+        // Assert
+        result.IsValid.ShouldBeTrue(
+            $"Extension with valueCoding should pass. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationWithComponentValueCodeableConcept_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-2: Nested choice type in BackboneElement
+        // Observation.component.value[x] as valueCodeableConcept should not be flagged
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""blood-pressure"",
+            ""status"": ""final"",
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://loinc.org"",
+                    ""code"": ""85354-9""
+                }]
+            },
+            ""component"": [
+                {
+                    ""code"": {
+                        ""coding"": [{
+                            ""system"": ""http://loinc.org"",
+                            ""code"": ""8480-6""
+                        }]
+                    },
+                    ""valueQuantity"": {
+                        ""value"": 120,
+                        ""unit"": ""mmHg"",
+                        ""system"": ""http://unitsofmeasure.org"",
+                        ""code"": ""mm[Hg]""
+                    }
+                },
+                {
+                    ""code"": {
+                        ""coding"": [{
+                            ""system"": ""http://loinc.org"",
+                            ""code"": ""8462-4""
+                        }]
+                    },
+                    ""valueCodeableConcept"": {
+                        ""coding"": [{
+                            ""system"": ""http://snomed.info/sct"",
+                            ""code"": ""12345""
+                        }],
+                        ""text"": ""Test value""
+                    }
+                }
+            ]
+        }");
+
+        // Assert - Should not have "Property 'coding' is not defined in Quantity" errors
+        var typeErrors = result.Issues
+            .Where(i => i.Message.Contains("is not defined in the FHIR StructureDefinition"))
+            .ToList();
+        typeErrors.ShouldBeEmpty(
+            $"Should not have unknown property errors for choice type children. Errors: {string.Join("; ", typeErrors.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenObservationWithValueRange_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-2: value[x] with Range type should validate correctly
+        // Range has high/low properties which should not be flagged as unknown
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""range-example"",
+            ""status"": ""final"",
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://loinc.org"",
+                    ""code"": ""8310-5""
+                }]
+            },
+            ""valueRange"": {
+                ""low"": {
+                    ""value"": 3.0,
+                    ""unit"": ""mmol/l""
+                },
+                ""high"": {
+                    ""value"": 6.0,
+                    ""unit"": ""mmol/l""
+                }
+            }
+        }");
+
+        // Assert
+        var typeErrors = result.Issues
+            .Where(i => i.Message.Contains("is not defined in the FHIR StructureDefinition"))
+            .ToList();
+        typeErrors.ShouldBeEmpty(
+            $"Should not have unknown property errors for Range children. Errors: {string.Join("; ", typeErrors.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenQuestionnaireResponseWithValueCoding_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-5: QuestionnaireResponse.item.answer.value[x] with Coding
+        var result = ValidateResource(@"{
+            ""resourceType"": ""QuestionnaireResponse"",
+            ""id"": ""example"",
+            ""status"": ""completed"",
+            ""item"": [{
+                ""linkId"": ""q1"",
+                ""answer"": [{
+                    ""valueCoding"": {
+                        ""system"": ""http://example.org"",
+                        ""code"": ""test""
+                    }
+                }]
+            }]
+        }");
+
+        // Assert
+        var typeErrors = result.Issues
+            .Where(i => i.Message.Contains("is not defined") || i.Message.Contains("unknown"))
+            .ToList();
+        typeErrors.ShouldBeEmpty(
+            $"valueCoding in QuestionnaireResponse.item.answer should be valid. Errors: {string.Join("; ", typeErrors.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenPatientWithPrimitiveExtensions_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-1: Primitive extensions (_property pattern) should pass full validation
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""birthDate"": ""1970-01-01"",
+            ""_birthDate"": {
+                ""extension"": [{
+                    ""url"": ""http://hl7.org/fhir/StructureDefinition/patient-birthTime"",
+                    ""valueDateTime"": ""1970-01-01T00:00:00Z""
+                }]
+            },
+            ""active"": true,
+            ""_active"": {
+                ""extension"": [{
+                    ""url"": ""http://example.org/fhir/StructureDefinition/confirmed"",
+                    ""valueString"": ""confirmed""
+                }]
+            }
+        }");
+
+        // Assert
+        result.IsValid.ShouldBeTrue(
+            $"Patient with primitive extensions should pass. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenPatientWithExtensionOnlyPrimitive_WhenValidating_ThenPasses()
+    {
+        // Arrange & Act - Bug #210-1: Null primitive with only extension should pass
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""_birthDate"": {
+                ""extension"": [{
+                    ""url"": ""http://hl7.org/fhir/StructureDefinition/data-absent-reason"",
+                    ""valueCode"": ""unknown""
+                }]
+            }
+        }");
+
+        // Assert
+        result.IsValid.ShouldBeTrue(
+            $"Patient with extension-only primitive should pass. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
     }
 
     #endregion
