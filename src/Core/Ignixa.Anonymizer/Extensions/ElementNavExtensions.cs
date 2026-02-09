@@ -1,0 +1,50 @@
+using Ignixa.Abstractions;
+
+namespace Ignixa.Anonymizer.Extensions;
+
+public static class ElementNavExtensions
+{
+    public static IEnumerable<IElement> GetEntryResourceChildren(this IElement node)
+    {
+        return node?.Children(Constants.EntryNodeName)
+                .Select(entry => entry?.Children(Constants.EntryResourceNodeName).FirstOrDefault())
+                .Where(resource => resource is not null)!
+            ?? [];
+    }
+
+    public static IEnumerable<IElement> GetContainedChildren(this IElement node)
+    {
+        return node?.Children(Constants.ContainedNodeName) ?? [];
+    }
+
+    public static IEnumerable<IElement> ResourceDescendantsWithoutSubResource(this IElement node)
+    {
+        foreach (var child in node.Children())
+        {
+            if (child.IsFhirResource())
+            {
+                continue;
+            }
+
+            yield return child;
+
+            foreach (var n in child.ResourceDescendantsWithoutSubResource())
+            {
+                yield return n;
+            }
+        }
+    }
+
+    public static IEnumerable<IElement> SelfAndDescendantsWithoutSubResource(this IEnumerable<IElement> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            yield return node;
+
+            foreach (var descendant in node.ResourceDescendantsWithoutSubResource())
+            {
+                yield return descendant;
+            }
+        }
+    }
+}
