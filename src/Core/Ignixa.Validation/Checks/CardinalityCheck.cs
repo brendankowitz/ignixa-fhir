@@ -51,6 +51,14 @@ public class CardinalityCheck : IValidationCheck
         // Check minimum cardinality
         if (actualCount < _min)
         {
+            // In Compatibility mode, skip cardinality checks for 2nd level+ nested elements
+            // (e.g., Appointment.participant.status, Patient.contact.relationship)
+            // This matches Firely SDK lenient behavior for nested backbone elements
+            if (settings.Depth == ValidationDepth.Compatibility && IsNestedElement(location))
+            {
+                return ValidationResult.Success();
+            }
+
             return ValidationResult.Failure(
                 ValidationIssue.CardinalityViolation(location, _min, _max, actualCount));
         }
@@ -63,5 +71,28 @@ public class CardinalityCheck : IValidationCheck
         }
 
         return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// Checks if an element is nested at 2nd level or deeper in the resource structure.
+    /// </summary>
+    /// <param name="location">The full element location path (e.g., "Appointment.participant[0].status").</param>
+    /// <returns>True if the element is 2+ levels deep (has 2 or more dots after removing array indices).</returns>
+    /// <remarks>
+    /// Examples:
+    /// - "Patient.name" → false (1st level, enforce cardinality)
+    /// - "Appointment.participant.status" → true (2nd level, skip in compatibility mode)
+    /// - "Patient.contact.relationship" → true (2nd level, skip in compatibility mode)
+    /// </remarks>
+    private static bool IsNestedElement(string location)
+    {
+        // Normalize location by removing array indices: "Appointment.participant[0].status" -> "Appointment.participant.status"
+        var normalizedLocation = System.Text.RegularExpressions.Regex.Replace(location, @"\[\d+\]", string.Empty);
+
+        // Count dots to determine nesting level
+        // 1 dot = 1st level (e.g., "Patient.name")
+        // 2+ dots = 2nd level or deeper (e.g., "Appointment.participant.status")
+        var dotCount = normalizedLocation.Count(c => c == '.');
+        return dotCount >= 2;
     }
 }

@@ -34,15 +34,23 @@ public class NarrativeCheck : IValidationCheck
         var textNode = textChildren[0];
         var issues = new List<ValidationIssue>();
 
-        // Check for status field (required if text present)
+        // Check for status field (required if text present, except in Compatibility mode)
         var statusChildren = textNode.Children("status");
         if (statusChildren.Count == 0)
         {
-            issues.Add(ValidationIssue.InvariantFailure(
-                "txt-1",
-                "Narrative must have a status field",
-                $"{textNode.Location}.status"));
-            return ValidationResult.Failure(issues);
+            // In Compatibility mode, allow Narrative with only div (no status)
+            // This matches Firely SDK behavior where status is optional
+            if (settings.Depth != ValidationDepth.Compatibility)
+            {
+                issues.Add(ValidationIssue.InvariantFailure(
+                    "txt-1",
+                    "Narrative must have a status field",
+                    $"{textNode.Location}.status"));
+                return ValidationResult.Failure(issues);
+            }
+
+            // Compatibility mode: skip status validation, no other checks needed
+            return ValidationResult.Success();
         }
 
         var statusNode = statusChildren[0];
