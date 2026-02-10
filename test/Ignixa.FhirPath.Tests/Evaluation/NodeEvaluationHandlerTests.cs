@@ -277,27 +277,23 @@ public class NodeEvaluationHandlerTests
     }
 
     [Fact]
-    public void GivenHandlerThrowsException_WhenEvaluating_ThenContinuesEvaluation()
+    public void GivenHandlerThrowsException_WhenEvaluating_ThenExceptionPropagates()
     {
         // Arrange
         var patient = CreatePatientElement();
         var expression = _parser.Parse("name");
-        var callCount = 0;
         var context = new EvaluationContext().WithNodeEvaluationHandler(entry =>
         {
-            callCount++;
-            throw new InvalidOperationException("Handler error - should be swallowed");
+            throw new InvalidOperationException("Handler error - should propagate");
         });
 
-        // Act
-        var results = _evaluator.Evaluate(patient, expression, context).ToList();
+        // Act & Assert - Exception should propagate to caller (fail-fast principle)
+        var exception = Should.Throw<InvalidOperationException>(() =>
+        {
+            var _ = _evaluator.Evaluate(patient, expression, context).ToList();
+        });
 
-        // Assert - Evaluation should succeed despite handler throwing
-        results.ShouldNotBeEmpty();
-        results.Count.ShouldBe(2);
-
-        // Handler should have been called (but exceptions swallowed)
-        callCount.ShouldBeGreaterThan(0);
+        exception.Message.ShouldBe("Handler error - should propagate");
     }
 
     [Fact]

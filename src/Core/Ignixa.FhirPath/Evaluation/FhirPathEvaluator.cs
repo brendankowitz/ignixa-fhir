@@ -78,21 +78,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // If a node evaluation handler is set, materialize results and notify
         if (context.NodeEvaluationHandler != null)
         {
-            var materializedResults = results.ToImmutableList();
-            try
-            {
-                var entry = new NodeEvaluationEntry(
-                    expr,
-                    materializedResults,
-                    effectiveContext.Focus,
-                    effectiveContext.GetThis(),
-                    effectiveContext.GetIndex());
-                context.NodeEvaluationHandler(entry);
-            }
-            catch
-            {
-                // Debug tracing must not break evaluation
-            }
+            // Optimization: Check if results are already materialized to avoid redundant enumeration
+            var materializedResults = results as ImmutableList<IElement> ?? results.ToImmutableList();
+            var entry = new NodeEvaluationEntry(
+                expr,
+                materializedResults,
+                effectiveContext.Focus,
+                effectiveContext.GetThis(),
+                effectiveContext.GetIndex());
+            context.NodeEvaluationHandler(entry);
             return materializedResults;
         }
 

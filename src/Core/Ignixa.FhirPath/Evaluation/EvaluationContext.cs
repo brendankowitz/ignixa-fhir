@@ -142,6 +142,7 @@ public record EvaluationContext
     /// <summary>
     /// Optional callback invoked after each expression node is evaluated during debug tracing.
     /// When set, the evaluator will call this handler with details about each node evaluation.
+    /// Exceptions thrown by the handler will propagate to the caller.
     /// </summary>
     public Action<NodeEvaluationEntry>? NodeEvaluationHandler { get; init; }
 

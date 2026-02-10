@@ -55,10 +55,16 @@ public sealed class NodeEvaluationEntry
             // These types derive from FunctionCallExpression, so match them first
             ChildExpression child => child.ChildName,
             BinaryExpression bin => bin.Operator,
+            IndexerExpression => "[]",
             UnaryExpression unary => unary.Operator,
             PropertyAccessExpression prop => prop.PropertyName,
             FunctionCallExpression func => func.FunctionName,
             ConstantExpression constant => FormatConstantKey(constant.Value),
+            ParenthesizedExpression => "()",
+            ScopeExpression scope => $"${scope.ScopeName}",
+            VariableRefExpression variable => $"%{variable.Name}",
+            QuantityExpression => "QUANTITY",
+            EmptyExpression => "{}",
             _ => Expression.GetType().Name.Replace("Expression", string.Empty, StringComparison.Ordinal).ToUpperInvariant()
         };
 
