@@ -49,7 +49,16 @@ public class NarrativeCheck : IValidationCheck
                 return ValidationResult.Failure(issues);
             }
 
-            // Compatibility mode: skip status validation, no other checks needed
+            // Compatibility mode: status is not required, but div is.
+            if (!textNode.Children("div").Any())
+            {
+                issues.Add(ValidationIssue.InvariantFailure(
+                    "txt-1",
+                    "Narrative must have a div field",
+                    $"{textNode.Location}.div"));
+                return ValidationResult.Failure(issues);
+            }
+
             return ValidationResult.Success();
         }
 

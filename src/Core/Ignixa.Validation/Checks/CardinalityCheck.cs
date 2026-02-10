@@ -14,6 +14,9 @@ namespace Ignixa.Validation.Checks;
 /// </summary>
 public class CardinalityCheck : IValidationCheck
 {
+    private static readonly System.Text.RegularExpressions.Regex ArrayIndexRegex =
+        new(@"\[\d+\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly string _elementName;
     private readonly int _min;
     private readonly int? _max; // null = unbounded (*)
@@ -87,7 +90,7 @@ public class CardinalityCheck : IValidationCheck
     private static bool IsNestedElement(string location)
     {
         // Normalize location by removing array indices: "Appointment.participant[0].status" -> "Appointment.participant.status"
-        var normalizedLocation = System.Text.RegularExpressions.Regex.Replace(location, @"\[\d+\]", string.Empty);
+        var normalizedLocation = ArrayIndexRegex.Replace(location, string.Empty);
 
         // Count dots to determine nesting level
         // 1 dot = 1st level (e.g., "Patient.name")

@@ -224,4 +224,32 @@ public class NarrativeCheckTests
         Assert.Single(result.Issues);
         Assert.Contains(result.Issues, i => i.Code == "txt-1" && i.Path.Contains(".div", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void GivenEmptyNarrative_WhenValidatingInCompatibilityMode_ThenReturnsError()
+    {
+        // Arrange - Empty narrative (no status, no div) should fail even in compatibility mode
+        var json = JsonNode.Parse("""
+        {
+          "resourceType": "Observation",
+          "text": {},
+          "status": "final",
+          "code": {
+            "coding": [{ "system": "http://loinc.org", "code": "29463-7" }]
+          }
+        }
+        """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new NarrativeCheck();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Single(result.Issues);
+        Assert.Contains(result.Issues, i => i.Code == "txt-1" && i.Path.Contains(".div", StringComparison.Ordinal));
+    }
 }
