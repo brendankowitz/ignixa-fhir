@@ -1,3 +1,7 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation + Ignixa Contributors
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 using System.Text;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;

@@ -1,3 +1,7 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation + Ignixa Contributors
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
@@ -16,8 +20,6 @@ public class ResourceProcessor
     private readonly ILogger _logger = AnonymizerLogging.CreateLogger<ResourceProcessor>();
 
     private readonly HashSet<string> _visitedNodes = [];
-    private readonly Dictionary<string, List<IElement>> _typeToNodeLookUp = [];
-    private readonly Dictionary<string, List<IElement>> _nameToNodeLookUp = [];
 
     public ResourceProcessor(AnonymizationFhirPathRule[] rules, Dictionary<string, IAnonymizerProcessor> processors)
     {
@@ -27,8 +29,6 @@ public class ResourceProcessor
 
     public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
     {
-        InitializeNodeCache(node);
-
         var result = new ProcessResult();
         var resourceRules = GetRulesByType(node.InstanceType);
 
@@ -245,37 +245,6 @@ public class ResourceProcessor
         securityArr.Add(label.ToJsonObject());
     }
 
-    private void InitializeNodeCache(IElement node)
-    {
-        _typeToNodeLookUp.Clear();
-        _nameToNodeLookUp.Clear();
-        InitializeNodeCacheRecursive(node);
-    }
-
-    private void InitializeNodeCacheRecursive(IElement node)
-    {
-        foreach (var child in node.Children())
-        {
-            if (!_typeToNodeLookUp.TryGetValue(child.InstanceType, out var typeList))
-            {
-                typeList = [];
-                _typeToNodeLookUp[child.InstanceType] = typeList;
-            }
-            typeList.Add(child);
-
-            if (!_nameToNodeLookUp.TryGetValue(child.Name, out var nameList))
-            {
-                nameList = [];
-                _nameToNodeLookUp[child.Name] = nameList;
-            }
-            nameList.Add(child);
-
-            if (!child.IsFhirResource())
-            {
-                InitializeNodeCacheRecursive(child);
-            }
-        }
-    }
 
     private IEnumerable<AnonymizationFhirPathRule> GetRulesByType(string typeString)
     {
@@ -287,42 +256,11 @@ public class ResourceProcessor
 
     private IEnumerable<IElement> GetMatchNodes(AnonymizationFhirPathRule rule, IElement node)
     {
-        var typeMatch = AnonymizationFhirPathRule.TypeRuleRegex.Match(rule.Path);
-        var nameMatch = AnonymizationFhirPathRule.NameRuleRegex.Match(rule.Path);
-
-        if (typeMatch.Success)
-        {
-            return GetMatchNodesFromLookUp(_typeToNodeLookUp, typeMatch.Groups["type"].Value, typeMatch.Groups["expression"].Value);
-        }
-
-        if (nameMatch.Success)
-        {
-            return GetMatchNodesFromLookUp(_nameToNodeLookUp, nameMatch.Groups["name"].Value, nameMatch.Groups["expression"].Value);
-        }
-
+        // For resource-type rules (e.g., "Patient"), return the root node
+        // Otherwise, evaluate the FHIRPath expression
         return rule.IsResourceTypeRule
             ? [node]
             : node.Select(rule.Expression);
-    }
-
-    private static IEnumerable<IElement> GetMatchNodesFromLookUp(Dictionary<string, List<IElement>> lookUp, string key, string expression)
-    {
-        if (!lookUp.TryGetValue(key, out var nodes))
-        {
-            return [];
-        }
-
-        if (string.IsNullOrEmpty(expression))
-        {
-            return nodes;
-        }
-
-        var matchNodes = new List<IElement>();
-        foreach (var node in nodes)
-        {
-            matchNodes.AddRange(node.Select(expression));
-        }
-        return matchNodes;
     }
 
     private void LogProcessResult(IElement node, AnonymizationFhirPathRule rule, ProcessResult resultOnRule)

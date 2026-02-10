@@ -1,3 +1,7 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation + Ignixa Contributors
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
@@ -7,12 +11,6 @@ namespace Ignixa.Anonymizer.AnonymizerConfigurations
 {
     public class AnonymizationFhirPathRule : AnonymizerRule
     {
-        // Example: nodesByType('Patient').use
-        public static readonly Regex TypeRuleRegex = new Regex(@"^nodesByType\([\'|\""](?<type>[A-Za-z0-9]+)[\'|\""]\)(\.(?<expression>[A-Za-z0-9]+))?$");
-
-        // Example: nodesByName("telecom").value
-        public static readonly Regex NameRuleRegex = new Regex(@"^nodesByName\([\'|\""](?<name>[A-Za-z0-9]+)[\'|\""]\)(\.(?<expression>[A-Za-z0-9]+))?$");
-
         private static Regex PathRegex = new Regex(@"^(?<resourceType>[A-Z][a-zA-Z]*)?(\.)?(?<expression>.*?)$");
 
         public string Expression { get; set; }

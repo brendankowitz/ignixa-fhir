@@ -1,0 +1,48 @@
+﻿{
+  "fhirPathRules": [
+    {
+      "path": "descendants().ofType(Extension)",
+      "method": "redact"
+    },
+    {
+      "path": "Patient.communication.language.coding.code",
+      "method": "generalize",
+      "cases": {
+        "$this in ('en-AU' | 'en-CA' | 'en-GB' | 'en-IN' | 'en-NZ' | 'en-SG' | 'en-US')": "'en'",
+        "('es-AR' | 'es-ES' | 'es-UY') contains $this": "'es'"
+      },
+      "otherValues": "keep"
+    },
+    {
+      "path": "descendants().ofType(date)",
+      "method": "generalize",
+      "cases": {
+        "$this <= @2020-01-01 and $this >= @1990-01-01": "@2000-01-01"
+      },
+      "otherValues": "redact"
+    },
+    {
+      "path": "descendants().ofType(dateTime)",
+      "method": "generalize",
+      "cases": {
+        "$this <= @2020-01-01T00:00:00Z and $this >= @1990-01-01T00:00:00Z": "@2000-01-01T00:00:00Z"
+      }
+    },
+    {
+      "path": "descendants().ofType(integer)",
+      "method": "generalize",
+      "cases": {
+        "true": "1"
+      },
+      "otherValues": "keep"
+    },
+    {
+      "path": "Patient.descendants().ofType(Address).postalCode",
+      "method": "generalize",
+      "cases": {
+        "$this.startsWith('123')": "$this.substring(0,3)+'****'"
+      },
+      "otherValues": "redact"
+    }
+  ]
+}

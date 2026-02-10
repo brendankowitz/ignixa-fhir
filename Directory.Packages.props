@@ -53,6 +53,7 @@
     <PackageVersion Include="Ensure.That" Version="10.1.0" />
     <PackageVersion Include="MathNet.Numerics" Version="5.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.12" />
     <PackageVersion Include="Parquet.Net" Version="5.4.0" />
     <PackageVersion Include="Superpower" Version="3.1.0" />
     <PackageVersion Include="System.Collections.Immutable" Version="9.0.11" />

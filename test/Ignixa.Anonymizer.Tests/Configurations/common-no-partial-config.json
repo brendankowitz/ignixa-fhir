@@ -1,0 +1,103 @@
+{
+  "fhirVersion": "",
+  "fhirPathRules": [
+    {
+      "path": "Patient.descendants().ofType(HumanName).use",
+      "method": "keep"
+    },
+    {
+      "path": "Patient.descendants().ofType(Address).state",
+      "method": "keep"
+    },
+    {
+      "path": "Patient.descendants().ofType(Address).country",
+      "method": "keep"
+    },
+    {
+      "path": "Patient.descendants().ofType(Address).where(city='KeepTest')",
+      "method": "keep"
+    },
+    {
+      "path": "Patient.generalPractitioner",
+      "method": "redact"
+    },
+    {
+      "path": "Patient.link.other",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(date)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(dateTime)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(instant)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(Identifier)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(HumanName)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(Address)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(Annotation)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(Attachment)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(ContactPoint)",
+      "method": "redact"
+    },
+    {
+      "path": "descendants().ofType(Narrative)",
+      "method": "redact"
+    },
+    {
+      "path": "Patient.id",
+      "method": "cryptoHash"
+    },
+    {
+      "path": "Observation.subject",
+      "method": "cryptoHash"
+    },
+    {
+      "path": "Bundle.entry.fullUrl",
+      "method": "redact"
+    }
+  ],
+  "parameters": {
+    "cryptoHashKey": "123",
+    "enablePartialAgesForRedact": false,
+    "enablePartialDatesForRedact": false,
+    "enablePartialZipCodesForRedact": false,
+    "restrictedZipCodeTabulationAreas": [
+      "036",
+      "059",
+      "102",
+      "203",
+      "205",
+      "369",
+      "556",
+      "692",
+      "821",
+      "823",
+      "878",
+      "879",
+      "884",
+      "893"
+    ]
+  }
+}

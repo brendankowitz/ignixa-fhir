@@ -1,0 +1,9 @@
+﻿{
+    "fhirVersion": "",
+    "fhirPathRules": [
+        {
+            "path": "Patient",
+            "method": "skip"
+        }
+    ]
+}
