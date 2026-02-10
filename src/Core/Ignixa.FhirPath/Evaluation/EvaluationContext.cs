@@ -140,6 +140,12 @@ public record EvaluationContext
     public Action<TraceEntry>? TraceHandler { get; init; }
 
     /// <summary>
+    /// Optional callback invoked after each expression node is evaluated during debug tracing.
+    /// When set, the evaluator will call this handler with details about each node evaluation.
+    /// </summary>
+    public Action<NodeEvaluationEntry>? NodeEvaluationHandler { get; init; }
+
+    /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).
     /// The forked context has its own copy of DefinedVariables so that variables defined
     /// in one branch don't leak to sibling branches.
@@ -283,6 +289,14 @@ public record EvaluationContext
     public EvaluationContext WithTraceHandler(Action<TraceEntry> traceHandler)
     {
         return this with { TraceHandler = traceHandler };
+    }
+
+    /// <summary>
+    /// Creates a new context with the specified node evaluation handler for debug tracing.
+    /// </summary>
+    public EvaluationContext WithNodeEvaluationHandler(Action<NodeEvaluationEntry> handler)
+    {
+        return this with { NodeEvaluationHandler = handler };
     }
 
     /// <summary>

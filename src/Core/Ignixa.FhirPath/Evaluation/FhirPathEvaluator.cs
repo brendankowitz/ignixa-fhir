@@ -63,13 +63,40 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         // Optimization: Skip context creation if focus hasn't changed
         // This is common in indexer/child/binary expressions where we evaluate sub-expressions with the same focus
+        EvaluationContext effectiveContext;
         if (ReferenceEquals(focus, context.Focus))
         {
-            return expr.AcceptVisitor(this, context);
+            effectiveContext = context;
+        }
+        else
+        {
+            effectiveContext = context.WithFocus(focus);
         }
 
-        var newContext = context.WithFocus(focus);
-        return expr.AcceptVisitor(this, newContext);
+        var results = expr.AcceptVisitor(this, effectiveContext);
+
+        // If a node evaluation handler is set, materialize results and notify
+        if (context.NodeEvaluationHandler != null)
+        {
+            var materializedResults = results.ToImmutableList();
+            try
+            {
+                var entry = new NodeEvaluationEntry(
+                    expr,
+                    materializedResults,
+                    effectiveContext.Focus,
+                    effectiveContext.GetThis(),
+                    effectiveContext.GetIndex());
+                context.NodeEvaluationHandler(entry);
+            }
+            catch
+            {
+                // Debug tracing must not break evaluation
+            }
+            return materializedResults;
+        }
+
+        return results;
     }
 
     public IEnumerable<IElement> VisitChild(ChildExpression expression, EvaluationContext context)
