@@ -41,6 +41,16 @@
     <None Update="Configurations\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Copy configuration samples to root for test discovery -->
+    <None Update="Functional\r4-configuration-sample.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>r4-configuration-sample.json</Link>
+    </None>
+    <None Update="Functional\stu3-configuration-sample.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>stu3-configuration-sample.json</Link>
+    </None>
+    <!-- Copy all Functional test files to Functional/ subdirectory -->
     <None Update="Functional\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

@@ -1,5 +1,6 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation + Ignixa Contributors
+// Copyright (c) Microsoft Corporation.
+// Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System;
@@ -30,7 +31,8 @@ namespace Ignixa.Anonymizer.Core.UnitTests
                 IsPrettyOutput = true
             };
             var result = engine.AnonymizeJson(TestPatientSample, settings);
-            Assert.Equal(PrettyOutputTarget, result);
+            // Normalize line endings for cross-platform comparison
+            Assert.Equal(PrettyOutputTarget.ReplaceLineEndings(), result.ReplaceLineEndings());
         }
 
         [Fact]
