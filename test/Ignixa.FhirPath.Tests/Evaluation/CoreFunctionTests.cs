@@ -240,6 +240,52 @@ public class CoreFunctionTests
         Assert.False((bool)result.Value!);
     }
 
+    // Regression tests for issue #223: boolean collection functions must reject non-boolean values
+
+    [Fact]
+    public void GivenNonBooleanValue_WhenAllTrue_ThenThrowsInvalidOperationException()
+    {
+        var expr = _parser.Parse("(true | 'foo').allTrue()");
+        var root = CreateIntegerElement(0);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("allTrue()", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenStringValue_WhenAnyTrue_ThenThrowsInvalidOperationException()
+    {
+        var expr = _parser.Parse("(true | 'hello').anyTrue()");
+        var root = CreateIntegerElement(0);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("anyTrue()", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenStringValue_WhenAllFalse_ThenThrowsInvalidOperationException()
+    {
+        var expr = _parser.Parse("(false | 'bar').allFalse()");
+        var root = CreateIntegerElement(0);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("allFalse()", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenStringValue_WhenAnyFalse_ThenThrowsInvalidOperationException()
+    {
+        var expr = _parser.Parse("(false | 'baz').anyFalse()");
+        var root = CreateIntegerElement(0);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("anyFalse()", ex.Message, StringComparison.Ordinal);
+    }
+
     #endregion
 
     #region not() Function Tests

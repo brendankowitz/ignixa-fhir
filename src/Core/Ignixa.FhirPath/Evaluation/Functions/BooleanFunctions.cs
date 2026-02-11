@@ -34,8 +34,8 @@ internal static class BooleanFunctions
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(true)]; // Empty collection returns true
 
+        EnsureAllBoolean(list, "allTrue");
         var allTrue = list.All(e => e.Value is bool b && b);
-        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
         return [FunctionHelpers.CreateBoolean(allTrue)];
     }
 
@@ -55,11 +55,10 @@ internal static class BooleanFunctions
     public static IEnumerable<IElement> AnyTrue(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
-        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
-        // Empty collection means false (no true values found)
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(false)];
 
+        EnsureAllBoolean(list, "anyTrue");
         var anyTrue = list.Any(e => e.Value is bool b && b);
         return [FunctionHelpers.CreateBoolean(anyTrue)];
     }
@@ -83,8 +82,8 @@ internal static class BooleanFunctions
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(true)]; // Empty collection returns true
 
+        EnsureAllBoolean(list, "allFalse");
         var allFalse = list.All(e => e.Value is bool b && !b);
-        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
         return [FunctionHelpers.CreateBoolean(allFalse)];
     }
 
@@ -104,11 +103,10 @@ internal static class BooleanFunctions
     public static IEnumerable<IElement> AnyFalse(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
-        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
-        // Empty collection means false (no false values found)
         if (list.Count == 0)
             return [FunctionHelpers.CreateBoolean(false)];
 
+        EnsureAllBoolean(list, "anyFalse");
         var anyFalse = list.Any(e => e.Value is bool b && !b);
         return [FunctionHelpers.CreateBoolean(anyFalse)];
     }
@@ -149,5 +147,22 @@ internal static class BooleanFunctions
         // Per FHIRPath spec testIntegerBooleanNotTrue/False: single non-boolean element is "truthy" (it exists)
         // So not(truthy) = false
         return [FunctionHelpers.CreateBoolean(false)];
+    }
+
+    /// <summary>
+    /// Validates that all elements in the collection are booleans.
+    /// Per FHIRPath spec, allTrue/anyTrue/allFalse/anyFalse require boolean input.
+    /// </summary>
+    private static void EnsureAllBoolean(List<IElement> list, string functionName)
+    {
+        foreach (var element in list)
+        {
+            if (element.Value is not bool)
+            {
+                var valueDescription = element.Value is null ? "null" : $"'{element.Value}'";
+                throw new InvalidOperationException(
+                    $"Unable to convert {valueDescription} to a boolean for {functionName}()");
+            }
+        }
     }
 }
