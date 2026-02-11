@@ -49,7 +49,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests
         {
             var factory = new CustomProcessorFactory();
             factory.RegisterProcessors(typeof(MaskProcessor));
-            AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("TestConfigurations", "configuration-custom-Processor.json"), _schema, factory);
+            AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("TestConfigurations", "configuration-custom-processor.json"), _schema, factory);
 
             var result = engine.AnonymizeJson(TestPatientSample);
             Assert.Equal(CustomTarget, result);
