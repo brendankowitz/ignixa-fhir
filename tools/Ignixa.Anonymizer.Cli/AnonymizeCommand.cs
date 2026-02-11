@@ -5,7 +5,6 @@
 // -------------------------------------------------------------------------------------------------
 using System.CommandLine;
 using Ignixa.Abstractions;
-using Ignixa.Anonymizer.PartitionedExecution;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Anonymizer.Cli;

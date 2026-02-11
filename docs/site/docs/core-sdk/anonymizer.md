@@ -4,7 +4,7 @@ title: Anonymizer
 description: FHIR resource anonymization via FHIRPath-based rules
 ---
 
-# Anonymizer
+# Ignixa.Anonymizer
 
 The `Ignixa.Anonymizer` package provides FHIR resource de-identification and anonymization via FHIRPath-based rules. Supports HIPAA Safe Harbor de-identification standards and multiple anonymization methods.
 
@@ -553,94 +553,6 @@ Match all descendants of a type:
 }
 ```
 
-## Batch Processing
-
-Process large datasets with parallel execution:
-
-```csharp
-using Ignixa.Anonymizer;
-using Ignixa.Anonymizer.PartitionedExecution;
-using Ignixa.Specification;
-
-var schema = FhirVersion.R4.GetSchemaProvider();
-var engine = new AnonymizerEngine("config.json", schema);
-
-// Setup reader and consumer
-var reader = new FhirStreamReader(inputStream);
-var consumer = new FhirStreamConsumer(outputStream);
-
-// Create executor
-var executor = new FhirPartitionedExecutor<string, string>(reader, consumer)
-{
-    PartitionCount = 8,  // Number of parallel threads
-    BatchSize = 100,     // Resources per batch
-    AnonymizerFunctionAsync = async content =>
-    {
-        return await Task.Run(() => engine.AnonymizeJson(content));
-    }
-};
-
-// Execute with progress reporting
-var progress = new Progress<BatchAnonymizeProgressDetail>(detail =>
-{
-    Console.WriteLine($"Thread {detail.CurrentThreadId}: {detail.ProcessedCount} resources");
-});
-
-await executor.ExecuteAsync(cancellationToken, progress);
-```
-
-### Reader/Consumer Interfaces
-
-**FhirStreamReader** - Reads from JSON stream (NDJSON or Bundle):
-```csharp
-var reader = new FhirStreamReader(inputStream);
-```
-
-**FhirStreamConsumer** - Writes to JSON stream:
-```csharp
-var consumer = new FhirStreamConsumer(outputStream, pretty: false);
-```
-
-**FhirEnumerableReader** - Reads from IEnumerable:
-```csharp
-var reader = new FhirEnumerableReader(resources);
-```
-
-**Custom reader:**
-```csharp
-public class CustomReader : IFhirDataReader<string>
-{
-    public async Task<string> NextAsync()
-    {
-        // Return next JSON string or null when done
-    }
-}
-```
-
-**Custom consumer:**
-```csharp
-public class CustomConsumer : IFhirDataConsumer<string>
-{
-    public async Task ConsumeAsync(string content)
-    {
-        // Process anonymized resource
-    }
-
-    public async Task CompleteAsync()
-    {
-        // Finalize (close files, etc.)
-    }
-}
-```
-
-### Performance Tuning
-
-| Setting | Recommendation |
-|---------|----------------|
-| **PartitionCount** | 2x CPU cores for I/O-bound, 1x for CPU-bound |
-| **BatchSize** | 50-100 for small resources, 10-20 for large |
-| **KeepOrder** | Set to `false` for better throughput if order doesn't matter |
-
 ## Custom Processors
 
 Implement custom anonymization logic:
@@ -833,19 +745,173 @@ public class AnonymizerSettings
 }
 ```
 
-### FhirPartitionedExecutor
+## CLI Tool
 
-```csharp
-public class FhirPartitionedExecutor<TSource, TResult>
+The `ignixa-anonymizer` tool anonymizes FHIR resources from the command line.
+
+### Installation
+
+```bash
+dotnet tool install --global Ignixa.Anonymizer.Cli
+```
+
+### Basic Usage
+
+The CLI tool supports multiple FHIR versions and processes files in folders:
+
+```bash
+# Anonymize R4 resources
+ignixa-anonymizer r4 anonymize --input ./input --output ./output --config config.json
+
+# Anonymize R5 resources
+ignixa-anonymizer r5 anonymize --input ./fhir-data --output ./anonymized --config config.json
+
+# Process recursively through subdirectories
+ignixa-anonymizer r4 anonymize --input ./input --output ./output --config config.json --recursive
+
+# Skip files that already exist in output
+ignixa-anonymizer r4 anonymize --input ./input --output ./output --config config.json --skip-existing
+```
+
+### NDJSON Bulk Data Format
+
+Process FHIR bulk data in NDJSON format:
+
+```bash
+# Anonymize NDJSON bulk export files
+ignixa-anonymizer r4 anonymize \
+  --input ./bulk-export \
+  --output ./anonymized-bulk \
+  --config config.json \
+  --bulk-data
+
+# Process bulk data with validation
+ignixa-anonymizer r4 anonymize \
+  --input ./bulk-export \
+  --output ./anonymized-bulk \
+  --config config.json \
+  --bulk-data \
+  --validate-input \
+  --validate-output
+```
+
+The `--bulk-data` flag processes files as NDJSON (newline-delimited JSON), where each line is a separate FHIR resource. This format is commonly used for bulk exports (`$export` operation).
+
+### Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--input` | Input folder containing FHIR resource files (required) | - |
+| `--output` | Output folder for anonymized files (required) | - |
+| `--config` | Path to anonymizer configuration file | `configuration-sample.json` |
+| `--bulk-data` | Process files in NDJSON bulk data format | `false` |
+| `--skip-existing` | Skip files that already exist in output folder | `false` |
+| `--recursive` | Process resource files recursively through subdirectories | `false` |
+| `--verbose` | Enable verbose logging (trace level) | `false` |
+| `--validate-input` | Validate input resources before anonymization | `false` |
+| `--validate-output` | Validate anonymized output resources | `false` |
+
+### Supported FHIR Versions
+
+The CLI tool supports all FHIR versions:
+
+| Command | FHIR Version |
+|---------|--------------|
+| `ignixa-anonymizer stu3 anonymize` | FHIR STU3 |
+| `ignixa-anonymizer r4 anonymize` | FHIR R4 |
+| `ignixa-anonymizer r4b anonymize` | FHIR R4B |
+| `ignixa-anonymizer r5 anonymize` | FHIR R5 |
+| `ignixa-anonymizer r6 anonymize` | FHIR R6 |
+
+### Sample Configuration
+
+The tool includes a `configuration-sample.json` file with comprehensive rules for de-identifying common PHI elements:
+
+```json
 {
-    public int PartitionCount { get; set; } = 4;
-    public int BatchSize { get; set; } = 50;
-    public bool KeepOrder { get; set; } = true;
-
-    public Task ExecuteAsync(
-        CancellationToken cancellationToken,
-        IProgress<BatchAnonymizeProgressDetail>? progress = null);
+  "fhirVersion": "R4",
+  "processingErrors": "raise",
+  "fhirPathRules": [
+    {"path": "Resource.id", "method": "cryptoHash"},
+    {"path": "descendants().ofType(HumanName)", "method": "redact"},
+    {"path": "descendants().ofType(Address)", "method": "redact"},
+    {"path": "descendants().ofType(ContactPoint)", "method": "redact"},
+    {"path": "descendants().ofType(Identifier).value", "method": "redact"},
+    {"path": "descendants().ofType(Reference).reference", "method": "cryptoHash"},
+    {"path": "descendants().ofType(date)", "method": "dateshift"},
+    {"path": "descendants().ofType(dateTime)", "method": "dateshift"},
+    {"path": "descendants().ofType(instant)", "method": "dateshift"}
+  ],
+  "parameters": {
+    "dateShiftKey": "your-secret-key-here",
+    "cryptoHashKey": "your-hash-key-here",
+    "enablePartialAgesForRedact": true,
+    "enablePartialDatesForRedact": true,
+    "enablePartialZipCodesForRedact": true
+  }
 }
+```
+
+### Output Files
+
+The tool processes files and maintains folder structure:
+
+**Standard JSON Format**:
+- Input: `./input/Patient/patient-123.json`
+- Output: `./output/Patient/patient-123.json` (anonymized)
+
+**NDJSON Format** (with `--bulk-data`):
+- Input: `./input/export-patients.ndjson`
+- Output: `./output/export-patients.ndjson` (anonymized, line-by-line)
+
+### Example Workflows
+
+**De-identify Patient Records for Research**:
+
+```bash
+# Create configuration with HIPAA Safe Harbor rules
+cat > hipaa-config.json <<EOF
+{
+  "fhirVersion": "R4",
+  "processingErrors": "raise",
+  "fhirPathRules": [
+    {"path": "Resource.id", "method": "cryptoHash"},
+    {"path": "descendants().ofType(HumanName)", "method": "redact"},
+    {"path": "descendants().ofType(Address)", "method": "redact"},
+    {"path": "descendants().ofType(ContactPoint)", "method": "redact"},
+    {"path": "descendants().ofType(date)", "method": "dateshift"},
+    {"path": "descendants().ofType(dateTime)", "method": "dateshift"}
+  ],
+  "parameters": {
+    "dateShiftKey": "research-study-2024",
+    "cryptoHashKey": "research-study-hash-key",
+    "enablePartialAgesForRedact": true,
+    "enablePartialDatesForRedact": true,
+    "enablePartialZipCodesForRedact": true
+  }
+}
+EOF
+
+# Anonymize all resources recursively with validation
+ignixa-anonymizer r4 anonymize \
+  --input ./patient-data \
+  --output ./research-dataset \
+  --config hipaa-config.json \
+  --recursive \
+  --validate-output \
+  --verbose
+```
+
+**Process Bulk Export for Data Sharing**:
+
+```bash
+# Anonymize bulk export NDJSON files
+ignixa-anonymizer r4 anonymize \
+  --input ./bulk-export \
+  --output ./anonymized-export \
+  --config config.json \
+  --bulk-data \
+  --validate-output
 ```
 
 ## Related Documentation
@@ -853,3 +919,4 @@ public class FhirPartitionedExecutor<TSource, TResult>
 - [FHIRPath](/docs/core-sdk/fhirpath)
 - [Serialization](/docs/core-sdk/serialization)
 - [Specification](/docs/core-sdk/abstractions)
+- [ADR 2602: Anonymizer Library](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2602-anonymizer-library.md)

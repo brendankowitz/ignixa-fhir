@@ -5,7 +5,6 @@
 // -------------------------------------------------------------------------------------------------
 using System.Diagnostics;
 using Ignixa.Abstractions;
-using Ignixa.Anonymizer.PartitionedExecution;
 
 namespace Ignixa.Anonymizer.Cli;
 
@@ -37,41 +36,48 @@ public class FilesAnonymizerForJsonFormatResource
         var resourceFileList = Directory.EnumerateFiles(_inputFolder, "*.json", directorySearchOption).ToList();
         Console.WriteLine($"Find {resourceFileList.Count} json resource files in '{_inputFolder}'.");
 
-        FhirEnumerableReader<string> reader = new FhirEnumerableReader<string>(resourceFileList);
-        FhirPartitionedExecutor<string, string> executor = new FhirPartitionedExecutor<string, string>(reader, null)
-        {
-            KeepOrder = false,
-            BatchSize = 1,
-            PartitionCount = Environment.ProcessorCount * 2
-        };
-
-        executor.AnonymizerFunctionAsync = async file =>
-        {
-            try
-            {
-                return await FileAnonymize(file).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"ErrorMessage: {ex}");
-                throw;
-            }
-        };
-
         Stopwatch stopWatch = new Stopwatch();
         stopWatch.Start();
 
-        int completedCount = 0;
-        int skippedCount = 0;
-        Progress<BatchAnonymizeProgressDetail> progress = new Progress<BatchAnonymizeProgressDetail>();
-        progress.ProgressChanged += (obj, args) =>
+        var options = new ParallelOptions
         {
-            Interlocked.Add(ref completedCount, args.ProcessCompleted);
-            Interlocked.Add(ref skippedCount, args.ProcessSkipped);
-            Console.WriteLine($"[{stopWatch.Elapsed}][tid:{args.CurrentThreadId}]: {completedCount} Process completed. {skippedCount} Process skipped.");
+            MaxDegreeOfParallelism = Environment.ProcessorCount * 2,
+            CancellationToken = CancellationToken.None
         };
 
-        await executor.ExecuteAsync(cancellationToken: CancellationToken.None, progress).ConfigureAwait(false);
+        int completedCount = 0;
+        int skippedCount = 0;
+
+        await Parallel.ForEachAsync(
+            resourceFileList,
+            options,
+            async (file, ct) =>
+            {
+                try
+                {
+                    var result = await FileAnonymize(file).ConfigureAwait(false);
+                    if (string.IsNullOrEmpty(result))
+                    {
+                        Interlocked.Increment(ref skippedCount);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref completedCount);
+                    }
+
+                    if ((completedCount + skippedCount) % 10 == 0)
+                    {
+                        Console.WriteLine($"[{stopWatch.Elapsed}]: {completedCount} completed, {skippedCount} skipped");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error processing {file}: {ex.Message}");
+                    throw;
+                }
+            }).ConfigureAwait(false);
+
+        Console.WriteLine($"Finished: {completedCount} completed, {skippedCount} skipped in {stopWatch.Elapsed}");
     }
 
     public async Task<string> FileAnonymize(string fileName)

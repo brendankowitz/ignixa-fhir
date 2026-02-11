@@ -4,8 +4,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Diagnostics;
+using System.Threading.Channels;
 using Ignixa.Abstractions;
-using Ignixa.Anonymizer.PartitionedExecution;
 
 namespace Ignixa.Anonymizer.Cli;
 
@@ -61,52 +61,77 @@ public class FilesAnonymizerForNdJsonFormatResource
                 File.Delete(bulkResourceOutputFileName);
             }
 
-            int completedCount = 0;
-            int skippedCount = 0;
-            int consumeCompletedCount = 0;
             using (FileStream inputStream = new FileStream(bulkResourceFileName, FileMode.Open))
             using (FileStream outputStream = new FileStream(tempBulkResourceOutputFileName, FileMode.Create))
             {
-                using FhirStreamReader reader = new FhirStreamReader(inputStream);
-                using FhirStreamConsumer consumer = new FhirStreamConsumer(outputStream);
                 var engine = AnonymizerEngine.CreateWithFileContext(_configFilePath, _schema, bulkResourceFileName, _inputFolder);
-                Func<string, string> anonymizeFunction = (content) =>
+                var settings = new AnonymizerConfigurations.AnonymizerSettings
                 {
-                    try
-                    {
-                        var settings = new AnonymizerConfigurations.AnonymizerSettings
-                        {
-                            IsPrettyOutput = false,
-                            ValidateInput = _options.ValidateInput,
-                            ValidateOutput = _options.ValidateOutput
-                        };
-                        return engine.AnonymizeJson(content, settings);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"ErrorMessage: {ex}");
-                        throw;
-                    }
+                    IsPrettyOutput = false,
+                    ValidateInput = _options.ValidateInput,
+                    ValidateOutput = _options.ValidateOutput
                 };
 
                 Stopwatch stopWatch = new Stopwatch();
                 stopWatch.Start();
 
-                FhirPartitionedExecutor<string, string> executor = new FhirPartitionedExecutor<string, string>(reader, consumer, anonymizeFunction)
+                using var cts = new CancellationTokenSource();
+                var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(1000)
                 {
-                    PartitionCount = Environment.ProcessorCount * 2
-                };
+                    FullMode = BoundedChannelFullMode.Wait
+                });
 
-                Progress<BatchAnonymizeProgressDetail> progress = new Progress<BatchAnonymizeProgressDetail>();
-                progress.ProgressChanged += (obj, args) =>
+                int completedCount = 0;
+                int skippedCount = 0;
+
+                // Producer: read lines from input stream
+                var producerTask = Task.Run(async () =>
                 {
-                    Interlocked.Add(ref completedCount, args.ProcessCompleted);
-                    Interlocked.Add(ref skippedCount, args.ProcessSkipped);
-                    Interlocked.Add(ref consumeCompletedCount, args.ConsumeCompleted);
-                    Console.WriteLine($"[{stopWatch.Elapsed}][tid:{args.CurrentThreadId}]: {completedCount} Process completed. {skippedCount} Process skipped. {consumeCompletedCount} Consume completed.");
-                };
+                    using var reader = new StreamReader(inputStream);
+                    string? line;
+                    while ((line = await reader.ReadLineAsync()) != null)
+                    {
+                        await channel.Writer.WriteAsync(line, cts.Token);
+                    }
+                    channel.Writer.Complete();
+                }, cts.Token);
 
-                await executor.ExecuteAsync(CancellationToken.None, progress).ConfigureAwait(false);
+                // Consumer: anonymize and write to output stream
+                var consumerTask = Task.Run(async () =>
+                {
+                    using var writer = new StreamWriter(outputStream);
+
+                    await foreach (var line in channel.Reader.ReadAllAsync(cts.Token))
+                    {
+                        try
+                        {
+                            var anonymized = engine.AnonymizeJson(line, settings);
+                            if (!string.IsNullOrEmpty(anonymized))
+                            {
+                                await writer.WriteLineAsync(anonymized);
+                                Interlocked.Increment(ref completedCount);
+                            }
+                            else
+                            {
+                                Interlocked.Increment(ref skippedCount);
+                            }
+
+                            if ((completedCount + skippedCount) % 100 == 0)
+                            {
+                                Console.WriteLine($"[{stopWatch.Elapsed}]: {completedCount} completed, {skippedCount} skipped");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"ErrorMessage: {ex}");
+                            throw;
+                        }
+                    }
+
+                    await writer.FlushAsync();
+                }, cts.Token);
+
+                await Task.WhenAll(producerTask, consumerTask).ConfigureAwait(false);
             }
 
             File.Move(tempBulkResourceOutputFileName, bulkResourceOutputFileName);
