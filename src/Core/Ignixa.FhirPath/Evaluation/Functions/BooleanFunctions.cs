@@ -155,14 +155,12 @@ internal static class BooleanFunctions
     /// </summary>
     private static void EnsureAllBoolean(List<IElement> list, string functionName)
     {
-        foreach (var element in list)
+        var nonBooleanElement = list.FirstOrDefault(element => element.Value is not bool);
+        if (nonBooleanElement is not null)
         {
-            if (element.Value is not bool)
-            {
-                var valueDescription = element.Value is null ? "null" : $"'{element.Value}'";
-                throw new InvalidOperationException(
-                    $"Unable to convert {valueDescription} to a boolean for {functionName}()");
-            }
+            var valueDescription = nonBooleanElement.Value is null ? "null" : $"'{nonBooleanElement.Value}'";
+            throw new InvalidOperationException(
+                $"Unable to convert {valueDescription} to a boolean for {functionName}()");
         }
     }
 }
