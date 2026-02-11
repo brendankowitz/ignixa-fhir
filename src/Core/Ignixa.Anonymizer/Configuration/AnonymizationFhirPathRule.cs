@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using EnsureThat;
 
-namespace Ignixa.Anonymizer.AnonymizerConfigurations
+namespace Ignixa.Anonymizer.Configuration
 {
     public class AnonymizationFhirPathRule : AnonymizerRule
     {

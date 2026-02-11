@@ -5,11 +5,11 @@
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Generic;
 using System.Linq;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Xunit;
 
-namespace Ignixa.Anonymizer.Core.UnitTests.AnonymizerConfigurations
+namespace Ignixa.Anonymizer.Core.UnitTests.Configuration
 {
     public class AnonymizerConfigurationManagerTests
     {
@@ -28,7 +28,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.AnonymizerConfigurations
         [MemberData(nameof(GetInvalidConfigs))]
         public void GivenAnInvalidConfig_WhenCreateAnonymizerConfigurationManager_ExceptionShouldBeThrown(string configFilePath)
         {
-            Assert.Throws<AnonymizerConfigurationException>(() => AnonymizerConfigurationManager.CreateFromConfigurationFile(configFilePath));
+            Assert.Throws<ConfigurationException>(() => AnonymizerConfigurationManager.CreateFromConfigurationFile(configFilePath));
         }
 
         [Theory]

@@ -25,7 +25,6 @@
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
-    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
 </Project>

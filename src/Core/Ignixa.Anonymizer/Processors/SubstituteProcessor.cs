@@ -74,12 +74,12 @@ public class SubstituteProcessor : IAnonymizerProcessor
         }
         catch (JsonException)
         {
-            throw new AnonymizerProcessingException($"Invalid replacement JSON at path {node.GetFhirPath()}.");
+            throw new ProcessingException($"Invalid replacement JSON at path {node.GetFhirPath()}.");
         }
 
         if (replacementJson is not JsonObject replacementObj)
         {
-            throw new AnonymizerProcessingException($"Replacement value must be a JSON object for complex types at path {node.GetFhirPath()}.");
+            throw new ProcessingException($"Replacement value must be a JSON object for complex types at path {node.GetFhirPath()}.");
         }
 
         var nodeJson = node.Meta<JsonNode>();

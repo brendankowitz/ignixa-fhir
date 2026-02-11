@@ -7,11 +7,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Xunit;
 
-namespace Ignixa.Anonymizer.Core.UnitTests.AnonymizerConfigurations;
+namespace Ignixa.Anonymizer.Core.UnitTests.Configuration;
 
 public class VersionValidatorTests
 {
@@ -37,7 +37,7 @@ public class VersionValidatorTests
     {
         var content = File.ReadAllText(configFilePath);
         var _config = JsonSerializer.Deserialize<AnonymizerConfiguration>(content);
-        Assert.Throws<AnonymizerConfigurationException>(() => _validator.Validate(_config));
+        Assert.Throws<ConfigurationException>(() => _validator.Validate(_config));
     }
 
     [Theory]

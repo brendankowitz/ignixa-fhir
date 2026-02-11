@@ -8,7 +8,7 @@ using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
@@ -52,7 +52,7 @@ public class ResourceProcessor
 
             if (!_processors.ContainsKey(method))
             {
-                throw new AnonymizerConfigurationException($"Anonymization method {method} not supported.");
+                throw new ConfigurationException($"Anonymization method {method} not supported.");
             }
 
             var matchNodes = GetMatchNodes(rule, node);
@@ -299,13 +299,13 @@ public class ResourceProcessor
         {
             result = processor.Process(resource, node, context, settings);
         }
-        catch (AnonymizerProcessingException)
+        catch (ProcessingException)
         {
             throw;
         }
         catch (Exception ex)
         {
-            throw new AnonymizerProcessingException(
+            throw new ProcessingException(
                 $"Processing failed on node '{node.Location}' with type '{node.InstanceType}'.", ex);
         }
 

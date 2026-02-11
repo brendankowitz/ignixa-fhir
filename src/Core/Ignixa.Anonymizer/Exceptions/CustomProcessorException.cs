@@ -3,19 +3,22 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System;
 
-namespace Ignixa.Anonymizer.Exceptions
+namespace Ignixa.Anonymizer.Exceptions;
+
+public class CustomProcessorException : Exception
 {
-    public class AddCustomProcessorException : Exception
+    public CustomProcessorException()
     {
-        public AddCustomProcessorException(string message) : base(message)
-        {
-        }
+    }
 
-        public AddCustomProcessorException(string message, Exception innerException)
-            : base(message, innerException)
-        {
-        }
+    public CustomProcessorException(string message)
+        : base(message)
+    {
+    }
+
+    public CustomProcessorException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 }

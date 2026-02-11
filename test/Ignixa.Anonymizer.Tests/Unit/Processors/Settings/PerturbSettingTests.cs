@@ -4,7 +4,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Generic;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Processors.Settings;
 using Xunit;
@@ -46,7 +46,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors.Settings
         [MemberData(nameof(GetInvalidPerturbFhirRuleConfigs))]
         public void GivenAInvalidPerturbSetting_WhenValidate_ExceptionShouldBeThrown(Dictionary<string, object> config)
         {
-            Assert.Throws<AnonymizerConfigurationException>(() => PerturbSetting.ValidateRuleSettings(config));
+            Assert.Throws<ConfigurationException>(() => PerturbSetting.ValidateRuleSettings(config));
         }
     }
 }

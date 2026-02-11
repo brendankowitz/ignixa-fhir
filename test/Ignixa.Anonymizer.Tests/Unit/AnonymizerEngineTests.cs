@@ -9,7 +9,7 @@ using System.Linq;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Abstractions;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Processors;
@@ -60,7 +60,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests
         {
             AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("TestConfigurations", "configuration-unsupported-method.json"), _schema);
 
-            Assert.Throws<AnonymizerConfigurationException>(() => engine.AnonymizeJson(TestPatientSample));
+            Assert.Throws<ConfigurationException>(() => engine.AnonymizeJson(TestPatientSample));
         }
 
         private const string TestPatientSample =

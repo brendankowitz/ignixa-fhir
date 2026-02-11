@@ -3,10 +3,10 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Xunit;
 
-namespace Ignixa.Anonymizer.Core.UnitTests.AnonymizerConfigurations
+namespace Ignixa.Anonymizer.Core.UnitTests.Configuration
 {
     public class AnonymizerConfigurationTests
     {

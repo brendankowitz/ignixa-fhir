@@ -26,7 +26,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors
         public void GivenAFhirProcessorFactory_AddingBuildInProcessor_ExceptionWillBeThrown()
         {
             var factory = new CustomProcessorFactory();
-            Assert.Throws<AddCustomProcessorException>(() => factory.RegisterProcessors(typeof(RedactProcessor)));
+            Assert.Throws<CustomProcessorException>(() => factory.RegisterProcessors(typeof(RedactProcessor)));
         }
     }
 }

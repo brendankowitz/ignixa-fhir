@@ -3,15 +3,18 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System;
+using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
 
-namespace Ignixa.Anonymizer.Exceptions
+namespace Ignixa.Anonymizer.Configuration;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum DateShiftScope
 {
-    public class InvalidInputException : Exception
-    {
-        public InvalidInputException(string message, Exception innerException)
-            : base(message, innerException)
-        {
-        }
-    }
+    [EnumMember(Value = "resource")]
+    Resource,
+    [EnumMember(Value = "file")]
+    File,
+    [EnumMember(Value = "folder")]
+    Folder
 }

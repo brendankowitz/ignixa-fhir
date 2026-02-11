@@ -8,9 +8,8 @@ using System.Text.Json;
 using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
@@ -45,24 +44,7 @@ public class AnonymizerEngine
         _logger.LogDebug("AnonymizerEngine initialized successfully for FHIR version {FhirVersion}", _schema.Version);
     }
 
-    // Convenience overloads accepting ISchema for backward compatibility
-    public AnonymizerEngine(string configFilePath, ISchema schema, IAnonymizerProcessorFactory? customProcessorFactory = null, FhirVersion fhirVersion = FhirVersion.R4)
-        : this(configFilePath, ResolveSchemaProvider(schema, fhirVersion), customProcessorFactory)
-    {
-    }
-
-    public AnonymizerEngine(AnonymizerConfigurationManager configurationManager, ISchema schema, IAnonymizerProcessorFactory? customProcessorFactory = null, FhirVersion fhirVersion = FhirVersion.R4)
-        : this(configurationManager, ResolveSchemaProvider(schema, fhirVersion), customProcessorFactory)
-    {
-    }
-
-    public static AnonymizerEngine CreateFromVersion(string configFilePath, FhirVersion fhirVersion, IAnonymizerProcessorFactory? customProcessorFactory = null)
-    {
-        var schema = fhirVersion.GetSchemaProvider();
-        return new AnonymizerEngine(configFilePath, schema, customProcessorFactory);
-    }
-
-    public static AnonymizerEngine CreateWithFileContext(string configFilePath, ISchema schema, string fileName, string inputFolderName, IAnonymizerProcessorFactory? customProcessorFactory = null, FhirVersion fhirVersion = FhirVersion.R4)
+    public static AnonymizerEngine CreateWithFileContext(string configFilePath, IFhirSchemaProvider schema, string fileName, string inputFolderName, IAnonymizerProcessorFactory? customProcessorFactory = null)
     {
         var configurationManager = AnonymizerConfigurationManager.CreateFromConfigurationFile(configFilePath);
         var dateShiftScope = configurationManager.GetParameterConfiguration().DateShiftScope;
@@ -74,13 +56,7 @@ public class AnonymizerEngine
         };
 
         configurationManager.SetDateShiftKeyPrefix(dateShiftKeyPrefix);
-        return new AnonymizerEngine(configurationManager, ResolveSchemaProvider(schema, fhirVersion), customProcessorFactory);
-    }
-
-    public static AnonymizerEngine CreateWithFileContext(string configFilePath, FhirVersion fhirVersion, string fileName, string inputFolderName, IAnonymizerProcessorFactory? customProcessorFactory = null)
-    {
-        var schema = fhirVersion.GetSchemaProvider();
-        return CreateWithFileContext(configFilePath, schema, fileName, inputFolderName, customProcessorFactory);
+        return new AnonymizerEngine(configurationManager, schema, customProcessorFactory);
     }
 
     public ResourceJsonNode AnonymizeElement(ResourceJsonNode resource)
@@ -91,7 +67,7 @@ public class AnonymizerEngine
             var element = resource.ToElement(_schema);
             return resource.Anonymize(element, _rules, _processors);
         }
-        catch (AnonymizerProcessingException)
+        catch (ProcessingException)
         {
             if (_configurationManager.Configuration.processingErrors == ProcessingErrorsOption.Skip)
             {
@@ -155,18 +131,8 @@ public class AnonymizerEngine
         }
         catch (Exception ex)
         {
-            throw new InvalidInputException("The input FHIR resource JSON is invalid.", ex);
+            throw new InvalidResourceException("The input FHIR resource JSON is invalid.", ex);
         }
     }
 
-    private static IFhirSchemaProvider ResolveSchemaProvider(ISchema schema, FhirVersion fhirVersion = FhirVersion.R4)
-    {
-        if (schema is IFhirSchemaProvider provider)
-        {
-            return provider;
-        }
-
-        // Fallback: if someone passes a raw ISchema, get the proper provider for the version
-        return fhirVersion.GetSchemaProvider();
-    }
 }

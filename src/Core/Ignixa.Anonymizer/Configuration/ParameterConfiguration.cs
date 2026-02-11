@@ -6,7 +6,7 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace Ignixa.Anonymizer.AnonymizerConfigurations;
+namespace Ignixa.Anonymizer.Configuration;
 
 public class ParameterConfiguration
 {

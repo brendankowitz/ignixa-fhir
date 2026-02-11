@@ -102,7 +102,7 @@ namespace Ignixa.Anonymizer.FunctionalTests
         {
             AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("Configurations", "configuration-raise-processing-error.json"), _schema);
             string testContent = File.ReadAllText(ResourceTestsFile("patient-basic.json"));
-            Assert.Throws<AnonymizerProcessingException>(() => engine.AnonymizeJson(testContent));
+            Assert.Throws<ProcessingException>(() => engine.AnonymizeJson(testContent));
         }
 
         [Fact]
@@ -110,7 +110,7 @@ namespace Ignixa.Anonymizer.FunctionalTests
         {
             AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("Configurations", "configuration-without-processing-error.json"), _schema);
             string testContent = File.ReadAllText(ResourceTestsFile("patient-basic.json"));
-            Assert.Throws<AnonymizerProcessingException>(() => engine.AnonymizeJson(testContent));
+            Assert.Throws<ProcessingException>(() => engine.AnonymizeJson(testContent));
         }
 
         private string ResourceTestsFile(string fileName)

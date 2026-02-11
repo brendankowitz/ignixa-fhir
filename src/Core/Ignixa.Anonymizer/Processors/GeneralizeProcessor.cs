@@ -28,7 +28,7 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
         var isPrimitive = node.IsPrimitiveElement();
         if (!isPrimitive)
         {
-            throw new AnonymizerRuleNotApplicableException(
+            throw new RuleNotApplicableException(
                 $"Generalization is not applicable on the node with type {node.InstanceType}. Only FHIR primitive nodes (ref: https://www.hl7.org/fhir/datatypes.html#primitive) are applicable.");
         }
 
@@ -52,7 +52,7 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
             }
             catch (Exception ex)
             {
-                throw new AnonymizerProcessingException($"Generalize failed when processing {eachCase}.", ex);
+                throw new ProcessingException($"Generalize failed when processing {eachCase}.", ex);
             }
         }
 

@@ -39,7 +39,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors.Settings
         [MemberData(nameof(GetInvalidSubstituteFhirRuleConfigs))]
         public void GivenAInvalidSubstituteSetting_WhenValidate_ExceptionShouldBeThrown(Dictionary<string, object> config)
         {
-            Assert.Throws<AnonymizerConfigurationException>(() => SubstituteSetting.ValidateRuleSettings(config));
+            Assert.Throws<ConfigurationException>(() => SubstituteSetting.ValidateRuleSettings(config));
         }
     }
 }

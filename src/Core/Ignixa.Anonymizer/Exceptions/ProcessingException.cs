@@ -3,17 +3,22 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-namespace Ignixa.Anonymizer.AnonymizerConfigurations
+
+namespace Ignixa.Anonymizer.Exceptions;
+
+public class ProcessingException : Exception
 {
-    public enum AnonymizerMethod
+    public ProcessingException()
     {
-        Redact,
-        DateShift,
-        CryptoHash,
-        Substitute,
-        Encrypt,
-        Perturb,
-        Keep,
-        Generalize
+    }
+
+    public ProcessingException(string message)
+        : base(message)
+    {
+    }
+
+    public ProcessingException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 }

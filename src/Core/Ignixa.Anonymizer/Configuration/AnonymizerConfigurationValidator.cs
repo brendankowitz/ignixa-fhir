@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Processors.Settings;
 
-namespace Ignixa.Anonymizer.AnonymizerConfigurations;
+namespace Ignixa.Anonymizer.Configuration;
 
 public class AnonymizerConfigurationValidator
 {
@@ -24,14 +24,14 @@ public class AnonymizerConfigurationValidator
         }
         else if (!Constants.SupportedFhirVersions.Contains(config.FhirVersion))
         {
-            throw new AnonymizerConfigurationException(
+            throw new ConfigurationException(
                 $"Configuration of fhirVersion {config.FhirVersion} is not supported. " +
                 $"Supported versions: {string.Join(", ", Constants.SupportedFhirVersions)}");
         }
 
         if (config.FhirPathRules is null || config.FhirPathRules.Length == 0)
         {
-            throw new AnonymizerConfigurationException("The configuration is invalid, please specify any fhirPathRules");
+            throw new ConfigurationException("The configuration is invalid, please specify any fhirPathRules");
         }
 
         var parser = new FhirPathParser();
@@ -41,7 +41,7 @@ public class AnonymizerConfigurationValidator
         {
             if (!rule.ContainsKey(Constants.PathKey) || !rule.ContainsKey(Constants.MethodKey))
             {
-                throw new AnonymizerConfigurationException("Missing path or method in Fhir path rule config.");
+                throw new ConfigurationException("Missing path or method in Fhir path rule config.");
             }
 
             // Grammar check on FHIR path
@@ -51,7 +51,7 @@ public class AnonymizerConfigurationValidator
             }
             catch (Exception ex)
             {
-                throw new AnonymizerConfigurationException($"Invalid FHIR path {rule[Constants.PathKey]}", ex);
+                throw new ConfigurationException($"Invalid FHIR path {rule[Constants.PathKey]}", ex);
             }
 
             // Method validate
@@ -84,7 +84,7 @@ public class AnonymizerConfigurationValidator
             var encryptKeySize = Encoding.UTF8.GetByteCount(config.ParameterConfiguration.EncryptKey) * 8;
             if (!IsValidKeySize(encryptKeySize, aes.LegalKeySizes))
             {
-                throw new AnonymizerConfigurationException($"Invalid encrypt key size : {encryptKeySize} bits! Please provide key sizes of 128, 192 or 256 bits.");
+                throw new ConfigurationException($"Invalid encrypt key size : {encryptKeySize} bits! Please provide key sizes of 128, 192 or 256 bits.");
             }
         }
     }

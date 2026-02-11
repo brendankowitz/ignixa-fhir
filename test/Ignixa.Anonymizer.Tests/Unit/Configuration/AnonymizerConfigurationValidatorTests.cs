@@ -6,7 +6,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 using Xunit;
 
@@ -39,7 +39,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests
         {
             var content = File.ReadAllText(configFilePath);
             var _config = JsonSerializer.Deserialize<AnonymizerConfiguration>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            Assert.Throws<AnonymizerConfigurationException>(() => _validator.Validate(_config));
+            Assert.Throws<ConfigurationException>(() => _validator.Validate(_config));
         }
     }
 }

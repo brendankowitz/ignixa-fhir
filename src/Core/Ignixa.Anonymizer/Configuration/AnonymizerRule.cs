@@ -5,7 +5,7 @@
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Generic;
 
-namespace Ignixa.Anonymizer.AnonymizerConfigurations
+namespace Ignixa.Anonymizer.Configuration
 {
     public class AnonymizerRule
     {

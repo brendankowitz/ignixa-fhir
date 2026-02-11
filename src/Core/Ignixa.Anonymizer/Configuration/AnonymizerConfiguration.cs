@@ -5,7 +5,7 @@
 // -------------------------------------------------------------------------------------------------
 using System.Text.Json.Serialization;
 
-namespace Ignixa.Anonymizer.AnonymizerConfigurations;
+namespace Ignixa.Anonymizer.Configuration;
 
 [JsonConverter(typeof(JsonStringEnumConverter<ProcessingErrorsOption>))]
 public enum ProcessingErrorsOption

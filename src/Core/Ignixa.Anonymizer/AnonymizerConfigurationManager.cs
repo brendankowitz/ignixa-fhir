@@ -5,7 +5,7 @@
 // -------------------------------------------------------------------------------------------------
 using System.Text.Json;
 using EnsureThat;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
 
 namespace Ignixa.Anonymizer;
@@ -47,14 +47,14 @@ public sealed class AnonymizerConfigurationManager
             var configuration = JsonSerializer.Deserialize<AnonymizerConfiguration>(settingsInJson, options);
             if (configuration is null)
             {
-                throw new AnonymizerConfigurationException("Configuration deserialized to null.");
+                throw new ConfigurationException("Configuration deserialized to null.");
             }
 
             return new AnonymizerConfigurationManager(configuration);
         }
         catch (JsonException innerException)
         {
-            throw new AnonymizerConfigurationException("Failed to parse configuration file", innerException);
+            throw new ConfigurationException("Failed to parse configuration file", innerException);
         }
     }
 
@@ -67,7 +67,7 @@ public sealed class AnonymizerConfigurationManager
         }
         catch (IOException innerException)
         {
-            throw new AnonymizerConfigurationException($"Failed to read configuration file {configFilePath}", innerException);
+            throw new ConfigurationException($"Failed to read configuration file {configFilePath}", innerException);
         }
     }
 

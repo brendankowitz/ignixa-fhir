@@ -14,14 +14,14 @@ public class FilesAnonymizerForJsonFormatResource
     private readonly string _outputFolder;
     private readonly string _configFilePath;
     private readonly AnonymizationToolOptions _options;
-    private readonly ISchema _schema;
+    private readonly IFhirSchemaProvider _schema;
 
     public FilesAnonymizerForJsonFormatResource(
         string configFilePath,
         string inputFolder,
         string outputFolder,
         AnonymizationToolOptions options,
-        ISchema schema)
+        IFhirSchemaProvider schema)
     {
         _inputFolder = inputFolder;
         _outputFolder = outputFolder;
@@ -99,7 +99,7 @@ public class FilesAnonymizerForJsonFormatResource
         try
         {
             var engine = AnonymizerEngine.CreateWithFileContext(_configFilePath, _schema, fileName, _inputFolder);
-            var settings = new AnonymizerConfigurations.AnonymizerSettings
+            var settings = new Configuration.AnonymizerSettings
             {
                 IsPrettyOutput = true,
                 ValidateInput = _options.ValidateInput,

@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Processors;
 using Xunit;

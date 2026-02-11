@@ -67,7 +67,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors
         }
 
         [Fact]
-        public void GivenAComplexDatatypeNodeAndInvalidReplaceValue_WhenSubstitute_AnonymizerProcessingExceptionShouldBeThrown()
+        public void GivenAComplexDatatypeNodeAndInvalidReplaceValue_WhenSubstitute_ProcessingExceptionShouldBeThrown()
         {
             SubstituteProcessor processor = new SubstituteProcessor();
             var json = """{"resourceType":"Patient","address":[{"state":"DC"}]}""";
@@ -81,7 +81,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors
             };
             var settings = JsonSerializer.Deserialize<Dictionary<string, object>>(configJson);
 
-            Assert.Throws<Ignixa.Anonymizer.Exceptions.AnonymizerProcessingException>(() => processor.Process(resourceNode, node, context, settings));
+            Assert.Throws<Ignixa.Anonymizer.Exceptions.ProcessingException>(() => processor.Process(resourceNode, node, context, settings));
         }
     }
 }

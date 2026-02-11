@@ -205,7 +205,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors
             {
                 VisitedNodes = new HashSet<string>()
             };
-            Assert.Throws<AnonymizerRuleNotApplicableException>(() => processor.Process(resourceNode, node, context, settings));
+            Assert.Throws<RuleNotApplicableException>(() => processor.Process(resourceNode, node, context, settings));
         }
     }
 }

@@ -28,17 +28,17 @@ namespace Ignixa.Anonymizer.Processors.Settings
         {
             if (ruleSettings == null)
             {
-                throw new AnonymizerConfigurationException("Substitute rule should not be null.");
+                throw new ConfigurationException("Substitute rule should not be null.");
             }
 
             if (!ruleSettings.ContainsKey(Constants.PathKey))
             {
-                throw new AnonymizerConfigurationException("Missing path in FHIR path rule config.");
+                throw new ConfigurationException("Missing path in FHIR path rule config.");
             }
 
             if (!ruleSettings.ContainsKey(RuleKeys.ReplaceWith))
             {
-                throw new AnonymizerConfigurationException($"Missing replaceWith value in substitution rule at {ruleSettings[Constants.PathKey]}.");
+                throw new ConfigurationException($"Missing replaceWith value in substitution rule at {ruleSettings[Constants.PathKey]}.");
             }
 
             return;

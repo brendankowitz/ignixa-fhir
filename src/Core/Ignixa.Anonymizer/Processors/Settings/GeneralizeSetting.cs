@@ -42,22 +42,22 @@ public class GeneralizeSetting
     {
         if (ruleSettings is null)
         {
-            throw new AnonymizerConfigurationException("Generalize rule should not be null.");
+            throw new ConfigurationException("Generalize rule should not be null.");
         }
 
         if (!ruleSettings.ContainsKey(Constants.PathKey))
         {
-            throw new AnonymizerConfigurationException("Missing path in FHIR path rule config.");
+            throw new ConfigurationException("Missing path in FHIR path rule config.");
         }
 
         if (!ruleSettings.ContainsKey(Constants.MethodKey))
         {
-            throw new AnonymizerConfigurationException("Missing method in FHIR path rule config.");
+            throw new ConfigurationException("Missing method in FHIR path rule config.");
         }
 
         if (!ruleSettings.ContainsKey(RuleKeys.Cases))
         {
-            throw new AnonymizerConfigurationException("Missing cases in FHIR path rule config.");
+            throw new ConfigurationException("Missing cases in FHIR path rule config.");
         }
 
         ValidateCases(ruleSettings);
@@ -67,7 +67,7 @@ public class GeneralizeSetting
         if (ruleSettings.ContainsKey(RuleKeys.OtherValues) &&
             !supportedOtherValuesOperations.Contains(ruleSettings[RuleKeys.OtherValues].ToString()!))
         {
-            throw new AnonymizerConfigurationException($"OtherValues setting is invalid at {ruleSettings[RuleKeys.OtherValues]}.");
+            throw new ConfigurationException($"OtherValues setting is invalid at {ruleSettings[RuleKeys.OtherValues]}.");
         }
     }
 
@@ -82,7 +82,7 @@ public class GeneralizeSetting
         }
         catch (JsonException ex)
         {
-            throw new AnonymizerConfigurationException(
+            throw new ConfigurationException(
                 $"Invalid Json format {ruleSettings.GetValueOrDefault(RuleKeys.Cases)}", ex);
         }
 
@@ -95,7 +95,7 @@ public class GeneralizeSetting
             }
             catch (Exception ex)
             {
-                throw new AnonymizerConfigurationException($"Invalid cases expression {key}: {value}", ex);
+                throw new ConfigurationException($"Invalid cases expression {key}: {value}", ex);
             }
         }
     }

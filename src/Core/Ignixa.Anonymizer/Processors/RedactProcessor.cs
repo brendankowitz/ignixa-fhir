@@ -5,7 +5,7 @@
 // -------------------------------------------------------------------------------------------------
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Anonymizer.AnonymizerConfigurations;
+using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
 using Ignixa.Anonymizer.Utility;

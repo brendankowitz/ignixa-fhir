@@ -3,18 +3,14 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System.Runtime.Serialization;
-using System.Text.Json.Serialization;
-
-namespace Ignixa.Anonymizer.AnonymizerConfigurations;
-
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum DateShiftScope
+namespace Ignixa.Anonymizer.Configuration
 {
-    [EnumMember(Value = "resource")]
-    Resource,
-    [EnumMember(Value = "file")]
-    File,
-    [EnumMember(Value = "folder")]
-    Folder
+    public class AnonymizerSettings
+    {
+        public bool IsPrettyOutput { get; set; }
+
+        public bool ValidateInput { get; set; }
+
+        public bool ValidateOutput { get; set; }
+    }
 }

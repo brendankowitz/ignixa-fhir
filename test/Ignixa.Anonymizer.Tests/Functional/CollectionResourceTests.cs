@@ -34,7 +34,7 @@ namespace Ignixa.Anonymizer.FunctionalTests
         {
             AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("Configurations", "configuration-raise-processing-error.json"), _schema);
             string testContent = File.ReadAllText(CollectionResourceTestsFile("contained-basic.json"));
-            Assert.Throws<AnonymizerProcessingException>(() => engine.AnonymizeJson(testContent));
+            Assert.Throws<ProcessingException>(() => engine.AnonymizeJson(testContent));
         }
 
         [Fact]
@@ -56,7 +56,7 @@ namespace Ignixa.Anonymizer.FunctionalTests
         {
             AnonymizerEngine engine = new AnonymizerEngine(Path.Combine("Configurations", "configuration-raise-processing-error.json"), _schema);
             string testContent = File.ReadAllText(CollectionResourceTestsFile("bundle-basic.json"));
-            Assert.Throws<AnonymizerProcessingException>(() => engine.AnonymizeJson(testContent));
+            Assert.Throws<ProcessingException>(() => engine.AnonymizeJson(testContent));
         }
 
         [Fact]

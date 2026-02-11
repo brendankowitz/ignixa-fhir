@@ -43,7 +43,7 @@ public class CustomProcessorFactory : IAnonymizerProcessorFactory
             var method = GetMethodName(processor.Name);
             if (Constants.BuiltInMethods.Contains(method))
             {
-                throw new AddCustomProcessorException($"Anonymization method {method} is a built-in method. Please add custom processor with unique method name.");
+                throw new CustomProcessorException($"Anonymization method {method} is a built-in method. Please add custom processor with unique method name.");
             }
 
             _customProcessors.Add(method, processor);
