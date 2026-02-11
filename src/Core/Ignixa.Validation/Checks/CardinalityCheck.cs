@@ -14,9 +14,6 @@ namespace Ignixa.Validation.Checks;
 /// </summary>
 public class CardinalityCheck : IValidationCheck
 {
-    private static readonly System.Text.RegularExpressions.Regex ArrayIndexRegex =
-        new(@"\[\d+\]", System.Text.RegularExpressions.RegexOptions.Compiled);
-
     private readonly string _elementName;
     private readonly int _min;
     private readonly int? _max; // null = unbounded (*)
@@ -80,22 +77,30 @@ public class CardinalityCheck : IValidationCheck
     /// Checks if an element is nested at 2nd level or deeper in the resource structure.
     /// </summary>
     /// <param name="location">The full element location path (e.g., "Appointment.participant[0].status").</param>
-    /// <returns>True if the element is 2+ levels deep (has 2 or more dots after removing array indices).</returns>
+    /// <returns>True if the element is 2+ levels deep (has 2 or more dots separating non-empty segments).</returns>
     /// <remarks>
     /// Examples:
     /// - "Patient.name" → false (1st level, enforce cardinality)
     /// - "Appointment.participant.status" → true (2nd level, skip in compatibility mode)
+    /// - "Appointment.participant[0].status" → true (2nd level with array index, skip in compatibility mode)
     /// - "Patient.contact.relationship" → true (2nd level, skip in compatibility mode)
     /// </remarks>
     private static bool IsNestedElement(string location)
     {
-        // Normalize location by removing array indices: "Appointment.participant[0].status" -> "Appointment.participant.status"
-        var normalizedLocation = ArrayIndexRegex.Replace(location, string.Empty);
+        // Check if there are at least 2 dots separating actual path segments
+        // Handles edge cases: leading/trailing dots, empty segments
+        var firstDot = location.IndexOf('.');
+        if (firstDot <= 0) // -1 (no dot) or 0 (leading dot)
+        {
+            return false;
+        }
 
-        // Count dots to determine nesting level
-        // 1 dot = 1st level (e.g., "Patient.name")
-        // 2+ dots = 2nd level or deeper (e.g., "Appointment.participant.status")
-        var dotCount = normalizedLocation.Count(c => c == '.');
-        return dotCount >= 2;
+        var secondDot = location.IndexOf('.', firstDot + 1);
+        if (secondDot == -1 || secondDot == firstDot + 1) // No second dot or consecutive dots
+        {
+            return false;
+        }
+
+        return true;
     }
 }
