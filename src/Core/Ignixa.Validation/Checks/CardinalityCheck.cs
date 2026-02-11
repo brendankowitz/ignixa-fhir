@@ -89,13 +89,13 @@ public class CardinalityCheck : IValidationCheck
     {
         // Check if there are at least 2 dots separating actual path segments
         // Handles edge cases: leading/trailing dots, empty segments
-        var firstDot = location.IndexOf('.');
+        var firstDot = location.IndexOf(".", StringComparison.Ordinal);
         if (firstDot <= 0) // -1 (no dot) or 0 (leading dot)
         {
             return false;
         }
 
-        var secondDot = location.IndexOf('.', firstDot + 1);
+        var secondDot = location.IndexOf(".", firstDot + 1, StringComparison.Ordinal);
         if (secondDot == -1 || secondDot == firstDot + 1) // No second dot or consecutive dots
         {
             return false;
