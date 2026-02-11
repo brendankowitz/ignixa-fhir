@@ -22,7 +22,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Processors
 
         public ResourceProcessorTests()
         {
-            _resourceProcessor = new ResourceProcessor(null, null);
+            _resourceProcessor = new ResourceProcessor([], new Dictionary<string, IAnonymizerProcessor>());
         }
 
         [Fact]

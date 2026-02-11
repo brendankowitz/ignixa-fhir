@@ -4,6 +4,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Data;
+using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.AnonymizerConfigurations;
@@ -22,6 +23,9 @@ public class AnonymizationVisitor : AbstractElementNodeVisitor
 
     public AnonymizationVisitor(AnonymizationFhirPathRule[] rules, Dictionary<string, IAnonymizerProcessor> processors)
     {
+        EnsureArg.IsNotNull(rules, nameof(rules));
+        EnsureArg.IsNotNull(processors, nameof(processors));
+
         _resourceProcessor = new ResourceProcessor(rules, processors);
     }
 

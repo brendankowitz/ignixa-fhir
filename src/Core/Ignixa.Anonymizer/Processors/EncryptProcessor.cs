@@ -4,6 +4,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Text;
+using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,8 @@ public class EncryptProcessor : IAnonymizerProcessor
 
     public EncryptProcessor(string encryptKey)
     {
+        EnsureArg.IsNotNullOrWhiteSpace(encryptKey, nameof(encryptKey));
+
         _key = Encoding.UTF8.GetBytes(encryptKey);
     }
 

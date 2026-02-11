@@ -4,6 +4,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Text.Json.Nodes;
+using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
@@ -24,12 +25,18 @@ public class ResourceProcessor
 
     public ResourceProcessor(AnonymizationFhirPathRule[] rules, Dictionary<string, IAnonymizerProcessor> processors)
     {
+        EnsureArg.IsNotNull(rules, nameof(rules));
+        EnsureArg.IsNotNull(processors, nameof(processors));
+
         _rules = rules;
         _processors = processors;
     }
 
     public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
     {
+        EnsureArg.IsNotNull(resource, nameof(resource));
+        EnsureArg.IsNotNull(node, nameof(node));
+
         var result = new ProcessResult();
         var resourceRules = GetRulesByType(node.InstanceType);
 

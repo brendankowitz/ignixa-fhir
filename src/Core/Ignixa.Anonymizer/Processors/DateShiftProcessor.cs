@@ -3,6 +3,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.Extensions;
@@ -23,6 +24,9 @@ public class DateShiftProcessor : IAnonymizerProcessor
 
     public DateShiftProcessor(string dateShiftKey, string dateShiftKeyPrefix, bool enablePartialDatesForRedact, int? dateShiftFixedOffsetInDays = null)
     {
+        EnsureArg.IsNotNullOrWhiteSpace(dateShiftKey, nameof(dateShiftKey));
+        EnsureArg.IsNotNull(dateShiftKeyPrefix, nameof(dateShiftKeyPrefix));
+
         DateShiftKey = dateShiftKey;
         DateShiftKeyPrefix = dateShiftKeyPrefix;
         EnablePartialDatesForRedact = enablePartialDatesForRedact;

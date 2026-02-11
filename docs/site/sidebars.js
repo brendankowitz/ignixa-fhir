@@ -88,6 +88,7 @@ const sidebars = {
         'core-sdk/fhirpath',
         'core-sdk/validation',
         'core-sdk/search',
+        'core-sdk/anonymizer',
         'core-sdk/fhir-fakes',
         'core-sdk/package-management',
         'core-sdk/narrative-generator',

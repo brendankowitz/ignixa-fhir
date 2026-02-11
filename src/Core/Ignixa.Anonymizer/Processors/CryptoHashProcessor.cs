@@ -3,6 +3,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,9 @@ public class CryptoHashProcessor : IAnonymizerProcessor
 
     public CryptoHashProcessor(string cryptoHashKey, IFhirSchemaProvider schema)
     {
+        EnsureArg.IsNotNullOrWhiteSpace(cryptoHashKey, nameof(cryptoHashKey));
+        EnsureArg.IsNotNull(schema, nameof(schema));
+
         _cryptoHashKey = cryptoHashKey;
         _schema = schema;
         _cryptoHashFunction = input => CryptoHashUtility.ComputeHmacSHA256Hash(input, _cryptoHashKey);

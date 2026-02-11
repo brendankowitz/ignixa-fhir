@@ -18,9 +18,10 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
 {
     public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
     {
-        EnsureArg.IsNotNull(node);
-        EnsureArg.IsNotNull(context?.VisitedNodes);
-        EnsureArg.IsNotNull(settings);
+        EnsureArg.IsNotNull(resource, nameof(resource));
+        EnsureArg.IsNotNull(node, nameof(node));
+        EnsureArg.IsNotNull(context?.VisitedNodes, nameof(context));
+        EnsureArg.IsNotNull(settings, nameof(settings));
 
         var result = new ProcessResult();
 

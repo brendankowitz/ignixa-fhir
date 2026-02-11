@@ -4,6 +4,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Text.Json;
+using EnsureThat;
 using Ignixa.Anonymizer.AnonymizerConfigurations;
 using Ignixa.Anonymizer.Exceptions;
 
@@ -19,6 +20,8 @@ public sealed class AnonymizerConfigurationManager
 
     public AnonymizerConfigurationManager(AnonymizerConfiguration configuration)
     {
+        EnsureArg.IsNotNull(configuration, nameof(configuration));
+
         _validator.Validate(configuration);
         configuration.GenerateDefaultParametersIfNotConfigured();
 

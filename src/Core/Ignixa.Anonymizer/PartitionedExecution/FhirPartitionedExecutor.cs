@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using EnsureThat;
 using Ignixa.Anonymizer.Models;
 using Ignixa.Anonymizer.PartitionedExecution;
 
@@ -29,6 +30,9 @@ namespace Ignixa.Anonymizer
 
         public FhirPartitionedExecutor(IFhirDataReader<TSource> rawDataReader, IFhirDataConsumer<TResult> anonymizedDataConsumer)
         {
+            EnsureArg.IsNotNull(rawDataReader, nameof(rawDataReader));
+            EnsureArg.IsNotNull(anonymizedDataConsumer, nameof(anonymizedDataConsumer));
+
             RawDataReader = rawDataReader;
             AnonymizedDataConsumer = anonymizedDataConsumer;
             AnonymizerFunctionAsync = async content =>
@@ -39,6 +43,10 @@ namespace Ignixa.Anonymizer
 
         public FhirPartitionedExecutor(IFhirDataReader<TSource> rawDataReader, IFhirDataConsumer<TResult> anonymizedDataConsumer, Func<TSource, TResult> anonymizerFunction)
         {
+            EnsureArg.IsNotNull(rawDataReader, nameof(rawDataReader));
+            EnsureArg.IsNotNull(anonymizedDataConsumer, nameof(anonymizedDataConsumer));
+            EnsureArg.IsNotNull(anonymizerFunction, nameof(anonymizerFunction));
+
             RawDataReader = rawDataReader;
             AnonymizedDataConsumer = anonymizedDataConsumer;
             AnonymizerFunctionAsync = async content =>
@@ -50,6 +58,10 @@ namespace Ignixa.Anonymizer
 
         public FhirPartitionedExecutor(IFhirDataReader<TSource> rawDataReader, IFhirDataConsumer<TResult> anonymizedDataConsumer, Func<TSource, Task<TResult>> anonymizerFunctionAsync)
         {
+            EnsureArg.IsNotNull(rawDataReader, nameof(rawDataReader));
+            EnsureArg.IsNotNull(anonymizedDataConsumer, nameof(anonymizedDataConsumer));
+            EnsureArg.IsNotNull(anonymizerFunctionAsync, nameof(anonymizerFunctionAsync));
+
             RawDataReader = rawDataReader;
             AnonymizedDataConsumer = anonymizedDataConsumer;
             AnonymizerFunctionAsync = anonymizerFunctionAsync;
