@@ -10,6 +10,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Anonymizer.Extensions;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 using Xunit;
 
 namespace Ignixa.Anonymizer.FunctionalTests;
@@ -37,7 +39,7 @@ public class R4VersionSpecificTests
     public async Task GivenAR4OnlyResource_WhenAnonymizing_AnonymizedJsonShouldBeReturned(string testFile, string targetFile)
     {
         var engine = CreateEngine("r4-configuration-sample.json");
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
     }
 
     [Theory]
@@ -45,18 +47,21 @@ public class R4VersionSpecificTests
     public async Task GivenCommonResourceWithR4OnlyField_WhenAnonymizing_AnonymizedJsonShouldBeReturned(string testFile, string targetFile)
     {
         var engine = CreateEngine("r4-configuration-sample.json");
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
     }
 
     private IAnonymizerEngine CreateEngine(string configPath)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IFhirSchemaProvider>(_schema);
+        services.AddSingleton<IValidationSchemaResolver>(sp =>
+            new CachedValidationSchemaResolver(
+                new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
+        services.AddLogging();
         services.AddFhirAnonymizer(builder =>
         {
             builder.WithConfigurationFile(configPath);
         });
-        services.AddSingleton<IFhirSchemaProvider>(_schema);
-        services.AddLogging();
 
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IAnonymizerEngine>();
@@ -88,7 +93,7 @@ public class Stu3VersionSpecificTests
     public async Task GivenAStu3OnlyResource_WhenAnonymizing_AnonymizedJsonShouldBeReturned(string testFile, string targetFile)
     {
         var engine = CreateEngine("stu3-configuration-sample.json");
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
     }
 
     [Theory]
@@ -96,18 +101,21 @@ public class Stu3VersionSpecificTests
     public async Task GivenCommonResourceWithStu3OnlyField_WhenAnonymizing_AnonymizedJsonShouldBeReturned(string testFile, string targetFile)
     {
         var engine = CreateEngine("stu3-configuration-sample.json");
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile(testFile), ResourceTestsFile(targetFile));
     }
 
     private IAnonymizerEngine CreateEngine(string configPath)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IFhirSchemaProvider>(_schema);
+        services.AddSingleton<IValidationSchemaResolver>(sp =>
+            new CachedValidationSchemaResolver(
+                new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
+        services.AddLogging();
         services.AddFhirAnonymizer(builder =>
         {
             builder.WithConfigurationFile(configPath);
         });
-        services.AddSingleton<IFhirSchemaProvider>(_schema);
-        services.AddLogging();
 
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IAnonymizerEngine>();

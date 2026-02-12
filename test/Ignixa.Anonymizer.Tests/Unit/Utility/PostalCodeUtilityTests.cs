@@ -8,7 +8,7 @@ using System.Linq;
 using Ignixa.Anonymizer.Processors;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 using Xunit;
 
 namespace Ignixa.Anonymizer.Core.UnitTests.Utility;
@@ -43,7 +43,7 @@ public class PostalCodeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("address").First().Children("postalCode").First();
-        var result = PostalCodeUtility.RedactPostalCode(node, false, null);
+        var result = PostalCodeTool.RedactPostalCode(node, false, null);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -61,7 +61,7 @@ public class PostalCodeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("address").First().Children("postalCode").First();
-        var result = PostalCodeUtility.RedactPostalCode(node, true, new List<string>() { "203", "556" });
+        var result = PostalCodeTool.RedactPostalCode(node, true, new List<string>() { "203", "556" });
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);

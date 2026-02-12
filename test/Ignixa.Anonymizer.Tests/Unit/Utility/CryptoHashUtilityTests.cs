@@ -4,7 +4,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Generic;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 using Xunit;
 
 namespace Ignixa.Anonymizer.Core.UnitTests.Utility
@@ -27,7 +27,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Utility
         [MemberData(nameof(GetHmacHashData))]
         public void GivenAString_WhenComputeHmac_CorrectHashShouldBeReturned(string input, string expectedHash)
         {
-            string hash = CryptoHashUtility.ComputeHmacSHA256Hash(input, TestHashKey);
+            string hash = CryptoHashTool.ComputeHmacSHA256Hash(input, TestHashKey);
             Assert.Equal(expectedHash, hash);
         }
     }

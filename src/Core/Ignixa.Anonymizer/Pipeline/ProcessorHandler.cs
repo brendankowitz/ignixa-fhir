@@ -12,18 +12,18 @@ using Microsoft.Extensions.Options;
 namespace Ignixa.Anonymizer.Pipeline;
 
 /// <summary>
-/// Middleware that executes anonymization processors for matched rules.
+/// Handler that executes anonymization processors for matched rules.
 /// Resolves processors via keyed DI services and applies them to matched elements.
 /// </summary>
-public sealed class ProcessorMiddleware : AnonymizerMiddleware
+internal sealed class ProcessorHandler : AnonymizerPipelineHandler
 {
     private readonly Dictionary<string, IAnonymizerProcessor> _processorCache;
-    private readonly ILogger<ProcessorMiddleware> _logger;
+    private readonly ILogger<ProcessorHandler> _logger;
 
-    public ProcessorMiddleware(
+    public ProcessorHandler(
         IServiceProvider serviceProvider,
         IOptions<AnonymizerOptions> options,
-        ILogger<ProcessorMiddleware> logger)
+        ILogger<ProcessorHandler> logger)
     {
         _logger = logger;
 
@@ -45,19 +45,19 @@ public sealed class ProcessorMiddleware : AnonymizerMiddleware
         }
 
         _logger.LogInformation(
-            "ProcessorMiddleware initialized with {ProcessorCount} cached processors",
+            "ProcessorHandler initialized with {ProcessorCount} cached processors",
             _processorCache.Count);
     }
     /// <inheritdoc />
     public override async ValueTask<Result<AnonymizationResult>> InvokeAsync(
         AnonymizerContext context,
-        AnonymizerDelegate nextMiddleware,
+        PipelineDelegate nextHandler,
         CancellationToken cancellationToken)
     {
         if (context.MatchedRules.Count == 0)
         {
             _logger.LogDebug("No matched rules to process");
-            return await nextMiddleware(context, cancellationToken).ConfigureAwait(false);
+            return await nextHandler(context, cancellationToken).ConfigureAwait(false);
         }
 
         _logger.LogDebug(
@@ -114,7 +114,7 @@ public sealed class ProcessorMiddleware : AnonymizerMiddleware
             }
         }
 
-        return await nextMiddleware(context, cancellationToken).ConfigureAwait(false);
+        return await nextHandler(context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -10,7 +10,6 @@ namespace Ignixa.Anonymizer.Cli;
 
 public class FilesAnonymizerForJsonFormatResource(
     IAnonymizerEngine engine,
-    IFhirSchemaProvider schema,
     string inputFolder,
     string outputFolder,
     AnonymizationToolOptions options)
@@ -19,7 +18,6 @@ public class FilesAnonymizerForJsonFormatResource(
     private readonly string _outputFolder = outputFolder;
     private readonly AnonymizationToolOptions _options = options;
     private readonly IAnonymizerEngine _engine = engine;
-    private readonly IFhirSchemaProvider _schema = schema;
 
     public async Task AnonymizeAsync(CancellationToken cancellationToken = default)
     {
@@ -93,14 +91,14 @@ public class FilesAnonymizerForJsonFormatResource(
 
         string resourceJson = await File.ReadAllTextAsync(fileName, cancellationToken).ConfigureAwait(false);
 
-        var settings = new AnonymizerSettings
+        var settings = new RequestOptions
         {
             IsPrettyOutput = true,
             ValidateInput = _options.ValidateInput,
             ValidateOutput = _options.ValidateOutput
         };
 
-        var result = await _engine.AnonymizeAsync(resourceJson, _schema, settings, cancellationToken).ConfigureAwait(false);
+        var result = await _engine.AnonymizeAsync(resourceJson, settings, cancellationToken).ConfigureAwait(false);
 
         if (result.IsSuccess)
         {

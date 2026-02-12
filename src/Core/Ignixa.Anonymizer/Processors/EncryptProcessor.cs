@@ -9,10 +9,13 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that encrypts element values using AES-CBC and encodes the result as Base64.
+/// </summary>
 public class EncryptProcessor : IAnonymizerProcessor
 {
     private readonly byte[] _key;
@@ -73,7 +76,7 @@ public class EncryptProcessor : IAnonymizerProcessor
         }
 
         var input = node.Value.ToString()!;
-        ElementMutationHelper.SetValue(node, EncryptUtility.EncryptTextToBase64WithAes(input, _key));
+        ElementMutationTool.SetValue(node, EncryptTool.EncryptTextToBase64WithAes(input, _key));
         _logger.LogDebug("Anonymized value at '{Location}' using Encrypt", node.Location);
 
         return true;

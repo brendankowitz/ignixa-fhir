@@ -15,30 +15,30 @@ namespace Ignixa.Anonymizer.Pipeline;
 /// </summary>
 public sealed class AnonymizerPipeline : IAnonymizerPipeline
 {
-    private readonly AnonymizerDelegate _pipeline;
+    private readonly PipelineDelegate _pipeline;
     private readonly ILogger<AnonymizerPipeline> _logger;
 
     /// <summary>
-    /// Creates a new anonymization pipeline with the specified middleware.
+    /// Creates a new anonymization pipeline with the specified handlers.
     /// </summary>
     /// <param name="options">Anonymizer configuration options.</param>
-    /// <param name="middleware">Array of middleware components to execute.</param>
+    /// <param name="handlers">Array of handler components to execute.</param>
     /// <param name="logger">Logger for pipeline operations.</param>
     public AnonymizerPipeline(
         IOptions<AnonymizerOptions> options,
-        AnonymizerMiddleware[] middleware,
+        AnonymizerPipelineHandler[] handlers,
         ILogger<AnonymizerPipeline> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(middleware);
+        ArgumentNullException.ThrowIfNull(handlers);
         ArgumentNullException.ThrowIfNull(logger);
 
         _logger = logger;
-        _pipeline = BuildPipeline(middleware);
+        _pipeline = BuildPipeline(handlers);
 
         _logger.LogDebug(
-            "AnonymizerPipeline initialized with {MiddlewareCount} middleware components",
-            middleware.Length);
+            "AnonymizerPipeline initialized with {HandlerCount} handler components",
+            handlers.Length);
     }
 
     /// <inheritdoc />
@@ -73,26 +73,26 @@ public sealed class AnonymizerPipeline : IAnonymizerPipeline
     }
 
     /// <summary>
-    /// Builds the middleware pipeline by composing middleware in reverse order.
-    /// This ensures middleware[0] executes first, middleware[1] second, etc.
+    /// Builds the handler pipeline by composing handlers in reverse order.
+    /// This ensures handlers[0] executes first, handlers[1] second, etc.
     /// </summary>
-    private static AnonymizerDelegate BuildPipeline(AnonymizerMiddleware[] middleware)
+    private static PipelineDelegate BuildPipeline(AnonymizerPipelineHandler[] handlers)
     {
-        if (middleware.Length == 0)
+        if (handlers.Length == 0)
         {
             return (ctx, _) => ValueTask.FromResult(
                 Result<AnonymizationResult>.Success(ctx.BuildResult()));
         }
 
-        AnonymizerDelegate current = (ctx, _) => ValueTask.FromResult(
+        PipelineDelegate current = (ctx, _) => ValueTask.FromResult(
             Result<AnonymizationResult>.Failure(new AnonymizerError(
                 "PIPELINE_NOT_TERMINATED",
-                "Pipeline was not terminated by any middleware. Ensure OutputFormattingMiddleware is included.",
+                "Pipeline was not terminated by any handler. Ensure OutputFormattingHandler is included.",
                 ErrorSeverity.Error)));
 
-        for (var i = middleware.Length - 1; i >= 0; i--)
+        for (var i = handlers.Length - 1; i >= 0; i--)
         {
-            var component = middleware[i];
+            var component = handlers[i];
             var next = current;
             current = (ctx, ct) => component.InvokeAsync(ctx, next, ct);
         }

@@ -9,15 +9,15 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Anonymizer.Pipeline;
 
 /// <summary>
-/// Middleware that matches FHIRPath rules from configuration against the resource.
+/// Handler that matches FHIRPath rules from configuration against the resource.
 /// Populates context.MatchedRules with rules that apply to the current resource.
 /// </summary>
-public sealed class RuleMatchingMiddleware(ILogger<RuleMatchingMiddleware> logger) : AnonymizerMiddleware
+internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) : AnonymizerPipelineHandler
 {
     /// <inheritdoc />
     public override async ValueTask<Result<AnonymizationResult>> InvokeAsync(
         AnonymizerContext context,
-        AnonymizerDelegate nextMiddleware,
+        PipelineDelegate nextHandler,
         CancellationToken cancellationToken)
     {
         var resourceType = context.Resource.ResourceType;
@@ -78,7 +78,7 @@ public sealed class RuleMatchingMiddleware(ILogger<RuleMatchingMiddleware> logge
             "Rule matching complete: {MatchedCount} rules matched",
             context.MatchedRules.Count);
 
-        return await nextMiddleware(context, cancellationToken).ConfigureAwait(false);
+        return await nextHandler(context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

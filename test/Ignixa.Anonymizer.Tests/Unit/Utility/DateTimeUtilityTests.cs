@@ -9,7 +9,7 @@ using System.Linq;
 using Ignixa.Anonymizer.Processors;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 using Xunit;
 
 namespace Ignixa.Anonymizer.Core.UnitTests.Utility;
@@ -92,7 +92,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("birthDate").First();
-        var result = DateTimeUtility.RedactDateNode(node, true);
+        var result = DateTimeTool.RedactDateNode(node, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -110,7 +110,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("birthDate").First();
-        var result = DateTimeUtility.RedactDateNode(node, false);
+        var result = DateTimeTool.RedactDateNode(node, false);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -128,7 +128,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("birthDate").First();
-        var result = DateTimeUtility.ShiftDateNode(node, string.Empty, string.Empty, null, true);
+        var result = DateTimeTool.ShiftDateNode(node, string.Empty, string.Empty, null, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -147,7 +147,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("birthDate").First();
-        var result = DateTimeUtility.ShiftDateNode(node, string.Empty, string.Empty, null, true);
+        var result = DateTimeTool.ShiftDateNode(node, string.Empty, string.Empty, null, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -179,8 +179,8 @@ public class DateTimeUtilityTests
         var node = element.Children(fieldName).First();
 
         var result = isDateTime
-            ? DateTimeUtility.RedactDateTimeAndInstantNode(node, true)
-            : DateTimeUtility.RedactDateNode(node, true);
+            ? DateTimeTool.RedactDateTimeAndInstantNode(node, true)
+            : DateTimeTool.RedactDateNode(node, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -198,7 +198,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("issued").First();
-        var result = DateTimeUtility.RedactDateTimeAndInstantNode(node, true);
+        var result = DateTimeTool.RedactDateTimeAndInstantNode(node, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -230,8 +230,8 @@ public class DateTimeUtilityTests
         var node = element.Children(fieldName).First();
 
         var result = isDateTime
-            ? DateTimeUtility.ShiftDateTimeAndInstantNode(node, dateShiftKey, string.Empty, null, true)
-            : DateTimeUtility.ShiftDateNode(node, dateShiftKey, string.Empty, null, true);
+            ? DateTimeTool.ShiftDateTimeAndInstantNode(node, dateShiftKey, string.Empty, null, true)
+            : DateTimeTool.ShiftDateNode(node, dateShiftKey, string.Empty, null, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -249,7 +249,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("onsetAge").First().Children("value").First();
-        var result = DateTimeUtility.RedactAgeDecimalNode(node, true);
+        var result = DateTimeTool.RedactAgeDecimalNode(node, true);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);
@@ -267,7 +267,7 @@ public class DateTimeUtilityTests
         var resourceNode = ResourceJsonNode.Parse(json);
         var element = resourceNode.ToElement(_schema);
         var node = element.Children("onsetAge").First().Children("value").First();
-        var result = DateTimeUtility.RedactAgeDecimalNode(node, false);
+        var result = DateTimeTool.RedactAgeDecimalNode(node, false);
 
         resourceNode.InvalidateCaches();
         var updated = resourceNode.ToElement(_schema);

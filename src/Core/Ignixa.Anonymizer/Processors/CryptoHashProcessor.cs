@@ -9,10 +9,13 @@ using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that replaces element values with their HMAC-SHA256 hash using a configurable key.
+/// </summary>
 public class CryptoHashProcessor : IAnonymizerProcessor
 {
     private readonly string _cryptoHashKey;
@@ -27,7 +30,7 @@ public class CryptoHashProcessor : IAnonymizerProcessor
 
         _cryptoHashKey = cryptoHashKey;
         _schema = schema;
-        _cryptoHashFunction = input => CryptoHashUtility.ComputeHmacSHA256Hash(input, _cryptoHashKey);
+        _cryptoHashFunction = input => CryptoHashTool.ComputeHmacSHA256Hash(input, _cryptoHashKey);
     }
 
     public ValueTask<Result<ProcessorResult>> ProcessAsync(
@@ -70,12 +73,12 @@ public class CryptoHashProcessor : IAnonymizerProcessor
 
         if (node.IsReferenceStringNode(parent: null))
         {
-            var newReference = ReferenceUtility.TransformReferenceId(input, _schema, _cryptoHashFunction);
-            ElementMutationHelper.SetValue(node, newReference);
+            var newReference = ReferenceTool.TransformReferenceId(input, _schema, _cryptoHashFunction);
+            ElementMutationTool.SetValue(node, newReference);
         }
         else
         {
-            ElementMutationHelper.SetValue(node, _cryptoHashFunction(input));
+            ElementMutationTool.SetValue(node, _cryptoHashFunction(input));
         }
 
         _logger.LogDebug("Anonymized value at '{Location}' using CryptoHash", node.Location);

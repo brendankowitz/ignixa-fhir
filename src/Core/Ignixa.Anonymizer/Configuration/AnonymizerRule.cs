@@ -7,6 +7,9 @@ using System.Collections.Generic;
 
 namespace Ignixa.Anonymizer.Configuration
 {
+    /// <summary>
+    /// Base class representing an anonymization rule with a path, method, type, and optional settings.
+    /// </summary>
     public class AnonymizerRule
     {
         public string Path { get; set; }

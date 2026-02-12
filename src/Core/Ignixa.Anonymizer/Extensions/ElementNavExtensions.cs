@@ -7,7 +7,10 @@ using Ignixa.Abstractions;
 
 namespace Ignixa.Anonymizer.Extensions;
 
-public static class ElementNavExtensions
+/// <summary>
+/// Extension methods for navigating FHIR resource sub-structures (entries, contained resources).
+/// </summary>
+internal static class ElementNavExtensions
 {
     public static IEnumerable<IElement> GetEntryResourceChildren(this IElement node)
     {

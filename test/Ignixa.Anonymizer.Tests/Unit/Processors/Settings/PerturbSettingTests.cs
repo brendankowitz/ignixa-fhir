@@ -6,7 +6,7 @@
 using System.Collections.Generic;
 using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Exceptions;
-using Ignixa.Anonymizer.Processors.Settings;
+using Ignixa.Anonymizer.Configuration.ProcessorSettings;
 using Xunit;
 
 namespace Ignixa.Anonymizer.Core.UnitTests.Processors.Settings

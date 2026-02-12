@@ -9,11 +9,14 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Processors.Settings;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Configuration.ProcessorSettings;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that generalizes primitive values using FHIRPath case expressions and a configurable fallback operation.
+/// </summary>
 public partial class GeneralizeProcessor : IAnonymizerProcessor
 {
     public ValueTask<Result<ProcessorResult>> ProcessAsync(
@@ -73,7 +76,7 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
                 if (node.Predicate(eachCase.Key))
                 {
                     var newValue = node.Scalar(eachCase.Value.ToString()!);
-                    ElementMutationHelper.SetValue(node, newValue);
+                    ElementMutationTool.SetValue(node, newValue);
                     return true;
                 }
             }
@@ -85,7 +88,7 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
 
         if (generalizeSetting.OtherValues == GeneralizationOtherValuesOperation.Redact)
         {
-            ElementMutationHelper.ClearValue(node);
+            ElementMutationTool.ClearValue(node);
         }
 
         return true;

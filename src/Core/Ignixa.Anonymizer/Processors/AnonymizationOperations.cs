@@ -9,6 +9,9 @@ using System.Text;
 
 namespace Ignixa.Anonymizer.Processors
 {
+    /// <summary>
+    /// Constant strings identifying each supported anonymization operation type.
+    /// </summary>
     public static class AnonymizationOperations
     {
         public const string Redact = "REDACT";

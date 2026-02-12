@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Anonymizer.Extensions;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 using Xunit;
 
 namespace Ignixa.Anonymizer.FunctionalTests;
@@ -21,7 +23,7 @@ public class CollectionResourceTests
     public async Task GivenAResourceWithContained_WhenAnonymizing_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("contained-basic.json"), CollectionResourceTestsFile("contained-basic-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("contained-basic.json"), CollectionResourceTestsFile("contained-basic-target.json"));
     }
 
     [Fact]
@@ -30,7 +32,7 @@ public class CollectionResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
         string testContent = await File.ReadAllTextAsync(CollectionResourceTestsFile("contained-basic.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -42,7 +44,7 @@ public class CollectionResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
         string testContent = await File.ReadAllTextAsync(CollectionResourceTestsFile("bundle-basic.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -55,7 +57,7 @@ public class CollectionResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
         string testContent = await File.ReadAllTextAsync(CollectionResourceTestsFile("contained-in-bundle.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -67,7 +69,7 @@ public class CollectionResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
         string testContent = await File.ReadAllTextAsync(CollectionResourceTestsFile("contained-basic.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -79,7 +81,7 @@ public class CollectionResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
         string testContent = await File.ReadAllTextAsync(CollectionResourceTestsFile("bundle-basic.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -89,60 +91,63 @@ public class CollectionResourceTests
     public async Task GivenABundleResource_WhenAnonymizing_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("bundle-basic.json"), CollectionResourceTestsFile("bundle-basic-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("bundle-basic.json"), CollectionResourceTestsFile("bundle-basic-target.json"));
     }
 
     [Fact]
     public async Task GivenABundleResourceWithContainedInside_WhenAnonymizing_ThenContainedResourceShouldBeAnonymized()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("contained-in-bundle.json"), CollectionResourceTestsFile("contained-in-bundle-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("contained-in-bundle.json"), CollectionResourceTestsFile("contained-in-bundle-target.json"));
     }
 
     [Fact]
     public async Task GivenAResourceWithContained_WhenRedactAll_ThenRedactedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("contained-basic.json"), CollectionResourceTestsFile("contained-redact-all-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("contained-basic.json"), CollectionResourceTestsFile("contained-redact-all-target.json"));
     }
 
     [Fact]
     public async Task GivenABundleResource_WhenRedactAll_ThenRedactedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("bundle-basic.json"), CollectionResourceTestsFile("bundle-redact-all-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("bundle-basic.json"), CollectionResourceTestsFile("bundle-redact-all-target.json"));
     }
 
     [Fact]
     public async Task GivenABundleResourceWithContainedInside_WhenRedactAll_ThenRedactedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("contained-in-bundle.json"), CollectionResourceTestsFile("contained-in-bundle-redact-all-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("contained-in-bundle.json"), CollectionResourceTestsFile("contained-in-bundle-redact-all-target.json"));
     }
 
     [Fact]
     public async Task GivenAResourceWithContained_WhenSubstitute_ThenSubstitutedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-multiple.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("contained-substitute.json"), CollectionResourceTestsFile("contained-substitute-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("contained-substitute.json"), CollectionResourceTestsFile("contained-substitute-target.json"));
     }
 
     [Fact]
     public async Task GivenABundleResource_WhenSubstitute_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-multiple.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, CollectionResourceTestsFile("bundle-substitute.json"), CollectionResourceTestsFile("bundle-substitute-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, CollectionResourceTestsFile("bundle-substitute.json"), CollectionResourceTestsFile("bundle-substitute-target.json"));
     }
 
     private IAnonymizerEngine CreateEngine(string configPath)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IFhirSchemaProvider>(_schema);
+        services.AddSingleton<IValidationSchemaResolver>(sp =>
+            new CachedValidationSchemaResolver(
+                new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
+        services.AddLogging();
         services.AddFhirAnonymizer(builder =>
         {
             builder.WithConfigurationFile(configPath);
         });
-        services.AddSingleton<IFhirSchemaProvider>(_schema);
-        services.AddLogging();
 
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IAnonymizerEngine>();

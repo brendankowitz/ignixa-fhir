@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.Anonymizer.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Ensure.That" />
     <PackageReference Include="MathNet.Numerics" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
@@ -27,6 +31,7 @@
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
   </ItemGroup>
 
 </Project>

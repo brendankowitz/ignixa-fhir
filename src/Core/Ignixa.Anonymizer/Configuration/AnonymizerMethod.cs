@@ -5,6 +5,9 @@
 // -------------------------------------------------------------------------------------------------
 namespace Ignixa.Anonymizer.Configuration
 {
+    /// <summary>
+    /// Supported anonymization methods for FHIR resource processing.
+    /// </summary>
     public enum AnonymizerMethod
     {
         Redact,

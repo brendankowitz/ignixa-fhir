@@ -8,6 +8,9 @@ using System.Text.Json.Serialization;
 
 namespace Ignixa.Anonymizer.Configuration;
 
+/// <summary>
+/// Legacy configuration model for anonymization parameters loaded from JSON config files.
+/// </summary>
 public class ParameterConfiguration
 {
     [JsonPropertyName("dateShiftKey")]

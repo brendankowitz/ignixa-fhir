@@ -9,11 +9,14 @@ using Ignixa.Serialization.SourceNodes;
 using MathNet.Numerics.Distributions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Processors.Settings;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Configuration.ProcessorSettings;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that adds uniform random noise to numeric values (decimal, integer, or quantity types).
+/// </summary>
 public class PerturbProcessor : IAnonymizerProcessor
 {
     private readonly HashSet<string> _quantityTypeNames;
@@ -136,6 +139,6 @@ public class PerturbProcessor : IAnonymizerProcessor
             perturbedValue = 0;
         }
 
-        ElementMutationHelper.SetValue(node, perturbedValue);
+        ElementMutationTool.SetValue(node, perturbedValue);
     }
 }

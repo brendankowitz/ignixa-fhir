@@ -9,7 +9,10 @@ using Ignixa.Anonymizer.Visitors;
 
 namespace Ignixa.Anonymizer.Extensions;
 
-public static class ElementNodeVisitorExtensions
+/// <summary>
+/// Extension methods for applying the visitor pattern to FHIR element node trees.
+/// </summary>
+internal static class ElementNodeVisitorExtensions
 {
     public static void Accept(this IElement node, ResourceJsonNode resource, AbstractElementNodeVisitor visitor)
     {

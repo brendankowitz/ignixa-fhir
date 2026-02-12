@@ -6,6 +6,9 @@
 
 namespace Ignixa.Anonymizer.Exceptions;
 
+/// <summary>
+/// Thrown when an anonymization processor fails during element processing.
+/// </summary>
 public class ProcessingException : Exception
 {
     public ProcessingException()

@@ -19,15 +19,14 @@ public static class FunctionalTestUtility
 {
     public static async Task VerifySingleJsonResourceFromFileAsync(
         IAnonymizerEngine engine,
-        IFhirSchemaProvider schema,
         string testFile,
         string targetFile,
-        AnonymizerSettings? settings = null)
+        RequestOptions? settings = null)
     {
         Console.WriteLine($"VerifySingleJsonResourceFromFileAsync. TestFile: {testFile}, TargetFile: {targetFile}");
         string testContent = await File.ReadAllTextAsync(testFile);
 
-        var result = await engine.AnonymizeAsync(testContent, schema, settings);
+        var result = await engine.AnonymizeAsync(testContent, settings);
 
         result.IsSuccess.ShouldBeTrue($"Anonymization failed: {(result.IsSuccess ? "" : result.Error.Message)}");
 
@@ -49,22 +48,20 @@ public static class FunctionalTestUtility
 
     public static async Task<Result<AnonymizationResult>> AnonymizeFromFileAsync(
         IAnonymizerEngine engine,
-        IFhirSchemaProvider schema,
         string testFile,
-        AnonymizerSettings? settings = null)
+        RequestOptions? settings = null)
     {
         string testContent = await File.ReadAllTextAsync(testFile);
-        return await engine.AnonymizeAsync(testContent, schema, settings);
+        return await engine.AnonymizeAsync(testContent, settings);
     }
 
     public static async Task<string> GetActualOutputAsync(
         IAnonymizerEngine engine,
-        IFhirSchemaProvider schema,
         string testFile,
-        AnonymizerSettings? settings = null)
+        RequestOptions? settings = null)
     {
         string testContent = await File.ReadAllTextAsync(testFile);
-        var result = await engine.AnonymizeAsync(testContent, schema, settings);
+        var result = await engine.AnonymizeAsync(testContent, settings);
         result.IsSuccess.ShouldBeTrue($"Anonymization failed: {(result.IsSuccess ? "" : result.Error.Message)}");
         return Standardize(result.Value.AnonymizedJson);
     }

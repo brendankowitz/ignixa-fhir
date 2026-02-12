@@ -7,9 +7,12 @@ using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 
-namespace Ignixa.Anonymizer.Utility;
+namespace Ignixa.Anonymizer.Tools;
 
-public class ReferenceUtility
+/// <summary>
+/// Transforms FHIR reference IDs (literal, internal, URN) using a provided transformation function.
+/// </summary>
+internal class ReferenceTool
 {
     private const string InternalReferencePrefix = "#";
 

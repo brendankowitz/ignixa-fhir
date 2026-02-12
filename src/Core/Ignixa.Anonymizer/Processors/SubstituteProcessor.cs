@@ -11,11 +11,14 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Processors.Settings;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Configuration.ProcessorSettings;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that replaces element values with a configured substitute, supporting both primitive and complex types.
+/// </summary>
 public class SubstituteProcessor : IAnonymizerProcessor
 {
     public ValueTask<Result<ProcessorResult>> ProcessAsync(
@@ -66,11 +69,11 @@ public class SubstituteProcessor : IAnonymizerProcessor
 
         if (substituteSetting.ReplaceWith is null)
         {
-            ElementMutationHelper.ClearValue(node);
+            ElementMutationTool.ClearValue(node);
         }
         else
         {
-            ElementMutationHelper.SetValue(node, substituteSetting.ReplaceWith);
+            ElementMutationTool.SetValue(node, substituteSetting.ReplaceWith);
         }
 
         return true;

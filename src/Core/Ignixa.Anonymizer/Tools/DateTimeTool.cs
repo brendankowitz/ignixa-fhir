@@ -9,9 +9,12 @@ using Ignixa.Abstractions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Processors;
 
-namespace Ignixa.Anonymizer.Utility;
+namespace Ignixa.Anonymizer.Tools;
 
-public static class DateTimeUtility
+/// <summary>
+/// Utilities for redacting and date-shifting FHIR date, dateTime, and instant values.
+/// </summary>
+internal static class DateTimeTool
 {
     private static readonly int YearIndex = 1;
     private static readonly int MonthIndex = 5;
@@ -48,17 +51,17 @@ public static class DateTimeUtility
                 string yearOfDate = matchedGroups[YearIndex].Value;
                 if (IndicateAgeOverThreshold(matchedGroups))
                 {
-                    ElementMutationHelper.ClearValue(node);
+                    ElementMutationTool.ClearValue(node);
                 }
                 else
                 {
-                    ElementMutationHelper.SetValue(node, yearOfDate);
+                    ElementMutationTool.SetValue(node, yearOfDate);
                 }
             }
         }
         else
         {
-            ElementMutationHelper.ClearValue(node);
+            ElementMutationTool.ClearValue(node);
         }
 
         return new RedactResult(true, AnonymizationOperations.Redact);
@@ -80,17 +83,17 @@ public static class DateTimeUtility
                 string yearOfDateTime = matchedGroups[YearIndex].Value;
                 if (IndicateAgeOverThreshold(matchedGroups))
                 {
-                    ElementMutationHelper.ClearValue(node);
+                    ElementMutationTool.ClearValue(node);
                 }
                 else
                 {
-                    ElementMutationHelper.SetValue(node, yearOfDateTime);
+                    ElementMutationTool.SetValue(node, yearOfDateTime);
                 }
             }
         }
         else
         {
-            ElementMutationHelper.ClearValue(node);
+            ElementMutationTool.ClearValue(node);
         }
 
         return new RedactResult(true, AnonymizationOperations.Redact);
@@ -107,12 +110,12 @@ public static class DateTimeUtility
         {
             if (int.Parse(node.Value.ToString()!) > AgeThreshold)
             {
-                ElementMutationHelper.ClearValue(node);
+                ElementMutationTool.ClearValue(node);
             }
         }
         else
         {
-            ElementMutationHelper.ClearValue(node);
+            ElementMutationTool.ClearValue(node);
         }
 
         return new RedactResult(true, AnonymizationOperations.Redact);
@@ -131,7 +134,7 @@ public static class DateTimeUtility
         if (matchedGroups[DayIndex].Captures.Any() && !IndicateAgeOverThreshold(matchedGroups))
         {
             int offset = dateShiftFixedOffsetInDays ?? GetDateShiftValue(node, dateShiftKey, dateShiftKeyPrefix);
-            ElementMutationHelper.SetValue(node, ShiftDateString(node.Value.ToString()!, offset));
+            ElementMutationTool.SetValue(node, ShiftDateString(node.Value.ToString()!, offset));
             return new DateShiftResult(true, AnonymizationOperations.Perturb);
         }
         else
@@ -164,11 +167,11 @@ public static class DateTimeUtility
                     string newTime = Regex.Replace(time, @"\d", "0");
                     timestamp = timestamp.Replace(time, newTime);
                 }
-                ElementMutationHelper.SetValue(node, $"{newDate}{timestamp}");
+                ElementMutationTool.SetValue(node, $"{newDate}{timestamp}");
             }
             else
             {
-                ElementMutationHelper.SetValue(node, ShiftDateString(node.Value.ToString()!, offset));
+                ElementMutationTool.SetValue(node, ShiftDateString(node.Value.ToString()!, offset));
             }
             return new DateShiftResult(true, AnonymizationOperations.Perturb);
         }

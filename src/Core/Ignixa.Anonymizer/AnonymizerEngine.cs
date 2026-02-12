@@ -48,16 +48,13 @@ public class AnonymizerEngine : IAnonymizerEngine
     /// <inheritdoc />
     public async ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
         string resourceJson,
-        IFhirSchemaProvider schema,
-        AnonymizerSettings? settings = null,
+        RequestOptions? settings = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var resource = ResourceJsonNode.Parse(resourceJson);
-            var element = resource.ToElement(schema);
-
-            return await AnonymizeAsync(resource, element, schema, settings, cancellationToken);
+            return await AnonymizeAsync(resource, settings, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -72,19 +69,18 @@ public class AnonymizerEngine : IAnonymizerEngine
     /// <inheritdoc />
     public async ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
         ResourceJsonNode resource,
-        IElement element,
-        IFhirSchemaProvider schema,
-        AnonymizerSettings? settings = null,
+        RequestOptions? settings = null,
         CancellationToken cancellationToken = default)
     {
+        var element = resource.ToElement(_schema);
         var resourceId = element.Scalar("id")?.ToString() ?? "unknown";
         _logger.LogDebug("Anonymizing resource {ResourceType}/{ResourceId}", resource.ResourceType, resourceId);
 
         var context = new AnonymizerContext(
             resource,
             element,
-            schema,
-            settings ?? new AnonymizerSettings(),
+            _schema,
+            settings ?? new RequestOptions(),
             _options);
 
         return await _pipeline.ExecuteAsync(context, cancellationToken);
@@ -92,14 +88,13 @@ public class AnonymizerEngine : IAnonymizerEngine
 
     /// <inheritdoc />
     public async IAsyncEnumerable<Result<AnonymizationResult>> AnonymizeManyAsync(
-        IAsyncEnumerable<string> resources,
-        IFhirSchemaProvider schema,
-        AnonymizerSettings? settings = null,
+        IAsyncEnumerable<ResourceJsonNode> resources,
+        RequestOptions? settings = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var resourceJson in resources.WithCancellation(cancellationToken))
+        await foreach (var resource in resources.WithCancellation(cancellationToken))
         {
-            yield return await AnonymizeAsync(resourceJson, schema, settings, cancellationToken);
+            yield return await AnonymizeAsync(resource, settings, cancellationToken);
         }
     }
 }

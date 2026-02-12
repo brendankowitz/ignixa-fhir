@@ -5,6 +5,9 @@
 // -------------------------------------------------------------------------------------------------
 namespace Ignixa.Anonymizer.Configuration
 {
+    /// <summary>
+    /// Defines the type of anonymization rule (e.g., FHIRPath-based).
+    /// </summary>
     public enum AnonymizerRuleType
     {
         FhirPathRule

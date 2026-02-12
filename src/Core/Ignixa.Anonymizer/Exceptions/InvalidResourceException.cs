@@ -6,6 +6,9 @@
 
 namespace Ignixa.Anonymizer.Exceptions;
 
+/// <summary>
+/// Thrown when a FHIR resource is structurally invalid or cannot be processed by the anonymizer.
+/// </summary>
 public class InvalidResourceException : Exception
 {
     public InvalidResourceException()

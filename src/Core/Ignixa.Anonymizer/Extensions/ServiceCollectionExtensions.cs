@@ -3,12 +3,14 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using Ignixa.Abstractions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Pipeline;
 using Ignixa.Anonymizer.Processors;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Anonymizer.Extensions;
 
@@ -33,22 +35,25 @@ public static class ServiceCollectionExtensions
         // Register core services
         services.TryAddSingleton<IAnonymizerEngine, AnonymizerEngine>();
 
-        // Register pipeline and middleware
-        services.TryAddSingleton<IAnonymizerPipeline, AnonymizerPipeline>();
-        services.TryAddSingleton<ValidationMiddleware>();
-        services.TryAddSingleton<RuleMatchingMiddleware>();
-        services.TryAddSingleton<ProcessorMiddleware>();
-        services.TryAddSingleton<SecurityTagMiddleware>();
-        services.TryAddSingleton<OutputFormattingMiddleware>();
+        // Register validation schema resolver
+        services.TryAddSingleton<IValidationSchemaResolver, CachedValidationSchemaResolver>();
 
-        // Register default middleware array (can be overridden via builder)
-        services.TryAddSingleton<AnonymizerMiddleware[]>(sp =>
+        // Register pipeline and handlers
+        services.TryAddSingleton<IAnonymizerPipeline, AnonymizerPipeline>();
+        services.TryAddSingleton<ValidationHandler>();
+        services.TryAddSingleton<RuleMatchingHandler>();
+        services.TryAddSingleton<ProcessorHandler>();
+        services.TryAddSingleton<SecurityTagHandler>();
+        services.TryAddSingleton<OutputFormattingHandler>();
+
+        // Register default handler array (can be overridden via builder)
+        services.TryAddSingleton<AnonymizerPipelineHandler[]>(sp =>
         [
-            sp.GetRequiredService<ValidationMiddleware>(),
-            sp.GetRequiredService<RuleMatchingMiddleware>(),
-            sp.GetRequiredService<ProcessorMiddleware>(),
-            sp.GetRequiredService<SecurityTagMiddleware>(),
-            sp.GetRequiredService<OutputFormattingMiddleware>()
+            sp.GetRequiredService<ValidationHandler>(),
+            sp.GetRequiredService<RuleMatchingHandler>(),
+            sp.GetRequiredService<ProcessorHandler>(),
+            sp.GetRequiredService<SecurityTagHandler>(),
+            sp.GetRequiredService<OutputFormattingHandler>()
         ]);
 
         // Register built-in processors as keyed services with factory methods

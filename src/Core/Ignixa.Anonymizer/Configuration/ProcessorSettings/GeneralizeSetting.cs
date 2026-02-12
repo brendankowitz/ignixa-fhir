@@ -9,8 +9,11 @@ using EnsureThat;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Anonymizer.Exceptions;
 
-namespace Ignixa.Anonymizer.Processors.Settings;
+namespace Ignixa.Anonymizer.Configuration.ProcessorSettings;
 
+/// <summary>
+/// Settings for the generalize processor, including FHIRPath case expressions and fallback behavior.
+/// </summary>
 public class GeneralizeSetting
 {
     public JsonObject Cases { get; set; } = [];

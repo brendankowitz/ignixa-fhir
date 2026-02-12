@@ -7,10 +7,13 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that redacts FHIR element values, with support for partial redaction of dates, ages, and postal codes.
+/// </summary>
 public class RedactProcessor : IAnonymizerProcessor
 {
     public bool EnablePartialDatesForRedact { get; }
@@ -71,29 +74,29 @@ public class RedactProcessor : IAnonymizerProcessor
 
         if (node.IsDateNode())
         {
-            var result = DateTimeUtility.RedactDateNode(node, EnablePartialDatesForRedact);
+            var result = DateTimeTool.RedactDateNode(node, EnablePartialDatesForRedact);
             return (result.WasModified, result.OperationType);
         }
 
         if (node.IsDateTimeNode() || node.IsInstantNode())
         {
-            var result = DateTimeUtility.RedactDateTimeAndInstantNode(node, EnablePartialDatesForRedact);
+            var result = DateTimeTool.RedactDateTimeAndInstantNode(node, EnablePartialDatesForRedact);
             return (result.WasModified, result.OperationType);
         }
 
         if (node.IsAgeDecimalNode(parent: null))
         {
-            var result = DateTimeUtility.RedactAgeDecimalNode(node, EnablePartialAgesForRedact);
+            var result = DateTimeTool.RedactAgeDecimalNode(node, EnablePartialAgesForRedact);
             return (result.WasModified, result.OperationType);
         }
 
         if (node.IsPostalCodeNode())
         {
-            var result = PostalCodeUtility.RedactPostalCode(node, EnablePartialZipCodesForRedact, RestrictedZipCodeTabulationAreas);
+            var result = PostalCodeTool.RedactPostalCode(node, EnablePartialZipCodesForRedact, RestrictedZipCodeTabulationAreas);
             return (result.WasModified, result.OperationType);
         }
 
-        ElementMutationHelper.ClearValue(node);
+        ElementMutationTool.ClearValue(node);
         return (true, AnonymizationOperations.Redact);
     }
 }

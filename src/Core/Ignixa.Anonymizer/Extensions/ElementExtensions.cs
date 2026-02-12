@@ -8,7 +8,10 @@ using Ignixa.Abstractions;
 
 namespace Ignixa.Anonymizer.Extensions;
 
-public static class ElementExtensions
+/// <summary>
+/// Extension methods for inspecting FHIR element types, navigating node hierarchies, and checking primitives.
+/// </summary>
+internal static class ElementExtensions
 {
     private static readonly string LocationToFhirPathRegex = @"\[.*?\]";
 

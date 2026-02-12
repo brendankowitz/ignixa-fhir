@@ -7,7 +7,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Anonymizer
 {
-    public static class AnonymizerLogging
+    /// <summary>
+    /// Provides a shared logger factory for anonymizer components that cannot use constructor-injected logging.
+    /// </summary>
+    internal static class AnonymizerLogging
     {
         public static ILoggerFactory LoggerFactory { get; set; } = new LoggerFactory();
         public static ILogger CreateLogger<T>() => LoggerFactory.CreateLogger<T>();

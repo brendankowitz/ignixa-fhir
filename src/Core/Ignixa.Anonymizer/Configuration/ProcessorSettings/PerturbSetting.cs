@@ -9,8 +9,11 @@ using System.Linq;
 using EnsureThat;
 using Ignixa.Anonymizer.Exceptions;
 
-namespace Ignixa.Anonymizer.Processors.Settings
+namespace Ignixa.Anonymizer.Configuration.ProcessorSettings
 {
+    /// <summary>
+    /// Settings for the perturb processor, including noise span, range type, and rounding.
+    /// </summary>
     public class PerturbSetting
     {
         public double Span { get; set; }

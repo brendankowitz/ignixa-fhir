@@ -3,14 +3,16 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-namespace Ignixa.Anonymizer.Configuration
+using System.Collections.Generic;
+
+namespace Ignixa.Anonymizer.Configuration.ProcessorSettings
 {
-    public class AnonymizerSettings
+    /// <summary>
+    /// Defines the operation to apply to values not matched by generalization cases.
+    /// </summary>
+    public enum GeneralizationOtherValuesOperation
     {
-        public bool IsPrettyOutput { get; set; }
-
-        public bool ValidateInput { get; set; }
-
-        public bool ValidateOutput { get; set; }
-    }
+        Redact,
+        Keep
+    };
 }

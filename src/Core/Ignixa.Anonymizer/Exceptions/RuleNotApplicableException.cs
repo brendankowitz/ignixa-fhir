@@ -6,6 +6,9 @@
 
 namespace Ignixa.Anonymizer.Exceptions;
 
+/// <summary>
+/// Thrown when an anonymization rule cannot be applied to the target element type.
+/// </summary>
 public class RuleNotApplicableException : Exception
 {
     public RuleNotApplicableException()

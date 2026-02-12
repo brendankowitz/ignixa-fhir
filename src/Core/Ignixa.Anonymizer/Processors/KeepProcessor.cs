@@ -11,6 +11,9 @@ using Ignixa.Anonymizer.Models;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that preserves element values without modification, marking them as explicitly retained.
+/// </summary>
 public class KeepProcessor : IAnonymizerProcessor
 {
     public ValueTask<Result<ProcessorResult>> ProcessAsync(

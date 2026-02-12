@@ -6,6 +6,9 @@
 
 namespace Ignixa.Anonymizer.Exceptions;
 
+/// <summary>
+/// Thrown when a custom anonymization processor encounters an error during execution.
+/// </summary>
 public class CustomProcessorException : Exception
 {
     public CustomProcessorException()

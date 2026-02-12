@@ -7,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Ignixa.Specification.Generated;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 using Xunit;
 
 namespace Ignixa.Anonymizer.Core.UnitTests.Utility
@@ -48,7 +48,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Utility
         [MemberData(nameof(GetReferenceData))]
         public void GivenAKnownReference_WhenTransform_CorrectPartShouldBeTransformed(string reference, string expected)
         {
-            var newReference = ReferenceUtility.TransformReferenceId(reference, _schema, _transformation);
+            var newReference = ReferenceTool.TransformReferenceId(reference, _schema, _transformation);
             Assert.Equal(expected, newReference);
         }
 
@@ -56,7 +56,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Utility
         [MemberData(nameof(GetUnknownReferenceData))]
         public void GivenAnUnknownReference_WhenTransform_WholeReferenceShouldBeTransformed(string reference, string expected)
         {
-            var newReference = ReferenceUtility.TransformReferenceId(reference, _schema, _transformation);
+            var newReference = ReferenceTool.TransformReferenceId(reference, _schema, _transformation);
             Assert.Equal(expected, newReference);
         }
     }

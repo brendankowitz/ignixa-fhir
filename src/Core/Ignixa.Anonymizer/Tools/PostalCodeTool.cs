@@ -8,9 +8,12 @@ using Ignixa.Abstractions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Processors;
 
-namespace Ignixa.Anonymizer.Utility;
+namespace Ignixa.Anonymizer.Tools;
 
-public static class PostalCodeUtility
+/// <summary>
+/// Utilities for redacting and partially masking postal code values per HIPAA Safe Harbor rules.
+/// </summary>
+internal static class PostalCodeTool
 {
     private static readonly string ReplacementDigit = "0";
     private static readonly int InitialDigitsCount = 3;
@@ -30,18 +33,18 @@ public static class PostalCodeUtility
         {
             if (restrictedZipCodeTabulationAreas is not null && restrictedZipCodeTabulationAreas.Any(x => valueStr.StartsWith(x)))
             {
-                ElementMutationHelper.SetValue(node, Regex.Replace(valueStr, @"\d", ReplacementDigit));
+                ElementMutationTool.SetValue(node, Regex.Replace(valueStr, @"\d", ReplacementDigit));
             }
             else if (valueStr.Length >= InitialDigitsCount)
             {
                 var suffix = valueStr[InitialDigitsCount..];
-                ElementMutationHelper.SetValue(node, $"{valueStr[..InitialDigitsCount]}{Regex.Replace(suffix, @"\d", ReplacementDigit)}");
+                ElementMutationTool.SetValue(node, $"{valueStr[..InitialDigitsCount]}{Regex.Replace(suffix, @"\d", ReplacementDigit)}");
             }
             return new RedactResult(true, AnonymizationOperations.Abstract);
         }
         else
         {
-            ElementMutationHelper.ClearValue(node);
+            ElementMutationTool.ClearValue(node);
             return new RedactResult(true, AnonymizationOperations.Redact);
         }
     }

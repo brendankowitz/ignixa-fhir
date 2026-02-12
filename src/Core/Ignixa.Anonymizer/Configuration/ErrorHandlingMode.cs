@@ -1,23 +1,29 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation.
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 
 namespace Ignixa.Anonymizer.Configuration;
 
 /// <summary>
-/// Defines the scope at which date shift offsets are applied.
+/// Error handling strategies for anonymization processing.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum DateShiftScope
+public enum ErrorHandlingMode
 {
-    [EnumMember(Value = "resource")]
-    Resource,
-    [EnumMember(Value = "file")]
-    File,
-    [EnumMember(Value = "folder")]
-    Folder
+    /// <summary>
+    /// Stop processing and return error on first failure.
+    /// </summary>
+    StopOnError,
+
+    /// <summary>
+    /// Log errors and continue processing (skip failed nodes).
+    /// </summary>
+    LogAndContinue,
+
+    /// <summary>
+    /// Fail immediately on any error (no partial results).
+    /// </summary>
+    FailFast
 }

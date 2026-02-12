@@ -9,21 +9,21 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Anonymizer.Pipeline;
 
 /// <summary>
-/// Middleware that updates security labels based on operations performed.
+/// Handler that updates security labels based on operations performed.
 /// Maps operation names to the corresponding security label flags.
 /// </summary>
-public sealed class SecurityTagMiddleware(ILogger<SecurityTagMiddleware> logger) : AnonymizerMiddleware
+internal sealed class SecurityTagHandler(ILogger<SecurityTagHandler> logger) : AnonymizerPipelineHandler
 {
     /// <inheritdoc />
     public override async ValueTask<Result<AnonymizationResult>> InvokeAsync(
         AnonymizerContext context,
-        AnonymizerDelegate nextMiddleware,
+        PipelineDelegate nextHandler,
         CancellationToken cancellationToken)
     {
         if (context.OperationCounts.Count == 0)
         {
             logger.LogDebug("No operations performed, skipping security label update");
-            return await nextMiddleware(context, cancellationToken).ConfigureAwait(false);
+            return await nextHandler(context, cancellationToken).ConfigureAwait(false);
         }
 
         logger.LogDebug(
@@ -34,7 +34,7 @@ public sealed class SecurityTagMiddleware(ILogger<SecurityTagMiddleware> logger)
 
         LogAppliedLabels(context.SecurityLabels);
 
-        return await nextMiddleware(context, cancellationToken).ConfigureAwait(false);
+        return await nextHandler(context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

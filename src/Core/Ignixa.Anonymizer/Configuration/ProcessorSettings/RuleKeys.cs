@@ -3,9 +3,12 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-namespace Ignixa.Anonymizer.Processors.Settings
+namespace Ignixa.Anonymizer.Configuration.ProcessorSettings
 {
-    internal static class RuleKeys 
+    /// <summary>
+    /// Constant keys used to look up processor-specific settings in rule configuration dictionaries.
+    /// </summary>
+    internal static class RuleKeys
     {
         //perturb
         internal const string ReplaceWith = "replaceWith";

@@ -7,9 +7,12 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 
-namespace Ignixa.Anonymizer.Utility
+namespace Ignixa.Anonymizer.Tools
 {
-    public class EncryptUtility
+    /// <summary>
+    /// Provides AES-CBC encryption and decryption for anonymization of FHIR element values.
+    /// </summary>
+    internal class EncryptTool
     {
         // AES Initialization Vector length is 16 bytes
         private const int AesIvSize = 16;

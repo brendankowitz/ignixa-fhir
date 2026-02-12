@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Anonymizer.Extensions;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 using Xunit;
 
 namespace Ignixa.Anonymizer.FunctionalTests;
@@ -21,14 +23,14 @@ public class ResourceTests
     public async Task GivenAPatientResource_WhenAnonymizing_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-basic.json"), ResourceTestsFile("patient-basic-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-basic.json"), ResourceTestsFile("patient-basic-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenRedactAll_ThenRedactedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-basic.json"), ResourceTestsFile("patient-redact-all-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-basic.json"), ResourceTestsFile("patient-redact-all-target.json"));
     }
 
     [Fact]
@@ -37,7 +39,7 @@ public class ResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
         string testContent = await File.ReadAllTextAsync(ResourceTestsFile("patient-basic.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -50,7 +52,7 @@ public class ResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "redact-all-config.json"));
         string testContent = await File.ReadAllTextAsync(ResourceTestsFile("patient-basic.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -63,7 +65,6 @@ public class ResourceTests
 
         var result = await FunctionalTestUtility.AnonymizeFromFileAsync(
             engine,
-            _schema,
             ResourceTestsFile("patient-basic.json"));
 
         result.IsSuccess.ShouldBeTrue();
@@ -76,7 +77,7 @@ public class ResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "generalize-patient-config.json"));
         string testContent = await File.ReadAllTextAsync(ResourceTestsFile("patient-generalize.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -88,7 +89,7 @@ public class ResourceTests
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-primitive.json"));
         string testContent = await File.ReadAllTextAsync(ResourceTestsFile("patient-substitute-primitive.json"));
 
-        var result = await engine.AnonymizeAsync(testContent, _schema);
+        var result = await engine.AnonymizeAsync(testContent);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AnonymizedJson.ShouldNotBeNullOrEmpty();
@@ -98,70 +99,73 @@ public class ResourceTests
     public async Task GivenAPatientResourceWithSpecialContents_WhenAnonymizing_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-special-content.json"), ResourceTestsFile("patient-special-content-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-special-content.json"), ResourceTestsFile("patient-special-content-target.json"));
     }
 
     [Fact(Skip = "Ignixa SDK bug: _birthDate without birthDate produces empty InstanceType on all children - https://github.com/brendankowitz/ignixa-fhir/issues/216")]
     public async Task GivenAPatientResourceWithNullDatetime_WhenAnonymizing_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-null-date.json"), ResourceTestsFile("patient-null-date-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-null-date.json"), ResourceTestsFile("patient-null-date-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenAnonymizingWithNoPartialRedactConfig_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "common-no-partial-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-no-partial.json"), ResourceTestsFile("patient-no-partial-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-no-partial.json"), ResourceTestsFile("patient-no-partial-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenAnonymizingWithPrimitiveSubstituteConfig_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-primitive.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-substitute-primitive.json"), ResourceTestsFile("patient-substitute-primitive-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-substitute-primitive.json"), ResourceTestsFile("patient-substitute-primitive-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenAnonymizingWithComplexSubstituteConfig_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-complex.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-substitute-complex.json"), ResourceTestsFile("patient-substitute-complex-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-substitute-complex.json"), ResourceTestsFile("patient-substitute-complex-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenAnonymizingWithConflictRulesSubstituteConfig_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-conflict-rules.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-substitute-conflict-rules.json"), ResourceTestsFile("patient-substitute-conflict-rules-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-substitute-conflict-rules.json"), ResourceTestsFile("patient-substitute-conflict-rules-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenAnonymizingWithGeneralizeConfig_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "generalize-patient-config.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-generalize.json"), ResourceTestsFile("patient-generalize-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-generalize.json"), ResourceTestsFile("patient-generalize-target.json"));
     }
 
     [Fact]
     public async Task GivenAPatientResource_WhenAnonymizingWithMultipleSubstituteConfig_ThenAnonymizedJsonShouldBeReturned()
     {
         var engine = CreateEngine(Path.Combine("Configurations", "substitute-multiple.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-substitute-multiple.json"), ResourceTestsFile("patient-substitute-multiple-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-substitute-multiple.json"), ResourceTestsFile("patient-substitute-multiple-target.json"));
 
         engine = CreateEngine(Path.Combine("Configurations", "substitute-multiple-2.json"));
-        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, _schema, ResourceTestsFile("patient-substitute-multiple-2.json"), ResourceTestsFile("patient-substitute-multiple-2-target.json"));
+        await FunctionalTestUtility.VerifySingleJsonResourceFromFileAsync(engine, ResourceTestsFile("patient-substitute-multiple-2.json"), ResourceTestsFile("patient-substitute-multiple-2-target.json"));
     }
 
     private IAnonymizerEngine CreateEngine(string configPath)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IFhirSchemaProvider>(_schema);
+        services.AddSingleton<IValidationSchemaResolver>(sp =>
+            new CachedValidationSchemaResolver(
+                new StructureDefinitionSchemaResolver(sp.GetRequiredService<IFhirSchemaProvider>())));
+        services.AddLogging();
         services.AddFhirAnonymizer(builder =>
         {
             builder.WithConfigurationFile(configPath);
         });
-        services.AddSingleton<IFhirSchemaProvider>(_schema);
-        services.AddLogging();
 
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IAnonymizerEngine>();

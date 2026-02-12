@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Collections.Immutable;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Anonymizer.Models;
 
@@ -12,7 +13,14 @@ namespace Ignixa.Anonymizer.Models;
 public sealed record AnonymizationResult
 {
     /// <summary>
+    /// The anonymized resource as a mutable node for pipeline chaining.
+    /// Use this when passing to other processing stages to avoid serialization overhead.
+    /// </summary>
+    public required ResourceJsonNode Resource { get; init; }
+
+    /// <summary>
     /// The anonymized resource JSON string.
+    /// Convenience property for final output. Computed from Resource if needed.
     /// </summary>
     public required string AnonymizedJson { get; init; }
 

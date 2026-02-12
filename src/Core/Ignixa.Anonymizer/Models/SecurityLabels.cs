@@ -7,10 +7,11 @@ using System.Text.Json.Nodes;
 
 namespace Ignixa.Anonymizer.Models;
 
+/// <summary>
+/// Predefined FHIR security labels for anonymization operations (REDACTED, ABSTRED, MASKED, etc.).
+/// </summary>
 public static class SecurityLabels
 {
-    public record SecurityLabel(string? System, string Code, string Display);
-
     public static readonly SecurityLabel REDACT = new(
         "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
         "REDACTED",

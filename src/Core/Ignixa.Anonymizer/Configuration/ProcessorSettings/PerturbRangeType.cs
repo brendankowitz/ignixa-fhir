@@ -3,14 +3,14 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System;
-
-namespace Ignixa.Anonymizer.Validation
+namespace Ignixa.Anonymizer.Configuration.ProcessorSettings
 {
-    public class ResourceNotValidException : Exception
+    /// <summary>
+    /// Defines how the perturbation span is calculated relative to the original value.
+    /// </summary>
+    public enum PerturbRangeType
     {
-        public ResourceNotValidException(string message) : base(message)
-        {
-        }
+        Fixed,
+        Proportional
     }
 }

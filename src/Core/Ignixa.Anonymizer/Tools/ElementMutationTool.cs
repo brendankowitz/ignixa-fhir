@@ -6,13 +6,13 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 
-namespace Ignixa.Anonymizer.Utility;
+namespace Ignixa.Anonymizer.Tools;
 
 /// <summary>
 /// Helper for mutating IElement values through the underlying JsonNode tree.
 /// IElement is read-only; all mutations go through the mutable JsonNode backing store.
 /// </summary>
-internal static class ElementMutationHelper
+internal static class ElementMutationTool
 {
     /// <summary>
     /// Sets the value of a primitive element by mutating the parent JsonObject or JsonArray.

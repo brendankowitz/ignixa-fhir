@@ -6,7 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 using Xunit;
 
 namespace Ignixa.Anonymizer.Core.UnitTests.Utility
@@ -50,8 +50,8 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Utility
         [MemberData(nameof(GetTextDataToEncrypt))]
         public void GivenAnOriginalText_WhenEncrypt_ResultShouldBeValidAndDecryptable(string originalText)
         {
-            var cipherText = EncryptUtility.EncryptTextToBase64WithAes(originalText, Key);
-            var plainText = EncryptUtility.DecryptTextFromBase64WithAes(cipherText, Key);
+            var cipherText = EncryptTool.EncryptTextToBase64WithAes(originalText, Key);
+            var plainText = EncryptTool.DecryptTextFromBase64WithAes(cipherText, Key);
             Assert.Equal(originalText, plainText);
         }
 
@@ -59,7 +59,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Utility
         [MemberData(nameof(GetTextDataToDecrypt))]
         public void GivenAnEncryptedBase64Text_WhenDecrypt_OriginalTextShouldBeReturned(string cipherText, string originalText)
         {
-            var plainText = EncryptUtility.DecryptTextFromBase64WithAes(cipherText, Key);
+            var plainText = EncryptTool.DecryptTextFromBase64WithAes(cipherText, Key);
             Assert.Equal(originalText, plainText);
         }
 
@@ -67,7 +67,7 @@ namespace Ignixa.Anonymizer.Core.UnitTests.Utility
         [MemberData(nameof(GetInvalidTextDataToDecrypt))]
         public void GivenAInvalidBase64Text_WhenDecrypt_ExceptionShouldBeThrown(string cipherText)
         {
-            Assert.Throws<FormatException>(() => EncryptUtility.DecryptTextFromBase64WithAes(cipherText, Key));
+            Assert.Throws<FormatException>(() => EncryptTool.DecryptTextFromBase64WithAes(cipherText, Key));
         }
     }
 }

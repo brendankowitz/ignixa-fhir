@@ -6,6 +6,9 @@
 
 namespace Ignixa.Anonymizer.Exceptions;
 
+/// <summary>
+/// Thrown when anonymizer configuration is invalid or missing required values.
+/// </summary>
 public class ConfigurationException : Exception
 {
     public ConfigurationException()

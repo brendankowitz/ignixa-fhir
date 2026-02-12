@@ -8,10 +8,13 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Utility;
+using Ignixa.Anonymizer.Tools;
 
 namespace Ignixa.Anonymizer.Processors;
 
+/// <summary>
+/// Processor that shifts date and dateTime values by a deterministic offset derived from a cryptographic key.
+/// </summary>
 public class DateShiftProcessor : IAnonymizerProcessor
 {
     public string DateShiftKey { get; }
@@ -81,13 +84,13 @@ public class DateShiftProcessor : IAnonymizerProcessor
 
         if (node.IsDateNode())
         {
-            var result = DateTimeUtility.ShiftDateNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
+            var result = DateTimeTool.ShiftDateNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
             return (result.WasModified, result.OperationType);
         }
 
         if (node.IsDateTimeNode() || node.IsInstantNode())
         {
-            var result = DateTimeUtility.ShiftDateTimeAndInstantNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
+            var result = DateTimeTool.ShiftDateTimeAndInstantNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
             return (result.WasModified, result.OperationType);
         }
 

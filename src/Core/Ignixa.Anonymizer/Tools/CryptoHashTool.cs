@@ -7,9 +7,12 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Ignixa.Anonymizer.Utility
+namespace Ignixa.Anonymizer.Tools
 {
-    public class CryptoHashUtility
+    /// <summary>
+    /// Provides HMAC-SHA256 hashing for anonymization of FHIR element values.
+    /// </summary>
+    internal class CryptoHashTool
     {
         public static string ComputeHmacSHA256Hash(string input, string hashKey)
         {

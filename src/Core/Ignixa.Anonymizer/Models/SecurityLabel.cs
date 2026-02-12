@@ -3,13 +3,9 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System.Collections.Generic;
+namespace Ignixa.Anonymizer.Models;
 
-namespace Ignixa.Anonymizer.Processors.Settings
-{
-    public enum GeneralizationOtherValuesOperation
-    {
-        Redact,
-        Keep
-    };
-}
+/// <summary>
+/// Represents a FHIR security label with a coding system, code, and display text.
+/// </summary>
+public record SecurityLabel(string? System, string Code, string Display);

@@ -37,7 +37,7 @@ public sealed class AnonymizerContext
     /// <summary>
     /// Per-request settings for anonymization behavior.
     /// </summary>
-    public AnonymizerSettings Settings { get; }
+    public RequestOptions Settings { get; }
 
     /// <summary>
     /// The immutable configuration options.
@@ -82,7 +82,7 @@ public sealed class AnonymizerContext
         ResourceJsonNode resource,
         IElement element,
         IFhirSchemaProvider schema,
-        AnonymizerSettings settings,
+        RequestOptions settings,
         AnonymizerOptions options)
     {
         Resource = resource;
@@ -121,6 +121,12 @@ public sealed class AnonymizerContext
     {
         _stopwatch.Stop();
 
+        // Add security tags if any operations were performed
+        if (OperationCounts.Count > 0)
+        {
+            AddSecurityTagsToResource();
+        }
+
         var options = new System.Text.Json.JsonSerializerOptions
         {
             WriteIndented = Settings.IsPrettyOutput
@@ -131,6 +137,7 @@ public sealed class AnonymizerContext
 
         return new AnonymizationResult
         {
+            Resource = Resource,
             AnonymizedJson = json,
             Metrics = new ProcessingMetrics
             {
@@ -142,20 +149,119 @@ public sealed class AnonymizerContext
             AppliedLabels = SecurityLabels
         };
     }
-}
-
-/// <summary>
-/// Represents a matched rule with the elements it applies to.
-/// </summary>
-public sealed record MatchedRule
-{
-    /// <summary>
-    /// The FHIRPath rule configuration.
-    /// </summary>
-    public required FhirPathRule Rule { get; init; }
 
     /// <summary>
-    /// Elements matched by the FHIRPath expression.
+    /// Adds security tags to the resource's meta.security array based on operations performed.
+    /// Inserts meta after the 'id' property to maintain FHIR property ordering.
     /// </summary>
-    public required IReadOnlyList<IElement> MatchedElements { get; init; }
+    private void AddSecurityTagsToResource()
+    {
+        var mutableNode = Resource.MutableNode;
+
+        // Check if meta already exists
+        bool metaExists = mutableNode["meta"] is System.Text.Json.Nodes.JsonObject existingMetaObj;
+        System.Text.Json.Nodes.JsonObject metaObj;
+
+        if (metaExists)
+        {
+            metaObj = (System.Text.Json.Nodes.JsonObject)mutableNode["meta"]!;
+        }
+        else
+        {
+            // Create new meta object and insert it after 'id' property
+            metaObj = new System.Text.Json.Nodes.JsonObject();
+            InsertMetaAfterIdProperty(mutableNode, metaObj);
+        }
+
+        // Ensure security array exists
+        if (metaObj["security"] is not System.Text.Json.Nodes.JsonArray securityArr)
+        {
+            securityArr = new System.Text.Json.Nodes.JsonArray();
+            metaObj["security"] = securityArr;
+        }
+
+        // Add labels based on applied security labels
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsRedacted, Models.SecurityLabels.REDACT);
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsAbstracted, Models.SecurityLabels.ABSTRED);
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsCryptoHashed, Models.SecurityLabels.CRYTOHASH);
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsEncrypted, Models.SecurityLabels.MASKED);
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsPerturbed, Models.SecurityLabels.PERTURBED);
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsSubstituted, Models.SecurityLabels.SUBSTITUTED);
+        AddSecurityLabelIfNeeded(securityArr, SecurityLabels.IsGeneralized, Models.SecurityLabels.GENERALIZED);
+
+        Resource.InvalidateCaches();
+    }
+
+    /// <summary>
+    /// Inserts the meta property after the 'id' property to maintain FHIR property ordering.
+    /// Per FHIR spec, the standard order is: resourceType, id, meta, implicitRules, language, then other properties.
+    /// </summary>
+    private static void InsertMetaAfterIdProperty(System.Text.Json.Nodes.JsonObject mutableNode, System.Text.Json.Nodes.JsonObject metaObj)
+    {
+        // Collect all current properties
+        var properties = mutableNode.ToList();
+
+        // Clear the object
+        mutableNode.Clear();
+
+        // Re-add properties in the correct order
+        bool metaInserted = false;
+        foreach (var kvp in properties)
+        {
+            mutableNode[kvp.Key] = kvp.Value;
+
+            // Insert meta after 'id'
+            if (kvp.Key == "id" && !metaInserted)
+            {
+                mutableNode["meta"] = metaObj;
+                metaInserted = true;
+            }
+        }
+
+        // If there was no 'id' property, insert after 'resourceType'
+        if (!metaInserted)
+        {
+            // Rebuild to put meta right after resourceType
+            var allProps = mutableNode.ToList();
+            mutableNode.Clear();
+            foreach (var kvp in allProps)
+            {
+                mutableNode[kvp.Key] = kvp.Value;
+                if (kvp.Key == "resourceType")
+                {
+                    mutableNode["meta"] = metaObj;
+                    metaInserted = true;
+                }
+            }
+
+            if (!metaInserted)
+            {
+                mutableNode["meta"] = metaObj;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds a security label to the security array if the condition is true and the label doesn't already exist.
+    /// </summary>
+    private static void AddSecurityLabelIfNeeded(System.Text.Json.Nodes.JsonArray securityArr, bool condition, Models.SecurityLabel label)
+    {
+        if (!condition)
+        {
+            return;
+        }
+
+        // Check if the label already exists
+        foreach (var item in securityArr)
+        {
+            if (item is System.Text.Json.Nodes.JsonObject obj &&
+                obj["code"]?.GetValue<string>() is string code &&
+                string.Equals(code, label.Code, StringComparison.InvariantCultureIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        securityArr.Add(label.ToJsonObject());
+    }
 }

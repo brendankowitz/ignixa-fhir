@@ -10,6 +10,9 @@ using EnsureThat;
 
 namespace Ignixa.Anonymizer.Configuration
 {
+    /// <summary>
+    /// Represents a FHIRPath-based anonymization rule with parsed expression and resource type filter.
+    /// </summary>
     public class AnonymizationFhirPathRule : AnonymizerRule
     {
         private static Regex PathRegex = new Regex(@"^(?<resourceType>[A-Z][a-zA-Z]*)?(\.)?(?<expression>.*?)$");

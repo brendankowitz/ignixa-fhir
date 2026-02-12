@@ -7,8 +7,11 @@ using System.Collections.Generic;
 using EnsureThat;
 using Ignixa.Anonymizer.Exceptions;
 
-namespace Ignixa.Anonymizer.Processors.Settings
+namespace Ignixa.Anonymizer.Configuration.ProcessorSettings
 {
+    /// <summary>
+    /// Settings for the substitute processor, defining the replacement value.
+    /// </summary>
     public class SubstituteSetting
     {
         public string ReplaceWith { get; set; }

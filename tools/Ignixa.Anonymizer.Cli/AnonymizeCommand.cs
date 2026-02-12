@@ -138,12 +138,12 @@ public static class AnonymizeCommand
 
             if (bulkData)
             {
-                await new FilesAnonymizerForNdJsonFormatResource(engine, schema, inputFolder, outputFolder, toolOptions)
+                await new FilesAnonymizerForNdJsonFormatResource(engine, inputFolder, outputFolder, toolOptions)
                     .AnonymizeAsync(cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await new FilesAnonymizerForJsonFormatResource(engine, schema, inputFolder, outputFolder, toolOptions)
+                await new FilesAnonymizerForJsonFormatResource(engine, inputFolder, outputFolder, toolOptions)
                     .AnonymizeAsync(cancellationToken).ConfigureAwait(false);
             }
 

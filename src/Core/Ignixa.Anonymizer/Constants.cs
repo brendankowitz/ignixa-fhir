@@ -8,26 +8,11 @@ using Ignixa.Anonymizer.Configuration;
 
 namespace Ignixa.Anonymizer;
 
+/// <summary>
+/// Internal constants for FHIR type names, node names, and rule configuration keys.
+/// </summary>
 internal static class Constants
 {
-    internal static readonly HashSet<string> SupportedFhirVersions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "R4", "R4B", "R5", "R6", "STU3"
-    };
-
-    internal static FhirVersion ParseFhirVersion(string? version)
-    {
-        return version?.ToUpperInvariant() switch
-        {
-            "R4" => FhirVersion.R4,
-            "R4B" => FhirVersion.R4B,
-            "R5" => FhirVersion.R5,
-            "R6" => FhirVersion.R6,
-            "STU3" => FhirVersion.Stu3,
-            _ => FhirVersion.R4  // Default to R4 for backward compatibility
-        };
-    }
-
     // InstanceType constants
     internal const string DateTypeName = "date";
     internal const string DateTimeTypeName = "dateTime";
@@ -62,6 +47,4 @@ internal static class Constants
 
     internal const string GeneralResourceType = "Resource";
     internal const string GeneralDomainResourceType = "DomainResource";
-
-    internal static readonly HashSet<string> BuiltInMethods = Enum.GetNames(typeof(AnonymizerMethod)).ToHashSet(StringComparer.InvariantCultureIgnoreCase);
 }

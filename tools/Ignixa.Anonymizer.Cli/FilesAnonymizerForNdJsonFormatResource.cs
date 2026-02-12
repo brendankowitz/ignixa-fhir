@@ -6,12 +6,12 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Anonymizer.Cli;
 
 public class FilesAnonymizerForNdJsonFormatResource(
     IAnonymizerEngine engine,
-    IFhirSchemaProvider schema,
     string inputFolder,
     string outputFolder,
     AnonymizationToolOptions options)
@@ -20,7 +20,6 @@ public class FilesAnonymizerForNdJsonFormatResource(
     private readonly string _outputFolder = outputFolder;
     private readonly AnonymizationToolOptions _options = options;
     private readonly IAnonymizerEngine _engine = engine;
-    private readonly IFhirSchemaProvider _schema = schema;
 
     public async Task AnonymizeAsync(CancellationToken cancellationToken = default)
     {
@@ -64,7 +63,7 @@ public class FilesAnonymizerForNdJsonFormatResource(
 
     private async Task ProcessNdJsonFile(string inputFile, string outputFile, CancellationToken cancellationToken)
     {
-        var settings = new AnonymizerSettings
+        var settings = new RequestOptions
         {
             IsPrettyOutput = false,
             ValidateInput = _options.ValidateInput,
@@ -80,7 +79,7 @@ public class FilesAnonymizerForNdJsonFormatResource(
 
         var lines = ReadLinesAsync(inputFile, cancellationToken);
 
-        await foreach (var result in _engine.AnonymizeManyAsync(lines, _schema, settings, cancellationToken).ConfigureAwait(false))
+        await foreach (var result in _engine.AnonymizeManyAsync(lines, settings, cancellationToken).ConfigureAwait(false))
         {
             if (result.IsSuccess)
             {
@@ -105,14 +104,14 @@ public class FilesAnonymizerForNdJsonFormatResource(
         Console.WriteLine($"File complete: {completedCount} succeeded, {errorCount} failed in {stopWatch.Elapsed}");
     }
 
-    private static async IAsyncEnumerable<string> ReadLinesAsync(
+    private static async IAsyncEnumerable<ResourceJsonNode> ReadLinesAsync(
         string filePath,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(filePath);
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
-            yield return line;
+            yield return ResourceJsonNode.Parse(line);
         }
     }
 

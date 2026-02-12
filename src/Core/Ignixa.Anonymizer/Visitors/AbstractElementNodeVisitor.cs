@@ -8,7 +8,10 @@ using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Anonymizer.Visitors;
 
-public abstract class AbstractElementNodeVisitor
+/// <summary>
+/// Base class for visitors that traverse FHIR element node trees with pre-visit and post-visit hooks.
+/// </summary>
+internal abstract class AbstractElementNodeVisitor
 {
     public virtual bool Visit(ResourceJsonNode resource, IElement node)
     {
