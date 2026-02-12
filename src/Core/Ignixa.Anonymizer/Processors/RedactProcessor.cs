@@ -5,7 +5,6 @@
 // -------------------------------------------------------------------------------------------------
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Anonymizer.Configuration;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
 using Ignixa.Anonymizer.Utility;
@@ -14,15 +13,19 @@ namespace Ignixa.Anonymizer.Processors;
 
 public class RedactProcessor : IAnonymizerProcessor
 {
-    public bool EnablePartialDatesForRedact { get; set; }
+    public bool EnablePartialDatesForRedact { get; }
 
-    public bool EnablePartialAgesForRedact { get; set; }
+    public bool EnablePartialAgesForRedact { get; }
 
-    public bool EnablePartialZipCodesForRedact { get; set; }
+    public bool EnablePartialZipCodesForRedact { get; }
 
-    public List<string>? RestrictedZipCodeTabulationAreas { get; set; }
+    public List<string>? RestrictedZipCodeTabulationAreas { get; }
 
-    public RedactProcessor(bool enablePartialDatesForRedact, bool enablePartialAgesForRedact, bool enablePartialZipCodesForRedact, List<string>? restrictedZipCodeTabulationAreas)
+    public RedactProcessor(
+        bool enablePartialDatesForRedact,
+        bool enablePartialAgesForRedact,
+        bool enablePartialZipCodesForRedact,
+        List<string>? restrictedZipCodeTabulationAreas)
     {
         EnablePartialDatesForRedact = enablePartialDatesForRedact;
         EnablePartialAgesForRedact = enablePartialAgesForRedact;
@@ -30,46 +33,67 @@ public class RedactProcessor : IAnonymizerProcessor
         RestrictedZipCodeTabulationAreas = restrictedZipCodeTabulationAreas;
     }
 
-    public static RedactProcessor Create(AnonymizerConfigurationManager configurationManager)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        var parameters = configurationManager.GetParameterConfiguration();
-        return new RedactProcessor(
-            parameters.EnablePartialDatesForRedact,
-            parameters.EnablePartialAgesForRedact,
-            parameters.EnablePartialZipCodesForRedact,
-            parameters.RestrictedZipCodeTabulationAreas);
+        try
+        {
+            var (wasModified, operationType) = ProcessCore(node);
+
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = operationType,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
     }
 
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    private (bool WasModified, string OperationType) ProcessCore(IElement node)
     {
         if (string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return new ProcessResult();
+            return (false, AnonymizationOperations.Redact);
         }
 
         if (node.IsDateNode())
         {
-            return DateTimeUtility.RedactDateNode(node, EnablePartialDatesForRedact);
+            var result = DateTimeUtility.RedactDateNode(node, EnablePartialDatesForRedact);
+            return (result.WasModified, result.OperationType);
         }
 
         if (node.IsDateTimeNode() || node.IsInstantNode())
         {
-            return DateTimeUtility.RedactDateTimeAndInstantNode(node, EnablePartialDatesForRedact);
+            var result = DateTimeUtility.RedactDateTimeAndInstantNode(node, EnablePartialDatesForRedact);
+            return (result.WasModified, result.OperationType);
         }
 
         if (node.IsAgeDecimalNode(parent: null))
         {
-            return DateTimeUtility.RedactAgeDecimalNode(node, EnablePartialAgesForRedact);
+            var result = DateTimeUtility.RedactAgeDecimalNode(node, EnablePartialAgesForRedact);
+            return (result.WasModified, result.OperationType);
         }
 
         if (node.IsPostalCodeNode())
         {
-            return PostalCodeUtility.RedactPostalCode(node, EnablePartialZipCodesForRedact, RestrictedZipCodeTabulationAreas);
+            var result = PostalCodeUtility.RedactPostalCode(node, EnablePartialZipCodesForRedact, RestrictedZipCodeTabulationAreas);
+            return (result.WasModified, result.OperationType);
         }
 
         ElementMutationHelper.ClearValue(node);
-        var result = new ProcessResult();
-        result.AddProcessRecord(AnonymizationOperations.Redact, node);
-        return result;
+        return (true, AnonymizationOperations.Redact);
     }
 }

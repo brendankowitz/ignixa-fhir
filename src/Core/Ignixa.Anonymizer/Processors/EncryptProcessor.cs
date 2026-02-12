@@ -22,22 +22,60 @@ public class EncryptProcessor : IAnonymizerProcessor
     {
         EnsureArg.IsNotNullOrWhiteSpace(encryptKey, nameof(encryptKey));
 
-        _key = Encoding.UTF8.GetBytes(encryptKey);
+        var keyBytes = Encoding.UTF8.GetBytes(encryptKey);
+
+        // AES requires 128, 192, or 256-bit keys (16, 24, or 32 bytes)
+        if (keyBytes.Length != 16 && keyBytes.Length != 24 && keyBytes.Length != 32)
+        {
+            throw new ArgumentException(
+                $"Encryption key must be 16, 24, or 32 bytes (128, 192, or 256 bits) when UTF-8 encoded. " +
+                $"Provided key is {keyBytes.Length} bytes. For 256-bit AES security, use a 32-character ASCII string.",
+                nameof(encryptKey));
+        }
+
+        _key = keyBytes;
     }
 
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        var processResult = new ProcessResult();
+        try
+        {
+            var wasModified = ProcessCore(node);
+
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = AnonymizationOperations.Encrypt,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
+    }
+
+    private bool ProcessCore(IElement node)
+    {
         if (string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return false;
         }
 
         var input = node.Value.ToString()!;
         ElementMutationHelper.SetValue(node, EncryptUtility.EncryptTextToBase64WithAes(input, _key));
-        _logger.LogDebug("Fhir value '{Input}' at '{Location}' is encrypted to '{Value}'.", input, node.Location, node.Value);
+        _logger.LogDebug("Anonymized value at '{Location}' using Encrypt", node.Location);
 
-        processResult.AddProcessRecord(AnonymizationOperations.Encrypt, node);
-        return processResult;
+        return true;
     }
 }

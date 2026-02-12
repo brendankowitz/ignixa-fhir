@@ -3,6 +3,7 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+using System.Collections.Immutable;
 using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
@@ -12,11 +13,22 @@ namespace Ignixa.Anonymizer.Processors;
 
 public class KeepProcessor : IAnonymizerProcessor
 {
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
         EnsureArg.IsNotNull(resource, nameof(resource));
         EnsureArg.IsNotNull(node, nameof(node));
 
-        return new ProcessResult();
+        var newResult = new ProcessorResult
+        {
+            WasModified = false,
+            OperationType = AnonymizationOperations.Keep,
+            ProcessedPaths = ImmutableArray<string>.Empty
+        };
+
+        return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
     }
 }

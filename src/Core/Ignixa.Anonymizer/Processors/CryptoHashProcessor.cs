@@ -30,12 +30,40 @@ public class CryptoHashProcessor : IAnonymizerProcessor
         _cryptoHashFunction = input => CryptoHashUtility.ComputeHmacSHA256Hash(input, _cryptoHashKey);
     }
 
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        var processResult = new ProcessResult();
+        try
+        {
+            var wasModified = ProcessCore(node);
+
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = AnonymizationOperations.CryptoHash,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
+    }
+
+    private bool ProcessCore(IElement node)
+    {
         if (string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return false;
         }
 
         var input = node.Value.ToString()!;
@@ -50,9 +78,8 @@ public class CryptoHashProcessor : IAnonymizerProcessor
             ElementMutationHelper.SetValue(node, _cryptoHashFunction(input));
         }
 
-        _logger.LogDebug("Fhir value '{Input}' at '{Location}' is hashed to '{Value}'.", input, node.Location, node.Value);
+        _logger.LogDebug("Anonymized value at '{Location}' using CryptoHash", node.Location);
 
-        processResult.AddProcessRecord(AnonymizationOperations.CryptoHash, node);
-        return processResult;
+        return true;
     }
 }

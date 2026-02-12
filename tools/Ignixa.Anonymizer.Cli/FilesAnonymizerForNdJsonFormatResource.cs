@@ -4,34 +4,25 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using System.Diagnostics;
-using System.Threading.Channels;
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 
 namespace Ignixa.Anonymizer.Cli;
 
-public class FilesAnonymizerForNdJsonFormatResource
+public class FilesAnonymizerForNdJsonFormatResource(
+    IAnonymizerEngine engine,
+    IFhirSchemaProvider schema,
+    string inputFolder,
+    string outputFolder,
+    AnonymizationToolOptions options)
 {
-    private readonly string _inputFolder;
-    private readonly string _outputFolder;
-    private readonly string _configFilePath;
-    private readonly AnonymizationToolOptions _options;
-    private readonly IFhirSchemaProvider _schema;
+    private readonly string _inputFolder = inputFolder;
+    private readonly string _outputFolder = outputFolder;
+    private readonly AnonymizationToolOptions _options = options;
+    private readonly IAnonymizerEngine _engine = engine;
+    private readonly IFhirSchemaProvider _schema = schema;
 
-    public FilesAnonymizerForNdJsonFormatResource(
-        string configFilePath,
-        string inputFolder,
-        string outputFolder,
-        AnonymizationToolOptions options,
-        IFhirSchemaProvider schema)
-    {
-        _inputFolder = inputFolder;
-        _outputFolder = outputFolder;
-        _configFilePath = configFilePath;
-        _options = options;
-        _schema = schema;
-    }
-
-    public async Task AnonymizeAsync()
+    public async Task AnonymizeAsync(CancellationToken cancellationToken = default)
     {
         var directorySearchOption = _options.IsRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var bulkResourceFileList = Directory.EnumerateFiles(_inputFolder, "*.ndjson", directorySearchOption).ToList();
@@ -39,10 +30,13 @@ public class FilesAnonymizerForNdJsonFormatResource
 
         foreach (var bulkResourceFileName in bulkResourceFileList)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             Console.WriteLine($"Processing {bulkResourceFileName}");
 
             var bulkResourceOutputFileName = GetResourceOutputFileName(bulkResourceFileName, _inputFolder, _outputFolder);
             var tempBulkResourceOutputFileName = GetTempFileName(bulkResourceOutputFileName);
+
             if (_options.IsRecursive)
             {
                 var resourceOutputFolder = Path.GetDirectoryName(bulkResourceOutputFileName);
@@ -61,81 +55,64 @@ public class FilesAnonymizerForNdJsonFormatResource
                 File.Delete(bulkResourceOutputFileName);
             }
 
-            using (FileStream inputStream = new FileStream(bulkResourceFileName, FileMode.Open))
-            using (FileStream outputStream = new FileStream(tempBulkResourceOutputFileName, FileMode.Create))
-            {
-                var engine = AnonymizerEngine.CreateWithFileContext(_configFilePath, _schema, bulkResourceFileName, _inputFolder);
-                var settings = new Configuration.AnonymizerSettings
-                {
-                    IsPrettyOutput = false,
-                    ValidateInput = _options.ValidateInput,
-                    ValidateOutput = _options.ValidateOutput
-                };
-
-                Stopwatch stopWatch = new Stopwatch();
-                stopWatch.Start();
-
-                using var cts = new CancellationTokenSource();
-                var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(1000)
-                {
-                    FullMode = BoundedChannelFullMode.Wait
-                });
-
-                int completedCount = 0;
-                int skippedCount = 0;
-
-                // Producer: read lines from input stream
-                var producerTask = Task.Run(async () =>
-                {
-                    using var reader = new StreamReader(inputStream);
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null)
-                    {
-                        await channel.Writer.WriteAsync(line, cts.Token);
-                    }
-                    channel.Writer.Complete();
-                }, cts.Token);
-
-                // Consumer: anonymize and write to output stream
-                var consumerTask = Task.Run(async () =>
-                {
-                    using var writer = new StreamWriter(outputStream);
-
-                    await foreach (var line in channel.Reader.ReadAllAsync(cts.Token))
-                    {
-                        try
-                        {
-                            var anonymized = engine.AnonymizeJson(line, settings);
-                            if (!string.IsNullOrEmpty(anonymized))
-                            {
-                                await writer.WriteLineAsync(anonymized);
-                                Interlocked.Increment(ref completedCount);
-                            }
-                            else
-                            {
-                                Interlocked.Increment(ref skippedCount);
-                            }
-
-                            if ((completedCount + skippedCount) % 100 == 0)
-                            {
-                                Console.WriteLine($"[{stopWatch.Elapsed}]: {completedCount} completed, {skippedCount} skipped");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.Error.WriteLine($"ErrorMessage: {ex}");
-                            throw;
-                        }
-                    }
-
-                    await writer.FlushAsync();
-                }, cts.Token);
-
-                await Task.WhenAll(producerTask, consumerTask).ConfigureAwait(false);
-            }
+            await ProcessNdJsonFile(bulkResourceFileName, tempBulkResourceOutputFileName, cancellationToken).ConfigureAwait(false);
 
             File.Move(tempBulkResourceOutputFileName, bulkResourceOutputFileName);
             Console.WriteLine($"Finished processing '{bulkResourceFileName}'!");
+        }
+    }
+
+    private async Task ProcessNdJsonFile(string inputFile, string outputFile, CancellationToken cancellationToken)
+    {
+        var settings = new AnonymizerSettings
+        {
+            IsPrettyOutput = false,
+            ValidateInput = _options.ValidateInput,
+            ValidateOutput = _options.ValidateOutput
+        };
+
+        var stopWatch = Stopwatch.StartNew();
+
+        await using var outputWriter = new StreamWriter(outputFile);
+
+        int completedCount = 0;
+        int errorCount = 0;
+
+        var lines = ReadLinesAsync(inputFile, cancellationToken);
+
+        await foreach (var result in _engine.AnonymizeManyAsync(lines, _schema, settings, cancellationToken).ConfigureAwait(false))
+        {
+            if (result.IsSuccess)
+            {
+                await outputWriter.WriteLineAsync(result.Value.AnonymizedJson).ConfigureAwait(false);
+                completedCount++;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Error: {result.Error.Message}");
+                errorCount++;
+            }
+
+            var total = completedCount + errorCount;
+            if (total % 100 == 0)
+            {
+                Console.WriteLine($"[{stopWatch.Elapsed}]: {completedCount} completed, {errorCount} errors");
+            }
+        }
+
+        await outputWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+        Console.WriteLine($"File complete: {completedCount} succeeded, {errorCount} failed in {stopWatch.Elapsed}");
+    }
+
+    private static async IAsyncEnumerable<string> ReadLinesAsync(
+        string filePath,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(filePath);
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            yield return line;
         }
     }
 

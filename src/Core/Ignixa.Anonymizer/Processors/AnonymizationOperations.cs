@@ -18,5 +18,7 @@ namespace Ignixa.Anonymizer.Processors
         public const string Encrypt = "ENCRYPT";
         public const string Substitute = "SUBSTITUTE";
         public const string Generalize = "GENERALIZE";
+        public const string DateShift = "DATESHIFT";
+        public const string Keep = "KEEP";
     }
 }

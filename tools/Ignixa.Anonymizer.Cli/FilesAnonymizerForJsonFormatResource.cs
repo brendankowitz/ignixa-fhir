@@ -8,79 +8,75 @@ using Ignixa.Abstractions;
 
 namespace Ignixa.Anonymizer.Cli;
 
-public class FilesAnonymizerForJsonFormatResource
+public class FilesAnonymizerForJsonFormatResource(
+    IAnonymizerEngine engine,
+    IFhirSchemaProvider schema,
+    string inputFolder,
+    string outputFolder,
+    AnonymizationToolOptions options)
 {
-    private readonly string _inputFolder;
-    private readonly string _outputFolder;
-    private readonly string _configFilePath;
-    private readonly AnonymizationToolOptions _options;
-    private readonly IFhirSchemaProvider _schema;
+    private readonly string _inputFolder = inputFolder;
+    private readonly string _outputFolder = outputFolder;
+    private readonly AnonymizationToolOptions _options = options;
+    private readonly IAnonymizerEngine _engine = engine;
+    private readonly IFhirSchemaProvider _schema = schema;
 
-    public FilesAnonymizerForJsonFormatResource(
-        string configFilePath,
-        string inputFolder,
-        string outputFolder,
-        AnonymizationToolOptions options,
-        IFhirSchemaProvider schema)
-    {
-        _inputFolder = inputFolder;
-        _outputFolder = outputFolder;
-        _configFilePath = configFilePath;
-        _options = options;
-        _schema = schema;
-    }
-
-    public async Task AnonymizeAsync()
+    public async Task AnonymizeAsync(CancellationToken cancellationToken = default)
     {
         var directorySearchOption = _options.IsRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var resourceFileList = Directory.EnumerateFiles(_inputFolder, "*.json", directorySearchOption).ToList();
         Console.WriteLine($"Find {resourceFileList.Count} json resource files in '{_inputFolder}'.");
 
-        Stopwatch stopWatch = new Stopwatch();
-        stopWatch.Start();
+        var stopWatch = Stopwatch.StartNew();
 
-        var options = new ParallelOptions
+        var parallelOptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount * 2,
-            CancellationToken = CancellationToken.None
+            CancellationToken = cancellationToken
         };
 
         int completedCount = 0;
         int skippedCount = 0;
+        int errorCount = 0;
 
         await Parallel.ForEachAsync(
             resourceFileList,
-            options,
+            parallelOptions,
             async (file, ct) =>
             {
                 try
                 {
-                    var result = await FileAnonymize(file).ConfigureAwait(false);
-                    if (string.IsNullOrEmpty(result))
+                    var status = await FileAnonymize(file, ct).ConfigureAwait(false);
+                    switch (status)
                     {
-                        Interlocked.Increment(ref skippedCount);
-                    }
-                    else
-                    {
-                        Interlocked.Increment(ref completedCount);
+                        case FileStatus.Completed:
+                            Interlocked.Increment(ref completedCount);
+                            break;
+                        case FileStatus.Skipped:
+                            Interlocked.Increment(ref skippedCount);
+                            break;
+                        case FileStatus.Error:
+                            Interlocked.Increment(ref errorCount);
+                            break;
                     }
 
-                    if ((completedCount + skippedCount) % 10 == 0)
+                    var total = completedCount + skippedCount + errorCount;
+                    if (total % 10 == 0)
                     {
-                        Console.WriteLine($"[{stopWatch.Elapsed}]: {completedCount} completed, {skippedCount} skipped");
+                        Console.WriteLine($"[{stopWatch.Elapsed}]: {completedCount} completed, {skippedCount} skipped, {errorCount} errors");
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine($"Error processing {file}: {ex.Message}");
-                    throw;
+                    Interlocked.Increment(ref errorCount);
                 }
             }).ConfigureAwait(false);
 
-        Console.WriteLine($"Finished: {completedCount} completed, {skippedCount} skipped in {stopWatch.Elapsed}");
+        Console.WriteLine($"Finished: {completedCount} completed, {skippedCount} skipped, {errorCount} errors in {stopWatch.Elapsed}");
     }
 
-    public async Task<string> FileAnonymize(string fileName)
+    private async Task<FileStatus> FileAnonymize(string fileName, CancellationToken cancellationToken)
     {
         var resourceOutputFileName = GetResourceOutputFileName(fileName, _inputFolder, _outputFolder);
         if (_options.IsRecursive)
@@ -92,27 +88,29 @@ public class FilesAnonymizerForJsonFormatResource
         if (_options.SkipExistedFile && File.Exists(resourceOutputFileName))
         {
             Console.WriteLine($"Skip processing on file {fileName} since it already exists in destination.");
-            return string.Empty;
+            return FileStatus.Skipped;
         }
 
-        string resourceJson = await File.ReadAllTextAsync(fileName).ConfigureAwait(false);
-        try
+        string resourceJson = await File.ReadAllTextAsync(fileName, cancellationToken).ConfigureAwait(false);
+
+        var settings = new AnonymizerSettings
         {
-            var engine = AnonymizerEngine.CreateWithFileContext(_configFilePath, _schema, fileName, _inputFolder);
-            var settings = new Configuration.AnonymizerSettings
-            {
-                IsPrettyOutput = true,
-                ValidateInput = _options.ValidateInput,
-                ValidateOutput = _options.ValidateOutput
-            };
-            var resourceResult = engine.AnonymizeJson(resourceJson, settings);
-            await File.WriteAllTextAsync(resourceOutputFileName, resourceResult).ConfigureAwait(false);
-            return resourceResult;
+            IsPrettyOutput = true,
+            ValidateInput = _options.ValidateInput,
+            ValidateOutput = _options.ValidateOutput
+        };
+
+        var result = await _engine.AnonymizeAsync(resourceJson, _schema, settings, cancellationToken).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+        {
+            await File.WriteAllTextAsync(resourceOutputFileName, result.Value.AnonymizedJson, cancellationToken).ConfigureAwait(false);
+            return FileStatus.Completed;
         }
-        catch (Exception innerException)
+        else
         {
-            Console.Error.WriteLine($"[{fileName}] Error.\nErrorMessage: {innerException}");
-            throw;
+            Console.Error.WriteLine($"[{fileName}] Error: {result.Error.Message}");
+            return FileStatus.Error;
         }
     }
 
@@ -121,5 +119,12 @@ public class FilesAnonymizerForJsonFormatResource
         var partialFilename = fileName[inputFolder.Length..]
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return Path.Combine(outputFolder, partialFilename);
+    }
+
+    private enum FileStatus
+    {
+        Completed,
+        Skipped,
+        Error
     }
 }

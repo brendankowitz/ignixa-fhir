@@ -1,0 +1,38 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+using Ignixa.Anonymizer.Models;
+
+namespace Ignixa.Anonymizer.Pipeline;
+
+/// <summary>
+/// Delegate representing the next middleware in the pipeline.
+/// </summary>
+/// <param name="context">The anonymization context.</param>
+/// <param name="cancellationToken">Cancellation token.</param>
+/// <returns>A result containing the anonymization result or an error.</returns>
+#pragma warning disable CA1711 // Identifiers should not have incorrect suffix - Delegate is the appropriate naming here
+public delegate ValueTask<Result<AnonymizationResult>> AnonymizerDelegate(
+    AnonymizerContext context,
+    CancellationToken cancellationToken);
+#pragma warning restore CA1711
+
+/// <summary>
+/// Abstract base class for anonymization middleware.
+/// Middleware components process the anonymization request and optionally delegate to the next middleware.
+/// </summary>
+public abstract class AnonymizerMiddleware
+{
+    /// <summary>
+    /// Processes the anonymization request.
+    /// </summary>
+    /// <param name="context">The anonymization context.</param>
+    /// <param name="nextMiddleware">The next middleware in the pipeline.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A result containing the anonymization result or an error.</returns>
+    public abstract ValueTask<Result<AnonymizationResult>> InvokeAsync(
+        AnonymizerContext context,
+        AnonymizerDelegate nextMiddleware,
+        CancellationToken cancellationToken);
+}

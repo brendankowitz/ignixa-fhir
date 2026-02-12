@@ -6,22 +6,22 @@
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Anonymizer.Extensions;
-using Ignixa.Anonymizer.Models;
 using Ignixa.Anonymizer.Processors;
 
 namespace Ignixa.Anonymizer.Utility;
 
-public class PostalCodeUtility
+public static class PostalCodeUtility
 {
     private static readonly string ReplacementDigit = "0";
     private static readonly int InitialDigitsCount = 3;
 
-    public static ProcessResult RedactPostalCode(IElement node, bool enablePartialZipCodesForRedact = false, List<string>? restrictedZipCodeTabulationAreas = null)
+    public readonly record struct RedactResult(bool WasModified, string OperationType);
+
+    public static RedactResult RedactPostalCode(IElement node, bool enablePartialZipCodesForRedact = false, List<string>? restrictedZipCodeTabulationAreas = null)
     {
-        var processResult = new ProcessResult();
         if (!node.IsPostalCodeNode() || string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return new RedactResult(false, AnonymizationOperations.Redact);
         }
 
         var valueStr = node.Value.ToString()!;
@@ -37,14 +37,12 @@ public class PostalCodeUtility
                 var suffix = valueStr[InitialDigitsCount..];
                 ElementMutationHelper.SetValue(node, $"{valueStr[..InitialDigitsCount]}{Regex.Replace(suffix, @"\d", ReplacementDigit)}");
             }
-            processResult.AddProcessRecord(AnonymizationOperations.Abstract, node);
+            return new RedactResult(true, AnonymizationOperations.Abstract);
         }
         else
         {
             ElementMutationHelper.ClearValue(node);
-            processResult.AddProcessRecord(AnonymizationOperations.Redact, node);
+            return new RedactResult(true, AnonymizationOperations.Redact);
         }
-
-        return processResult;
     }
 }

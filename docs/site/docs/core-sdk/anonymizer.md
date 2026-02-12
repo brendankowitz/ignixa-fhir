@@ -14,17 +14,45 @@ The `Ignixa.Anonymizer` package provides FHIR resource de-identification and ano
 dotnet add package Ignixa.Anonymizer
 ```
 
-## Quick Start
+## Getting Started
+
+### 1. Register Services
+
+Register the anonymizer with dependency injection:
+
+```csharp
+using Ignixa.Anonymizer.Extensions;
+using Ignixa.Specification;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+var services = new ServiceCollection();
+
+// Register anonymizer with configuration file
+services.AddFhirAnonymizer(builder =>
+{
+    builder.WithConfigurationFile("anonymizer-config.json");
+});
+
+// Register FHIR schema provider
+services.AddSingleton<IFhirSchemaProvider>(FhirVersion.R4.GetSchemaProvider());
+
+// Add logging (optional but recommended)
+services.AddLogging(logging => logging.AddConsole());
+
+var provider = services.BuildServiceProvider();
+```
+
+### 2. Anonymize Resources
+
+Use the `IAnonymizerEngine` interface to anonymize resources:
 
 ```csharp
 using Ignixa.Anonymizer;
-using Ignixa.Specification;
 
-// Create anonymizer from configuration file
-var schema = FhirVersion.R4.GetSchemaProvider();
-var engine = new AnonymizerEngine("config.json", schema);
+var engine = provider.GetRequiredService<IAnonymizerEngine>();
+var schema = provider.GetRequiredService<IFhirSchemaProvider>();
 
-// Anonymize JSON
 var patientJson = """
 {
   "resourceType": "Patient",
@@ -34,8 +62,17 @@ var patientJson = """
 }
 """;
 
-var anonymized = engine.AnonymizeJson(patientJson);
-Console.WriteLine(anonymized);
+var result = await engine.AnonymizeAsync(patientJson, schema);
+
+if (result.IsSuccess)
+{
+    Console.WriteLine(result.Value.AnonymizedJson);
+    Console.WriteLine($"Processed {result.Value.Metrics.NodesProcessed} nodes in {result.Value.Metrics.Duration.TotalMilliseconds}ms");
+}
+else
+{
+    Console.Error.WriteLine($"Error: {result.Error.Message}");
+}
 ```
 
 **Output:**
@@ -56,14 +93,118 @@ Console.WriteLine(anonymized);
 }
 ```
 
-## Configuration File
+## Error Handling
+
+The library uses the `Result<T>` pattern for explicit error handling:
+
+```csharp
+var result = await engine.AnonymizeAsync(resourceJson, schema);
+
+// Pattern matching
+var output = result.Match(
+    onSuccess: r => r.AnonymizedJson,
+    onFailure: err => $"ERROR: {err.Message}"
+);
+
+// Conditional checking
+if (result.IsSuccess)
+{
+    var anonymized = result.Value.AnonymizedJson;
+    var metrics = result.Value.Metrics;
+    var warnings = result.Value.Warnings;
+}
+else
+{
+    var errorCode = result.Error.Code;
+    var errorMessage = result.Error.Message;
+    var exception = result.Error.Exception; // May be null
+    var path = result.Error.Path; // FHIRPath location if applicable
+}
+```
+
+## Bulk Processing
+
+For processing multiple resources, use the streaming API:
+
+```csharp
+async IAsyncEnumerable<string> LoadResourcesAsync()
+{
+    foreach (var line in File.ReadLines("patients.ndjson"))
+    {
+        yield return line;
+    }
+}
+
+var resources = LoadResourcesAsync();
+
+await foreach (var result in engine.AnonymizeManyAsync(resources, schema))
+{
+    if (result.IsSuccess)
+    {
+        await File.AppendAllTextAsync("anonymized.ndjson", result.Value.AnonymizedJson + "\n");
+    }
+    else
+    {
+        Console.Error.WriteLine($"Failed: {result.Error.Message}");
+    }
+}
+```
+
+## Configuration
+
+### Using Configuration File
+
+```csharp
+services.AddFhirAnonymizer(builder =>
+{
+    builder.WithConfigurationFile("config.json");
+});
+```
+
+### Using In-Memory Configuration
+
+```csharp
+using Ignixa.Anonymizer.Configuration;
+
+services.AddFhirAnonymizer(builder =>
+{
+    builder.WithOptions(options =>
+    {
+        options.Configure(opts =>
+        {
+            opts.FhirVersion = "R4";
+            opts.Rules = [
+                new FhirPathRule
+                {
+                    Path = "Patient.id",
+                    Method = "cryptoHash"
+                },
+                new FhirPathRule
+                {
+                    Path = "descendants().ofType(HumanName)",
+                    Method = "redact"
+                }
+            ];
+            opts.Parameters = new ParameterOptions
+            {
+                DateShiftKey = "your-secret-key",
+                CryptoHashKey = "your-hash-key",
+                EnablePartialDatesForRedact = true,
+                EnablePartialAgesForRedact = true,
+                EnablePartialZipCodesForRedact = true
+            };
+        });
+    });
+});
+```
+
+### Configuration File Format
 
 Anonymization rules are defined in a JSON configuration file:
 
 ```json
 {
   "fhirVersion": "R4",
-  "processingErrors": "raise",
   "fhirPathRules": [
     {
       "path": "Patient.id",
@@ -96,15 +237,6 @@ Anonymization rules are defined in a JSON configuration file:
 #### fhirVersion
 
 The FHIR version for validation. Valid values: `"R4"`, `"R4B"`, `"R5"`, `"STU3"`. Leave empty for version-agnostic processing.
-
-#### processingErrors
-
-How to handle processing errors:
-
-| Value | Behavior |
-|-------|----------|
-| `"raise"` | Throw exception on error (default) |
-| `"skip"` | Return empty element on error |
 
 #### fhirPathRules
 
@@ -555,7 +687,7 @@ Match all descendants of a type:
 
 ## Custom Processors
 
-Implement custom anonymization logic:
+Implement custom anonymization logic by creating a processor and registering it with DI:
 
 ```csharp
 using Ignixa.Anonymizer.Processors;
@@ -565,17 +697,18 @@ using Ignixa.Serialization.SourceNodes;
 
 public class CustomMaskProcessor : IAnonymizerProcessor
 {
-    public ProcessResult Process(
+    public ValueTask<ProcessResult> ProcessAsync(
         ResourceJsonNode resource,
         IElement node,
         ProcessContext? context = null,
-        Dictionary<string, object>? settings = null)
+        Dictionary<string, object>? settings = null,
+        CancellationToken cancellationToken = default)
     {
         var result = new ProcessResult();
 
         if (node.Value is null)
         {
-            return result;
+            return ValueTask.FromResult(result);
         }
 
         // Custom masking logic
@@ -587,7 +720,7 @@ public class CustomMaskProcessor : IAnonymizerProcessor
         node.Value = masked;
 
         result.AddProcessRecord(AnonymizationOperations.Custom, node);
-        return result;
+        return ValueTask.FromResult(result);
     }
 }
 ```
@@ -595,19 +728,11 @@ public class CustomMaskProcessor : IAnonymizerProcessor
 ### Register Custom Processor
 
 ```csharp
-using Ignixa.Anonymizer.Processors.Factory;
-
-public class CustomProcessorFactory : CustomProcessorFactory
+services.AddFhirAnonymizer(builder =>
 {
-    public CustomProcessorFactory()
-    {
-        AddProcessor("customMask", typeof(CustomMaskProcessor));
-    }
-}
-
-// Use in configuration
-var factory = new CustomProcessorFactory();
-var engine = new AnonymizerEngine("config.json", schema, factory);
+    builder.WithConfigurationFile("config.json");
+    builder.AddProcessor<CustomMaskProcessor>("customMask");
+});
 ```
 
 **Configuration file:**
@@ -712,36 +837,59 @@ This configuration addresses the 18 HIPAA identifiers:
 
 ## API Reference
 
-### AnonymizerEngine
+### IAnonymizerEngine
 
 ```csharp
-// Create from config file
-public AnonymizerEngine(
-    string configFilePath,
+// Anonymize single resource from JSON
+ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
+    string resourceJson,
     IFhirSchemaProvider schema,
-    IAnonymizerProcessorFactory? customProcessorFactory = null)
+    AnonymizerSettings? settings = null,
+    CancellationToken cancellationToken = default);
 
-// Create from config manager
-public AnonymizerEngine(
-    AnonymizerConfigurationManager configurationManager,
+// Anonymize parsed resource nodes
+ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
+    ResourceJsonNode resource,
+    IElement element,
     IFhirSchemaProvider schema,
-    IAnonymizerProcessorFactory? customProcessorFactory = null)
+    AnonymizerSettings? settings = null,
+    CancellationToken cancellationToken = default);
 
-// Anonymize JSON string
-public string AnonymizeJson(
-    string json,
-    AnonymizerSettings? settings = null)
-
-// Anonymize ResourceJsonNode
-public ResourceJsonNode AnonymizeElement(ResourceJsonNode resource)
+// Anonymize stream of resources (bulk processing)
+IAsyncEnumerable<Result<AnonymizationResult>> AnonymizeManyAsync(
+    IAsyncEnumerable<string> resources,
+    IFhirSchemaProvider schema,
+    AnonymizerSettings? settings = null,
+    CancellationToken cancellationToken = default);
 ```
 
 ### AnonymizerSettings
 
 ```csharp
-public class AnonymizerSettings
+public sealed record AnonymizerSettings
 {
-    public bool IsPrettyOutput { get; set; } = false;
+    public bool IsPrettyOutput { get; init; }
+    public bool ValidateInput { get; init; }
+    public bool ValidateOutput { get; init; }
+}
+```
+
+### AnonymizationResult
+
+```csharp
+public sealed record AnonymizationResult
+{
+    public required string AnonymizedJson { get; init; }
+    public required ProcessingMetrics Metrics { get; init; }
+    public ImmutableArray<string> Warnings { get; init; }
+    public required AppliedSecurityLabels AppliedLabels { get; init; }
+}
+
+public sealed record ProcessingMetrics
+{
+    public required int NodesProcessed { get; init; }
+    public required TimeSpan Duration { get; init; }
+    public required ImmutableDictionary<string, int> OperationCounts { get; init; }
 }
 ```
 
@@ -830,7 +978,6 @@ The tool includes a `configuration-sample.json` file with comprehensive rules fo
 ```json
 {
   "fhirVersion": "R4",
-  "processingErrors": "raise",
   "fhirPathRules": [
     {"path": "Resource.id", "method": "cryptoHash"},
     {"path": "descendants().ofType(HumanName)", "method": "redact"},
@@ -873,7 +1020,6 @@ The tool processes files and maintains folder structure:
 cat > hipaa-config.json <<EOF
 {
   "fhirVersion": "R4",
-  "processingErrors": "raise",
   "fhirPathRules": [
     {"path": "Resource.id", "method": "cryptoHash"},
     {"path": "descendants().ofType(HumanName)", "method": "redact"},

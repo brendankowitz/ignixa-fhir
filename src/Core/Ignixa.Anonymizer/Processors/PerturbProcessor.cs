@@ -33,7 +33,6 @@ public class PerturbProcessor : IAnonymizerProcessor
         "unsignedInt"
     };
 
-    // All quantity-like types across FHIR versions. Schema filters to those that exist.
     private static readonly string[] AllQuantityTypeNames =
     [
         "Age", "Count", "Duration", "Distance", "Money", "MoneyQuantity", "Quantity", "SimpleQuantity"
@@ -48,15 +47,43 @@ public class PerturbProcessor : IAnonymizerProcessor
             StringComparer.InvariantCultureIgnoreCase);
     }
 
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        EnsureArg.IsNotNull(resource, nameof(resource));
-        EnsureArg.IsNotNull(node, nameof(node));
-        EnsureArg.IsNotNull(context?.VisitedNodes, nameof(context));
-        EnsureArg.IsNotNull(settings, nameof(settings));
+        try
+        {
+            EnsureArg.IsNotNull(resource, nameof(resource));
+            EnsureArg.IsNotNull(node, nameof(node));
+            EnsureArg.IsNotNull(context.VisitedNodes, nameof(context.VisitedNodes));
+            EnsureArg.IsNotNull(context.Settings, nameof(context.Settings));
 
-        var result = new ProcessResult();
+            var settings = context.Settings.ToDictionary(kv => kv.Key, kv => kv.Value);
+            var wasModified = ProcessCore(node, context.VisitedNodes, settings);
 
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = AnonymizationOperations.Perturb,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
+    }
+
+    private bool ProcessCore(IElement node, HashSet<string> visitedNodes, Dictionary<string, object> settings)
+    {
         IElement? valueNode = null;
         if (PrimitiveValueTypeNames.Contains(node.InstanceType))
         {
@@ -67,9 +94,9 @@ public class PerturbProcessor : IAnonymizerProcessor
             valueNode = node.Children(Constants.ValueNodeName).FirstOrDefault();
         }
 
-        if (valueNode?.Value is null || context.VisitedNodes.Contains(valueNode.Location))
+        if (valueNode?.Value is null || visitedNodes.Contains(valueNode.Location))
         {
-            return result;
+            return false;
         }
 
         var perturbSetting = PerturbSetting.CreateFromRuleSettings(settings);
@@ -77,10 +104,10 @@ public class PerturbProcessor : IAnonymizerProcessor
         AddNoise(valueNode, perturbSetting);
         foreach (var d in node.Descendants())
         {
-            context.VisitedNodes.Add(d.Location);
+            visitedNodes.Add(d.Location);
         }
-        result.AddProcessRecord(AnonymizationOperations.Perturb, node);
-        return result;
+
+        return true;
     }
 
     private static void AddNoise(IElement node, PerturbSetting perturbSetting)

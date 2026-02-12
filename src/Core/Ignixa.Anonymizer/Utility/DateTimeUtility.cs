@@ -7,12 +7,11 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Anonymizer.Extensions;
-using Ignixa.Anonymizer.Models;
 using Ignixa.Anonymizer.Processors;
 
 namespace Ignixa.Anonymizer.Utility;
 
-public class DateTimeUtility
+public static class DateTimeUtility
 {
     private static readonly int YearIndex = 1;
     private static readonly int MonthIndex = 5;
@@ -32,12 +31,13 @@ public class DateTimeUtility
 
     private static readonly Regex TimeRegex = new(@"([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?");
 
-    public static ProcessResult RedactDateNode(IElement node, bool enablePartialDatesForRedact = false)
+    public readonly record struct RedactResult(bool WasModified, string OperationType);
+
+    public static RedactResult RedactDateNode(IElement node, bool enablePartialDatesForRedact = false)
     {
-        var processResult = new ProcessResult();
         if (!node.IsDateNode() || string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return new RedactResult(false, AnonymizationOperations.Redact);
         }
 
         if (enablePartialDatesForRedact)
@@ -61,17 +61,15 @@ public class DateTimeUtility
             ElementMutationHelper.ClearValue(node);
         }
 
-        processResult.AddProcessRecord(AnonymizationOperations.Redact, node);
-        return processResult;
+        return new RedactResult(true, AnonymizationOperations.Redact);
     }
 
-    public static ProcessResult RedactDateTimeAndInstantNode(IElement node, bool enablePartialDatesForRedact = false)
+    public static RedactResult RedactDateTimeAndInstantNode(IElement node, bool enablePartialDatesForRedact = false)
     {
-        var processResult = new ProcessResult();
         if ((!node.IsDateTimeNode() && !node.IsInstantNode()) ||
             string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return new RedactResult(false, AnonymizationOperations.Redact);
         }
 
         if (enablePartialDatesForRedact)
@@ -95,16 +93,14 @@ public class DateTimeUtility
             ElementMutationHelper.ClearValue(node);
         }
 
-        processResult.AddProcessRecord(AnonymizationOperations.Redact, node);
-        return processResult;
+        return new RedactResult(true, AnonymizationOperations.Redact);
     }
 
-    public static ProcessResult RedactAgeDecimalNode(IElement node, bool enablePartialAgesForRedact = false)
+    public static RedactResult RedactAgeDecimalNode(IElement node, bool enablePartialAgesForRedact = false)
     {
-        var processResult = new ProcessResult();
         if (!node.IsAgeDecimalNode(parent: null) || string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return new RedactResult(false, AnonymizationOperations.Redact);
         }
 
         if (enablePartialAgesForRedact)
@@ -119,16 +115,16 @@ public class DateTimeUtility
             ElementMutationHelper.ClearValue(node);
         }
 
-        processResult.AddProcessRecord(AnonymizationOperations.Redact, node);
-        return processResult;
+        return new RedactResult(true, AnonymizationOperations.Redact);
     }
 
-    public static ProcessResult ShiftDateNode(IElement node, string dateShiftKey, string dateShiftKeyPrefix, int? dateShiftFixedOffsetInDays, bool enablePartialDatesForRedact = false)
+    public readonly record struct DateShiftResult(bool WasModified, string OperationType);
+
+    public static DateShiftResult ShiftDateNode(IElement node, string dateShiftKey, string dateShiftKeyPrefix, int? dateShiftFixedOffsetInDays, bool enablePartialDatesForRedact = false)
     {
-        var processResult = new ProcessResult();
         if (!node.IsDateNode() || string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return new DateShiftResult(false, AnonymizationOperations.DateShift);
         }
 
         var matchedGroups = DateRegex.Match(node.Value.ToString()!).Groups;
@@ -136,23 +132,21 @@ public class DateTimeUtility
         {
             int offset = dateShiftFixedOffsetInDays ?? GetDateShiftValue(node, dateShiftKey, dateShiftKeyPrefix);
             ElementMutationHelper.SetValue(node, ShiftDateString(node.Value.ToString()!, offset));
-            processResult.AddProcessRecord(AnonymizationOperations.Perturb, node);
+            return new DateShiftResult(true, AnonymizationOperations.Perturb);
         }
         else
         {
-            processResult = RedactDateNode(node, enablePartialDatesForRedact);
+            var redactResult = RedactDateNode(node, enablePartialDatesForRedact);
+            return new DateShiftResult(redactResult.WasModified, redactResult.OperationType);
         }
-
-        return processResult;
     }
 
-    public static ProcessResult ShiftDateTimeAndInstantNode(IElement node, string dateShiftKey, string dateShiftKeyPrefix, int? dateShiftFixedOffsetInDays, bool enablePartialDatesForRedact = false)
+    public static DateShiftResult ShiftDateTimeAndInstantNode(IElement node, string dateShiftKey, string dateShiftKeyPrefix, int? dateShiftFixedOffsetInDays, bool enablePartialDatesForRedact = false)
     {
-        var processResult = new ProcessResult();
         if ((!node.IsDateTimeNode() && !node.IsInstantNode()) ||
             string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return new DateShiftResult(false, AnonymizationOperations.DateShift);
         }
 
         var matchedGroups = DateTimeRegex.Match(node.Value.ToString()!).Groups;
@@ -176,14 +170,13 @@ public class DateTimeUtility
             {
                 ElementMutationHelper.SetValue(node, ShiftDateString(node.Value.ToString()!, offset));
             }
-            processResult.AddProcessRecord(AnonymizationOperations.Perturb, node);
+            return new DateShiftResult(true, AnonymizationOperations.Perturb);
         }
         else
         {
-            processResult = RedactDateTimeAndInstantNode(node, enablePartialDatesForRedact);
+            var redactResult = RedactDateTimeAndInstantNode(node, enablePartialDatesForRedact);
+            return new DateShiftResult(redactResult.WasModified, redactResult.OperationType);
         }
-
-        return processResult;
     }
 
     private static bool IndicateAgeOverThreshold(GroupCollection groups)
@@ -204,9 +197,18 @@ public class DateTimeUtility
             dateShiftKeyPrefix = TryGetResourceId(node);
         }
 
+        // Use stack allocation for small keys (typical: 64 + 64 = 128 bytes, safe for stack)
+        // Maximum realistic combined length: 256 bytes
+        Span<byte> buffer = stackalloc byte[512];
+
+        // Encode prefix and key into buffer
+        int prefixByteCount = Encoding.UTF8.GetBytes(dateShiftKeyPrefix, buffer);
+        int keyByteCount = Encoding.UTF8.GetBytes(dateShiftKey, buffer[prefixByteCount..]);
+
+        // Calculate offset using combined bytes
         int offset = 0;
-        var bytes = Encoding.UTF8.GetBytes(dateShiftKeyPrefix + dateShiftKey);
-        foreach (byte b in bytes)
+        var combinedBytes = buffer[..(prefixByteCount + keyByteCount)];
+        foreach (byte b in combinedBytes)
         {
             offset = (offset * DateShiftSeed + b) % (2 * DateShiftRange + 1);
         }
@@ -218,9 +220,6 @@ public class DateTimeUtility
 
     private static string TryGetResourceId(IElement node)
     {
-        // In the old Firely SDK, this walked up via Parent to find the resource root.
-        // IElement has no Parent. The resource id should be passed via ProcessContext.ResourceId
-        // through DateShiftProcessor. This is only a fallback for direct utility calls.
         return string.Empty;
     }
 

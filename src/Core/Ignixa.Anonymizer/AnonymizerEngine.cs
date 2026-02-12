@@ -3,136 +3,103 @@
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
-using System.Reflection;
-using System.Text.Json;
-using EnsureThat;
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.SourceNodes;
-using Microsoft.Extensions.Logging;
 using Ignixa.Anonymizer.Configuration;
-using Ignixa.Anonymizer.Exceptions;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
-using Ignixa.Anonymizer.Processors;
+using Ignixa.Anonymizer.Pipeline;
+using Ignixa.Serialization.SourceNodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Anonymizer;
 
-public class AnonymizerEngine
+/// <summary>
+/// Engine for anonymizing FHIR resources using configurable rules and processors.
+/// </summary>
+public class AnonymizerEngine : IAnonymizerEngine
 {
-    private readonly AnonymizerConfigurationManager _configurationManager;
-    private readonly Dictionary<string, IAnonymizerProcessor> _processors;
-    private readonly AnonymizationFhirPathRule[] _rules;
+    private readonly IAnonymizerPipeline _pipeline;
+    private readonly AnonymizerOptions _options;
     private readonly IFhirSchemaProvider _schema;
-    private readonly ILogger _logger = AnonymizerLogging.CreateLogger<AnonymizerEngine>();
-    private readonly IAnonymizerProcessorFactory? _customProcessorFactory;
+    private readonly ILogger<AnonymizerEngine> _logger;
 
-    public AnonymizerEngine(string configFilePath, IFhirSchemaProvider schema, IAnonymizerProcessorFactory? customProcessorFactory = null)
-        : this(AnonymizerConfigurationManager.CreateFromConfigurationFile(configFilePath), schema, customProcessorFactory)
+    /// <summary>
+    /// Creates a new AnonymizerEngine with dependency injection.
+    /// </summary>
+    /// <param name="options">Configuration options.</param>
+    /// <param name="pipeline">The anonymization pipeline.</param>
+    /// <param name="schema">The FHIR schema provider.</param>
+    /// <param name="logger">The logger.</param>
+    public AnonymizerEngine(
+        IOptions<AnonymizerOptions> options,
+        IAnonymizerPipeline pipeline,
+        IFhirSchemaProvider schema,
+        ILogger<AnonymizerEngine> logger)
     {
-    }
-
-    public AnonymizerEngine(AnonymizerConfigurationManager configurationManager, IFhirSchemaProvider schema, IAnonymizerProcessorFactory? customProcessorFactory = null)
-    {
-        _configurationManager = configurationManager;
+        _options = options.Value;
+        _pipeline = pipeline;
         _schema = schema;
-        _processors = [];
-        _customProcessorFactory = customProcessorFactory;
-
-        InitializeProcessors(_configurationManager);
-
-        _rules = _configurationManager.FhirPathRules;
-        _logger.LogDebug("AnonymizerEngine initialized successfully for FHIR version {FhirVersion}", _schema.Version);
+        _logger = logger;
+        _logger.LogDebug("AnonymizerEngine initialized via DI for FHIR version {FhirVersion}", _schema.Version);
     }
 
-    public static AnonymizerEngine CreateWithFileContext(string configFilePath, IFhirSchemaProvider schema, string fileName, string inputFolderName, IAnonymizerProcessorFactory? customProcessorFactory = null)
-    {
-        var configurationManager = AnonymizerConfigurationManager.CreateFromConfigurationFile(configFilePath);
-        var dateShiftScope = configurationManager.GetParameterConfiguration().DateShiftScope;
-        var dateShiftKeyPrefix = dateShiftScope switch
-        {
-            DateShiftScope.File => Path.GetFileName(fileName),
-            DateShiftScope.Folder => Path.GetFileName(inputFolderName.TrimEnd('\\', '/')),
-            _ => string.Empty
-        };
-
-        configurationManager.SetDateShiftKeyPrefix(dateShiftKeyPrefix);
-        return new AnonymizerEngine(configurationManager, schema, customProcessorFactory);
-    }
-
-    public ResourceJsonNode AnonymizeElement(ResourceJsonNode resource)
-    {
-        EnsureArg.IsNotNull(resource, nameof(resource));
-        try
-        {
-            var element = resource.ToElement(_schema);
-            return resource.Anonymize(element, _rules, _processors);
-        }
-        catch (ProcessingException)
-        {
-            if (_configurationManager.Configuration.processingErrors == ProcessingErrorsOption.Skip)
-            {
-                return EmptyElement.Create(resource.ResourceType);
-            }
-
-            throw;
-        }
-    }
-
-    public string AnonymizeJson(string json, AnonymizerSettings? settings = null)
-    {
-        EnsureArg.IsNotNullOrEmpty(json, nameof(json));
-
-        var resource = ParseJsonToResourceNode(json);
-        var anonymizedResource = AnonymizeElement(resource);
-
-        var serializerOptions = new JsonSerializerOptions
-        {
-            WriteIndented = settings is { IsPrettyOutput: true }
-        };
-
-        return anonymizedResource.MutableNode.ToJsonString(serializerOptions);
-    }
-
-    private void InitializeProcessors(AnonymizerConfigurationManager configurationManager)
-    {
-        _processors[AnonymizerMethod.DateShift.ToString().ToUpperInvariant()] = DateShiftProcessor.Create(configurationManager);
-        _processors[AnonymizerMethod.Redact.ToString().ToUpperInvariant()] = RedactProcessor.Create(configurationManager);
-        _processors[AnonymizerMethod.CryptoHash.ToString().ToUpperInvariant()] = new CryptoHashProcessor(configurationManager.GetParameterConfiguration().CryptoHashKey, _schema);
-        _processors[AnonymizerMethod.Encrypt.ToString().ToUpperInvariant()] = new EncryptProcessor(configurationManager.GetParameterConfiguration().EncryptKey);
-        _processors[AnonymizerMethod.Substitute.ToString().ToUpperInvariant()] = new SubstituteProcessor();
-        _processors[AnonymizerMethod.Perturb.ToString().ToUpperInvariant()] = new PerturbProcessor(_schema);
-        _processors[AnonymizerMethod.Keep.ToString().ToUpperInvariant()] = new KeepProcessor();
-        _processors[AnonymizerMethod.Generalize.ToString().ToUpperInvariant()] = new GeneralizeProcessor();
-        if (_customProcessorFactory is not null)
-        {
-            InitializeCustomProcessors(configurationManager);
-        }
-    }
-
-    private void InitializeCustomProcessors(AnonymizerConfigurationManager configurationManager)
-    {
-        var processorsField = _customProcessorFactory!.GetType()
-            .GetField("_customProcessors", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-        if (processorsField?.GetValue(_customProcessorFactory) is Dictionary<string, Type> processors)
-        {
-            foreach (var processor in processors)
-            {
-                _processors[processor.Key.ToUpperInvariant()] = _customProcessorFactory.CreateProcessor(
-                    processor.Key, configurationManager.GetParameterConfiguration().CustomSettings);
-            }
-        }
-    }
-
-    private ResourceJsonNode ParseJsonToResourceNode(string json)
+    /// <inheritdoc />
+    public async ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
+        string resourceJson,
+        IFhirSchemaProvider schema,
+        AnonymizerSettings? settings = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            return ResourceJsonNode.Parse(json);
+            var resource = ResourceJsonNode.Parse(resourceJson);
+            var element = resource.ToElement(schema);
+
+            return await AnonymizeAsync(resource, element, schema, settings, cancellationToken);
         }
         catch (Exception ex)
         {
-            throw new InvalidResourceException("The input FHIR resource JSON is invalid.", ex);
+            _logger.LogError(ex, "Failed to parse resource JSON");
+            return Result<AnonymizationResult>.Failure(new AnonymizerError(
+                "PARSE_ERROR",
+                $"Failed to parse resource JSON: {ex.Message}",
+                Exception: ex));
         }
     }
 
+    /// <inheritdoc />
+    public async ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
+        ResourceJsonNode resource,
+        IElement element,
+        IFhirSchemaProvider schema,
+        AnonymizerSettings? settings = null,
+        CancellationToken cancellationToken = default)
+    {
+        var resourceId = element.Scalar("id")?.ToString() ?? "unknown";
+        _logger.LogDebug("Anonymizing resource {ResourceType}/{ResourceId}", resource.ResourceType, resourceId);
+
+        var context = new AnonymizerContext(
+            resource,
+            element,
+            schema,
+            settings ?? new AnonymizerSettings(),
+            _options);
+
+        return await _pipeline.ExecuteAsync(context, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<Result<AnonymizationResult>> AnonymizeManyAsync(
+        IAsyncEnumerable<string> resources,
+        IFhirSchemaProvider schema,
+        AnonymizerSettings? settings = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var resourceJson in resources.WithCancellation(cancellationToken))
+        {
+            yield return await AnonymizeAsync(resourceJson, schema, settings, cancellationToken);
+        }
+    }
 }

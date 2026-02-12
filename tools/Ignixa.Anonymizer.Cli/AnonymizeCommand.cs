@@ -5,6 +5,9 @@
 // -------------------------------------------------------------------------------------------------
 using System.CommandLine;
 using Ignixa.Abstractions;
+using Ignixa.Anonymizer.Configuration;
+using Ignixa.Anonymizer.Extensions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Anonymizer.Cli;
@@ -47,7 +50,7 @@ public static class AnonymizeCommand
             var validateInput = parseResult.GetValue(validateInputOption);
             var validateOutput = parseResult.GetValue(validateOutputOption);
 
-            await RunAnonymization(schema, input, output, config, bulkData, skip, recursive, verbose, validateInput, validateOutput);
+            await RunAnonymization(schema, input, output, config, bulkData, skip, recursive, verbose, validateInput, validateOutput, cancellationToken);
         });
 
         return command;
@@ -63,13 +66,12 @@ public static class AnonymizeCommand
         bool recursive,
         bool verbose,
         bool validateInput,
-        bool validateOutput)
+        bool validateOutput,
+        CancellationToken cancellationToken)
     {
+        ServiceProvider? serviceProvider = null;
         try
         {
-            InitializeLogging(verbose);
-
-            // Validate required options
             if (string.IsNullOrEmpty(inputFolder))
             {
                 Console.Error.WriteLine("Error: --input is required. Please specify the input folder.");
@@ -94,7 +96,37 @@ public static class AnonymizeCommand
                 return;
             }
 
+            var configFullPath = Path.GetFullPath(configFilePath);
+            var configResult = AnonymizerOptionsLoader.LoadFromFile(configFullPath);
+            if (!configResult.IsSuccess)
+            {
+                Console.Error.WriteLine($"Error: Failed to load config: {configResult.Error.Message}");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             Directory.CreateDirectory(outputFolder);
+
+            var services = new ServiceCollection();
+
+            services.AddLogging(builder =>
+            {
+                builder.AddFilter("Microsoft", LogLevel.Warning)
+                       .AddFilter("System", LogLevel.Warning)
+                       .AddFilter("Ignixa.Anonymizer", verbose ? LogLevel.Trace : LogLevel.Information)
+                       .AddConsole();
+            });
+
+            services.AddFhirAnonymizer(builder =>
+            {
+                builder.WithConfigurationFile(configFullPath);
+            });
+
+            services.AddSingleton(schema);
+
+            serviceProvider = services.BuildServiceProvider();
+
+            var engine = serviceProvider.GetRequiredService<IAnonymizerEngine>();
 
             var toolOptions = new AnonymizationToolOptions
             {
@@ -106,16 +138,21 @@ public static class AnonymizeCommand
 
             if (bulkData)
             {
-                await new FilesAnonymizerForNdJsonFormatResource(configFilePath, inputFolder, outputFolder, toolOptions, schema)
-                    .AnonymizeAsync().ConfigureAwait(false);
+                await new FilesAnonymizerForNdJsonFormatResource(engine, schema, inputFolder, outputFolder, toolOptions)
+                    .AnonymizeAsync(cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await new FilesAnonymizerForJsonFormatResource(configFilePath, inputFolder, outputFolder, toolOptions, schema)
-                    .AnonymizeAsync().ConfigureAwait(false);
+                await new FilesAnonymizerForJsonFormatResource(engine, schema, inputFolder, outputFolder, toolOptions)
+                    .AnonymizeAsync(cancellationToken).ConfigureAwait(false);
             }
 
             Console.WriteLine($"Finished processing '{inputFolder}'.");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Operation was cancelled.");
+            Environment.ExitCode = 1;
         }
         catch (Exception ex)
         {
@@ -124,23 +161,10 @@ public static class AnonymizeCommand
         }
         finally
         {
-            DisposeLogging();
+            if (serviceProvider is not null)
+            {
+                await serviceProvider.DisposeAsync().ConfigureAwait(false);
+            }
         }
-    }
-
-    private static void InitializeLogging(bool verbose)
-    {
-        AnonymizerLogging.LoggerFactory = LoggerFactory.Create(builder =>
-        {
-            builder.AddFilter("Microsoft", LogLevel.Warning)
-                   .AddFilter("System", LogLevel.Warning)
-                   .AddFilter("Ignixa.Anonymizer", verbose ? LogLevel.Trace : LogLevel.Information)
-                   .AddConsole();
-        });
-    }
-
-    private static void DisposeLogging()
-    {
-        AnonymizerLogging.LoggerFactory.Dispose();
     }
 }

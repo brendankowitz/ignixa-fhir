@@ -16,15 +16,43 @@ namespace Ignixa.Anonymizer.Processors;
 
 public partial class GeneralizeProcessor : IAnonymizerProcessor
 {
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        EnsureArg.IsNotNull(resource, nameof(resource));
-        EnsureArg.IsNotNull(node, nameof(node));
-        EnsureArg.IsNotNull(context?.VisitedNodes, nameof(context));
-        EnsureArg.IsNotNull(settings, nameof(settings));
+        try
+        {
+            EnsureArg.IsNotNull(resource, nameof(resource));
+            EnsureArg.IsNotNull(node, nameof(node));
+            EnsureArg.IsNotNull(context.VisitedNodes, nameof(context.VisitedNodes));
+            EnsureArg.IsNotNull(context.Settings, nameof(context.Settings));
 
-        var result = new ProcessResult();
+            var settings = context.Settings.ToDictionary(kv => kv.Key, kv => kv.Value);
+            var wasModified = ProcessCore(node, context.VisitedNodes, settings);
 
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = AnonymizationOperations.Generalize,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
+    }
+
+    private static bool ProcessCore(IElement node, HashSet<string> visitedNodes, Dictionary<string, object> settings)
+    {
         var isPrimitive = node.IsPrimitiveElement();
         if (!isPrimitive)
         {
@@ -34,7 +62,7 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
 
         if (node.Value is null)
         {
-            return result;
+            return false;
         }
 
         var generalizeSetting = GeneralizeSetting.CreateFromRuleSettings(settings);
@@ -46,8 +74,7 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
                 {
                     var newValue = node.Scalar(eachCase.Value.ToString()!);
                     ElementMutationHelper.SetValue(node, newValue);
-                    result.AddProcessRecord(AnonymizationOperations.Generalize, node);
-                    return result;
+                    return true;
                 }
             }
             catch (Exception ex)
@@ -61,7 +88,6 @@ public partial class GeneralizeProcessor : IAnonymizerProcessor
             ElementMutationHelper.ClearValue(node);
         }
 
-        result.AddProcessRecord(AnonymizationOperations.Generalize, node);
-        return result;
+        return true;
     }
 }

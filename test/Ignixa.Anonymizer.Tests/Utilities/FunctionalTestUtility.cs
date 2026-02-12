@@ -7,52 +7,75 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Ignixa.Anonymizer;
+using System.Threading.Tasks;
+using Ignixa.Abstractions;
+using Ignixa.Anonymizer.Configuration;
+using Ignixa.Anonymizer.Models;
 using Xunit;
 
-namespace Ignixa.Anonymizer.FunctionalTests
+namespace Ignixa.Anonymizer.FunctionalTests;
+
+public static class FunctionalTestUtility
 {
-    public static class FunctionalTestUtility
+    public static async Task VerifySingleJsonResourceFromFileAsync(
+        IAnonymizerEngine engine,
+        IFhirSchemaProvider schema,
+        string testFile,
+        string targetFile,
+        AnonymizerSettings? settings = null)
     {
-        public static void VerifySingleJsonResourceFromFile(AnonymizerEngine engine, string testFile, string targetFile)
+        Console.WriteLine($"VerifySingleJsonResourceFromFileAsync. TestFile: {testFile}, TargetFile: {targetFile}");
+        string testContent = await File.ReadAllTextAsync(testFile);
+
+        var result = await engine.AnonymizeAsync(testContent, schema, settings);
+
+        result.IsSuccess.ShouldBeTrue($"Anonymization failed: {(result.IsSuccess ? "" : result.Error.Message)}");
+
+        string standardizedResult = Standardize(result.Value.AnonymizedJson);
+
+        var updateTargets = Environment.GetEnvironmentVariable("UPDATE_TARGETS");
+        if (!string.IsNullOrEmpty(updateTargets) && updateTargets == "1")
         {
-            Console.WriteLine($"VerifySingleJsonResourceFromFile. TestFile: {testFile}, TargetFile: {targetFile}");
-            string testContent = File.ReadAllText(testFile);
-            string resultAfterAnonymize = engine.AnonymizeJson(testContent);
-            string standardizedResult = Standardize(resultAfterAnonymize);
-
-            // Support auto-updating target files for breaking changes
-            // Set environment variable: UPDATE_TARGETS=1
-            var updateTargets = Environment.GetEnvironmentVariable("UPDATE_TARGETS");
-            if (!string.IsNullOrEmpty(updateTargets) && updateTargets == "1")
-            {
-                var newFile = targetFile + ".new";
-                File.WriteAllText(newFile, standardizedResult);
-                Console.WriteLine($"Generated new target file: {newFile}");
-                Console.WriteLine($"To apply: copy /Y \"{newFile}\" \"{targetFile}\"");
-                return;
-            }
-
-            string targetContent = File.ReadAllText(targetFile);
-            Assert.Equal(Standardize(targetContent), standardizedResult);
+            var newFile = targetFile + ".new";
+            await File.WriteAllTextAsync(newFile, standardizedResult);
+            Console.WriteLine($"Generated new target file: {newFile}");
+            Console.WriteLine($"To apply: copy /Y \"{newFile}\" \"{targetFile}\"");
+            return;
         }
 
-        public static string GetActualOutput(AnonymizerEngine engine, string testFile)
-        {
-            string testContent = File.ReadAllText(testFile);
-            string resultAfterAnonymize = engine.AnonymizeJson(testContent);
-            return Standardize(resultAfterAnonymize);
-        }
+        string targetContent = await File.ReadAllTextAsync(targetFile);
+        Assert.Equal(Standardize(targetContent), standardizedResult);
+    }
 
-        private static string Standardize(string jsonContent)
+    public static async Task<Result<AnonymizationResult>> AnonymizeFromFileAsync(
+        IAnonymizerEngine engine,
+        IFhirSchemaProvider schema,
+        string testFile,
+        AnonymizerSettings? settings = null)
+    {
+        string testContent = await File.ReadAllTextAsync(testFile);
+        return await engine.AnonymizeAsync(testContent, schema, settings);
+    }
+
+    public static async Task<string> GetActualOutputAsync(
+        IAnonymizerEngine engine,
+        IFhirSchemaProvider schema,
+        string testFile,
+        AnonymizerSettings? settings = null)
+    {
+        string testContent = await File.ReadAllTextAsync(testFile);
+        var result = await engine.AnonymizeAsync(testContent, schema, settings);
+        result.IsSuccess.ShouldBeTrue($"Anonymization failed: {(result.IsSuccess ? "" : result.Error.Message)}");
+        return Standardize(result.Value.AnonymizedJson);
+    }
+
+    private static string Standardize(string jsonContent)
+    {
+        var node = JsonNode.Parse(jsonContent);
+        var options = new JsonSerializerOptions
         {
-            // Parse and re-serialize to normalize formatting
-            var node = JsonNode.Parse(jsonContent);
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true
-            };
-            return node.ToJsonString(options);
-        }
+            WriteIndented = true
+        };
+        return node?.ToJsonString(options) ?? string.Empty;
     }
 }

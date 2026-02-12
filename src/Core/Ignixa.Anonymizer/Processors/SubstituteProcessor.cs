@@ -18,30 +18,50 @@ namespace Ignixa.Anonymizer.Processors;
 
 public class SubstituteProcessor : IAnonymizerProcessor
 {
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        EnsureArg.IsNotNull(resource, nameof(resource));
-        EnsureArg.IsNotNull(node, nameof(node));
-        EnsureArg.IsNotNull(context?.VisitedNodes, nameof(context));
-        EnsureArg.IsNotNull(settings, nameof(settings));
-
-        var substituteSetting = SubstituteSetting.CreateFromRuleSettings(settings);
-
-        if (node.IsPrimitiveElement())
+        try
         {
-            return SubstitutePrimitive(resource, node, substituteSetting, context);
-        }
+            EnsureArg.IsNotNull(resource, nameof(resource));
+            EnsureArg.IsNotNull(node, nameof(node));
+            EnsureArg.IsNotNull(context.VisitedNodes, nameof(context.VisitedNodes));
+            EnsureArg.IsNotNull(context.Settings, nameof(context.Settings));
 
-        return SubstituteComplex(resource, node, substituteSetting, context);
+            var settings = context.Settings.ToDictionary(kv => kv.Key, kv => kv.Value);
+            var substituteSetting = SubstituteSetting.CreateFromRuleSettings(settings);
+
+            var wasModified = node.IsPrimitiveElement()
+                ? SubstitutePrimitive(resource, node, substituteSetting, context.VisitedNodes)
+                : SubstituteComplex(resource, node, substituteSetting, context.VisitedNodes);
+
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = AnonymizationOperations.Substitute,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
     }
 
-    private static ProcessResult SubstitutePrimitive(ResourceJsonNode resource, IElement node, SubstituteSetting substituteSetting, ProcessContext context)
+    private static bool SubstitutePrimitive(ResourceJsonNode resource, IElement node, SubstituteSetting substituteSetting, HashSet<string> visitedNodes)
     {
-        var processResult = new ProcessResult();
-
-        if (context.VisitedNodes.Contains(node.Location))
+        if (visitedNodes.Contains(node.Location))
         {
-            return processResult;
+            return false;
         }
 
         if (substituteSetting.ReplaceWith is null)
@@ -53,17 +73,14 @@ public class SubstituteProcessor : IAnonymizerProcessor
             ElementMutationHelper.SetValue(node, substituteSetting.ReplaceWith);
         }
 
-        processResult.AddProcessRecord(AnonymizationOperations.Substitute, node);
-        return processResult;
+        return true;
     }
 
-    private static ProcessResult SubstituteComplex(ResourceJsonNode resource, IElement node, SubstituteSetting substituteSetting, ProcessContext context)
+    private static bool SubstituteComplex(ResourceJsonNode resource, IElement node, SubstituteSetting substituteSetting, HashSet<string> visitedNodes)
     {
-        var processResult = new ProcessResult();
-
-        if (context.VisitedNodes.Contains(node.Location))
+        if (visitedNodes.Contains(node.Location))
         {
-            return processResult;
+            return false;
         }
 
         var replaceWith = substituteSetting.ReplaceWith ?? "{}";
@@ -85,27 +102,23 @@ public class SubstituteProcessor : IAnonymizerProcessor
         var nodeJson = node.Meta<JsonNode>();
         if (nodeJson is null)
         {
-            return processResult;
+            return false;
         }
 
-        // Parent can be either JsonObject (named property) or JsonArray (array element)
         if (nodeJson.Parent is not JsonObject && nodeJson.Parent is not JsonArray)
         {
-            return processResult;
+            return false;
         }
 
-        // Build set of keep nodes: nodes that were previously visited (modified by earlier rules)
         var keepNodeNames = new HashSet<string>();
-        CollectKeepNodeNames(node, context.VisitedNodes, keepNodeNames);
+        CollectKeepNodeNames(node, visitedNodes, keepNodeNames);
 
-        // Get the current node's JsonObject
         JsonObject? currentObj = nodeJson as JsonObject;
         if (currentObj is null)
         {
-            return processResult;
+            return false;
         }
 
-        // Replace children that exist in replacement
         var replacementChildNames = new HashSet<string>();
         foreach (var (key, value) in replacementObj)
         {
@@ -113,7 +126,6 @@ public class SubstituteProcessor : IAnonymizerProcessor
             currentObj[key] = value?.DeepClone();
         }
 
-        // Remove children not in replacement, unless they need to be kept
         var keysToRemove = new List<string>();
         foreach (var (key, _) in currentObj)
         {
@@ -124,7 +136,6 @@ public class SubstituteProcessor : IAnonymizerProcessor
 
             if (keepNodeNames.Contains(key))
             {
-                // Keep the node but clear its value
                 if (currentObj[key] is JsonValue)
                 {
                     currentObj[key] = null;
@@ -142,14 +153,13 @@ public class SubstituteProcessor : IAnonymizerProcessor
         }
 
         resource.InvalidateCaches();
-        context.VisitedNodes.Add(node.Location);
+        visitedNodes.Add(node.Location);
         foreach (var d in node.Descendants())
         {
-            context.VisitedNodes.Add(d.Location);
+            visitedNodes.Add(d.Location);
         }
 
-        processResult.AddProcessRecord(AnonymizationOperations.Substitute, node);
-        return processResult;
+        return true;
     }
 
     private static bool CollectKeepNodeNames(IElement node, HashSet<string> visitedNodes, HashSet<string> keepNames)

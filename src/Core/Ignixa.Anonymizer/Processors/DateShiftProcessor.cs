@@ -14,15 +14,19 @@ namespace Ignixa.Anonymizer.Processors;
 
 public class DateShiftProcessor : IAnonymizerProcessor
 {
-    public string DateShiftKey { get; set; } = string.Empty;
+    public string DateShiftKey { get; }
 
-    public string DateShiftKeyPrefix { get; set; } = string.Empty;
+    public string DateShiftKeyPrefix { get; }
 
-    public int? DateShiftFixedOffsetInDays { get; set; }
+    public int? DateShiftFixedOffsetInDays { get; }
 
-    public bool EnablePartialDatesForRedact { get; set; }
+    public bool EnablePartialDatesForRedact { get; }
 
-    public DateShiftProcessor(string dateShiftKey, string dateShiftKeyPrefix, bool enablePartialDatesForRedact, int? dateShiftFixedOffsetInDays = null)
+    public DateShiftProcessor(
+        string dateShiftKey,
+        string dateShiftKeyPrefix,
+        bool enablePartialDatesForRedact,
+        int? dateShiftFixedOffsetInDays = null)
     {
         EnsureArg.IsNotNullOrWhiteSpace(dateShiftKey, nameof(dateShiftKey));
         EnsureArg.IsNotNull(dateShiftKeyPrefix, nameof(dateShiftKeyPrefix));
@@ -33,43 +37,60 @@ public class DateShiftProcessor : IAnonymizerProcessor
         DateShiftFixedOffsetInDays = dateShiftFixedOffsetInDays;
     }
 
-    public static DateShiftProcessor Create(AnonymizerConfigurationManager configurationManager)
+    public ValueTask<Result<ProcessorResult>> ProcessAsync(
+        ResourceJsonNode resource,
+        IElement node,
+        ProcessorContext context,
+        CancellationToken cancellationToken)
     {
-        var parameters = configurationManager.GetParameterConfiguration();
-        return new DateShiftProcessor(
-            parameters.DateShiftKey,
-            parameters.DateShiftKeyPrefix,
-            parameters.EnablePartialDatesForRedact,
-            parameters.DateShiftFixedOffsetInDays ?? null);
+        try
+        {
+            var (wasModified, operationType) = ProcessCore(node, context.ResourceId);
+
+            var newResult = new ProcessorResult
+            {
+                WasModified = wasModified,
+                OperationType = operationType,
+                ProcessedPaths = wasModified ? [node.Location ?? string.Empty] : []
+            };
+
+            return ValueTask.FromResult(Result<ProcessorResult>.Success(newResult));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(Result<ProcessorResult>.Failure(new AnonymizerError(
+                "PROCESSOR_ERROR",
+                $"Failed to process node: {ex.Message}",
+                Exception: ex,
+                Path: node.Location)));
+        }
     }
 
-    public ProcessResult Process(ResourceJsonNode resource, IElement node, ProcessContext? context = null, Dictionary<string, object>? settings = null)
+    private (bool WasModified, string OperationType) ProcessCore(IElement node, string resourceId)
     {
-        var processResult = new ProcessResult();
         if (string.IsNullOrEmpty(node?.Value?.ToString()))
         {
-            return processResult;
+            return (false, AnonymizationOperations.DateShift);
         }
 
-        // Use the resource id from context as the per-resource date shift prefix.
-        // In the old Firely SDK, TryGetResourceId walked up via Parent to find the enclosing resource.
-        // Since IElement has no Parent, we get the resource id from ProcessContext instead.
         var effectivePrefix = DateShiftKeyPrefix;
         if (string.IsNullOrEmpty(effectivePrefix))
         {
-            effectivePrefix = context?.ResourceId ?? string.Empty;
+            effectivePrefix = resourceId;
         }
 
         if (node.IsDateNode())
         {
-            return DateTimeUtility.ShiftDateNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
+            var result = DateTimeUtility.ShiftDateNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
+            return (result.WasModified, result.OperationType);
         }
 
         if (node.IsDateTimeNode() || node.IsInstantNode())
         {
-            return DateTimeUtility.ShiftDateTimeAndInstantNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
+            var result = DateTimeUtility.ShiftDateTimeAndInstantNode(node, DateShiftKey, effectivePrefix, DateShiftFixedOffsetInDays, EnablePartialDatesForRedact);
+            return (result.WasModified, result.OperationType);
         }
 
-        return processResult;
+        return (false, AnonymizationOperations.DateShift);
     }
 }
