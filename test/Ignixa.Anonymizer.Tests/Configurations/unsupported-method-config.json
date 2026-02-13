@@ -1,0 +1,13 @@
+{
+  "fhirVersion": "R4",
+  "fhirPathRules": [
+    {
+      "path": "Patient.name.given",
+      "method": "nonexistentmethod"
+    },
+    {
+      "path": "Resource",
+      "method": "keep"
+    }
+  ]
+}

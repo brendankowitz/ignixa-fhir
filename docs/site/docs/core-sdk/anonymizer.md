@@ -51,7 +51,6 @@ Use the `IAnonymizerEngine` interface to anonymize resources:
 using Ignixa.Anonymizer;
 
 var engine = provider.GetRequiredService<IAnonymizerEngine>();
-var schema = provider.GetRequiredService<IFhirSchemaProvider>();
 
 var patientJson = """
 {
@@ -62,7 +61,7 @@ var patientJson = """
 }
 """;
 
-var result = await engine.AnonymizeAsync(patientJson, schema);
+var result = await engine.AnonymizeAsync(patientJson);
 
 if (result.IsSuccess)
 {
@@ -98,7 +97,7 @@ else
 The library uses the `Result<T>` pattern for explicit error handling:
 
 ```csharp
-var result = await engine.AnonymizeAsync(resourceJson, schema);
+var result = await engine.AnonymizeAsync(resourceJson);
 
 // Pattern matching
 var output = result.Match(
@@ -110,6 +109,7 @@ var output = result.Match(
 if (result.IsSuccess)
 {
     var anonymized = result.Value.AnonymizedJson;
+    var resource = result.Value.Resource; // Parsed ResourceJsonNode for chaining
     var metrics = result.Value.Metrics;
     var warnings = result.Value.Warnings;
 }
@@ -122,22 +122,50 @@ else
 }
 ```
 
+## Request Options
+
+Control anonymization behavior per request using `RequestOptions`:
+
+```csharp
+using Ignixa.Anonymizer;
+
+var options = new RequestOptions
+{
+    IsPrettyOutput = true,
+    ValidateInput = true,
+    ValidateOutput = true
+};
+
+var result = await engine.AnonymizeAsync(resourceJson, options);
+```
+
+**Available Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `IsPrettyOutput` | Format output JSON with indentation | `false` |
+| `ValidateInput` | Validate input resources before anonymization | `false` |
+| `ValidateOutput` | Validate anonymized output resources | `false` |
+
 ## Bulk Processing
 
 For processing multiple resources, use the streaming API:
 
 ```csharp
-async IAsyncEnumerable<string> LoadResourcesAsync()
+using Ignixa.Serialization.SourceNodes;
+using System.Text.Json.Nodes;
+
+async IAsyncEnumerable<ResourceJsonNode> LoadResourcesAsync()
 {
     foreach (var line in File.ReadLines("patients.ndjson"))
     {
-        yield return line;
+        yield return ResourceJsonNode.Parse(line);
     }
 }
 
 var resources = LoadResourcesAsync();
 
-await foreach (var result in engine.AnonymizeManyAsync(resources, schema))
+await foreach (var result in engine.AnonymizeManyAsync(resources))
 {
     if (result.IsSuccess)
     {
@@ -843,30 +871,26 @@ This configuration addresses the 18 HIPAA identifiers:
 // Anonymize single resource from JSON
 ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
     string resourceJson,
-    IFhirSchemaProvider schema,
-    AnonymizerSettings? settings = null,
+    RequestOptions? settings = null,
     CancellationToken cancellationToken = default);
 
-// Anonymize parsed resource nodes
+// Anonymize parsed resource node
 ValueTask<Result<AnonymizationResult>> AnonymizeAsync(
     ResourceJsonNode resource,
-    IElement element,
-    IFhirSchemaProvider schema,
-    AnonymizerSettings? settings = null,
+    RequestOptions? settings = null,
     CancellationToken cancellationToken = default);
 
 // Anonymize stream of resources (bulk processing)
 IAsyncEnumerable<Result<AnonymizationResult>> AnonymizeManyAsync(
-    IAsyncEnumerable<string> resources,
-    IFhirSchemaProvider schema,
-    AnonymizerSettings? settings = null,
+    IAsyncEnumerable<ResourceJsonNode> resources,
+    RequestOptions? settings = null,
     CancellationToken cancellationToken = default);
 ```
 
-### AnonymizerSettings
+### RequestOptions
 
 ```csharp
-public sealed record AnonymizerSettings
+public sealed record RequestOptions
 {
     public bool IsPrettyOutput { get; init; }
     public bool ValidateInput { get; init; }
@@ -879,6 +903,7 @@ public sealed record AnonymizerSettings
 ```csharp
 public sealed record AnonymizationResult
 {
+    public required ResourceJsonNode Resource { get; init; }
     public required string AnonymizedJson { get; init; }
     public required ProcessingMetrics Metrics { get; init; }
     public ImmutableArray<string> Warnings { get; init; }

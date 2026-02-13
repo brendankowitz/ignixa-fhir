@@ -44,7 +44,7 @@ internal static class PostalCodeTool
         }
         else
         {
-            ElementMutationTool.ClearValue(node);
+            ElementMutationTool.RemoveProperty(node);
             return new RedactResult(true, AnonymizationOperations.Redact);
         }
     }

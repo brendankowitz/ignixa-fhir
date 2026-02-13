@@ -1,4 +1,4 @@
-﻿{
+{
   "resourceType": "Patient",
   "id": "698d54f0494528a759f19c8e87a9f99e75a5881b9267ee3926bcf62c992d84ba",
   "meta": {
@@ -19,9 +19,19 @@
       }
     ]
   },
-  "identifier": [ { "period": { "start": "2001-02-11" } } ],
+  "identifier": [
+    {
+      "period": {
+        "start": "2001-02-11"
+      }
+    }
+  ],
   "active": true,
-  "name": [ { "use": "official" } ],
+  "name": [
+    {
+      "use": "official"
+    }
+  ],
   "gender": "male",
   "birthDate": "1940-02-11",
   "_birthDate": {
@@ -35,13 +45,17 @@
   "address": [
     {
       "use": "home",
-      "text": "Abc ŴΉЙ一 Abc ŴΉЙ一 Abc ŴΉЙ一 Abc ŴΉЙ一",
-      "line": [ "Abc ŴΉЙ一 Abc ŴΉЙ一 Abc ŴΉЙ一 Abc ŴΉЙ一" ],
+      "text": "Abc \u0174\u0389\u0419\u4E00 Abc \u0174\u0389\u0419\u4E00 Abc \u0174\u0389\u0419\u4E00 Abc \u0174\u0389\u0419\u4E00",
+      "line": [
+        "Abc \u0174\u0389\u0419\u4E00 Abc \u0174\u0389\u0419\u4E00 Abc \u0174\u0389\u0419\u4E00 Abc \u0174\u0389\u0419\u4E00"
+      ],
       "city": "KeepTest",
-      "district": "Abc ŴΉЙ",
-      "state": "Abc ŴΉЙ",
+      "district": "Abc \u0174\u0389\u0419",
+      "state": "Abc \u0174\u0389\u0419",
       "postalCode": "123456789",
-      "period": { "start": "2000-01-01" }
+      "period": {
+        "start": "2000-01-01"
+      }
     }
   ]
 }

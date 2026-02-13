@@ -1,14 +1,6 @@
 {
   "resourceType": "Bundle",
   "id": "bundle-references",
-  "meta": {
-    "security": [
-      {
-        "code": "SUBSTITUTED",
-        "display": "exact value is replaced with a predefined value"
-      }
-    ]
-  },
   "type": "collection",
   "entry": [
     {
@@ -16,17 +8,9 @@
       "resource": {
         "resourceType": "Patient",
         "id": "23",
-        "meta": {
-          "security": [
-            {
-              "code": "SUBSTITUTED",
-              "display": "exact value is replaced with a predefined value"
-            }
-          ]
-        },
         "text": {
           "status": "generated",
-          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p><b>Generated Narrative with Details</b></p><p><b>id</b>: 23</p><p><b>identifier</b>: 1234567</p></div>"
+          "div": "\u003Cdiv xmlns=\u0022http://www.w3.org/1999/xhtml\u0022\u003E\u003Cp\u003E\u003Cb\u003EGenerated Narrative with Details\u003C/b\u003E\u003C/p\u003E\u003Cp\u003E\u003Cb\u003Eid\u003C/b\u003E: 23\u003C/p\u003E\u003Cp\u003E\u003Cb\u003Eidentifier\u003C/b\u003E: 1234567\u003C/p\u003E\u003C/div\u003E"
         },
         "identifier": [
           {
@@ -36,10 +20,11 @@
         ],
         "name": [
           {
-            "family": "example",
+            "use": "official",
+            "family": "Family",
             "given": [
-              "test",
-              "testing"
+              "GivenFirst",
+              "GivenSecond"
             ]
           }
         ]
@@ -49,28 +34,20 @@
       "fullUrl": "urn:uuid:04121321-4af5-424c-a0e1-ed3aab1c349d",
       "resource": {
         "resourceType": "Patient",
-        "meta": {
-          "security": [
-            {
-              "code": "SUBSTITUTED",
-              "display": "exact value is replaced with a predefined value"
-            }
-          ]
-        },
         "text": {
           "status": "generated",
-          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p><b>Generated Narrative with Details</b></p></div>"
+          "div": "\u003Cdiv xmlns=\u0022http://www.w3.org/1999/xhtml\u0022\u003E\u003Cp\u003E\u003Cb\u003EGenerated Narrative with Details\u003C/b\u003E\u003C/p\u003E\u003C/div\u003E"
         },
         "name": [
           {
-            "family": "example",
+            "use": "nickname",
+            "family": "Family02",
             "given": [
-              "test",
-              "testing"
+              "GivenFirst02",
+              "GivenSecond02"
             ],
             "period": {
-              "end": "2021-01-01",
-              "start": "2020-01-01"
+              "end": "2012-12-30"
             }
           }
         ]
@@ -83,7 +60,7 @@
         "id": "123",
         "text": {
           "status": "generated",
-          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p><b>Generated Narrative with Details</b></p><p><b>id</b>: 123</p><p><b>status</b>: final</p><p><b>code</b>: Glucose [Moles/volume] in Blood <span>(Details : {LOINC code '15074-8' = 'Glucose [Moles/volume] in Blood', given as 'Glucose [Moles/volume] in Blood'})</span></p><p><b>subject</b>: <a>Patient/23</a></p></div>"
+          "div": "\u003Cdiv xmlns=\u0022http://www.w3.org/1999/xhtml\u0022\u003E\u003Cp\u003E\u003Cb\u003EGenerated Narrative with Details\u003C/b\u003E\u003C/p\u003E\u003Cp\u003E\u003Cb\u003Eid\u003C/b\u003E: 123\u003C/p\u003E\u003Cp\u003E\u003Cb\u003Estatus\u003C/b\u003E: final\u003C/p\u003E\u003Cp\u003E\u003Cb\u003Ecode\u003C/b\u003E: Glucose [Moles/volume] in Blood \u003Cspan\u003E(Details : {LOINC code \u002715074-8\u0027 = \u0027Glucose [Moles/volume] in Blood\u0027, given as \u0027Glucose [Moles/volume] in Blood\u0027})\u003C/span\u003E\u003C/p\u003E\u003Cp\u003E\u003Cb\u003Esubject\u003C/b\u003E: \u003Ca\u003EPatient/23\u003C/a\u003E\u003C/p\u003E\u003C/div\u003E"
         },
         "status": "final",
         "code": {

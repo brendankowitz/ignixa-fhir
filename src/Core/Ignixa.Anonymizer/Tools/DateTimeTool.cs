@@ -51,7 +51,7 @@ internal static class DateTimeTool
                 string yearOfDate = matchedGroups[YearIndex].Value;
                 if (IndicateAgeOverThreshold(matchedGroups))
                 {
-                    ElementMutationTool.ClearValue(node);
+                    ElementMutationTool.RemoveProperty(node);
                 }
                 else
                 {
@@ -61,7 +61,7 @@ internal static class DateTimeTool
         }
         else
         {
-            ElementMutationTool.ClearValue(node);
+            ElementMutationTool.RemoveProperty(node);
         }
 
         return new RedactResult(true, AnonymizationOperations.Redact);
@@ -83,7 +83,7 @@ internal static class DateTimeTool
                 string yearOfDateTime = matchedGroups[YearIndex].Value;
                 if (IndicateAgeOverThreshold(matchedGroups))
                 {
-                    ElementMutationTool.ClearValue(node);
+                    ElementMutationTool.RemoveProperty(node);
                 }
                 else
                 {
@@ -93,7 +93,7 @@ internal static class DateTimeTool
         }
         else
         {
-            ElementMutationTool.ClearValue(node);
+            ElementMutationTool.RemoveProperty(node);
         }
 
         return new RedactResult(true, AnonymizationOperations.Redact);
@@ -110,12 +110,12 @@ internal static class DateTimeTool
         {
             if (int.Parse(node.Value.ToString()!) > AgeThreshold)
             {
-                ElementMutationTool.ClearValue(node);
+                ElementMutationTool.RemoveProperty(node);
             }
         }
         else
         {
-            ElementMutationTool.ClearValue(node);
+            ElementMutationTool.RemoveProperty(node);
         }
 
         return new RedactResult(true, AnonymizationOperations.Redact);

@@ -75,9 +75,9 @@ public static class ServiceCollectionExtensions
         var parameters = options.Parameters;
         var restrictedZips = parameters?.RestrictedZipCodeTabulationAreas?.ToList();
         return new RedactProcessor(
-            parameters?.EnablePartialDatesForRedact ?? true,
-            parameters?.EnablePartialAgesForRedact ?? true,
-            parameters?.EnablePartialZipCodesForRedact ?? true,
+            parameters?.EnablePartialDatesForRedact ?? false,
+            parameters?.EnablePartialAgesForRedact ?? false,
+            parameters?.EnablePartialZipCodesForRedact ?? false,
             restrictedZips ?? []);
     }
 

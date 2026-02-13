@@ -1,4 +1,4 @@
-﻿{
+{
   "resourceType": "Patient",
   "id": "example",
   "meta": {
@@ -11,7 +11,7 @@
   },
   "text": {
     "status": "generated",
-    "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Test Html</div>"
+    "div": "\u003Cdiv xmlns=\u0022http://www.w3.org/1999/xhtml\u0022\u003ETest Html\u003C/div\u003E"
   },
   "identifier": [
     {
@@ -159,7 +159,7 @@
       "telecom": [
         {
           "system": "phone",
-          "value": "+01 (123) 456789"
+          "value": "\u002B01 (123) 456789"
         }
       ],
       "address": {

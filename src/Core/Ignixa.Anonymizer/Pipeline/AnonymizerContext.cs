@@ -121,7 +121,6 @@ public sealed class AnonymizerContext
     {
         _stopwatch.Stop();
 
-        // Add security tags if any operations were performed
         if (OperationCounts.Count > 0)
         {
             AddSecurityTagsToResource();

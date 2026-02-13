@@ -9,5 +9,9 @@
       }
     ]
   },
-  "contained": [ { "resourceType": "Practitioner" } ]
+  "contained": [
+    {
+      "resourceType": "Practitioner"
+    }
+  ]
 }

@@ -12,44 +12,17 @@
   "entry": [
     {
       "resource": {
-        "resourceType": "Patient",
-        "meta": {
-          "security": [
-            {
-              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
-              "code": "REDACTED",
-              "display": "redacted"
-            }
-          ]
-        }
+        "resourceType": "Patient"
       }
     },
     {
       "resource": {
-        "resourceType": "Patient",
-        "meta": {
-          "security": [
-            {
-              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
-              "code": "REDACTED",
-              "display": "redacted"
-            }
-          ]
-        }
+        "resourceType": "Patient"
       }
     },
     {
       "resource": {
-        "resourceType": "Observation",
-        "meta": {
-          "security": [
-            {
-              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
-              "code": "REDACTED",
-              "display": "redacted"
-            }
-          ]
-        }
+        "resourceType": "Observation"
       }
     }
   ]

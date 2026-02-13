@@ -17,8 +17,12 @@
   },
   "active": true,
   "name": [
-    { "use": "official" },
-    { "use": "usual" },
+    {
+      "use": "official"
+    },
+    {
+      "use": "usual"
+    },
     {
       "use": "maiden"
     }

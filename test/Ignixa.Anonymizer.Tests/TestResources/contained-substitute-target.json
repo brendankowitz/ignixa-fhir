@@ -1,23 +1,14 @@
 {
   "resourceType": "Condition",
-  "meta": {
-    "security": [
-      {
-        "code": "SUBSTITUTED",
-        "display": "exact value is replaced with a predefined value"
-      }
-    ]
-  },
   "contained": [
     {
       "resourceType": "Patient",
       "id": "p1",
       "name": [
         {
-          "family": "example",
+          "family": "Family1",
           "given": [
-            "test",
-            "testing"
+            "Patricia"
           ]
         }
       ]
@@ -27,14 +18,13 @@
       "id": "p2",
       "name": [
         {
-          "family": "example",
+          "family": "Family2",
           "given": [
-            "test",
-            "testing"
+            "Patricia",
+            "Jim"
           ],
           "period": {
-            "start": "2020-01-01",
-            "end": "2021-01-01"
+            "start": "1999-01-01"
           }
         }
       ]

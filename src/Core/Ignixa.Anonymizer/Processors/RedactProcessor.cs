@@ -4,10 +4,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 using Ignixa.Abstractions;
-using Ignixa.Serialization.SourceNodes;
 using Ignixa.Anonymizer.Extensions;
 using Ignixa.Anonymizer.Models;
 using Ignixa.Anonymizer.Tools;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Anonymizer.Processors;
 
@@ -96,7 +96,7 @@ public class RedactProcessor : IAnonymizerProcessor
             return (result.WasModified, result.OperationType);
         }
 
-        ElementMutationTool.ClearValue(node);
+        ElementMutationTool.RemoveProperty(node);
         return (true, AnonymizationOperations.Redact);
     }
 }
