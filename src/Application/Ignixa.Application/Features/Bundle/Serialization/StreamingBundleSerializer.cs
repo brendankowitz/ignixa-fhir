@@ -105,6 +105,12 @@ public static class StreamingBundleSerializer
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Pagination result with hasMore flag and continuation token.</returns>
+    /// <summary>
+    /// Flush the writer to the output stream when its pending buffer exceeds this size.
+    /// Prevents unbounded memory growth for large result sets without flushing on every entry.
+    /// </summary>
+    private const int FlushThresholdBytes = 50 * 1024 * 1024; // 50 MB
+
     public static async Task SerializeWithPaginationAsync(
         Stream outputStream,
         string bundleType,
@@ -115,6 +121,7 @@ public static class StreamingBundleSerializer
         string queryString,
         ISchema? schemaProvider = null,
         bool pretty = false,
+        int flushThresholdBytes = FlushThresholdBytes,
         CancellationToken cancellationToken = default)
     {
         EnsureArg.IsNotNull(outputStream, nameof(outputStream));
@@ -197,6 +204,14 @@ public static class StreamingBundleSerializer
 #pragma warning restore CA1308
 
             writer.WriteEndObject();
+
+            // Flush to the HTTP response stream once the buffer exceeds the threshold.
+            // This keeps memory bounded for large result sets while avoiding the overhead
+            // of flushing (a syscall + potential TCP segment) on every single entry.
+            if (writer.UnderlyingWriter.BytesPending >= flushThresholdBytes)
+            {
+                await writer.FlushAsync(cancellationToken);
+            }
         }
 
         writer.WriteEndArray();

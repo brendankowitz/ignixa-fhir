@@ -429,4 +429,195 @@ public class StreamingBundleSerializerPaginationTests
         public string FullUrl { get; set; } = string.Empty;
         public string SearchMode { get; set; } = string.Empty;
     }
+
+    /// <summary>
+    /// Wraps a MemoryStream and records the cumulative byte position each time
+    /// the underlying Utf8JsonWriter flushes its buffer (via WriteAsync).
+    /// This lets tests assert that bytes reached the stream before all entries
+    /// were serialized — i.e., that the serializer streams rather than buffers.
+    /// </summary>
+    private sealed class FlushTrackingStream : Stream
+    {
+        private readonly MemoryStream _inner = new();
+
+        /// <summary>Cumulative byte positions recorded at each WriteAsync call.</summary>
+        public List<long> WritePositions { get; } = new();
+
+        public override bool CanRead => false;
+        public override bool CanSeek => true;
+        public override bool CanWrite => true;
+        public override long Length => _inner.Length;
+        public override long Position { get => _inner.Position; set => _inner.Position = value; }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            WritePositions.Add(_inner.Position + count);
+            _inner.Write(buffer, offset, count);
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+        {
+            WritePositions.Add(_inner.Position + buffer.Length);
+            await _inner.WriteAsync(buffer, ct);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+        {
+            WritePositions.Add(_inner.Position + count);
+            return _inner.WriteAsync(buffer, offset, count, ct);
+        }
+
+        public override void Flush() => _inner.Flush();
+        public override Task FlushAsync(CancellationToken ct) => _inner.FlushAsync(ct);
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+        public override void SetLength(long value) => _inner.SetLength(value);
+
+        public MemoryStream ToMemoryStream()
+        {
+            var ms = new MemoryStream(_inner.ToArray());
+            return ms;
+        }
+    }
+
+    /// <summary>
+    /// Creates a SearchEntryResult whose ResourceBytes is padded to approximately
+    /// <paramref name="approximateSizeBytes"/> by filling the Binary.data field with
+    /// repeated characters.  The JSON is valid FHIR Binary so the serializer treats
+    /// it identically to a real resource.
+    /// </summary>
+    private static SearchEntryResult CreateLargeEntry(string id, int approximateSizeBytes)
+    {
+        // Build a base64-ish data string of roughly the right length.
+        // The JSON wrapper is ~80 bytes so we fill the rest with 'A' characters.
+        int dataLength = Math.Max(0, approximateSizeBytes - 80);
+        var data = new string('A', dataLength);
+
+        var json = $$$"""{"resourceType":"Binary","id":"{{{id}}}","contentType":"application/octet-stream","data":"{{{data}}}"}""";
+
+        return new SearchEntryResult(
+            ResourceType: "Binary",
+            ResourceId: id,
+            VersionId: "1",
+            LastModified: DateTimeOffset.UtcNow,
+            ResourceBytes: Encoding.UTF8.GetBytes(json))
+        {
+            SearchMode = SearchEntryMode.Match,
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // Threshold-flush behaviour tests
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SerializeWithPaginationAsync_WithoutThresholdFlush_BuffersAllBytesUntilEnd()
+    {
+        // Arrange: 5 entries of ~200 KB each = ~1 MB total.
+        // Threshold set impossibly high so no intermediate flush ever fires.
+        const int entrySize = 200_000;
+        const int entryCount = 5;
+        var entries = Enumerable.Range(1, entryCount)
+            .Select(i => CreateLargeEntry($"binary-{i}", entrySize))
+            .ToList();
+
+        var searchOptions = new SearchOptions { MaxItemCount = entryCount };
+        var trackingStream = new FlushTrackingStream();
+
+        // Act: pass int.MaxValue as threshold — no mid-loop flush should occur.
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            trackingStream,
+            "searchset",
+            null,
+            CreateAsyncEnumerable(entries),
+            searchOptions,
+            BaseUrl,
+            QueryString,
+            flushThresholdBytes: int.MaxValue);
+
+        // Assert: only one write event — everything was buffered until the final flush.
+        trackingStream.WritePositions.Count.ShouldBe(1,
+            "with an infinite threshold the writer should flush exactly once at the end");
+
+        // Sanity: JSON must still be valid and contain all entries.
+        var result = ParseBundleResponse(trackingStream.ToMemoryStream());
+        result.EntryCount.ShouldBe(entryCount);
+    }
+
+    [Fact]
+    public async Task SerializeWithPaginationAsync_WithThresholdFlush_StreamsBytesBeforeAllEntriesWritten()
+    {
+        // Arrange: 5 entries of ~200 KB each = ~1 MB total.
+        // Threshold set to 400 KB so a flush fires after roughly every 2 entries.
+        const int entrySize = 200_000;
+        const int entryCount = 5;
+        const int threshold = 400_000; // 400 KB — well below total, above single entry
+
+        var entries = Enumerable.Range(1, entryCount)
+            .Select(i => CreateLargeEntry($"binary-{i}", entrySize))
+            .ToList();
+
+        var searchOptions = new SearchOptions { MaxItemCount = entryCount };
+        var trackingStream = new FlushTrackingStream();
+
+        // Act
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            trackingStream,
+            "searchset",
+            null,
+            CreateAsyncEnumerable(entries),
+            searchOptions,
+            BaseUrl,
+            QueryString,
+            flushThresholdBytes: threshold);
+
+        // Assert: more than one write event means bytes reached the stream mid-serialization.
+        trackingStream.WritePositions.Count.ShouldBeGreaterThan(1,
+            "threshold-based flushing should write bytes to the stream before all entries are complete");
+
+        // The first write must have happened before the full response was assembled,
+        // confirming the client would have received bytes before serialization finished.
+        long firstWritePosition = trackingStream.WritePositions.First();
+        long totalBytes = trackingStream.WritePositions.Last();
+        firstWritePosition.ShouldBeLessThan(totalBytes,
+            "the first flush should deliver a partial response, not the complete bundle");
+
+        // Sanity: JSON must still be valid and contain all entries.
+        var result = ParseBundleResponse(trackingStream.ToMemoryStream());
+        result.EntryCount.ShouldBe(entryCount);
+        result.HasNextLink.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SerializeWithPaginationAsync_ThresholdFlush_ProducesIdenticalJsonToUnflushedVersion()
+    {
+        // Prove the fix is purely a streaming optimization — it does not change the
+        // content or structure of the bundle JSON.
+        const int entrySize = 200_000;
+        const int entryCount = 5;
+
+        var entries = Enumerable.Range(1, entryCount)
+            .Select(i => CreateLargeEntry($"binary-{i}", entrySize))
+            .ToList();
+
+        var searchOptions = new SearchOptions { MaxItemCount = entryCount };
+
+        var bufferedStream = new MemoryStream();
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            bufferedStream, "searchset", null, CreateAsyncEnumerable(entries),
+            searchOptions, BaseUrl, QueryString,
+            flushThresholdBytes: int.MaxValue);
+
+        var streamingStream = new MemoryStream();
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            streamingStream, "searchset", null, CreateAsyncEnumerable(entries),
+            searchOptions, BaseUrl, QueryString,
+            flushThresholdBytes: 400_000);
+
+        var bufferedJson = Encoding.UTF8.GetString(bufferedStream.ToArray());
+        var streamingJson = Encoding.UTF8.GetString(streamingStream.ToArray());
+
+        streamingJson.ShouldBe(bufferedJson,
+            "threshold-based flushing must produce byte-identical output to the unflushed path");
+    }
 }
