@@ -1,0 +1,45 @@
+# Feature: FHIR GraphQL Operation
+
+Implementation of the FHIR $graphql operation as defined in the [FHIR GraphQL specification](https://build.fhir.org/graphql.html).
+
+## Status
+
+**Current**: Exploring
+
+## Overview
+
+The FHIR $graphql operation provides a GraphQL interface for querying FHIR resources, enabling clients to request exactly the data they need in a single request. This avoids over-fetching and under-fetching problems inherent in REST-based FHIR interactions.
+
+### Key Requirements (from FHIR Spec)
+
+- **System-level endpoint**: `[base]/$graphql` — query across resource types
+- **Instance-level endpoint**: `[base]/[Type]/[id]/$graphql` — query a specific resource
+- **Schema introspection**: Clients can discover available types/fields via `__schema`
+- **GET and POST support**: Query via URL parameter (GET) or request body (POST)
+- **Response format**: `application/json` (not `application/fhir+json`)
+
+### Design Constraints
+
+- Must be an **experimental feature** with configuration-driven toggle (following existing pattern)
+- Must follow the established layering: API → Application → Domain → DataLayer
+- Must support multi-tenancy (tenant-explicit and tenant-agnostic routing)
+- Must leverage existing `ISchema` (StructureDefinition metadata) for GraphQL schema generation
+- Must reuse existing `IFhirRepository` / `ISearchService` for data access
+- Schema generation must be dynamic and version-aware (R4, R4B, R5, STU3)
+
+## Investigations
+
+| Investigation | Status | Created | Description |
+|--------------|--------|---------|-------------|
+| [design-proposal-hotchocolate](investigations/design-proposal-hotchocolate.md) | In Progress | 2026-03-25 | HotChocolate-based design with ITypeModule dynamic schema generation |
+| [design-proposal-graphql-dotnet](investigations/design-proposal-graphql-dotnet.md) | In Progress | 2026-03-25 | GraphQL.NET-based design with programmatic schema building |
+| [unified-design](investigations/unified-design.md) | Pending | 2026-03-25 | Reconciled best-of-both design after competing proposal review |
+
+## Alignment
+
+- [ ] Follows layer rules (API → App → Domain → Data)
+- [ ] F5 Developer Experience (works with minimal setup)
+- [ ] FHIR spec compliance ($graphql operation)
+- [ ] Consistent with existing experimental feature patterns
+- [ ] Multi-tenant support
+- [ ] Multi-version FHIR support (R4, R4B, R5, STU3)
