@@ -4,7 +4,7 @@ Implementation of the FHIR $graphql operation as defined in the [FHIR GraphQL sp
 
 ## Status
 
-**Current**: Exploring
+**Current**: Investigation Complete
 
 ## Overview
 
@@ -31,9 +31,9 @@ The FHIR $graphql operation provides a GraphQL interface for querying FHIR resou
 
 | Investigation | Status | Created | Description |
 |--------------|--------|---------|-------------|
-| [design-proposal-hotchocolate](investigations/design-proposal-hotchocolate.md) | In Progress | 2026-03-25 | HotChocolate-based design with ITypeModule dynamic schema generation |
-| [design-proposal-graphql-dotnet](investigations/design-proposal-graphql-dotnet.md) | In Progress | 2026-03-25 | GraphQL.NET-based design with programmatic schema building |
-| [unified-design](investigations/unified-design.md) | Pending | 2026-03-25 | Reconciled best-of-both design after competing proposal review |
+| [design-proposal-hotchocolate](investigations/design-proposal-hotchocolate.md) | Viable | 2026-03-25 | HotChocolate-based design with ITypeModule dynamic schema generation |
+| [design-proposal-graphql-dotnet](investigations/design-proposal-graphql-dotnet.md) | Viable | 2026-03-25 | GraphQL.NET-based design with programmatic schema building |
+| [unified-design](investigations/unified-design.md) | Complete | 2026-03-25 | Reconciled best-of-both design: HotChocolate library + CQRS-first resolvers |
 
 ## Alignment
 

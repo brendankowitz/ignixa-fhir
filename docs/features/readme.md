@@ -130,6 +130,7 @@ docs/features/
 | [experimental-library](experimental-library/) | Proposed | library-proposal |
 | [export](export/) | Research | streaming-architecture, high-throughput-design, +2 more |
 | [fhir-compatibility](fhir-compatibility/) | Proposed | compatibility-remediation |
+| [fhir-graphql](fhir-graphql/) | Investigation Complete | design-proposal-hotchocolate, design-proposal-graphql-dotnet, unified-design |
 | [fhir-faker](fhir-faker/) | Partial | layered-architecture, scenario-generation, +6 more |
 | [fhir-operations](fhir-operations/) | In Progress | advanced-operations, patient-everything, ips-generator, +4 more |
 | [fhirpath](fhirpath/) | In Progress | performance-optimization, gap-analysis |
