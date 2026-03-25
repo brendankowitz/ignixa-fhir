@@ -25,7 +25,7 @@ The FHIR $graphql operation provides a GraphQL interface for querying FHIR resou
 - Must support multi-tenancy (tenant-explicit and tenant-agnostic routing)
 - Must leverage existing `ISchema` (StructureDefinition metadata) for GraphQL schema generation
 - Must reuse existing `IFhirRepository` / `ISearchService` for data access
-- Schema generation must be dynamic and version-aware (R4, R4B, R5, STU3)
+- Schema generation must be dynamic and version-aware (STU3, R4, R4B, R5, R6)
 
 ## Investigations
 
@@ -37,9 +37,11 @@ The FHIR $graphql operation provides a GraphQL interface for querying FHIR resou
 
 ## Alignment
 
-- [ ] Follows layer rules (API → App → Domain → Data)
-- [ ] F5 Developer Experience (works with minimal setup)
-- [ ] FHIR spec compliance ($graphql operation)
-- [ ] Consistent with existing experimental feature patterns
-- [ ] Multi-tenant support
-- [ ] Multi-version FHIR support (R4, R4B, R5, STU3)
+Investigation complete. All items below are addressed in [unified-design.md](investigations/unified-design.md) §18 and pending implementation verification.
+
+- [x] Follows layer rules (API → App → Domain → Data)
+- [x] F5 Developer Experience (works with minimal setup)
+- [x] FHIR spec compliance ($graphql operation)
+- [x] Consistent with existing experimental feature patterns
+- [x] Multi-tenant support
+- [x] Multi-version FHIR support (STU3, R4, R4B, R5, R6)

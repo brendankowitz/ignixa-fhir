@@ -56,7 +56,7 @@ This document is the **definitive implementation plan** for FHIR `$graphql` in I
 
 1. **`ITypeModule`** is the decisive factor. FHIR has ~150 resource types × ~20 elements each = ~3000+ GraphQL types. Hand-coding these is infeasible. `ITypeModule.CreateTypesAsync()` walks `ISchema` metadata and emits all types programmatically at schema build time.
 
-2. **Named schemas** via `IRequestExecutorResolver` cleanly handle multi-version FHIR (R4, R4B, R5) without manual schema management.
+2. **Named schemas** via `IRequestExecutorResolver` cleanly handle multi-version FHIR (STU3, R4, R4B, R5, R6) without manual schema management.
 
 3. **Built-in `BatchDataLoader`** solves the reference N+1 problem inherent in FHIR GraphQL queries without additional packages.
 
@@ -168,26 +168,25 @@ HotChocolate's `ITypeModule` is invoked once during schema creation. We implemen
 ```csharp
 // src/Application/Ignixa.Application/Features/Experimental/GraphQl/Schema/FhirTypeModule.cs
 
-public sealed class FhirTypeModule : ITypeModule
+// FhirTypeModule is registered as a keyed singleton in IServiceCollection (see §11.3).
+// This allows both HotChocolate and the Autofac-registered PackageLoadedSchemaInvalidationHandler
+// to reference the exact same instance, ensuring TypesChanged fires on the live schema.
+public sealed class FhirTypeModule(
+    Ignixa.Abstractions.ISchema fhirSchema,
+    ILogger<FhirTypeModule> logger) : ITypeModule
 {
-    private readonly Ignixa.Abstractions.ISchema _fhirSchema;
-    private readonly ILogger<FhirTypeModule> _logger;
-    private readonly List<ITypeSystemMember> _additionalTypes = [];
-
-    public FhirTypeModule(
-        Ignixa.Abstractions.ISchema fhirSchema,
-        ILogger<FhirTypeModule> logger)
-    {
-        _fhirSchema = fhirSchema;
-        _logger = logger;
-    }
-
     public event EventHandler<EventArgs>? TypesChanged;
 
     public ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(
         IDescriptorContext context,
         CancellationToken cancellationToken)
     {
+        // nestedTypes collects BackboneElement + Union types generated during element traversal.
+        // MUST be a local variable — FhirTypeModule is a singleton, and CreateTypesAsync is
+        // called again whenever TypesChanged fires (e.g., after package load). A field would
+        // accumulate duplicate type registrations across rebuilds, causing HC schema validation
+        // failures on the second and subsequent schema builds.
+        var nestedTypes = new List<ITypeSystemMember>();
         var types = new List<ITypeSystemMember>();
 
         // 1. Emit custom scalars for FHIR date/time types
@@ -196,17 +195,17 @@ public sealed class FhirTypeModule : ITypeModule
         // 2. Emit ObjectType per complex/datatype (HumanName, CodeableConcept, etc.)
         foreach (var complexType in GetComplexDataTypes())
         {
-            var fhirType = _fhirSchema.GetTypeDefinition(complexType);
+            var fhirType = fhirSchema.GetTypeDefinition(complexType);
             if (fhirType is null) continue;
-            types.Add(BuildObjectType(complexType, fhirType));
+            types.Add(BuildObjectType(complexType, fhirType, nestedTypes));
         }
 
         // 3. Emit ObjectType per concrete resource (Patient, Observation, etc.)
         foreach (var resourceType in GetConcreteResourceTypes())
         {
-            var fhirType = _fhirSchema.GetTypeDefinition(resourceType);
+            var fhirType = fhirSchema.GetTypeDefinition(resourceType);
             if (fhirType is null) continue;
-            types.Add(BuildResourceObjectType(resourceType, fhirType));
+            types.Add(BuildResourceObjectType(resourceType, fhirType, nestedTypes));
         }
 
         // 4. Emit ResourceReference type with inline resource resolution
@@ -223,14 +222,14 @@ public sealed class FhirTypeModule : ITypeModule
         types.Add(BuildPaginationLinksType());
 
         // 7. Emit Query root type
-        types.Add(BuildQueryType());
+        types.Add(BuildQueryType(nestedTypes));
 
-        // 8. Add any nested BackboneElement / union types generated during traversal
-        types.AddRange(_additionalTypes);
+        // 8. Add nested BackboneElement + union types collected during traversal
+        types.AddRange(nestedTypes);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "FhirTypeModule generated {TypeCount} GraphQL types for FHIR {Version}",
-            types.Count, _fhirSchema.Version);
+            types.Count, fhirSchema.Version);
 
         return ValueTask.FromResult<IReadOnlyCollection<ITypeSystemMember>>(types);
     }
@@ -257,24 +256,32 @@ Each concrete FHIR resource type maps to a GraphQL `ObjectType`. Child elements 
 | Choice element (value[x]) | Union type | See §3.5 |
 
 ```csharp
-private ObjectType BuildResourceObjectType(string resourceTypeName, IType fhirType)
+private ObjectType BuildResourceObjectType(string resourceTypeName, IType fhirType, List<ITypeSystemMember> nestedTypes)
 {
     return new ObjectType(descriptor =>
     {
         descriptor.Name(resourceTypeName);
         descriptor.Description($"FHIR {resourceTypeName} resource");
 
-        // Always include "resourceType" meta-field for union type resolution
+        // Always include "resourceType" meta-field for union type resolution.
+        // Required so HC union discriminator (IsTypeOf) can identify the concrete type.
         descriptor.Field("resourceType")
             .Type<NonNullType<StringType>>()
             .Resolve(ctx => resourceTypeName);
+
+        // For union membership: each ObjectType participating in the Resource union declares
+        // IsTypeOf to check the ChoiceElementValue.TypeName wrapper (see §3.5).
+        descriptor.IsTypeOf(obj =>
+            obj is ChoiceElementValue cv && cv.TypeName == resourceTypeName
+            || obj is JsonElement je && je.TryGetProperty("resourceType", out var rt)
+                && rt.GetString() == resourceTypeName);
 
         // Walk child elements from ITypeExtended
         if (fhirType is ITypeExtended extended)
         {
             foreach (var child in extended.Elements)
             {
-                AddFieldForElement(descriptor, child, resourceTypeName);
+                AddFieldForElement(descriptor, child, resourceTypeName, nestedTypes);
             }
         }
     });
@@ -289,14 +296,15 @@ Naming: `{ParentType}_{ElementName}` — e.g., `Patient_Contact`, `Observation_C
 private void AddFieldForElement(
     IObjectTypeDescriptor descriptor,
     ITypeExtended element,
-    string parentPath)
+    string parentPath,
+    List<ITypeSystemMember> nestedTypes)
 {
     var elementName = element.Name;
 
     // Choice element (value[x]) → union type
     if (element.Types.Count > 1)
     {
-        AddChoiceElementField(descriptor, element, parentPath);
+        AddChoiceElementField(descriptor, element, parentPath, nestedTypes);
         return;
     }
 
@@ -319,11 +327,11 @@ private void AddFieldForElement(
     }
 
     // BackboneElement (has children, not a standalone type) → nested ObjectType
-    if (element.Elements.Count > 0 && !_fhirSchema.IsKnownType(elementName))
+    if (element.Elements.Count > 0 && !fhirSchema.IsKnownType(elementName))
     {
         var nestedTypeName = $"{parentPath}_{PascalCase(elementName)}";
-        var nestedType = BuildObjectType(nestedTypeName, element);
-        _additionalTypes.Add(nestedType);
+        var nestedType = BuildObjectType(nestedTypeName, element, nestedTypes);
+        nestedTypes.Add(nestedType);
 
         var field = descriptor.Field(CamelCase(elementName))
             .Type(new NamedTypeNode(nestedTypeName));
@@ -333,7 +341,7 @@ private void AddFieldForElement(
     }
 
     // Known complex type (HumanName, CodeableConcept, etc.) → reference existing type
-    if (typeName is not null && _fhirSchema.IsKnownType(typeName))
+    if (typeName is not null && fhirSchema.IsKnownType(typeName))
     {
         var field = descriptor.Field(CamelCase(elementName))
             .Type(new NamedTypeNode(typeName));
@@ -388,38 +396,80 @@ Naming: `{ParentType}_{ElementName}Union` — e.g., `Observation_ValueUnion`.
 private void AddChoiceElementField(
     IObjectTypeDescriptor descriptor,
     ITypeExtended element,
-    string parentPath)
+    string parentPath,
+    List<ITypeSystemMember> nestedTypes)
 {
     var elementName = element.Name; // "value" (without [x])
     var unionName = $"{parentPath}_{PascalCase(elementName)}Union";
 
-    var memberTypeNames = element.Types
+    var memberTypeCodes = element.Types
         .Select(t => t.Code)
-        .Where(code => _fhirSchema.IsKnownType(code))
+        .Where(code => fhirSchema.IsKnownType(code))
         .Distinct()
         .ToList();
 
-    if (memberTypeNames.Count == 0) return;
+    if (memberTypeCodes.Count == 0) return;
 
     var unionType = new UnionType(ud =>
     {
         ud.Name(unionName);
         ud.Description($"Choice type for {parentPath}.{elementName}[x]");
-        foreach (var memberTypeName in memberTypeNames)
+        foreach (var memberTypeCode in memberTypeCodes)
         {
-            ud.Type(new NamedTypeNode(memberTypeName));
+            ud.Type(new NamedTypeNode(memberTypeCode));
         }
     });
-    _additionalTypes.Add(unionType);
+    nestedTypes.Add(unionType);
 
+    var memberTypes = element.Types.ToList(); // capture for closure
     var field = descriptor.Field(CamelCase(elementName))
         .Type(new NamedTypeNode(unionName));
     ApplyCardinality(field, element);
-    field.Resolve(ctx => ResolveChoiceElement(ctx, elementName, element.Types));
+    field.Resolve(ctx => ResolveChoiceElement(ctx, elementName, memberTypes));
 }
 ```
 
-The choice element resolver inspects which typed variant is present in the JSON (e.g., `valueQuantity`, `valueString`) and returns the appropriate `JsonElement` with `__typename` metadata for union discriminator resolution.
+**Choice element resolver**: FHIR serializes `value[x]` as a named property using the type suffix (e.g., `valueQuantity`, `valueString`). The resolver searches for the first matching variant, then returns a `ChoiceElementValue` wrapper that carries both the matched `JsonElement` and its FHIR type code. HotChocolate union resolution uses the `IsTypeOf` delegate registered on each `ObjectType` (see `BuildResourceObjectType`) to select the correct concrete GraphQL type from the wrapper.
+
+```csharp
+// Internal wrapper: carries the matched JsonElement + its FHIR type code for union resolution.
+internal sealed record ChoiceElementValue(string TypeName, JsonElement Element);
+
+private static ChoiceElementValue? ResolveChoiceElement(
+    IResolverContext ctx,
+    string elementName,          // e.g., "value"
+    IReadOnlyList<ITypeElementType> memberTypes)
+{
+    var parent = ctx.Parent<JsonElement>();
+    if (parent.ValueKind != JsonValueKind.Object)
+        return null;
+
+    // FHIR JSON: value[x] is stored as "{elementName}{TypeCode}" e.g., "valueQuantity".
+    // The element name is camelCase and the type code starts with an uppercase letter.
+    foreach (var memberType in memberTypes)
+    {
+        var propertyName = $"{CamelCase(elementName)}{char.ToUpperInvariant(memberType.Code[0])}{memberType.Code[1..]}";
+        if (parent.TryGetProperty(propertyName, out var value) &&
+            value.ValueKind != JsonValueKind.Null)
+        {
+            return new ChoiceElementValue(memberType.Code, value);
+        }
+    }
+    return null;
+}
+```
+
+Field resolvers on types that appear as union members receive the `ChoiceElementValue` wrapper as their parent context and unwrap the `JsonElement` before navigation:
+
+```csharp
+// In BuildObjectType — field resolver unwraps ChoiceElementValue when used as union member
+field.Resolve(ctx =>
+{
+    var raw = ctx.Parent<object?>();
+    var element = raw is ChoiceElementValue cv ? cv.Element : (JsonElement)raw!;
+    return ResolveJsonElement(element, fieldName);
+});
+```
 
 #### Reference Fields → ResourceReference Type
 
@@ -446,11 +496,13 @@ All search parameter arguments are typed as `String` in GraphQL. This matches th
 ```csharp
 private void AddSearchArguments(IObjectFieldDescriptor fieldDescriptor, string resourceType)
 {
-    // Standard FHIR search result parameters
-    fieldDescriptor.Argument("_count", a => a.Type<IntType>().Description("Page size"));
-    fieldDescriptor.Argument("_offset", a => a.Type<IntType>().Description("Page offset"));
-    fieldDescriptor.Argument("_sort", a => a.Type<StringType>().Description("Sort criteria"));
-    fieldDescriptor.Argument("_total", a => a.Type<StringType>().Description("Total count mode"));
+    // Standard FHIR search control parameters
+    fieldDescriptor.Argument("_count", a => a.Type<IntType>().Description("Page size (default: 10, max: 1000)"));
+    // _cursor receives the opaque ContinuationToken string returned in PaginationLinks.next.
+    // SearchOptions.ContinuationToken is a server-side cursor, NOT a numeric offset.
+    fieldDescriptor.Argument("_cursor", a => a.Type<StringType>().Description("Continuation cursor from previous page's link.next"));
+    fieldDescriptor.Argument("_sort", a => a.Type<StringType>().Description("Sort criteria (e.g., \"-date,name\")"));
+    fieldDescriptor.Argument("_total", a => a.Type<StringType>().Description("Total count mode: none | estimate | accurate"));
 
     // Resource-specific search parameters (from ISearchParameterDefinitionManager)
     // Added dynamically based on CapabilityStatement search parameter definitions
@@ -474,10 +526,11 @@ type Query {
   # ... one per concrete resource type
 
   # Type-level search (with search parameters as arguments)
+  # _cursor is an opaque server token from PaginationLinks.next — not a numeric offset
   PatientList(name: String, family: String, birthdate: String,
-              _count: Int, _offset: Int, _sort: String): PatientConnection
+              _count: Int, _cursor: String, _sort: String): PatientConnection
   ObservationList(code: String, patient: String, date: String,
-                  _count: Int, _offset: Int, _sort: String): ObservationConnection
+                  _count: Int, _cursor: String, _sort: String): ObservationConnection
   # ... one per concrete resource type
 }
 ```
@@ -661,9 +714,11 @@ public sealed class SearchResolver(
         if (context.ArgumentOptional<int?>("_count") is { } count)
             options.MaxItemCount = Math.Clamp(count, 1, 1000);
 
-        // Map _offset argument
-        if (context.ArgumentOptional<int?>("_offset") is { } offset)
-            options.ContinuationToken = offset.ToString();
+        // Map _cursor argument → SearchOptions.ContinuationToken.
+        // ContinuationToken is an opaque server-side cursor string, not a numeric offset.
+        // The client obtains this value from PaginationLinks.next in the previous response.
+        if (context.ArgumentOptional<string?>("_cursor") is { } cursor)
+            options.ContinuationToken = cursor;
 
         // Map _sort argument
         if (context.ArgumentOptional<string?>("_sort") is { } sort)
@@ -737,7 +792,9 @@ Without batching, each `resource` field triggers a separate read — potentially
 
 ### 6.2 ResourceDataLoader
 
-HotChocolate's `BatchDataLoader` collects all keys within a single execution step, then resolves them in one batch:
+HotChocolate's `BatchDataLoader` collects all keys accumulated within a single execution step (across all field resolvers in the response), then calls `LoadBatchAsync` once with the full set. This eliminates the sequential-per-field N+1 pattern.
+
+**Important**: `LoadBatchAsync` fires one `GetResourceQuery` per unique key via `Task.WhenAll` — these are parallel individual reads, not a single batched SQL query. The primary benefit is **deduplication** (same `Practitioner/123` referenced by 10 patients loads once) and **parallelism** (all unique references load concurrently, not serially). A future optimisation could group keys by `ResourceType` and use a `_id=a,b,c` search query to reduce round-trips, but this is deferred because: (a) it requires knowing the batch IDs at search time, (b) fallback handling for partial results is complex, and (c) `GetResourceQuery` already leverages partition strategy and capability enforcement.
 
 ```csharp
 // src/Application/Ignixa.Application/Features/Experimental/GraphQl/DataLoaders/ResourceDataLoader.cs
@@ -753,8 +810,10 @@ public sealed class ResourceDataLoader(
     {
         var results = new Dictionary<ResourceKey, JsonElement?>(keys.Count);
 
-        // Batch all lookups via CQRS handlers
-        // DataLoader ensures each unique key is loaded exactly once per request
+        // Parallel individual reads — one GetResourceQuery per unique key.
+        // The DataLoader guarantees each key appears in `keys` at most once per request
+        // (deduplication happens before LoadBatchAsync is called).
+        // This is parallel, not a batched DB query. See §6 note above for rationale.
         var tasks = keys.Select(async key =>
         {
             var query = new GetResourceQuery(key.ResourceType, key.ResourceId);
@@ -908,6 +967,8 @@ services.AddGraphQLServer("fhir-r4")
 
 services.AddGraphQLServer("fhir-r4b") // ... similar for R4B
 services.AddGraphQLServer("fhir-r5")  // ... similar for R5
+services.AddGraphQLServer("fhir-r6")  // ... similar for R6
+services.AddGraphQLServer("fhir-stu3") // ... similar for STU3
 ```
 
 ### 8.2 Schema Selection at Request Time
@@ -932,7 +993,8 @@ public class GraphQlSchemaWarmupService(
     {
         foreach (var version in options.Value.WarmupVersions)
         {
-            var schemaName = $"fhir-{version.ToLowerInvariant()}";
+            // FhirVersion.R4.ToString() = "R4" → schema name "fhir-r4"
+            var schemaName = $"fhir-{version.ToString().ToLowerInvariant()}";
             await resolver.GetRequestExecutorAsync(schemaName, cancellationToken);
         }
     }
@@ -943,16 +1005,19 @@ public class GraphQlSchemaWarmupService(
 
 ### 8.4 Schema Cache Invalidation
 
-When conformance resources change (e.g., new StructureDefinitions installed via package management), schemas need rebuilding. This integrates with the existing `PackageLoadedEvent`:
+When conformance resources change (e.g., new StructureDefinitions installed via package management), schemas need rebuilding. This integrates with the existing `PackageLoadedEvent`.
+
+**DI lifetime note**: `FhirTypeModule` is owned by HotChocolate's service provider (registered via `AddTypeModule`). The `PackageLoadedSchemaInvalidationHandler` is registered in Autofac and must call `NotifyTypesChanged()` on the **exact same singleton instance** that HC owns. To bridge the two containers, `FhirTypeModule` is registered as a keyed singleton in `IServiceCollection` (see §11.3), and the Autofac handler factory resolves it via `IServiceProvider` (which wraps `IServiceCollection` when using `AutofacServiceProviderFactory`).
 
 ```csharp
 public class PackageLoadedSchemaInvalidationHandler(
-    FhirTypeModule typeModule) : INotificationHandler<PackageLoadedEvent>
+    IReadOnlyList<FhirTypeModule> typeModules) : INotificationHandler<PackageLoadedEvent>
 {
     public Task HandleAsync(PackageLoadedEvent notification, CancellationToken cancellationToken)
     {
-        // Trigger HotChocolate schema rebuild via ITypeModule.TypesChanged event
-        typeModule.NotifyTypesChanged();
+        // Trigger HotChocolate schema rebuild for all registered FHIR versions
+        foreach (var module in typeModules)
+            module.NotifyTypesChanged();
         return Task.CompletedTask;
     }
 }
@@ -1088,7 +1153,8 @@ public class GraphQlExperimentalOptions
     public int DefaultPageSize { get; set; } = 10;
     public bool EnableGetRequests { get; set; } = true;
     public int ExecutionTimeoutSeconds { get; set; } = 30;
-    public ICollection<string> WarmupVersions { get; } = ["R4"];
+    // FhirVersion enum (not string) for type safety. Configuration binding supports enum values.
+    public ICollection<FhirVersion> WarmupVersions { get; } = [FhirVersion.R4];
 }
 ```
 
@@ -1114,10 +1180,24 @@ private static void RegisterGraphQlHandlers(this ContainerBuilder builder)
     builder.RegisterType<GraphQlExecutionService>()
         .As<IGraphQlExecutionService>().InstancePerLifetimeScope();
 
-    // Schema cache invalidation on package load
-    builder.RegisterType<PackageLoadedSchemaInvalidationHandler>()
-        .As<INotificationHandler<PackageLoadedEvent>>()
-        .InstancePerDependency();
+    // Schema cache invalidation on package load.
+    // Uses a factory registration (not RegisterType<>) to bridge the IServiceCollection
+    // keyed singletons into Autofac. IServiceProvider in the Autofac container wraps
+    // IServiceCollection registrations via AutofacServiceProviderFactory, so keyed services
+    // registered in AddGraphQlServices are resolvable here.
+    // Following the established pattern from RegisterIpsHandlers (uses builder.Register factory).
+    builder.Register(c =>
+    {
+        var sp = c.Resolve<IServiceProvider>();
+        var modules = new[] { FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6 }
+            .Select(v => sp.GetKeyedService<FhirTypeModule>(v))
+            .OfType<FhirTypeModule>()
+            .ToList()
+            .AsReadOnly();
+        return new PackageLoadedSchemaInvalidationHandler(modules);
+    })
+    .As<INotificationHandler<PackageLoadedEvent>>()
+    .InstancePerDependency();
 }
 ```
 
@@ -1136,20 +1216,29 @@ private static void AddGraphQlServices(
     IConfiguration configuration,
     GraphQlExperimentalOptions graphQlOptions)
 {
-    var versions = new[] { FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5 };
+    // All supported FHIR versions. No semantic difference between versions for the GraphQL
+    // layer — the named schema approach handles each identically via FhirTypeModule(ISchema).
+    var versions = new[] { FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6 };
 
     foreach (var version in versions)
     {
         var schemaName = $"fhir-{version.ToString().ToLowerInvariant()}";
 
+        // Register FhirTypeModule as a KEYED singleton per FHIR version.
+        // This serves two purposes:
+        // 1. HC resolves it via AddTypeModule(sp => sp.GetRequiredKeyedService<FhirTypeModule>(version))
+        // 2. Autofac's PackageLoadedSchemaInvalidationHandler resolves ALL versions via IServiceProvider,
+        //    ensuring it calls NotifyTypesChanged() on the exact same HC-owned instance.
+        services.AddKeyedSingleton<FhirTypeModule>(version, (sp, _) =>
+        {
+            var versionContext = sp.GetRequiredService<IFhirVersionContext>();
+            var schema = versionContext.GetBaseSchemaProvider(version);
+            var logger = sp.GetRequiredService<ILogger<FhirTypeModule>>();
+            return new FhirTypeModule(schema, logger);
+        });
+
         services.AddGraphQLServer(schemaName)
-            .AddTypeModule(sp =>
-            {
-                var versionContext = sp.GetRequiredService<IFhirVersionContext>();
-                var schema = versionContext.GetBaseSchemaProvider(version);
-                var logger = sp.GetRequiredService<ILogger<FhirTypeModule>>();
-                return new FhirTypeModule(schema, logger);
-            })
+            .AddTypeModule(sp => sp.GetRequiredKeyedService<FhirTypeModule>(version))
             .AddDataLoader<ResourceDataLoader>()
             .ModifyRequestOptions(opt => opt.IncludeExceptionDetails = false)
             .AddMaxExecutionDepthRule(graphQlOptions.MaxQueryDepth)
@@ -1200,6 +1289,8 @@ if (options.Features.GraphQl.Enabled)
   }
 }
 ```
+
+> **Note**: `WarmupVersions` binds to `ICollection<FhirVersion>`. ASP.NET Core configuration binding supports enum values by name (case-insensitive), so `"R4"` binds correctly to `FhirVersion.R4`.
 
 ---
 
@@ -1332,7 +1423,7 @@ public async Task GivenPatientExists_WhenQueryById_ThenReturnsPatientFields()
 **Deliverables**:
 - `ResourceDataLoader` for batched reference resolution
 - `ResourceReference` type with inline `resource` field
-- Named schemas for R4, R4B, R5
+- Named schemas for STU3, R4, R4B, R5, R6
 - `GraphQlSchemaWarmupService`
 - `PackageLoadedSchemaInvalidationHandler`
 - Query depth/complexity/timeout enforcement
@@ -1383,6 +1474,8 @@ public async Task GivenPatientExists_WhenQueryById_ThenReturnsPatientFields()
 
 5. **Mutations (write operations)**: FHIR `$graphql` spec is read-only. No mutations planned. If future spec allows mutations, HotChocolate supports them natively.
 
+6. **ResourceDataLoader: parallel reads vs. batched search by `_id`**: The current design fires one `GetResourceQuery` per unique referenced key in parallel. A more efficient approach would group keys by `ResourceType` and issue a single `SearchResourcesQuery` with `_id=a,b,c` per group. This is deferred because it requires building a batch-read CQRS query, handling partial failures, and verifying that `_id` multi-value search is supported across all storage backends. The current parallel approach is correct and benefits from DataLoader deduplication; the optimisation is a Phase 3+ enhancement.
+
 ---
 
 ## 17. Tradeoffs
@@ -1392,7 +1485,7 @@ public async Task GivenPatientExists_WhenQueryById_ThenReturnsPatientFields()
 | **Dynamic schema from `ISchema` metadata** — auto-sync with FHIR StructureDefinitions | **Startup cost** — schema build walks hundreds of types (~2-5s per version). Mitigated by warmup. |
 | **CQRS-first resolvers** — preserve capability enforcement, partition strategy, audit logging | **Slight overhead** — MediatR dispatch per read/search vs direct repo calls. Acceptable for GraphQL's expected query patterns. |
 | **HotChocolate compiled resolvers** — sub-microsecond dispatch after compilation | **Large dependency** — ~15 NuGet packages, ~5-10 MB binary size increase. |
-| **Built-in `BatchDataLoader`** — N+1 prevention without custom batching | **Learning curve** — team must understand `ITypeModule`, resolver context, execution pipeline. |
+| **Built-in `BatchDataLoader`** — deduplication + parallelism for reference resolution | **DataLoader parallel reads** — `LoadBatchAsync` fires one `GetResourceQuery` per key concurrently, not a single batched SQL query. Future: group by type + `_id=a,b,c` search. |
 | **Standard introspection** — clients auto-discover schema | **Schema size** — ~3000+ types may overwhelm naive clients. |
 | **Query depth/complexity limiting** — built-in DoS protection | **Memory** — each compiled schema holds ~10-50 MB. Multiply by FHIR version count. |
 | **`JsonElement` field resolution** — zero-copy from raw bytes | **String-typed** — field name mismatches are runtime errors, not compile errors. |
