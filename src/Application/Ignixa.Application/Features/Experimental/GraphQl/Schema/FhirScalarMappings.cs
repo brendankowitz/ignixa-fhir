@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using HotChocolate.Language;
-using HotChocolate.Types;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
@@ -22,13 +21,5 @@ internal static class FhirScalarMappings
         "instant" => new NamedTypeNode("FhirInstant"),
         "time" => new NamedTypeNode("FhirTime"),
         _ => new NamedTypeNode("String"),
-    };
-
-    internal static Type GetScalarType(string fhirPrimitiveName) => fhirPrimitiveName switch
-    {
-        "boolean" => typeof(BooleanType),
-        "integer" or "unsignedInt" or "positiveInt" => typeof(IntType),
-        "decimal" => typeof(FloatType),
-        _ => typeof(StringType),
     };
 }
