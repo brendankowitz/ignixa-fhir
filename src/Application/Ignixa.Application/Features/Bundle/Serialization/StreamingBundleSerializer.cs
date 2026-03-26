@@ -13,6 +13,7 @@ using Ignixa.Serialization;
 using Ignixa.Specification;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
+using ISchema = Ignixa.Abstractions.ISchema;
 using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;

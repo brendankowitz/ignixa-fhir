@@ -5,8 +5,14 @@
 
 using Autofac;
 using Ignixa.Abstractions;
+using FhirISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.Configuration;
+using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
+using Ignixa.Application.Features.Experimental.GraphQl.Events;
+using Ignixa.Application.Features.Experimental.GraphQl.Execution;
+using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
+using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Application.Features.Experimental.Ips.Events;
 using Ignixa.Application.Features.Experimental.Ips.Generator;
@@ -29,6 +35,7 @@ using Ignixa.NarrativeGenerator;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.Infrastructure;
@@ -81,6 +88,12 @@ public static class ExperimentalAutofacRegistration
         if (options.Features.Summary.Enabled)
         {
             builder.RegisterIpsHandlers();
+        }
+
+        // Feature: GraphQL - $graphql operation
+        if (options.Features.GraphQl.Enabled)
+        {
+            builder.RegisterGraphQlHandlers();
         }
 
         return builder;
@@ -197,7 +210,7 @@ public static class ExperimentalAutofacRegistration
                 ? versionContext.GetSchemaProvider(requestContext.FhirVersion, requestContext.TenantId)
                 : versionContext.GetBaseSchemaProvider(FhirVersion.R4);
         })
-        .As<ISchema>()
+        .As<FhirISchema>()
         .InstancePerLifetimeScope();
 
         // IPS Generator Service (scoped per request - uses request context)
@@ -212,6 +225,36 @@ public static class ExperimentalAutofacRegistration
 
         // Package loaded event handler to register IPS strategies
         builder.RegisterType<PackageInstalledStrategyRegistrationHandler>()
+            .As<INotificationHandler<PackageLoadedEvent>>()
+            .InstancePerDependency();
+    }
+
+    private static void RegisterGraphQlHandlers(this ContainerBuilder builder)
+    {
+        builder.RegisterType<ResourceResolver>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<SearchResolver>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<GraphQlExecutionService>()
+            .As<IGraphQlExecutionService>()
+            .InstancePerLifetimeScope();
+
+        builder.Register(c =>
+        {
+            var sp = c.Resolve<IServiceProvider>();
+            var modules = new List<IFhirTypeModule>();
+            foreach (var version in GraphQlNamingHelper.SupportedVersions)
+            {
+                var module = sp.GetKeyedService<IFhirTypeModule>(version);
+                if (module is not null)
+                    modules.Add(module);
+            }
+            return (IReadOnlyList<IFhirTypeModule>)modules;
+        }).SingleInstance();
+
+        builder.RegisterType<PackageLoadedSchemaInvalidationHandler>()
             .As<INotificationHandler<PackageLoadedEvent>>()
             .InstancePerDependency();
     }

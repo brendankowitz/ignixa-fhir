@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Ips.Api;
+using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;

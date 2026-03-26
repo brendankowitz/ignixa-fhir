@@ -57,6 +57,8 @@ public static class ServiceCollectionExtensions
         // Sidecar logging provider (if enabled, must be after gRPC clients)
         services.AddSidecarLogging(configuration);
 
+        services.AddExperimentalServices(configuration);
+
         // Conformance services (event store initializer)
         services.AddConformanceServices();
 

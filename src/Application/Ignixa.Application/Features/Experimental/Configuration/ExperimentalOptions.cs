@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
+
 namespace Ignixa.Application.Features.Experimental.Configuration;
 
 /// <summary>
@@ -52,6 +54,11 @@ public class ExperimentalFeaturesOptions
     /// Future: $summary operation configuration.
     /// </summary>
     public SummaryExperimentalOptions Summary { get; set; } = new();
+
+    /// <summary>
+    /// $graphql operation configuration.
+    /// </summary>
+    public GraphQlExperimentalOptions GraphQl { get; set; } = new();
 }
 
 /// <summary>
@@ -123,3 +130,4 @@ public class SummaryExperimentalOptions
     /// </summary>
     public ICollection<string> AllowedResourceTypes { get; } = [];
 }
+

@@ -6,6 +6,7 @@
 using Autofac;
 using DurableTask.Core;
 using Ignixa.Abstractions;
+using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Bundle;

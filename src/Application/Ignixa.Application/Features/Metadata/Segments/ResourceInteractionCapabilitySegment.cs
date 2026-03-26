@@ -6,6 +6,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Ignixa.Abstractions;
+using IType = Ignixa.Abstractions.IType;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Search;

@@ -1,0 +1,96 @@
+using System.Text;
+using System.Text.Json;
+using GreenDonut;
+using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
+using Ignixa.Application.Features.Experimental.GraphQl.Models;
+using Ignixa.Application.Features.Resource;
+using Ignixa.Domain.Models;
+using Medino;
+using NSubstitute;
+using Shouldly;
+
+namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
+
+public class ResourceDataLoaderTests
+{
+    private sealed class TestableResourceDataLoader(IMediator mediator)
+        : ResourceDataLoader(mediator, AutoBatchScheduler.Default, new DataLoaderOptions())
+    {
+        public Task<IReadOnlyDictionary<ResourceKey, JsonElement?>> LoadBatchPublicAsync(
+            IReadOnlyList<ResourceKey> keys,
+            CancellationToken cancellationToken)
+            => LoadBatchAsync(keys, cancellationToken);
+    }
+
+    private static SearchEntryResult MakeResult(string resourceType, string id, string json, bool isDeleted = false)
+    {
+        var bytes = Encoding.UTF8.GetBytes(json);
+        return new SearchEntryResult(resourceType, id, "1", DateTimeOffset.UtcNow, bytes)
+        {
+            IsDeleted = isDeleted,
+        };
+    }
+
+    [Fact]
+    public async Task GivenBatchOfKeys_WhenLoading_ThenReturnsAllResults()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var key1 = new ResourceKey("Patient", "123");
+        var key2 = new ResourceKey("Observation", "456");
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Patient" && q.Id == "123"), Arg.Any<CancellationToken>())
+            .Returns(MakeResult("Patient", "123", """{"resourceType":"Patient","id":"123"}"""));
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Observation" && q.Id == "456"), Arg.Any<CancellationToken>())
+            .Returns((SearchEntryResult?)null);
+
+        var loader = new TestableResourceDataLoader(mediator);
+
+        var result = await loader.LoadBatchPublicAsync([key1, key2], CancellationToken.None);
+
+        result.ShouldContainKey(key1);
+        result.ShouldContainKey(key2);
+        result[key1].ShouldNotBeNull();
+        result[key2].ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenDeletedResource_WhenLoading_ThenReturnsNullForKey()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var key = new ResourceKey("Patient", "deleted-99");
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Patient" && q.Id == "deleted-99"), Arg.Any<CancellationToken>())
+            .Returns(MakeResult("Patient", "deleted-99", """{"resourceType":"Patient","id":"deleted-99"}""", isDeleted: true));
+
+        var loader = new TestableResourceDataLoader(mediator);
+
+        var result = await loader.LoadBatchPublicAsync([key], CancellationToken.None);
+
+        result.ShouldContainKey(key);
+        result[key].ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenValidResource_WhenLoading_ThenParsesJsonElementCorrectly()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var key = new ResourceKey("Patient", "789");
+        const string json = """{"resourceType":"Patient","id":"789","birthDate":"1990-01-01"}""";
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Patient" && q.Id == "789"), Arg.Any<CancellationToken>())
+            .Returns(MakeResult("Patient", "789", json));
+
+        var loader = new TestableResourceDataLoader(mediator);
+
+        var result = await loader.LoadBatchPublicAsync([key], CancellationToken.None);
+
+        result[key].ShouldNotBeNull();
+        result[key]!.Value.GetProperty("id").GetString().ShouldBe("789");
+        result[key]!.Value.GetProperty("birthDate").GetString().ShouldBe("1990-01-01");
+    }
+}

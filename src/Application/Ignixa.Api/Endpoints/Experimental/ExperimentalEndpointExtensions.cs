@@ -62,6 +62,12 @@ public static class ExperimentalEndpointExtensions
             app.MapSummaryEndpoints(configureTenantGroup);
         }
 
+        // Feature: GraphQL - $graphql operation
+        if (options.Features.GraphQl.Enabled)
+        {
+            app.MapGraphQlEndpoints(configureTenantGroup);
+        }
+
         return app;
     }
 }

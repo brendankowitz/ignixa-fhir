@@ -6,6 +6,7 @@
 using System.Collections.Frozen;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Ips.Api;
+using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Application.Features.Experimental.Ips.Common;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;

@@ -10,6 +10,8 @@ using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
+using ISchema = Ignixa.Abstractions.ISchema;
+using IType = Ignixa.Abstractions.IType;
 
 namespace Ignixa.Application.Features.Specification;
 
