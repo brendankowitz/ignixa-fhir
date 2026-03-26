@@ -135,7 +135,16 @@ public static class GraphQlEndpoints
         if (string.IsNullOrWhiteSpace(query))
             return Results.BadRequest("'query' query parameter is required.");
 
-        var body = BuildBodyFromGetParams(query, operationName, variables);
+        GraphQlRequestBody body;
+        try
+        {
+            body = BuildBodyFromGetParams(query, operationName, variables);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest("Invalid JSON in 'variables' query parameter.");
+        }
+
         var version = ResolveVersion(contextAccessor);
         var result = await executionService.ExecuteAsync(body, version, cancellationToken);
         return await WriteResultAsync(context, result, cancellationToken);
@@ -189,7 +198,16 @@ public static class GraphQlEndpoints
         if (string.IsNullOrWhiteSpace(query))
             return Results.BadRequest("'query' query parameter is required.");
 
-        var body = BuildBodyFromGetParams(query, operationName, variables);
+        GraphQlRequestBody body;
+        try
+        {
+            body = BuildBodyFromGetParams(query, operationName, variables);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest("Invalid JSON in 'variables' query parameter.");
+        }
+
         var version = ResolveVersion(contextAccessor);
         var result = await executionService.ExecuteInstanceAsync(body, version, resourceType, id, cancellationToken);
         return await WriteResultAsync(context, result, cancellationToken);
@@ -203,18 +221,9 @@ public static class GraphQlEndpoints
         string? operationName,
         string? variables)
     {
-        System.Text.Json.JsonElement? parsedVariables = null;
+        JsonElement? parsedVariables = null;
         if (!string.IsNullOrEmpty(variables))
-        {
-            try
-            {
-                parsedVariables = JsonSerializer.Deserialize<JsonElement>(variables);
-            }
-            catch (JsonException)
-            {
-                parsedVariables = null;
-            }
-        }
+            parsedVariables = JsonSerializer.Deserialize<JsonElement>(variables);
 
         return new GraphQlRequestBody(query, operationName, parsedVariables);
     }

@@ -79,6 +79,7 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         JsonValueKind.False => false,
         JsonValueKind.Null => null,
         JsonValueKind.Object => DeserializeVariables(element),
+        JsonValueKind.Array => element.EnumerateArray().Select(ExtractValue).ToList(),
         _ => element.GetRawText()
     };
 }
