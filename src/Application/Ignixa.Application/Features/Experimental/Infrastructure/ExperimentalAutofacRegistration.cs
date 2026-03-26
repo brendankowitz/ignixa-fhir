@@ -5,7 +5,7 @@
 
 using Autofac;
 using Ignixa.Abstractions;
-using FhirISchema = Ignixa.Abstractions.ISchema;
+using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
@@ -210,7 +210,7 @@ public static class ExperimentalAutofacRegistration
                 ? versionContext.GetSchemaProvider(requestContext.FhirVersion, requestContext.TenantId)
                 : versionContext.GetBaseSchemaProvider(FhirVersion.R4);
         })
-        .As<FhirISchema>()
+        .As<ISchema>()
         .InstancePerLifetimeScope();
 
         // IPS Generator Service (scoped per request - uses request context)

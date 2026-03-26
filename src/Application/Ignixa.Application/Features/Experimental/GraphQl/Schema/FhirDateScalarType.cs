@@ -3,24 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using HotChocolate.Language;
-using HotChocolate.Types;
-
 namespace Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
-internal sealed class FhirDateScalarType : ScalarType<string, StringValueNode>
-{
-    public FhirDateScalarType() : base("FhirDate")
-    {
-        Description = "FHIR date scalar: YYYY, YYYY-MM, or YYYY-MM-DD";
-    }
-
-    public override IValueNode ParseResult(object? resultValue)
-        => resultValue is string s ? new StringValueNode(s) : NullValueNode.Default;
-
-    protected override string ParseLiteral(StringValueNode valueSyntax)
-        => valueSyntax.Value;
-
-    protected override StringValueNode ParseValue(string runtimeValue)
-        => new(runtimeValue);
-}
+internal sealed class FhirDateScalarType()
+    : FhirStringScalarType("FhirDate", "FHIR date scalar: YYYY, YYYY-MM, or YYYY-MM-DD");

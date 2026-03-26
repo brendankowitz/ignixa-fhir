@@ -51,29 +51,6 @@ internal static class FieldResolver
             : null;
     }
 
-    internal static IReadOnlyList<JsonElement> GetArrayProperty(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-            return [];
-
-        if (!element.TryGetProperty(propertyName, out var value) ||
-            value.ValueKind != JsonValueKind.Array)
-            return [];
-
-        return value.EnumerateArray().ToList();
-    }
-
-    internal static JsonElement? GetObjectProperty(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-            return null;
-
-        return element.TryGetProperty(propertyName, out var value) &&
-               value.ValueKind == JsonValueKind.Object
-            ? value
-            : null;
-    }
-
     private static JsonElement? GetParentElement(IResolverContext context)
     {
         var raw = context.Parent<object?>();

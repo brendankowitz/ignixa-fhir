@@ -58,7 +58,7 @@ public static class ExperimentalServicesRegistration
         // Feature: GraphQL - $graphql operation
         if (options.Features.GraphQl.Enabled)
         {
-            services.AddGraphQlServices(configuration, options.Features.GraphQl);
+            services.AddGraphQlServices(options.Features.GraphQl);
         }
 
         return services;
@@ -66,7 +66,6 @@ public static class ExperimentalServicesRegistration
 
     private static IServiceCollection AddGraphQlServices(
         this IServiceCollection services,
-        IConfiguration configuration,
         GraphQlExperimentalOptions graphQlOptions)
     {
         foreach (var version in GraphQlNamingHelper.SupportedVersions)
