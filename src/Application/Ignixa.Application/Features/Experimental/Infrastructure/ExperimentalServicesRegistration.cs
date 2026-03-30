@@ -83,6 +83,7 @@ public static class ExperimentalServicesRegistration
 
             var maxDepth = graphQlOptions.MaxQueryDepth;
             var timeout = TimeSpan.FromSeconds(graphQlOptions.ExecutionTimeoutSeconds);
+            var enableIntrospection = graphQlOptions.EnableIntrospection;
 
             services.AddGraphQLServer(schemaName)
                 .AddTypeModule(sp =>
@@ -91,6 +92,7 @@ public static class ExperimentalServicesRegistration
                     return (HotChocolate.Execution.Configuration.ITypeModule)module;
                 })
                 .AddMaxExecutionDepthRule(maxDepth)
+                .DisableIntrospection(!enableIntrospection)
                 .ModifyRequestOptions(o => o.ExecutionTimeout = timeout)
                 .AddHttpRequestInterceptor<FhirHttpRequestInterceptor>();
         }

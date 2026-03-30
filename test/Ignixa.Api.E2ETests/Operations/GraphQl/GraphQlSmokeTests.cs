@@ -26,10 +26,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
     public async Task GivenGraphQlAdvertised_WhenPostingSystemQuery_ThenReturnsDataWithoutErrors()
     {
         // Arrange
-        if (!Harness.SupportsOperationAnywhere("graphql"))
-        {
-            return;
-        }
+        RequireOperationAnywhere("graphql");
         var query = """{"query":"query { __typename }"}""";
         using var content = new StringContent(query, Encoding.UTF8, "application/json");
 
@@ -47,10 +44,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
     public async Task GivenGraphQlAdvertisedAndPatientExists_WhenPostingInstanceQuery_ThenReturnsDataWithoutErrors()
     {
         // Arrange
-        if (!Harness.SupportsOperationAnywhere("graphql"))
-        {
-            return;
-        }
+        RequireOperationAnywhere("graphql");
         var createdPatient = await Harness.CreateResourceAsync(CreatePatient().WithTag(Guid.NewGuid().ToString()).Build());
         var query = """{"query":"query { __typename }"}""";
         using var content = new StringContent(query, Encoding.UTF8, "application/json");
@@ -69,10 +63,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
     public async Task GivenGraphQlAdvertised_WhenGettingSystemQuery_ThenReturnsDataWithoutErrors()
     {
         // Arrange
-        if (!Harness.SupportsOperationAnywhere("graphql"))
-        {
-            return;
-        }
+        RequireOperationAnywhere("graphql");
         using var request = new HttpRequestMessage(HttpMethod.Get, "/$graphql?query=query%20%7B%20__typename%20%7D");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 

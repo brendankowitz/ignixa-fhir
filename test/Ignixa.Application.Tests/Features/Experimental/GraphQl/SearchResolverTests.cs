@@ -10,6 +10,7 @@ using HotChocolate;
 using HotChocolate.Resolvers;
 using Ignixa.Abstractions;
 using FhirISchema = Ignixa.Abstractions.ISchema;
+using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
@@ -18,6 +19,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Medino;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -65,15 +67,36 @@ public class SearchResolverTests
         resolverContext.ArgumentOptional<int?>("_count").Returns(new Optional<int?>());
         resolverContext.ArgumentOptional<string?>("_cursor").Returns(new Optional<string?>());
         resolverContext.ArgumentOptional<string?>("_sort").Returns(new Optional<string?>());
+        resolverContext.ArgumentOptional<string?>("_total").Returns(new Optional<string?>());
 
         return (mediator, builderFactory, builder, contextAccessor, resolverContext);
+    }
+
+    private static IOptions<ExperimentalOptions> DefaultOptions(
+        int defaultPageSize = 10,
+        int maxPageSize = 1000)
+    {
+        var graphQlOptions = new GraphQlExperimentalOptions
+        {
+            DefaultPageSize = defaultPageSize,
+            MaxPageSize = maxPageSize,
+        };
+        var experimentalOptions = new ExperimentalOptions();
+        experimentalOptions.Features.GraphQl = graphQlOptions;
+        return Options.Create(experimentalOptions);
     }
 
     private static SearchResolver CreateResolver(
         IMediator mediator,
         ISearchOptionsBuilderFactory builderFactory,
-        IFhirRequestContextAccessor contextAccessor)
-        => new SearchResolver(mediator, builderFactory, contextAccessor, NullLogger<SearchResolver>.Instance);
+        IFhirRequestContextAccessor contextAccessor,
+        IOptions<ExperimentalOptions>? experimentalOptions = null)
+        => new SearchResolver(
+            mediator,
+            builderFactory,
+            contextAccessor,
+            experimentalOptions ?? DefaultOptions(),
+            NullLogger<SearchResolver>.Instance);
 
     [Fact]
     public async Task GivenSearchQuery_WhenSearching_ThenReturnsConnectionResult()
@@ -162,6 +185,97 @@ public class SearchResolverTests
         // Assert
         result.Links.ShouldNotBeNull();
         result.Links.Next.ShouldBe("next-page-token");
+    }
+
+    [Fact]
+    public async Task GivenTotalArgument_WhenSearching_ThenPassesTotalModeToBuilder()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+        resolverContext.ArgumentOptional<string?>("_total").Returns(new Optional<string?>("accurate"));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_total" && q.Value == "accurate")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenCountExceedsMaxPageSize_WhenSearching_ThenCapsAtMaxPageSize()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+        resolverContext.ArgumentOptional<int?>("_count").Returns(new Optional<int?>(5000));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor, DefaultOptions(maxPageSize: 100));
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_count" && q.Value == "100")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenNoCountArgument_WhenSearching_ThenUsesDefaultPageSize()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor, DefaultOptions(defaultPageSize: 25));
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_count" && q.Value == "25")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenNegativeCount_WhenSearching_ThenClampsToZero()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+        resolverContext.ArgumentOptional<int?>("_count").Returns(new Optional<int?>(-5));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_count" && q.Value == "0")),
+            Arg.Any<FhirISchema?>());
     }
 
     [Fact]

@@ -95,7 +95,6 @@ public static class GraphQlEndpoints
         HttpContext context,
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
-        [FromServices] IOptions<ExperimentalOptions> options,
         CancellationToken cancellationToken)
     {
         GraphQlRequestBody body;
@@ -156,7 +155,6 @@ public static class GraphQlEndpoints
         string id,
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
-        [FromServices] IOptions<ExperimentalOptions> options,
         CancellationToken cancellationToken)
     {
         GraphQlRequestBody body;

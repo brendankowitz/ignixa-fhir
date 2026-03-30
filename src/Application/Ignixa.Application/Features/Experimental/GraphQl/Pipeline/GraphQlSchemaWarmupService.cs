@@ -27,6 +27,10 @@ public sealed class GraphQlSchemaWarmupService(
                 var schemaName = GraphQlNamingHelper.GetSchemaName(version);
                 await executorResolver.GetRequestExecutorAsync(schemaName, cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Failed to warm up GraphQL schema for version {Version}", version);
