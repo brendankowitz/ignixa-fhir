@@ -66,6 +66,42 @@ public abstract class CapabilityDrivenTestBase
     }
 
     /// <summary>
+    /// Requires that a system-level operation is supported.
+    /// Throws SkipException if not supported.
+    /// </summary>
+    protected void RequireSystemOperation(string operationName)
+    {
+        if (!Harness.SupportsSystemOperation(operationName))
+        {
+            throw new SkipException($"System operation '${operationName.TrimStart('$')}' not supported in capability statement (FHIR {FhirVersion})");
+        }
+    }
+
+    /// <summary>
+    /// Requires that a resource-level operation is supported for a given resource type.
+    /// Throws SkipException if not supported.
+    /// </summary>
+    protected void RequireResourceOperation(string resourceType, string operationName)
+    {
+        if (!Harness.SupportsResourceOperation(resourceType, operationName))
+        {
+            throw new SkipException($"Operation '{resourceType}/${operationName.TrimStart('$')}' not supported in capability statement (FHIR {FhirVersion})");
+        }
+    }
+
+    /// <summary>
+    /// Requires that an operation is supported either at system level or on any resource.
+    /// Throws SkipException if not supported.
+    /// </summary>
+    protected void RequireOperationAnywhere(string operationName)
+    {
+        if (!Harness.SupportsOperationAnywhere(operationName))
+        {
+            throw new SkipException($"Operation '${operationName.TrimStart('$')}' not advertised in capability statement (FHIR {FhirVersion})");
+        }
+    }
+
+    /// <summary>
     /// Creates a new ScenarioBuilder for building test scenarios.
     /// </summary>
     /// <returns>A new ScenarioBuilder instance configured with the test's SchemaProvider.</returns>

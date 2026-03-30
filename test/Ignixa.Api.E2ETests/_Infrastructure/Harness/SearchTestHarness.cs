@@ -70,6 +70,88 @@ public sealed class SearchTestHarness
     }
 
     /// <summary>
+    /// Checks if a system-level operation is supported.
+    /// Uses cached capability statement - synchronous, no network call.
+    /// </summary>
+    public bool SupportsSystemOperation(string operationName)
+    {
+        if (_capability.Rest is null || _capability.Rest.Count == 0)
+        {
+            return false;
+        }
+
+        var rest = _capability.Rest[0];
+        if (rest.Operation is null)
+        {
+            return false;
+        }
+
+        var normalizedOperationName = NormalizeOperationName(operationName);
+        return rest.Operation.Any(op => NormalizeOperationName(op.Name) == normalizedOperationName);
+    }
+
+    /// <summary>
+    /// Checks if a resource-level operation is supported for a given resource type.
+    /// Uses cached capability statement - synchronous, no network call.
+    /// </summary>
+    public bool SupportsResourceOperation(string resourceType, string operationName)
+    {
+        if (_capability.Rest is null || _capability.Rest.Count == 0)
+        {
+            return false;
+        }
+
+        var rest = _capability.Rest[0];
+        if (rest.Resource is null)
+        {
+            return false;
+        }
+
+        var resource = rest.Resource.FirstOrDefault(r => r.Type == resourceType);
+        if (resource is null || resource.Operation is null)
+        {
+            return false;
+        }
+
+        var normalizedOperationName = NormalizeOperationName(operationName);
+        return resource.Operation.Any(op => NormalizeOperationName(op.Name) == normalizedOperationName);
+    }
+
+    /// <summary>
+    /// Checks if an operation is supported either at the system level or for any resource.
+    /// </summary>
+    public bool SupportsOperationAnywhere(string operationName)
+    {
+        if (SupportsSystemOperation(operationName))
+        {
+            return true;
+        }
+
+        if (_capability.Rest is null || _capability.Rest.Count == 0)
+        {
+            return false;
+        }
+
+        var rest = _capability.Rest[0];
+        if (rest.Resource is null)
+        {
+            return false;
+        }
+
+        return rest.Resource.Any(resource => SupportsResourceOperation(resource.Type ?? string.Empty, operationName));
+    }
+
+    private static string NormalizeOperationName(string? operationName)
+    {
+        if (string.IsNullOrWhiteSpace(operationName))
+        {
+            return string.Empty;
+        }
+
+        return operationName.Trim().TrimStart('$');
+    }
+
+    /// <summary>
     /// Creates a single resource on the server.
     /// </summary>
     public async Task<ResourceJsonNode> CreateResourceAsync(ResourceJsonNode resource, CancellationToken cancellationToken = default)
