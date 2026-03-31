@@ -7,6 +7,7 @@ using HotChocolate.AspNetCore;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
+using Ignixa.Application.Features.Experimental.GraphQl.Directives;
 using Ignixa.Application.Features.Experimental.GraphQl.Pipeline;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 using Ignixa.Application.Features.Search;
@@ -96,7 +97,11 @@ public static class ExperimentalServicesRegistration
                 .DisableIntrospection(!enableIntrospection)
                 .ModifyRequestOptions(o => o.ExecutionTimeout = timeout)
                 .AddHttpRequestInterceptor<FhirHttpRequestInterceptor>()
-                .AddErrorFilter<FhirGraphQlErrorFilter>();
+                .AddErrorFilter<FhirGraphQlErrorFilter>()
+                .AddDirectiveType<FhirFlattenDirectiveType>()
+                .AddDirectiveType<FhirFirstDirectiveType>()
+                .AddDirectiveType<FhirSingletonDirectiveType>()
+                .AddDirectiveType<FhirSliceDirectiveType>();
         }
 
         services.AddHostedService<GraphQlSchemaWarmupService>();
