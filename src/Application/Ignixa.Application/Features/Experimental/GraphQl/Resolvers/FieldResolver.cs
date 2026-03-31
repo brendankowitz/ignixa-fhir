@@ -79,7 +79,7 @@ internal static class FieldResolver
         return new ResourceKey(resourceType, id);
     }
 
-    private static JsonElement? GetParentElement(IResolverContext context)
+    internal static JsonElement? GetParentElement(IResolverContext context)
     {
         var raw = context.Parent<object?>();
         return raw switch

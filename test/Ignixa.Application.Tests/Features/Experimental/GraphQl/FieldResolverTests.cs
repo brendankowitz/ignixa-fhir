@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Shouldly;
@@ -48,5 +49,16 @@ public class FieldResolverTests
         var result = FieldResolver.ParseFhirReference(reference);
 
         result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenJsonWithUnderscoreField_WhenAccessingPrimitiveExtension_ThenReturnsElement()
+    {
+        var json = JsonSerializer.Deserialize<JsonElement>(
+            """{"birthDate":"1990-01-01","_birthDate":{"extension":[{"url":"http://example.com","valueString":"test"}]}}""");
+
+        json.TryGetProperty("_birthDate", out var element).ShouldBeTrue();
+        element.TryGetProperty("extension", out var extensions).ShouldBeTrue();
+        extensions.GetArrayLength().ShouldBe(1);
     }
 }

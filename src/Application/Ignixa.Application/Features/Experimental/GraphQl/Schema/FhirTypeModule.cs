@@ -31,6 +31,14 @@ public sealed class FhirTypeModule(
     ISearchParameterDefinitionManager searchParameterManager,
     ILogger<FhirTypeModule> logger) : ITypeModule, IFhirTypeModule
 {
+    private static readonly string[] ComplexExtensionValueTypes =
+    [
+        "valueCoding", "valueCodeableConcept", "valueQuantity",
+        "valuePeriod", "valueRange", "valueReference",
+        "valueIdentifier", "valueHumanName", "valueAddress",
+        "valueContactPoint", "valueAttachment",
+    ];
+
     public event EventHandler<EventArgs>? TypesChanged;
 
     public ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(
@@ -41,6 +49,7 @@ public sealed class FhirTypeModule(
         var types = new List<ITypeSystemMember>();
 
         EmitFhirScalars(types);
+        EmitElementTypes(types);
 
         var concreteResourceTypes = GetConcreteResourceTypes();
 
@@ -92,6 +101,73 @@ public sealed class FhirTypeModule(
         types.Add(new FhirDateTimeScalarType());
         types.Add(new FhirInstantScalarType());
         types.Add(new FhirTimeScalarType());
+    }
+
+    private static void EmitElementTypes(List<ITypeSystemMember> types)
+    {
+        types.Add(new ObjectType(descriptor =>
+        {
+            descriptor.Name("Element");
+            descriptor.Description("FHIR Element with id and extensions on primitives");
+
+            descriptor.Field("id").Type<StringType>()
+                .Resolve(ctx =>
+                {
+                    var parent = ctx.Parent<JsonElement>();
+                    return parent.TryGetProperty("id", out var id) ? id.GetString() : null;
+                });
+
+            descriptor.Field("extension")
+                .Type(new ListTypeNode(new NamedTypeNode("Extension")))
+                .Resolve(ctx =>
+                {
+                    var parent = ctx.Parent<JsonElement>();
+                    if (parent.TryGetProperty("extension", out var ext) && ext.ValueKind == JsonValueKind.Array)
+                        return ext.EnumerateArray().ToList();
+                    return (object?)null;
+                });
+        }));
+
+        types.Add(new ObjectType(descriptor =>
+        {
+            descriptor.Name("Extension");
+            descriptor.Description("FHIR Extension element");
+
+            descriptor.Field("url").Type<NonNullType<StringType>>()
+                .Resolve(ctx => FhirFieldResolver.GetStringProperty(ctx.Parent<JsonElement>(), "url"));
+
+            // Common value[x] types
+            foreach (var (valueName, graphQlType) in new[]
+            {
+                ("valueString", "String"),
+                ("valueBoolean", "Boolean"),
+                ("valueInteger", "Int"),
+                ("valueDecimal", "Decimal"),
+                ("valueCode", "String"),
+                ("valueUri", "String"),
+                ("valueUrl", "String"),
+                ("valueDate", "FhirDate"),
+                ("valueDateTime", "FhirDateTime"),
+                ("valueInstant", "FhirInstant"),
+                ("valueTime", "FhirTime"),
+            })
+            {
+                var capturedName = valueName;
+                descriptor.Field(GraphQlNamingHelper.ToCamelCase(capturedName))
+                    .Type(new NamedTypeNode(graphQlType))
+                    .Resolve(ctx => FhirFieldResolver.ResolveField(ctx, capturedName));
+            }
+
+            // Complex value types that reference known types
+            foreach (var complexValueName in ComplexExtensionValueTypes)
+            {
+                var capturedName = complexValueName;
+                var typeName = capturedName[5..]; // Remove "value" prefix
+                descriptor.Field(GraphQlNamingHelper.ToCamelCase(capturedName))
+                    .Type(new NamedTypeNode(typeName))
+                    .Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, capturedName));
+            }
+        }));
     }
 
     private ObjectType BuildResourceObjectType(
@@ -152,6 +228,18 @@ public sealed class FhirTypeModule(
                 var primitiveField = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
                     .Type(ApplyCardinality(graphQlTypeNode, child));
                 primitiveField.Resolve(ctx => FhirFieldResolver.ResolveField(ctx, elementName));
+
+                // Companion _field for primitive extension access
+                var companionFieldName = $"_{GraphQlNamingHelper.ToCamelCase(elementName)}";
+                var companionField = descriptor.Field(companionFieldName)
+                    .Type(ApplyCardinality(new NamedTypeNode("Element"), child));
+                companionField.Resolve(ctx =>
+                {
+                    var parent = FhirFieldResolver.GetParentElement(ctx);
+                    if (parent?.ValueKind != JsonValueKind.Object) return null;
+                    return parent.Value.TryGetProperty($"_{elementName}", out var value) ? value : null;
+                });
+
                 return;
             }
 
@@ -182,6 +270,17 @@ public sealed class FhirTypeModule(
             var primitiveField = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
                 .Type(ApplyCardinality(graphQlTypeNode, child));
             primitiveField.Resolve(ctx => FhirFieldResolver.ResolveField(ctx, elementName));
+
+            // Companion _field for primitive extension access
+            var companionFieldName = $"_{GraphQlNamingHelper.ToCamelCase(elementName)}";
+            var companionField = descriptor.Field(companionFieldName)
+                .Type(ApplyCardinality(new NamedTypeNode("Element"), child));
+            companionField.Resolve(ctx =>
+            {
+                var parent = FhirFieldResolver.GetParentElement(ctx);
+                if (parent?.ValueKind != JsonValueKind.Object) return null;
+                return parent.Value.TryGetProperty($"_{elementName}", out var value) ? value : null;
+            });
         }
     }
 
