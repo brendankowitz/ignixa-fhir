@@ -3,8 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Endpoints.Experimental;
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Middleware;
+using Ignixa.Application.Features.Experimental.Configuration;
 
 namespace Ignixa.Api.Registrations;
 
@@ -50,6 +52,16 @@ public static class MiddlewareRegistration
 
         // FHIR request context middleware (creates centralized context)
         app.UseMiddleware<FhirRequestContextMiddleware>();
+
+        // GraphQL operation middleware - intercepts responses when _graphql parameter is present
+        var experimentalOptions = configuration
+            .GetSection(ExperimentalOptions.SectionName)
+            .Get<ExperimentalOptions>() ?? new ExperimentalOptions();
+
+        if (experimentalOptions.Enabled && experimentalOptions.Features.GraphQl.Enabled)
+        {
+            app.UseMiddleware<GraphQlOperationMiddleware>();
+        }
 
         // Development validation for middleware ordering
         if (environment.IsDevelopment())
