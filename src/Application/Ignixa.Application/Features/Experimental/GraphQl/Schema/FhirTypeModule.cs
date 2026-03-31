@@ -14,6 +14,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
+using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging;
 using FhirIType = Ignixa.Abstractions.IType;
 using FhirITypeExtended = Ignixa.Abstractions.ITypeExtended;
@@ -27,6 +28,7 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
 public sealed class FhirTypeModule(
     FhirIFhirSchemaProvider schemaProvider,
+    ISearchParameterDefinitionManager searchParameterManager,
     ILogger<FhirTypeModule> logger) : ITypeModule, IFhirTypeModule
 {
     public event EventHandler<EventArgs>? TypesChanged;
@@ -388,6 +390,7 @@ public sealed class FhirTypeModule(
                 var listField = descriptor.Field(listFieldName)
                     .Type(new ListTypeNode(new NamedTypeNode(capturedType)));
                 AddSearchArguments(listField);
+                AddResourceSearchArguments(listField, capturedType);
                 listField.Resolve(async ctx =>
                 {
                     var resolver = ctx.Service<AppSearchResolver>();
@@ -399,6 +402,7 @@ public sealed class FhirTypeModule(
                 var connectionField = descriptor.Field(connectionFieldName)
                     .Type(new NamedTypeNode(GraphQlNamingHelper.ToConnectionTypeName(capturedType)));
                 AddSearchArguments(connectionField);
+                AddResourceSearchArguments(connectionField, capturedType);
                 connectionField.Resolve(async ctx =>
                 {
                     var resolver = ctx.Service<AppSearchResolver>();
@@ -418,6 +422,32 @@ public sealed class FhirTypeModule(
             .Description("Sort criteria (e.g., \"-date\", \"name\")"));
         fieldDescriptor.Argument("_total", a => a.Type<StringType>()
             .Description("Total count mode: none | estimate | accurate"));
+    }
+
+    private void AddResourceSearchArguments(
+        IObjectFieldDescriptor fieldDescriptor,
+        string resourceType)
+    {
+        if (!searchParameterManager.TryGetSearchParameters(resourceType, out var searchParams))
+            return;
+
+        var skipParams = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "_count", "_cursor", "_sort", "_total",
+            "_include", "_revinclude", "_contained", "_containedType",
+        };
+
+        foreach (var param in searchParams)
+        {
+            if (skipParams.Contains(param.Code))
+                continue;
+
+            var graphQlName = param.Code.Replace('-', '_');
+            fieldDescriptor.Argument(graphQlName, a => a.Type<StringType>()
+                .Description(string.IsNullOrEmpty(param.Description)
+                    ? $"FHIR search parameter: {param.Code}"
+                    : param.Description));
+        }
     }
 
     private static ChoiceElementValue? ResolveChoiceElement(

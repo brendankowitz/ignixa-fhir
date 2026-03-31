@@ -116,6 +116,19 @@ public sealed class SearchResolver(
         if (!string.IsNullOrEmpty(total))
             parameters.Add(new QueryParameter("_total", total));
 
+        // Forward all other arguments as FHIR search parameters
+        foreach (var argument in context.Selection.Field.Arguments)
+        {
+            var argName = argument.Name;
+            if (argName is "_count" or "_cursor" or "_sort" or "_total")
+                continue;
+
+            var fhirParamName = argName.Replace('_', '-');
+            var valueOptional = context.ArgumentOptional<string?>(argName);
+            if (valueOptional.HasValue && !string.IsNullOrEmpty(valueOptional.Value))
+                parameters.Add(new QueryParameter(fhirParamName, valueOptional.Value));
+        }
+
         var builder = searchOptionsBuilderFactory.Create(fhirVersion, tenantId);
         return builder.Build(resourceType, parameters);
     }

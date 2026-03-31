@@ -7,7 +7,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using HotChocolate;
+using HotChocolate.Execution.Processing;
 using HotChocolate.Resolvers;
+using HotChocolate.Types;
 using Ignixa.Abstractions;
 using FhirISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Application.Features.Experimental.Configuration;
@@ -70,7 +72,24 @@ public class SearchResolverTests
         resolverContext.ArgumentOptional<IReadOnlyList<string>?>("_sort").Returns(new Optional<IReadOnlyList<string>?>());
         resolverContext.ArgumentOptional<string?>("_total").Returns(new Optional<string?>());
 
+        // Set up default empty Selection.Field.Arguments chain
+        SetupFieldArguments(resolverContext, []);
+
         return (mediator, builderFactory, builder, contextAccessor, resolverContext);
+    }
+
+    private static void SetupFieldArguments(IResolverContext resolverContext, IInputField[] arguments)
+    {
+        var argumentsCollection = Substitute.For<IFieldCollection<IInputField>>();
+        argumentsCollection.GetEnumerator().Returns(_ => ((IEnumerable<IInputField>)arguments).GetEnumerator());
+
+        var objectField = Substitute.For<IObjectField>();
+        objectField.Arguments.Returns(argumentsCollection);
+
+        var selection = Substitute.For<ISelection>();
+        selection.Field.Returns(objectField);
+
+        resolverContext.Selection.Returns(selection);
     }
 
     private static IOptions<ExperimentalOptions> DefaultOptions(
@@ -325,5 +344,70 @@ public class SearchResolverTests
         // Assert
         result.Edges.Count.ShouldBe(1);
         result.Edges[0].Resource.GetProperty("id").GetString().ShouldBe("p1");
+    }
+
+    [Fact]
+    public async Task GivenCustomSearchParameter_WhenSearching_ThenForwardsToBuilder()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+
+        // Set up a custom "name" argument on the field
+        var nameArg = Substitute.For<IInputField>();
+        nameArg.Name.Returns("name");
+
+        var birthDateArg = Substitute.For<IInputField>();
+        birthDateArg.Name.Returns("birth_date");
+
+        SetupFieldArguments(resolverContext, [nameArg, birthDateArg]);
+
+        resolverContext.ArgumentOptional<string?>("name").Returns(new Optional<string?>("Smith"));
+        resolverContext.ArgumentOptional<string?>("birth_date").Returns(new Optional<string?>("gt2000"));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "name" && q.Value == "Smith") &&
+                p.Any(q => q.Name == "birth-date" && q.Value == "gt2000")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenCustomSearchParameterWithNoValue_WhenSearching_ThenDoesNotForward()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+
+        var nameArg = Substitute.For<IInputField>();
+        nameArg.Name.Returns("name");
+
+        SetupFieldArguments(resolverContext, [nameArg]);
+
+        // Argument exists but has no value provided
+        resolverContext.ArgumentOptional<string?>("name").Returns(new Optional<string?>());
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.All(q => q.Name != "name")),
+            Arg.Any<FhirISchema?>());
     }
 }
