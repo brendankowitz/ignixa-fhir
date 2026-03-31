@@ -344,6 +344,7 @@ public sealed class FhirTypeModule(
             {
                 var capturedType = resourceType;
 
+                // Single resource read: Patient(id: "p1")
                 descriptor.Field(capturedType)
                     .Argument("id", a => a.Type<NonNullType<IdType>>())
                     .Type(new NamedTypeNode(capturedType))
@@ -354,11 +355,23 @@ public sealed class FhirTypeModule(
                         return await resolver.ResolveByIdAsync(capturedType, id, ctx.RequestAborted);
                     });
 
+                // Simple list search: PatientList(name: "Smith") → [Patient]
                 var listFieldName = $"{capturedType}List";
                 var listField = descriptor.Field(listFieldName)
-                    .Type(new NamedTypeNode(GraphQlNamingHelper.ToConnectionTypeName(capturedType)));
+                    .Type(new ListTypeNode(new NamedTypeNode(capturedType)));
                 AddSearchArguments(listField);
                 listField.Resolve(async ctx =>
+                {
+                    var resolver = ctx.Service<AppSearchResolver>();
+                    return await resolver.SearchListAsync(capturedType, ctx, ctx.RequestAborted);
+                });
+
+                // Connection search: PatientConnection(name: "Smith") → paginated
+                var connectionFieldName = $"{capturedType}Connection";
+                var connectionField = descriptor.Field(connectionFieldName)
+                    .Type(new NamedTypeNode(GraphQlNamingHelper.ToConnectionTypeName(capturedType)));
+                AddSearchArguments(connectionField);
+                connectionField.Resolve(async ctx =>
                 {
                     var resolver = ctx.Service<AppSearchResolver>();
                     return await resolver.SearchAsync(capturedType, ctx, ctx.RequestAborted);

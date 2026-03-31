@@ -279,6 +279,27 @@ public class SearchResolverTests
     }
 
     [Fact]
+    public async Task GivenListSearch_WhenSearching_ThenReturnsListOfJsonElements()
+    {
+        // Arrange
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+
+        var entries = new[] { MakeEntry("p1", PatientJson1), MakeEntry("p2", PatientJson2) };
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable(entries), Total: 2));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        var result = await resolver.SearchListAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(2);
+        result[0].GetProperty("id").GetString().ShouldBe("p1");
+    }
+
+    [Fact]
     public async Task GivenDeletedEntries_WhenSearching_ThenExcludesThemFromResult()
     {
         // Arrange

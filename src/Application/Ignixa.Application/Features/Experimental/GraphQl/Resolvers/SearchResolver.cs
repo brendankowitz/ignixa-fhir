@@ -25,6 +25,31 @@ public sealed class SearchResolver(
     IOptions<ExperimentalOptions> options,
     ILogger<SearchResolver> logger)
 {
+    public async Task<IReadOnlyList<JsonElement>> SearchListAsync(
+        string resourceType,
+        IResolverContext graphQlContext,
+        CancellationToken cancellationToken)
+    {
+        var searchOptions = BuildSearchOptions(resourceType, graphQlContext);
+
+        logger.LogDebug("GraphQL list search {ResourceType}", resourceType);
+
+        var query = new SearchResourcesQuery(resourceType, searchOptions);
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        var entries = new List<JsonElement>();
+        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+        {
+            if (!entry.IsDeleted)
+                entries.Add(JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span));
+
+            if (entries.Count >= searchOptions.MaxItemCount)
+                break;
+        }
+
+        return entries;
+    }
+
     public async Task<SearchConnectionResult> SearchAsync(
         string resourceType,
         IResolverContext graphQlContext,
