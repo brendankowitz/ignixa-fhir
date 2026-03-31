@@ -11,6 +11,7 @@ using HotChocolate.Types;
 using HotChocolate.Types.Descriptors;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
+using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Microsoft.Extensions.Logging;
 using FhirIType = Ignixa.Abstractions.IType;
@@ -254,7 +255,17 @@ public sealed class FhirTypeModule(
                 .Resolve(ctx => FhirFieldResolver.GetStringProperty(ctx.Parent<JsonElement>(), "display"));
 
             descriptor.Field("resource").Type(new NamedTypeNode("Resource"))
-                .Resolve(_ => (object?)null);
+                .Resolve(async ctx =>
+                {
+                    var parent = ctx.Parent<JsonElement>();
+                    var reference = FhirFieldResolver.GetStringProperty(parent, "reference");
+                    var key = FhirFieldResolver.ParseFhirReference(reference);
+                    if (key is null)
+                        return null;
+
+                    var dataLoader = ctx.DataLoader<ResourceDataLoader>();
+                    return await dataLoader.LoadAsync(key, ctx.RequestAborted);
+                });
         });
     }
 

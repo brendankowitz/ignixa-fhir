@@ -9,6 +9,7 @@ using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
+using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
 using Ignixa.Application.Features.Experimental.GraphQl.Events;
 using Ignixa.Application.Features.Experimental.GraphQl.Execution;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
@@ -235,6 +236,9 @@ public static class ExperimentalAutofacRegistration
             .InstancePerLifetimeScope();
 
         builder.RegisterType<SearchResolver>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<ResourceDataLoader>()
             .InstancePerLifetimeScope();
 
         builder.RegisterType<GraphQlExecutionService>()
