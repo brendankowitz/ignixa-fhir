@@ -7,6 +7,7 @@ using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
+using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -134,6 +135,116 @@ public class OperationsSegmentTests
     {
         // Arrange
         var feature = new StructureMapTransformFeature();
+
+        // Act
+        var versions = feature.SupportedFhirVersions;
+
+        // Assert
+        versions.ShouldBeNull("null means supports all FHIR versions");
+    }
+
+    [Fact]
+    public async Task GivenGraphQlFeature_WhenApplyingSegment_ThenAddsGraphQlSystemOperation()
+    {
+        // Arrange
+        var graphQlFeature = new GraphQlFeature();
+        _features.Add(graphQlFeature);
+
+        var segment = new OperationsSegment(
+            _features,
+            _packageResourceRepository,
+            NullLogger<OperationsSegment>.Instance);
+
+        var statement = new CapabilityStatementJsonNode();
+        var context = new CapabilityContext(
+            FhirVersion: FhirVersion.R4,
+            TenantId: 1);
+
+        // Setup repository to return a mock OperationDefinition for "graphql"
+        var graphQlOpDef = new PackageResource
+        {
+            ResourceId = "graphql",
+            ResourceType = "OperationDefinition",
+            Canonical = "http://hl7.org/fhir/OperationDefinition/Resource-graphql",
+            PackageId = "hl7.fhir.core",
+            PackageVersion = "4.0.1",
+            FhirVersion = "R4",
+            ResourceJson = "{}"
+        };
+
+        _packageResourceRepository
+            .GetOperationDefinitionsAsync(
+                Arg.Is<List<string>>(list => list.Contains("graphql")),
+                "R4",
+                Arg.Any<CancellationToken>())
+            .Returns([graphQlOpDef]);
+
+        // Act
+        await segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        // Assert
+        var rest = statement.Rest;
+        rest.ShouldNotBeNull();
+        rest.Count.ShouldBeGreaterThan(0);
+
+        var restComponent = rest![0];
+        var operationsArray = restComponent.MutableNode["operation"];
+        operationsArray.ShouldNotBeNull("operation array should exist on rest component");
+
+        var operations = operationsArray!.AsArray();
+        operations.Count.ShouldBeGreaterThan(0);
+
+        var graphQlOp = operations.FirstOrDefault(op =>
+            op?["name"]?.GetValue<string>() == "graphql");
+        graphQlOp.ShouldNotBeNull("graphql operation should be listed as a system operation");
+        graphQlOp!["definition"]?.GetValue<string>()
+            .ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-graphql");
+    }
+
+    [Fact]
+    public void GivenGraphQlFeature_WhenCheckingSystemOperations_ThenIncludesGraphQl()
+    {
+        // Arrange
+        var feature = new GraphQlFeature();
+
+        // Act
+        var systemOps = feature.SystemOperations;
+
+        // Assert
+        systemOps.ShouldContain("graphql");
+    }
+
+    [Fact]
+    public void GivenGraphQlFeature_WhenCheckingResourceOperations_ThenIsEmpty()
+    {
+        // Arrange
+        var feature = new GraphQlFeature();
+
+        // Act
+        var resourceOps = feature.ResourceOperations;
+
+        // Assert
+        resourceOps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenGraphQlFeature_WhenCheckingPackageId_ThenReturnsHl7FhirCore()
+    {
+        // Arrange
+        var feature = new GraphQlFeature();
+
+        // Act
+        var packageId = feature.PackageId;
+
+        // Assert
+        packageId.ShouldBe("hl7.fhir.core");
+    }
+
+    [Fact]
+    public void GivenGraphQlFeature_WhenCheckingSupportedVersions_ThenSupportsAllVersions()
+    {
+        // Arrange
+        var feature = new GraphQlFeature();
 
         // Act
         var versions = feature.SupportedFhirVersions;

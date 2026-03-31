@@ -23,6 +23,7 @@ using Ignixa.Application.Features.Experimental.Terminology.Expand;
 using Ignixa.Application.Features.Experimental.Terminology.Subsumes;
 using Ignixa.Application.Features.Experimental.Terminology.Translate;
 using Ignixa.Application.Features.Experimental.Transform;
+using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Experimental.Transform.Events;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
@@ -95,6 +96,11 @@ public static class ExperimentalAutofacRegistration
         if (options.Features.GraphQl.Enabled)
         {
             builder.RegisterGraphQlHandlers();
+
+            // Advertise $graphql in CapabilityStatement when GraphQL is enabled
+            builder.RegisterType<GraphQlFeature>()
+                .As<IPackageFeature>()
+                .SingleInstance();
         }
 
         return builder;
