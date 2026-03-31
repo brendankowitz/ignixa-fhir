@@ -66,6 +66,10 @@ public static class ExperimentalEndpointExtensions
         if (options.Features.GraphQl.Enabled)
         {
             app.MapGraphQlEndpoints(configureTenantGroup);
+
+            // Map HotChocolate's built-in GraphQL endpoint with Banana Cake Pop IDE
+            // Provides interactive GraphQL IDE for development at /graphql using the R4 schema
+            app.MapGraphQL("/graphql", schemaName: "fhir-r4");
         }
 
         return app;
