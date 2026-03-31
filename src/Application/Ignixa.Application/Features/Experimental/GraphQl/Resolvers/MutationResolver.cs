@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using HotChocolate;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
@@ -17,88 +18,62 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 /// </summary>
 public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolver> logger)
 {
-    /// <summary>
-    /// Creates a new FHIR resource from its JSON representation.
-    /// </summary>
-    /// <param name="resourceType">The FHIR resource type (e.g., "Patient").</param>
-    /// <param name="resourceJson">The JSON string of the resource to create.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The created resource as a <see cref="JsonElement"/>, or null if the result is empty.</returns>
     public async Task<JsonElement?> CreateAsync(
-        string resourceType,
-        string resourceJson,
-        CancellationToken cancellationToken)
+        string resourceType, string resourceJson, CancellationToken cancellationToken)
     {
         logger.LogDebug("GraphQL creating {ResourceType}", resourceType);
 
-        var jsonNode = ResourceJsonNode.Parse(resourceJson);
-        var id = Guid.NewGuid().ToString("N");
+        ResourceJsonNode jsonNode;
+        try { jsonNode = ResourceJsonNode.Parse(resourceJson); }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+        { throw CreateError("Invalid resource JSON", "INVALID_RESOURCE", ex); }
 
-        var command = new CreateOrUpdateResourceCommand(
-            resourceType,
-            id,
-            jsonNode,
-            System.Net.Http.HttpMethod.Post);
-
-        var result = await mediator.SendAsync(command, cancellationToken);
-
-        if (result?.ResourceBytes.Length > 0)
+        try
         {
-            return JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span);
+            var id = Guid.NewGuid().ToString("N");
+            var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post);
+            var result = await mediator.SendAsync(command, cancellationToken);
+            return result?.ResourceBytes.Length > 0
+                ? JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span) : null;
         }
-
-        return null;
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { throw CreateError($"Create {resourceType} failed: {ex.Message}", "MUTATION_FAILED", ex); }
     }
 
-    /// <summary>
-    /// Updates an existing FHIR resource with the given JSON representation.
-    /// </summary>
-    /// <param name="resourceType">The FHIR resource type (e.g., "Patient").</param>
-    /// <param name="id">The resource ID to update.</param>
-    /// <param name="resourceJson">The JSON string of the updated resource.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The updated resource as a <see cref="JsonElement"/>, or null if the result is empty.</returns>
     public async Task<JsonElement?> UpdateAsync(
-        string resourceType,
-        string id,
-        string resourceJson,
-        CancellationToken cancellationToken)
+        string resourceType, string id, string resourceJson, CancellationToken cancellationToken)
     {
         logger.LogDebug("GraphQL updating {ResourceType}/{Id}", resourceType, id);
 
-        var jsonNode = ResourceJsonNode.Parse(resourceJson);
+        ResourceJsonNode jsonNode;
+        try { jsonNode = ResourceJsonNode.Parse(resourceJson); }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+        { throw CreateError("Invalid resource JSON", "INVALID_RESOURCE", ex); }
 
-        var command = new CreateOrUpdateResourceCommand(
-            resourceType,
-            id,
-            jsonNode,
-            System.Net.Http.HttpMethod.Put);
-
-        var result = await mediator.SendAsync(command, cancellationToken);
-
-        if (result?.ResourceBytes.Length > 0)
+        try
         {
-            return JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span);
+            var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put);
+            var result = await mediator.SendAsync(command, cancellationToken);
+            return result?.ResourceBytes.Length > 0
+                ? JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span) : null;
         }
-
-        return null;
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { throw CreateError($"Update {resourceType}/{id} failed: {ex.Message}", "MUTATION_FAILED", ex); }
     }
 
-    /// <summary>
-    /// Deletes a FHIR resource by type and ID.
-    /// </summary>
-    /// <param name="resourceType">The FHIR resource type (e.g., "Patient").</param>
-    /// <param name="id">The resource ID to delete.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>True if the resource was deleted successfully.</returns>
     public async Task<bool> DeleteAsync(
-        string resourceType,
-        string id,
-        CancellationToken cancellationToken)
+        string resourceType, string id, CancellationToken cancellationToken)
     {
         logger.LogDebug("GraphQL deleting {ResourceType}/{Id}", resourceType, id);
-
-        var command = new DeleteResourceCommand(resourceType, id);
-        return await mediator.SendAsync(command, cancellationToken);
+        try
+        {
+            var command = new DeleteResourceCommand(resourceType, id);
+            return await mediator.SendAsync(command, cancellationToken);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { throw CreateError($"Delete {resourceType}/{id} failed: {ex.Message}", "MUTATION_FAILED", ex); }
     }
+
+    private static GraphQLException CreateError(string message, string code, Exception inner) =>
+        new(ErrorBuilder.New().SetMessage(message).SetCode(code).SetException(inner).Build());
 }
