@@ -37,23 +37,29 @@ public sealed class SearchResolver(
         var query = new SearchResourcesQuery(resourceType, searchOptions);
         var result = await mediator.SendAsync(query, cancellationToken);
 
-        var entries = new List<JsonElement>();
+        var edges = new List<SearchEdge>();
         await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
         {
             if (!entry.IsDeleted)
-                entries.Add(JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span));
+            {
+                edges.Add(new SearchEdge
+                {
+                    Resource = JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span),
+                    Mode = "match",
+                });
+            }
 
-            if (entries.Count >= searchOptions.MaxItemCount)
+            if (edges.Count >= searchOptions.MaxItemCount)
                 break;
         }
 
         return new SearchConnectionResult
         {
-            Entries = entries,
-            Total = result.Total,
-            Links = result.ContinuationToken is not null
-                ? new PaginationLinks { Next = result.ContinuationToken }
-                : null,
+            Count = result.Total,
+            Offset = 0,
+            Pagesize = searchOptions.MaxItemCount,
+            Edges = edges,
+            Next = result.ContinuationToken,
         };
     }
 

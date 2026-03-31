@@ -3,13 +3,16 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json;
-
 namespace Ignixa.Application.Features.Experimental.GraphQl.Models;
 
 public sealed class SearchConnectionResult
 {
-    public IReadOnlyList<JsonElement> Entries { get; init; } = [];
-    public int? Total { get; init; }
-    public PaginationLinks? Links { get; init; }
+    public int? Count { get; init; }
+    public int Offset { get; init; }
+    public int Pagesize { get; init; }
+    public IReadOnlyList<SearchEdge> Edges { get; init; } = [];
+    public string? First { get; init; }
+    public string? Previous { get; init; }
+    public string? Next { get; init; }
+    public string? Last { get; init; }
 }

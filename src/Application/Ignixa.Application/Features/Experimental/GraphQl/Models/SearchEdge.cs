@@ -3,11 +3,13 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+
 namespace Ignixa.Application.Features.Experimental.GraphQl.Models;
 
-public sealed class PaginationLinks
+public sealed class SearchEdge
 {
-    public string? Next { get; init; }
-    public string? Previous { get; init; }
-    public string? Self { get; init; }
+    public required JsonElement Resource { get; init; }
+    public string? Mode { get; init; }
+    public decimal? Score { get; init; }
 }

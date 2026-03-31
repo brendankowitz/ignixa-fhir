@@ -115,8 +115,8 @@ public class SearchResolverTests
 
         // Assert
         result.ShouldNotBeNull();
-        result.Entries.Count.ShouldBe(2);
-        result.Total.ShouldBe(2);
+        result.Edges.Count.ShouldBe(2);
+        result.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -183,8 +183,8 @@ public class SearchResolverTests
         var result = await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
 
         // Assert
-        result.Links.ShouldNotBeNull();
-        result.Links.Next.ShouldBe("next-page-token");
+        result.Next.ShouldNotBeNull();
+        result.Next.ShouldBe("next-page-token");
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public class SearchResolverTests
         var result = await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
 
         // Assert
-        result.Entries.Count.ShouldBe(1);
-        result.Entries[0].GetProperty("id").GetString().ShouldBe("p1");
+        result.Edges.Count.ShouldBe(1);
+        result.Edges[0].Resource.GetProperty("id").GetString().ShouldBe("p1");
     }
 }

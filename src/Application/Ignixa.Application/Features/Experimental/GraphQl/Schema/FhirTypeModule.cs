@@ -54,7 +54,9 @@ public sealed class FhirTypeModule(
         foreach (var resourceTypeName in concreteResourceTypes)
             types.Add(BuildConnectionType(resourceTypeName));
 
-        types.Add(BuildPaginationLinksType());
+        foreach (var resourceTypeName in concreteResourceTypes)
+            types.Add(BuildEdgeType(resourceTypeName));
+
         types.Add(BuildQueryType(concreteResourceTypes));
 
         types.AddRange(nestedTypes);
@@ -287,32 +289,48 @@ public sealed class FhirTypeModule(
             descriptor.Name(GraphQlNamingHelper.ToConnectionTypeName(resourceTypeName));
             descriptor.Description($"Paginated connection result for {resourceTypeName}");
 
-            descriptor.Field("entry")
-                .Type(new ListTypeNode(new NonNullTypeNode(new NamedTypeNode(resourceTypeName))))
-                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Entries);
+            descriptor.Field("count").Type<IntType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Count);
 
-            descriptor.Field("total").Type<IntType>()
-                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Total);
+            descriptor.Field("offset").Type<IntType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Offset);
 
-            descriptor.Field("link").Type(new NamedTypeNode("PaginationLinks"))
-                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Links);
+            descriptor.Field("pagesize").Type<IntType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Pagesize);
+
+            descriptor.Field("edges")
+                .Type(new ListTypeNode(new NonNullTypeNode(
+                    new NamedTypeNode(GraphQlNamingHelper.ToEdgeTypeName(resourceTypeName)))))
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Edges);
+
+            descriptor.Field("first").Type<StringType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().First);
+
+            descriptor.Field("previous").Type<StringType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Previous);
+
+            descriptor.Field("next").Type<StringType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Next);
+
+            descriptor.Field("last").Type<StringType>()
+                .Resolve(ctx => ctx.Parent<SearchConnectionResult>().Last);
         });
     }
 
-    private static ObjectType BuildPaginationLinksType()
+    private static ObjectType BuildEdgeType(string resourceTypeName)
     {
         return new ObjectType(descriptor =>
         {
-            descriptor.Name("PaginationLinks");
+            descriptor.Name(GraphQlNamingHelper.ToEdgeTypeName(resourceTypeName));
 
-            descriptor.Field("next").Type<StringType>()
-                .Resolve(ctx => ctx.Parent<PaginationLinks?>()?.Next);
+            descriptor.Field("mode").Type<StringType>()
+                .Resolve(ctx => ctx.Parent<SearchEdge>().Mode);
 
-            descriptor.Field("previous").Type<StringType>()
-                .Resolve(ctx => ctx.Parent<PaginationLinks?>()?.Previous);
+            descriptor.Field("score").Type<DecimalType>()
+                .Resolve(ctx => ctx.Parent<SearchEdge>().Score);
 
-            descriptor.Field("self").Type<StringType>()
-                .Resolve(ctx => ctx.Parent<PaginationLinks?>()?.Self);
+            descriptor.Field("resource").Type(new NamedTypeNode(resourceTypeName))
+                .Resolve(ctx => ctx.Parent<SearchEdge>().Resource);
         });
     }
 

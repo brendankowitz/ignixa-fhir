@@ -33,6 +33,9 @@ internal static class GraphQlNamingHelper
     internal static string ToConnectionTypeName(string resourceType)
         => $"{resourceType}Connection";
 
+    internal static string ToEdgeTypeName(string resourceType)
+        => $"{resourceType}SearchEdge";
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Schema names are lowercase by convention (fhir-r4, fhir-r5, etc.)")]
     internal static string GetSchemaName(FhirVersion version)
         => $"fhir-{version.ToString().ToLowerInvariant()}";
