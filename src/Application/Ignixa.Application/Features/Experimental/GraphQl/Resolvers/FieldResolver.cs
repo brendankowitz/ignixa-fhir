@@ -41,6 +41,30 @@ internal static class FieldResolver
         return parent.Value.TryGetProperty(fieldName, out var value) ? value : null;
     }
 
+    internal static object? ResolveFilteredList(IResolverContext context, string fieldName)
+    {
+        var parent = GetParentElement(context);
+        if (parent?.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (!parent.Value.TryGetProperty(fieldName, out var value) || value.ValueKind != JsonValueKind.Array)
+            return null;
+
+        IEnumerable<JsonElement> items = value.EnumerateArray().ToList();
+
+        // Apply _offset
+        var offsetOpt = context.ArgumentOptional<int?>("_offset");
+        if (offsetOpt.HasValue && offsetOpt.Value is > 0)
+            items = items.Skip(offsetOpt.Value.Value);
+
+        // Apply _count
+        var countOpt = context.ArgumentOptional<int?>("_count");
+        if (countOpt.HasValue && countOpt.Value is >= 0)
+            items = items.Take(countOpt.Value.Value);
+
+        return items.ToList();
+    }
+
     internal static string? GetStringProperty(JsonElement element, string propertyName)
     {
         if (element.ValueKind != JsonValueKind.Object)

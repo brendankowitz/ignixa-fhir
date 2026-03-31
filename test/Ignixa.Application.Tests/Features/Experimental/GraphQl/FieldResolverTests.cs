@@ -61,4 +61,18 @@ public class FieldResolverTests
         element.TryGetProperty("extension", out var extensions).ShouldBeTrue();
         extensions.GetArrayLength().ShouldBe(1);
     }
+
+    [Fact]
+    public void GivenArrayField_WhenApplyingOffsetAndCount_ThenReturnsSubset()
+    {
+        var json = JsonSerializer.Deserialize<JsonElement>(
+            """{"name":[{"text":"A"},{"text":"B"},{"text":"C"},{"text":"D"}]}""");
+
+        var items = json.GetProperty("name").EnumerateArray().ToList();
+        var result = items.Skip(1).Take(2).ToList();
+
+        result.Count.ShouldBe(2);
+        result[0].GetProperty("text").GetString().ShouldBe("B");
+        result[1].GetProperty("text").GetString().ShouldBe("C");
+    }
 }

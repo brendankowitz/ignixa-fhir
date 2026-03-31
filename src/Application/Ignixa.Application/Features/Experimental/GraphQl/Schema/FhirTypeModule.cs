@@ -251,7 +251,16 @@ public sealed class FhirTypeModule(
 
                 var backboneField = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
                     .Type(ApplyCardinality(new NamedTypeNode(nestedTypeName), child));
-                backboneField.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+                if (child.IsCollection)
+                {
+                    backboneField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
+                    AddListNavigationArguments(backboneField);
+                }
+                else
+                {
+                    backboneField.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+                }
+
                 return;
             }
 
@@ -259,7 +268,16 @@ public sealed class FhirTypeModule(
             {
                 var complexField = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
                     .Type(ApplyCardinality(new NamedTypeNode(typeName), child));
-                complexField.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+                if (child.IsCollection)
+                {
+                    complexField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
+                    AddListNavigationArguments(complexField);
+                }
+                else
+                {
+                    complexField.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+                }
+
                 return;
             }
         }
@@ -323,7 +341,15 @@ public sealed class FhirTypeModule(
     {
         var field = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
             .Type(ApplyCardinality(new NamedTypeNode("ResourceReference"), child));
-        field.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+        if (child.IsCollection)
+        {
+            field.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
+            AddListNavigationArguments(field);
+        }
+        else
+        {
+            field.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+        }
     }
 
     private ObjectType BuildNestedObjectType(
@@ -605,6 +631,16 @@ public sealed class FhirTypeModule(
         }
 
         return null;
+    }
+
+    private static void AddListNavigationArguments(IObjectFieldDescriptor fieldDescriptor)
+    {
+        fieldDescriptor.Argument("fhirpath", a => a.Type<StringType>()
+            .Description("FHIRPath expression to filter list elements"));
+        fieldDescriptor.Argument("_offset", a => a.Type<IntType>()
+            .Description("Number of elements to skip"));
+        fieldDescriptor.Argument("_count", a => a.Type<IntType>()
+            .Description("Maximum number of elements to return"));
     }
 
     private static ITypeNode ApplyCardinality(INullableTypeNode baseType, FhirIType child)
