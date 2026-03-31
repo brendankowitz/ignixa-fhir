@@ -5,8 +5,10 @@
 
 using System.Text.Json;
 using HotChocolate.Execution;
+using HotChocolate.Language;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
+using Ignixa.Application.Features.Experimental.GraphQl.Directives;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
@@ -54,7 +56,76 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
             builder.AddGlobalState("InstanceResourceId", (object?)resourceId);
         }
 
-        return await executor.ExecuteAsync(builder.Build(), cancellationToken);
+        var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
+
+        return PostProcessDirectives(result, request.Query);
+    }
+
+    private static IExecutionResult PostProcessDirectives(IExecutionResult result, string? query)
+    {
+        if (string.IsNullOrEmpty(query))
+            return result;
+
+        if (result is not IOperationResult { Data: { } readOnlyData })
+            return result;
+
+        try
+        {
+            var document = Utf8GraphQLParser.Parse(query);
+
+            // Quick check: skip parsing overhead when no directives present
+            var hasDirectives = document.Definitions
+                .OfType<OperationDefinitionNode>()
+                .Any(op => HasAnyDirectives(op.SelectionSet));
+
+            if (!hasDirectives)
+                return result;
+
+            // Data is IReadOnlyDictionary — try mutable cast first, deep-copy if needed
+            if (readOnlyData is IDictionary<string, object?> mutableData)
+            {
+                FlattenResultProcessor.Process(document, mutableData);
+                return result;
+            }
+
+            // Deep-copy to mutable dict, process, build new result
+            var dataCopy = FlattenResultProcessor.DeepCopyData(readOnlyData);
+            FlattenResultProcessor.Process(document, dataCopy);
+
+            return new OperationResult(
+                dataCopy,
+                result.ExpectOperationResult().Errors,
+                result.ExpectOperationResult().Extensions,
+                result.ContextData,
+                result.ExpectOperationResult().Items,
+                result.ExpectOperationResult().Incremental,
+                result.ExpectOperationResult().Label,
+                result.ExpectOperationResult().Path,
+                result.ExpectOperationResult().HasNext,
+                result.ExpectOperationResult().RequestIndex,
+                result.ExpectOperationResult().VariableIndex);
+        }
+        catch
+        {
+            // If post-processing fails, return the unmodified result
+            return result;
+        }
+    }
+
+    private static bool HasAnyDirectives(SelectionSetNode? selectionSet)
+    {
+        if (selectionSet is null)
+            return false;
+
+        foreach (var selection in selectionSet.Selections.OfType<FieldNode>())
+        {
+            if (selection.Directives.Count > 0)
+                return true;
+            if (HasAnyDirectives(selection.SelectionSet))
+                return true;
+        }
+
+        return false;
     }
 
     private static IReadOnlyDictionary<string, object?> DeserializeVariables(JsonElement variables)
