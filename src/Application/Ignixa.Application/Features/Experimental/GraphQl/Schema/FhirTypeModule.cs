@@ -422,6 +422,8 @@ public sealed class FhirTypeModule(
             .Description("Sort criteria (e.g., \"-date\", \"name\")"));
         fieldDescriptor.Argument("_total", a => a.Type<StringType>()
             .Description("Total count mode: none | estimate | accurate"));
+        fieldDescriptor.Argument("_filter", a => a.Type<StringType>()
+            .Description("FHIR _filter expression for complex search criteria"));
     }
 
     private void AddResourceSearchArguments(

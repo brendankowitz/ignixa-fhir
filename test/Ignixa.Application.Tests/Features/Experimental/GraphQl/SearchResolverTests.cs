@@ -71,6 +71,7 @@ public class SearchResolverTests
         resolverContext.ArgumentOptional<string?>("_cursor").Returns(new Optional<string?>());
         resolverContext.ArgumentOptional<IReadOnlyList<string>?>("_sort").Returns(new Optional<IReadOnlyList<string>?>());
         resolverContext.ArgumentOptional<string?>("_total").Returns(new Optional<string?>());
+        resolverContext.ArgumentOptional<string?>("_filter").Returns(new Optional<string?>());
 
         // Set up default empty Selection.Field.Arguments chain
         SetupFieldArguments(resolverContext, []);
