@@ -23,6 +23,7 @@ using FhirIFhirSchemaProvider = Ignixa.Abstractions.IFhirSchemaProvider;
 using FhirFieldResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.FieldResolver;
 using AppResourceResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.ResourceResolver;
 using AppSearchResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.SearchResolver;
+using AppMutationResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.MutationResolver;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
@@ -70,6 +71,7 @@ public sealed class FhirTypeModule(
             types.Add(BuildEdgeType(resourceTypeName));
 
         types.Add(BuildQueryType(concreteResourceTypes));
+        types.Add(BuildMutationType(concreteResourceTypes));
 
         types.AddRange(nestedTypes);
 
@@ -563,6 +565,56 @@ public sealed class FhirTypeModule(
 
                     return await resolver.SearchAsync(capturedType, ctx, ctx.RequestAborted);
                 });
+            }
+        });
+    }
+
+    private ObjectType BuildMutationType(IReadOnlyList<string> concreteResourceTypes)
+    {
+        return new ObjectType(descriptor =>
+        {
+            descriptor.Name("Mutation");
+
+            foreach (var resourceType in concreteResourceTypes)
+            {
+                var capturedType = resourceType;
+
+                // PatientCreate(res: String!) → Patient
+                descriptor.Field($"{capturedType}Create")
+                    .Argument("res", a => a.Type<NonNullType<StringType>>()
+                        .Description("JSON representation of the FHIR resource to create"))
+                    .Type(new NamedTypeNode(capturedType))
+                    .Resolve(async ctx =>
+                    {
+                        var json = ctx.ArgumentValue<string>("res");
+                        var resolver = ctx.Service<AppMutationResolver>();
+                        return await resolver.CreateAsync(capturedType, json, ctx.RequestAborted);
+                    });
+
+                // PatientUpdate(id: ID!, res: String!) → Patient
+                descriptor.Field($"{capturedType}Update")
+                    .Argument("id", a => a.Type<NonNullType<IdType>>())
+                    .Argument("res", a => a.Type<NonNullType<StringType>>()
+                        .Description("JSON representation of the FHIR resource to update"))
+                    .Type(new NamedTypeNode(capturedType))
+                    .Resolve(async ctx =>
+                    {
+                        var id = ctx.ArgumentValue<string>("id");
+                        var json = ctx.ArgumentValue<string>("res");
+                        var resolver = ctx.Service<AppMutationResolver>();
+                        return await resolver.UpdateAsync(capturedType, id, json, ctx.RequestAborted);
+                    });
+
+                // PatientDelete(id: ID!) → Boolean
+                descriptor.Field($"{capturedType}Delete")
+                    .Argument("id", a => a.Type<NonNullType<IdType>>())
+                    .Type<BooleanType>()
+                    .Resolve(async ctx =>
+                    {
+                        var id = ctx.ArgumentValue<string>("id");
+                        var resolver = ctx.Service<AppMutationResolver>();
+                        return await resolver.DeleteAsync(capturedType, id, ctx.RequestAborted);
+                    });
             }
         });
     }

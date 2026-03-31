@@ -241,6 +241,9 @@ public static class ExperimentalAutofacRegistration
         builder.RegisterType<ResourceResolver>()
             .InstancePerLifetimeScope();
 
+        builder.RegisterType<MutationResolver>()
+            .InstancePerLifetimeScope();
+
         builder.RegisterType<SearchResolver>()
             .InstancePerLifetimeScope();
 
