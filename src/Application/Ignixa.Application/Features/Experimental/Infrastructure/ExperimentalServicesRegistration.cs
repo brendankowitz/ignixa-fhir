@@ -94,7 +94,8 @@ public static class ExperimentalServicesRegistration
                 .AddMaxExecutionDepthRule(maxDepth)
                 .DisableIntrospection(!enableIntrospection)
                 .ModifyRequestOptions(o => o.ExecutionTimeout = timeout)
-                .AddHttpRequestInterceptor<FhirHttpRequestInterceptor>();
+                .AddHttpRequestInterceptor<FhirHttpRequestInterceptor>()
+                .AddErrorFilter<FhirGraphQlErrorFilter>();
         }
 
         services.AddHostedService<GraphQlSchemaWarmupService>();

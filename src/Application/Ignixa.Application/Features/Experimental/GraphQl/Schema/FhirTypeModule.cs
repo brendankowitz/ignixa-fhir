@@ -414,8 +414,8 @@ public sealed class FhirTypeModule(
             .Description("Page size (default: 10, max: 1000)"));
         fieldDescriptor.Argument("_cursor", a => a.Type<StringType>()
             .Description("Continuation cursor from previous page's link.next"));
-        fieldDescriptor.Argument("_sort", a => a.Type<StringType>()
-            .Description("Sort criteria (e.g., \"-date,name\")"));
+        fieldDescriptor.Argument("_sort", a => a.Type<ListType<StringType>>()
+            .Description("Sort criteria (e.g., \"-date\", \"name\")"));
         fieldDescriptor.Argument("_total", a => a.Type<StringType>()
             .Description("Total count mode: none | estimate | accurate"));
     }

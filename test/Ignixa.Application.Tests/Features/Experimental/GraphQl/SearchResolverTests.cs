@@ -31,6 +31,7 @@ public class SearchResolverTests
         """{"resourceType":"Patient","id":"p1"}""");
     private static readonly byte[] PatientJson2 = Encoding.UTF8.GetBytes(
         """{"resourceType":"Patient","id":"p2"}""");
+    private static readonly string[] SortDateName = ["-date", "name"];
 
     private static SearchEntryResult MakeEntry(string id, byte[] json)
         => new SearchEntryResult("Patient", id, "1", DateTimeOffset.UtcNow, json);
@@ -66,7 +67,7 @@ public class SearchResolverTests
 
         resolverContext.ArgumentOptional<int?>("_count").Returns(new Optional<int?>());
         resolverContext.ArgumentOptional<string?>("_cursor").Returns(new Optional<string?>());
-        resolverContext.ArgumentOptional<string?>("_sort").Returns(new Optional<string?>());
+        resolverContext.ArgumentOptional<IReadOnlyList<string>?>("_sort").Returns(new Optional<IReadOnlyList<string>?>());
         resolverContext.ArgumentOptional<string?>("_total").Returns(new Optional<string?>());
 
         return (mediator, builderFactory, builder, contextAccessor, resolverContext);
@@ -124,7 +125,7 @@ public class SearchResolverTests
     {
         // Arrange
         var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
-        resolverContext.ArgumentOptional<string?>("_sort").Returns(new Optional<string?>("-date,name"));
+        resolverContext.ArgumentOptional<IReadOnlyList<string>?>("_sort").Returns(new Optional<IReadOnlyList<string>?>(SortDateName));
 
         mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
             .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));

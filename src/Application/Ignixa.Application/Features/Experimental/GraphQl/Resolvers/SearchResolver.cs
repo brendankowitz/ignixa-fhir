@@ -107,10 +107,9 @@ public sealed class SearchResolver(
         if (!string.IsNullOrEmpty(cursor))
             parameters.Add(new QueryParameter("ct", cursor));
 
-        var sortOptional = context.ArgumentOptional<string?>("_sort");
-        var sort = sortOptional.HasValue ? sortOptional.Value : null;
-        if (!string.IsNullOrEmpty(sort))
-            parameters.Add(new QueryParameter("_sort", sort));
+        var sortOptional = context.ArgumentOptional<IReadOnlyList<string>?>("_sort");
+        if (sortOptional.HasValue && sortOptional.Value is { Count: > 0 })
+            parameters.Add(new QueryParameter("_sort", string.Join(",", sortOptional.Value)));
 
         var totalOptional = context.ArgumentOptional<string?>("_total");
         var total = totalOptional.HasValue ? totalOptional.Value : null;
