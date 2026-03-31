@@ -6,6 +6,7 @@
 using System.Text.Json;
 using GreenDonut;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
+using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Application.Features.Resource;
 using Medino;
 
@@ -30,7 +31,7 @@ public class ResourceDataLoader(
 
             if (entry is not null && !entry.IsDeleted)
             {
-                var json = JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span);
+                var json = FieldResolver.ParseResourceBytes(entry.ResourceBytes);
                 return (key, json: (JsonElement?)json);
             }
 
@@ -45,3 +46,4 @@ public class ResourceDataLoader(
         return results;
     }
 }
+

@@ -24,6 +24,7 @@ public sealed class ResourceResolver(IMediator mediator, ILogger<ResourceResolve
         if (result is null || result.IsDeleted)
             return null;
 
-        return JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span);
+        return FieldResolver.ParseResourceBytes(result.ResourceBytes);
     }
 }
+

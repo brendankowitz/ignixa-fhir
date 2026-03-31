@@ -11,6 +11,14 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 
 internal static class FieldResolver
 {
+    internal static JsonElement ParseResourceBytes(ReadOnlyMemory<byte> bytes)
+    {
+        var span = bytes.Span;
+        if (span.Length >= 3 && span[0] == 0xEF && span[1] == 0xBB && span[2] == 0xBF)
+            span = span[3..];
+        return JsonSerializer.Deserialize<JsonElement>(span);
+    }
+
     internal static object? ResolveField(IResolverContext context, string fieldName)
     {
         var parent = GetParentElement(context);

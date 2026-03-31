@@ -41,7 +41,7 @@ public sealed class SearchResolver(
         await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
         {
             if (!entry.IsDeleted)
-                entries.Add(JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span));
+                entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
 
             if (entries.Count >= searchOptions.MaxItemCount)
                 break;
@@ -69,7 +69,7 @@ public sealed class SearchResolver(
             {
                 edges.Add(new SearchEdge
                 {
-                    Resource = JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span),
+                    Resource = FieldResolver.ParseResourceBytes(entry.ResourceBytes),
                     Mode = "match",
                 });
             }
@@ -110,7 +110,7 @@ public sealed class SearchResolver(
         await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
         {
             if (!entry.IsDeleted)
-                entries.Add(JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span));
+                entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
 
             if (entries.Count >= searchOptions.MaxItemCount)
                 break;
@@ -144,7 +144,7 @@ public sealed class SearchResolver(
             {
                 edges.Add(new SearchEdge
                 {
-                    Resource = JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span),
+                    Resource = FieldResolver.ParseResourceBytes(entry.ResourceBytes),
                     Mode = "match",
                 });
             }
@@ -218,3 +218,4 @@ public sealed class SearchResolver(
         return builder.Build(resourceType, parameters);
     }
 }
+

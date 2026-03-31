@@ -34,7 +34,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
             var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post);
             var result = await mediator.SendAsync(command, cancellationToken);
             return result?.ResourceBytes.Length > 0
-                ? JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span) : null;
+                ? FieldResolver.ParseResourceBytes(result.ResourceBytes) : null;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { throw CreateError($"Create {resourceType} failed: {ex.Message}", "MUTATION_FAILED", ex); }
@@ -55,7 +55,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
             var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put);
             var result = await mediator.SendAsync(command, cancellationToken);
             return result?.ResourceBytes.Length > 0
-                ? JsonSerializer.Deserialize<JsonElement>(result.ResourceBytes.Span) : null;
+                ? FieldResolver.ParseResourceBytes(result.ResourceBytes) : null;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { throw CreateError($"Update {resourceType}/{id} failed: {ex.Message}", "MUTATION_FAILED", ex); }
@@ -77,3 +77,4 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
     private static GraphQLException CreateError(string message, string code, Exception inner) =>
         new(ErrorBuilder.New().SetMessage(message).SetCode(code).SetException(inner).Build());
 }
+
