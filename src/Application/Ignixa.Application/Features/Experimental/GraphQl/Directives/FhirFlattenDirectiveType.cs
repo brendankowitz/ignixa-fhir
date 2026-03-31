@@ -3,6 +3,8 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using HotChocolate;
 using HotChocolate.Types;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Directives;
@@ -24,6 +26,11 @@ public sealed class FhirFirstDirectiveType : DirectiveType
         descriptor.Name("first");
         descriptor.Description("Select only the first element from a repeating list.");
         descriptor.Location(DirectiveLocation.Field);
+        descriptor.Use((next, _) => async context =>
+        {
+            await next(context);
+            context.Result = FhirDirectiveMiddleware.ApplyFirst(context.Result);
+        });
     }
 }
 
@@ -34,6 +41,11 @@ public sealed class FhirSingletonDirectiveType : DirectiveType
         descriptor.Name("singleton");
         descriptor.Description("Assert single value after flattening. Error if more than one.");
         descriptor.Location(DirectiveLocation.Field);
+        descriptor.Use((next, _) => async context =>
+        {
+            await next(context);
+            context.Result = FhirDirectiveMiddleware.ApplySingleton(context.Result);
+        });
     }
 }
 
@@ -46,5 +58,34 @@ public sealed class FhirSliceDirectiveType : DirectiveType
         descriptor.Location(DirectiveLocation.Field);
         descriptor.Argument("path").Type<NonNullType<StringType>>()
             .Description("FHIRPath expression to evaluate on each element as the discriminator suffix.");
+    }
+}
+
+internal static class FhirDirectiveMiddleware
+{
+    internal static object? ApplyFirst(object? result)
+    {
+        if (result is IList<JsonElement> jsonList)
+            return jsonList.Count > 0 ? jsonList[0] : null;
+        if (result is IEnumerable<object> enumerable)
+            return enumerable.FirstOrDefault();
+        return result;
+    }
+
+    internal static object? ApplySingleton(object? result)
+    {
+        if (result is IList<JsonElement> jsonList)
+        {
+            if (jsonList.Count > 1)
+            {
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage($"@singleton expects at most 1 element but found {jsonList.Count}")
+                        .SetCode("FHIR_SINGLETON_VIOLATION")
+                        .Build());
+            }
+            return jsonList.Count == 1 ? jsonList[0] : null;
+        }
+        return result;
     }
 }
