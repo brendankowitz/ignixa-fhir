@@ -485,26 +485,56 @@ public sealed class FhirTypeModule(
                     });
 
                 // Simple list search: PatientList(name: "Smith") → [Patient]
+                // Supports reverse reference: PatientList(_reference: "subject") at instance level
                 var listFieldName = $"{capturedType}List";
                 var listField = descriptor.Field(listFieldName)
                     .Type(new ListTypeNode(new NamedTypeNode(capturedType)));
+                listField.Argument("_reference", a => a.Type<StringType>()
+                    .Description("Reverse reference: search parameter on this type that references the instance resource"));
                 AddSearchArguments(listField);
                 AddResourceSearchArguments(listField, capturedType);
                 listField.Resolve(async ctx =>
                 {
                     var resolver = ctx.Service<AppSearchResolver>();
+                    var referenceParam = ctx.ArgumentOptional<string?>("_reference");
+                    if (referenceParam.HasValue && !string.IsNullOrEmpty(referenceParam.Value))
+                    {
+                        var instanceType = ctx.GetGlobalStateOrDefault<string?>("InstanceResourceType");
+                        var instanceId = ctx.GetGlobalStateOrDefault<string?>("InstanceResourceId");
+                        if (instanceType is not null && instanceId is not null)
+                        {
+                            return await resolver.SearchReverseListAsync(
+                                capturedType, referenceParam.Value, instanceType, instanceId, ctx, ctx.RequestAborted);
+                        }
+                    }
+
                     return await resolver.SearchListAsync(capturedType, ctx, ctx.RequestAborted);
                 });
 
                 // Connection search: PatientConnection(name: "Smith") → paginated
+                // Supports reverse reference: PatientConnection(_reference: "subject") at instance level
                 var connectionFieldName = $"{capturedType}Connection";
                 var connectionField = descriptor.Field(connectionFieldName)
                     .Type(new NamedTypeNode(GraphQlNamingHelper.ToConnectionTypeName(capturedType)));
+                connectionField.Argument("_reference", a => a.Type<StringType>()
+                    .Description("Reverse reference: search parameter on this type that references the instance resource"));
                 AddSearchArguments(connectionField);
                 AddResourceSearchArguments(connectionField, capturedType);
                 connectionField.Resolve(async ctx =>
                 {
                     var resolver = ctx.Service<AppSearchResolver>();
+                    var referenceParam = ctx.ArgumentOptional<string?>("_reference");
+                    if (referenceParam.HasValue && !string.IsNullOrEmpty(referenceParam.Value))
+                    {
+                        var instanceType = ctx.GetGlobalStateOrDefault<string?>("InstanceResourceType");
+                        var instanceId = ctx.GetGlobalStateOrDefault<string?>("InstanceResourceId");
+                        if (instanceType is not null && instanceId is not null)
+                        {
+                            return await resolver.SearchReverseAsync(
+                                capturedType, referenceParam.Value, instanceType, instanceId, ctx, ctx.RequestAborted);
+                        }
+                    }
+
                     return await resolver.SearchAsync(capturedType, ctx, ctx.RequestAborted);
                 });
             }

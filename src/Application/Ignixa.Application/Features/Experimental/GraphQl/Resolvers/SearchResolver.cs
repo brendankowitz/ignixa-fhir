@@ -88,7 +88,85 @@ public sealed class SearchResolver(
         };
     }
 
-    private SearchOptions BuildSearchOptions(string resourceType, IResolverContext context)
+    public async Task<IReadOnlyList<JsonElement>> SearchReverseListAsync(
+        string targetResourceType,
+        string referenceParamName,
+        string sourceResourceType,
+        string sourceResourceId,
+        IResolverContext graphQlContext,
+        CancellationToken cancellationToken)
+    {
+        var additionalParams = new[] { new QueryParameter(referenceParamName, $"{sourceResourceType}/{sourceResourceId}") };
+        var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams);
+
+        logger.LogDebug(
+            "GraphQL reverse search {TargetType} via {Param}={SourceType}/{SourceId}",
+            targetResourceType, referenceParamName, sourceResourceType, sourceResourceId);
+
+        var query = new SearchResourcesQuery(targetResourceType, searchOptions);
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        var entries = new List<JsonElement>();
+        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+        {
+            if (!entry.IsDeleted)
+                entries.Add(JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span));
+
+            if (entries.Count >= searchOptions.MaxItemCount)
+                break;
+        }
+
+        return entries;
+    }
+
+    public async Task<SearchConnectionResult> SearchReverseAsync(
+        string targetResourceType,
+        string referenceParamName,
+        string sourceResourceType,
+        string sourceResourceId,
+        IResolverContext graphQlContext,
+        CancellationToken cancellationToken)
+    {
+        var additionalParams = new[] { new QueryParameter(referenceParamName, $"{sourceResourceType}/{sourceResourceId}") };
+        var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams);
+
+        logger.LogDebug(
+            "GraphQL reverse connection search {TargetType} via {Param}={SourceType}/{SourceId}",
+            targetResourceType, referenceParamName, sourceResourceType, sourceResourceId);
+
+        var query = new SearchResourcesQuery(targetResourceType, searchOptions);
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        var edges = new List<SearchEdge>();
+        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+        {
+            if (!entry.IsDeleted)
+            {
+                edges.Add(new SearchEdge
+                {
+                    Resource = JsonSerializer.Deserialize<JsonElement>(entry.ResourceBytes.Span),
+                    Mode = "match",
+                });
+            }
+
+            if (edges.Count >= searchOptions.MaxItemCount)
+                break;
+        }
+
+        return new SearchConnectionResult
+        {
+            Count = result.Total,
+            Offset = 0,
+            Pagesize = searchOptions.MaxItemCount,
+            Edges = edges,
+            Next = result.ContinuationToken,
+        };
+    }
+
+    private SearchOptions BuildSearchOptions(
+        string resourceType,
+        IResolverContext context,
+        IReadOnlyList<QueryParameter>? additionalParameters = null)
     {
         var requestContext = contextAccessor.RequestContext;
         var fhirVersion = requestContext?.FhirVersion ?? FhirVersion.R4;
@@ -124,7 +202,7 @@ public sealed class SearchResolver(
         foreach (var argument in context.Selection.Field.Arguments)
         {
             var argName = argument.Name;
-            if (argName is "_count" or "_cursor" or "_sort" or "_total" or "_filter")
+            if (argName is "_count" or "_cursor" or "_sort" or "_total" or "_filter" or "_reference")
                 continue;
 
             var fhirParamName = argName.Replace('_', '-');
@@ -132,6 +210,9 @@ public sealed class SearchResolver(
             if (valueOptional.HasValue && !string.IsNullOrEmpty(valueOptional.Value))
                 parameters.Add(new QueryParameter(fhirParamName, valueOptional.Value));
         }
+
+        if (additionalParameters is not null)
+            parameters.AddRange(additionalParameters);
 
         var builder = searchOptionsBuilderFactory.Create(fhirVersion, tenantId);
         return builder.Build(resourceType, parameters);
