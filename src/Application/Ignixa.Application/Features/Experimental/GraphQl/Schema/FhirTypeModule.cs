@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using HotChocolate;
 using HotChocolate.Execution.Configuration;
 using HotChocolate.Language;
 using HotChocolate.Resolvers;
@@ -257,6 +258,10 @@ public sealed class FhirTypeModule(
                 .Resolve(ctx => FhirFieldResolver.GetStringProperty(ctx.Parent<JsonElement>(), "display"));
 
             descriptor.Field("resource").Type(new NamedTypeNode("Resource"))
+                .Argument("optional", a => a.Type<BooleanType>().DefaultValue(false)
+                    .Description("If true, unresolvable references return null instead of an error"))
+                .Argument("type", a => a.Type<StringType>()
+                    .Description("Only resolve if the referenced resource matches this type"))
                 .Resolve(async ctx =>
                 {
                     var parent = ctx.Parent<JsonElement>();
@@ -265,8 +270,31 @@ public sealed class FhirTypeModule(
                     if (key is null)
                         return null;
 
+                    var typeFilter = ctx.ArgumentOptional<string?>("type");
+                    if (typeFilter.HasValue && typeFilter.Value is not null
+                        && !string.Equals(key.ResourceType, typeFilter.Value, StringComparison.Ordinal))
+                    {
+                        return null;
+                    }
+
                     var dataLoader = ctx.DataLoader<ResourceDataLoader>();
-                    return await dataLoader.LoadAsync(key, ctx.RequestAborted);
+                    var result = await dataLoader.LoadAsync(key, ctx.RequestAborted);
+
+                    if (result is null)
+                    {
+                        var isOptional = ctx.ArgumentOptional<bool?>("optional");
+                        if (!isOptional.HasValue || isOptional.Value != true)
+                        {
+                            ctx.ReportError(
+                                ErrorBuilder.New()
+                                    .SetMessage($"Reference '{reference}' could not be resolved")
+                                    .SetCode("FHIR_REFERENCE_NOT_FOUND")
+                                    .SetPath(ctx.Path)
+                                    .Build());
+                        }
+                    }
+
+                    return result;
                 });
         });
     }
