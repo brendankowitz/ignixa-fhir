@@ -48,17 +48,45 @@ public sealed class FhirTypeModule(
     {
         var nestedTypes = new List<ITypeSystemMember>();
         var types = new List<ITypeSystemMember>();
+        var referencedDataTypes = new HashSet<string>(StringComparer.Ordinal);
 
         EmitFhirScalars(types);
         EmitElementTypes(types);
 
         var concreteResourceTypes = GetConcreteResourceTypes();
+        var resourceTypeSet = new HashSet<string>(concreteResourceTypes, StringComparer.Ordinal);
 
         foreach (var resourceTypeName in concreteResourceTypes)
         {
             var fhirType = schemaProvider.GetTypeDefinition(resourceTypeName);
             if (fhirType is null) continue;
-            types.Add(BuildResourceObjectType(resourceTypeName, fhirType, nestedTypes));
+            types.Add(BuildResourceObjectType(resourceTypeName, fhirType, nestedTypes, referencedDataTypes));
+        }
+
+        // Emit ObjectTypes for shared FHIR datatypes (Meta, HumanName, etc.)
+        // These are referenced by resource fields but are not resources themselves.
+        // Process iteratively since datatypes may reference other datatypes.
+        var emittedDataTypes = new HashSet<string>(StringComparer.Ordinal);
+        while (referencedDataTypes.Count > emittedDataTypes.Count)
+        {
+            foreach (var dtName in referencedDataTypes.Except(emittedDataTypes).ToList())
+            {
+                if (resourceTypeSet.Contains(dtName))
+                {
+                    emittedDataTypes.Add(dtName);
+                    continue;
+                }
+
+                var dtDef = schemaProvider.GetTypeDefinition(dtName);
+                if (dtDef is null)
+                {
+                    emittedDataTypes.Add(dtName);
+                    continue;
+                }
+
+                types.Add(BuildDataTypeObjectType(dtName, dtDef, nestedTypes, referencedDataTypes));
+                emittedDataTypes.Add(dtName);
+            }
         }
 
         types.Add(BuildResourceReferenceType());
@@ -175,7 +203,8 @@ public sealed class FhirTypeModule(
     private ObjectType BuildResourceObjectType(
         string resourceTypeName,
         FhirIType fhirType,
-        List<ITypeSystemMember> nestedTypes)
+        List<ITypeSystemMember> nestedTypes,
+        HashSet<string> referencedDataTypes)
     {
         return new ObjectType(descriptor =>
         {
@@ -194,7 +223,7 @@ public sealed class FhirTypeModule(
             if (fhirType is FhirITypeExtended extended)
             {
                 foreach (var child in extended.Children)
-                    AddFieldForElement(descriptor, child, resourceTypeName, nestedTypes);
+                    AddFieldForElement(descriptor, child, resourceTypeName, nestedTypes, referencedDataTypes);
             }
         });
     }
@@ -203,13 +232,14 @@ public sealed class FhirTypeModule(
         IObjectTypeDescriptor descriptor,
         FhirIType child,
         string parentPath,
-        List<ITypeSystemMember> nestedTypes)
+        List<ITypeSystemMember> nestedTypes,
+        HashSet<string>? referencedDataTypes = null)
     {
         var elementName = child.Info.Name;
 
         if (child.Info.IsChoiceElement && child is FhirITypeExtended choiceExtended)
         {
-            AddChoiceElementField(descriptor, choiceExtended, elementName, parentPath, nestedTypes);
+            AddChoiceElementField(descriptor, choiceExtended, elementName, parentPath, nestedTypes, referencedDataTypes);
             return;
         }
 
@@ -268,6 +298,7 @@ public sealed class FhirTypeModule(
 
             if (typeName is not null && schemaProvider.IsKnownType(typeName))
             {
+                referencedDataTypes?.Add(typeName);
                 var complexField = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
                     .Type(ApplyCardinality(new NamedTypeNode(typeName), child));
                 if (child.IsCollection)
@@ -309,7 +340,8 @@ public sealed class FhirTypeModule(
         FhirITypeExtended element,
         string elementName,
         string parentPath,
-        List<ITypeSystemMember> nestedTypes)
+        List<ITypeSystemMember> nestedTypes,
+        HashSet<string>? referencedDataTypes = null)
     {
         var unionName = GraphQlNamingHelper.ToUnionTypeName(parentPath, elementName);
 
@@ -320,6 +352,9 @@ public sealed class FhirTypeModule(
             .ToList();
 
         if (memberTypeCodes.Count == 0) return;
+
+        foreach (var code in memberTypeCodes)
+            referencedDataTypes?.Add(code);
 
         var unionType = new UnionType(ud =>
         {
@@ -352,6 +387,29 @@ public sealed class FhirTypeModule(
         {
             field.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
         }
+    }
+
+    private ObjectType BuildDataTypeObjectType(
+        string typeName,
+        FhirIType fhirType,
+        List<ITypeSystemMember> nestedTypes,
+        HashSet<string> referencedDataTypes)
+    {
+        return new ObjectType(descriptor =>
+        {
+            descriptor.Name(typeName);
+            descriptor.Description($"FHIR {typeName} datatype");
+
+            descriptor.IsOfType((_, obj) =>
+                obj is ChoiceElementValue cv && cv.TypeName == typeName
+                || obj is JsonElement);
+
+            if (fhirType is FhirITypeExtended extended)
+            {
+                foreach (var child in extended.Children)
+                    AddFieldForElement(descriptor, child, typeName, nestedTypes, referencedDataTypes);
+            }
+        });
     }
 
     private ObjectType BuildNestedObjectType(
