@@ -39,6 +39,19 @@ public class FieldResolverTests
     }
 
     [Theory]
+    [InlineData("Patient/123/_history/2", "Patient", "123")]
+    [InlineData("https://server.com/fhir/Observation/obs-1/_history/5", "Observation", "obs-1")]
+    public void GivenVersionedReference_WhenParsing_ThenReturnsResourceKeyWithoutVersion(
+        string reference, string expectedType, string expectedId)
+    {
+        var result = FieldResolver.ParseFhirReference(reference);
+
+        result.ShouldNotBeNull();
+        result!.ResourceType.ShouldBe(expectedType);
+        result.ResourceId.ShouldBe(expectedId);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("#contained-ref")]

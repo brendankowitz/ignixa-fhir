@@ -534,6 +534,16 @@ public sealed class FhirTypeModule(
                             return await resolver.SearchReverseListAsync(
                                 capturedType, referenceParam.Value, instanceType, instanceId, ctx, ctx.RequestAborted);
                         }
+                        else
+                        {
+                            ctx.ReportError(
+                                ErrorBuilder.New()
+                                    .SetMessage("_reference requires an instance-level query (e.g., /Patient/123/$graphql)")
+                                    .SetCode("FHIR_REFERENCE_REQUIRES_INSTANCE")
+                                    .SetPath(ctx.Path)
+                                    .Build());
+                            return null;
+                        }
                     }
 
                     return await resolver.SearchListAsync(capturedType, ctx, ctx.RequestAborted);
@@ -560,6 +570,16 @@ public sealed class FhirTypeModule(
                         {
                             return await resolver.SearchReverseAsync(
                                 capturedType, referenceParam.Value, instanceType, instanceId, ctx, ctx.RequestAborted);
+                        }
+                        else
+                        {
+                            ctx.ReportError(
+                                ErrorBuilder.New()
+                                    .SetMessage("_reference requires an instance-level query (e.g., /Patient/123/$graphql)")
+                                    .SetCode("FHIR_REFERENCE_REQUIRES_INSTANCE")
+                                    .SetPath(ctx.Path)
+                                    .Build());
+                            return null;
                         }
                     }
 
@@ -691,8 +711,8 @@ public sealed class FhirTypeModule(
             .Description("FHIRPath expression to filter list elements"));
         fieldDescriptor.Argument("_offset", a => a.Type<IntType>()
             .Description("Number of elements to skip"));
-        fieldDescriptor.Argument("_count", a => a.Type<IntType>()
-            .Description("Maximum number of elements to return"));
+        fieldDescriptor.Argument("_limit", a => a.Type<IntType>()
+            .Description("Maximum number of elements to return from this list"));
     }
 
     private static ITypeNode ApplyCardinality(INullableTypeNode baseType, FhirIType child)

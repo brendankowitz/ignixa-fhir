@@ -57,8 +57,8 @@ internal static class FieldResolver
         if (offsetOpt.HasValue && offsetOpt.Value is > 0)
             items = items.Skip(offsetOpt.Value.Value);
 
-        // Apply _count
-        var countOpt = context.ArgumentOptional<int?>("_count");
+        // Apply _limit
+        var countOpt = context.ArgumentOptional<int?>("_limit");
         if (countOpt.HasValue && countOpt.Value is >= 0)
             items = items.Take(countOpt.Value.Value);
 
@@ -83,6 +83,11 @@ internal static class FieldResolver
         // Skip contained references (#id) and URN references (urn:...)
         if (reference.StartsWith('#') || reference.StartsWith("urn:", StringComparison.Ordinal))
             return null;
+
+        // Strip versioned reference suffix (e.g., Patient/123/_history/2)
+        var historyIndex = reference.IndexOf("/_history/", StringComparison.Ordinal);
+        if (historyIndex >= 0)
+            reference = reference[..historyIndex];
 
         // Handle both relative (Patient/123) and absolute (https://server/fhir/Patient/123)
         var lastSlash = reference.LastIndexOf('/');

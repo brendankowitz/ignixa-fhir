@@ -321,6 +321,29 @@ public class SearchResolverTests
     }
 
     [Fact]
+    public async Task GivenFilterArgument_WhenSearching_ThenPassesFilterToBuilder()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+        resolverContext.ArgumentOptional<string?>("_filter").Returns(new Optional<string?>("status eq active"));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_filter" && q.Value == "status eq active")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
     public async Task GivenDeletedEntries_WhenSearching_ThenExcludesThemFromResult()
     {
         // Arrange
