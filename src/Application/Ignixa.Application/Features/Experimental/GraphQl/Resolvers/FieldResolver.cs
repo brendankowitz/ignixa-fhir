@@ -52,6 +52,11 @@ internal static class FieldResolver
 
         IEnumerable<JsonElement> items = value.EnumerateArray().ToList();
 
+        // Apply fhirpath filter
+        var fhirpathOpt = context.ArgumentOptional<string?>("fhirpath");
+        if (fhirpathOpt.HasValue && !string.IsNullOrEmpty(fhirpathOpt.Value))
+            items = ApplyFhirPathFilter(items, fhirpathOpt.Value);
+
         // Apply _offset
         var offsetOpt = context.ArgumentOptional<int?>("_offset");
         if (offsetOpt.HasValue && offsetOpt.Value is > 0)
@@ -63,6 +68,32 @@ internal static class FieldResolver
             items = items.Take(countOpt.Value.Value);
 
         return items.ToList();
+    }
+
+    internal static IEnumerable<JsonElement> ApplyFhirPathFilter(
+        IEnumerable<JsonElement> items, string expression)
+    {
+        // "property.exists()" → filter where property exists and is not null
+        if (expression.EndsWith(".exists()", StringComparison.Ordinal))
+        {
+            var propertyName = expression[..^".exists()".Length];
+            return items.Where(e =>
+                e.TryGetProperty(propertyName, out var v) && v.ValueKind != JsonValueKind.Null);
+        }
+
+        // "$index = N" → select element at index N
+        if (expression.StartsWith("$index", StringComparison.Ordinal) && expression.Contains('=', StringComparison.Ordinal))
+        {
+            var indexStr = expression.Split('=', 2)[1].Trim();
+            if (int.TryParse(indexStr, out var index))
+            {
+                var list = items.ToList();
+                return index >= 0 && index < list.Count ? [list[index]] : [];
+            }
+        }
+
+        // Unsupported expressions pass through unfiltered
+        return items;
     }
 
     internal static string? GetStringProperty(JsonElement element, string propertyName)
