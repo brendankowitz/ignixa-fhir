@@ -137,6 +137,38 @@ public class FieldResolverTests
     }
 
     [Fact]
+    public void GivenEqualityExpression_WhenFiltering_ThenReturnsMatchingElements()
+    {
+        var items = new[]
+        {
+            JsonSerializer.Deserialize<JsonElement>("""{"use":"official","family":"Smith"}"""),
+            JsonSerializer.Deserialize<JsonElement>("""{"use":"temp","family":"Jones"}"""),
+            JsonSerializer.Deserialize<JsonElement>("""{"use":"official","family":"Doe"}"""),
+        };
+
+        var result = FieldResolver.ApplyFhirPathFilter(items, "use = 'official'").ToList();
+
+        result.Count.ShouldBe(2);
+        result[0].GetProperty("family").GetString().ShouldBe("Smith");
+        result[1].GetProperty("family").GetString().ShouldBe("Doe");
+    }
+
+    [Fact]
+    public void GivenInequalityExpression_WhenFiltering_ThenExcludesMatchingElements()
+    {
+        var items = new[]
+        {
+            JsonSerializer.Deserialize<JsonElement>("""{"use":"official","family":"Smith"}"""),
+            JsonSerializer.Deserialize<JsonElement>("""{"use":"temp","family":"Jones"}"""),
+        };
+
+        var result = FieldResolver.ApplyFhirPathFilter(items, "use != 'official'").ToList();
+
+        result.Count.ShouldBe(1);
+        result[0].GetProperty("family").GetString().ShouldBe("Jones");
+    }
+
+    [Fact]
     public void GivenIndexOutOfRange_WhenFiltering_ThenReturnsEmpty()
     {
         var items = new[]

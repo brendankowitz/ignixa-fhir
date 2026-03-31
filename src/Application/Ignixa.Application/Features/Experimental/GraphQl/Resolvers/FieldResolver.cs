@@ -92,6 +92,30 @@ internal static class FieldResolver
             }
         }
 
+        // "property = 'value'" → simple equality
+        if (expression.Contains(" = ", StringComparison.Ordinal) && !expression.Contains("!=", StringComparison.Ordinal))
+        {
+            var parts = expression.Split(" = ", 2);
+            var propName = parts[0].Trim();
+            var propValue = parts[1].Trim().Trim('\'', '"');
+            return items.Where(e =>
+                e.TryGetProperty(propName, out var val)
+                && val.ValueKind == JsonValueKind.String
+                && val.GetString() == propValue);
+        }
+
+        // "property != 'value'" → simple inequality
+        if (expression.Contains(" != ", StringComparison.Ordinal))
+        {
+            var parts = expression.Split(" != ", 2);
+            var propName = parts[0].Trim();
+            var propValue = parts[1].Trim().Trim('\'', '"');
+            return items.Where(e =>
+                !e.TryGetProperty(propName, out var val)
+                || val.ValueKind != JsonValueKind.String
+                || val.GetString() != propValue);
+        }
+
         // Unsupported expressions pass through unfiltered
         return items;
     }
