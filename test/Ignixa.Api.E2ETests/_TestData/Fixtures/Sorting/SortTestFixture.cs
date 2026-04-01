@@ -46,7 +46,8 @@ public static class SortTestScenario
             AllResources = []
         };
 
-        var baseDate = DateTime.UtcNow.Date;
+        // Use fixed reference date for deterministic test data
+        var baseDate = new DateTime(2025, 1, 1);
 
         var robinsonDate = baseDate.AddDays(-90);
         data.PatientRobinson = new PatientBuilder(schemaProvider)
