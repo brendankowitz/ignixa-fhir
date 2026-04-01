@@ -1,0 +1,405 @@
+@hostname = https://localhost:7058
+
+### ============================================================================
+### FHIR GraphQL ($graphql) Examples
+### ============================================================================
+### These examples demonstrate the FHIR $graphql operation using both
+### system-level and instance-level queries. The GraphQL endpoint accepts
+### POST with JSON body or GET with query parameter.
+###
+### Interactive IDE: Open {{hostname}}/graphql in a browser for Banana Cake Pop
+### ============================================================================
+
+### 1.1 Get Admin Token (for authenticated endpoints)
+# @name adminToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=fhir-admin-client
+&client_secret=dev-secret
+&scope=system/*.cruds
+
+### ============================================================================
+### INTROSPECTION
+### ============================================================================
+
+### 2.1 Schema introspection — discover types and fields
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ __schema { queryType { name } mutationType { name } types { name kind } } }"
+}
+
+### 2.2 Introspect a specific type
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ __type(name: \"Patient\") { name fields { name type { name kind ofType { name } } } } }"
+}
+
+### ============================================================================
+### SINGLE RESOURCE READ
+### ============================================================================
+
+### 3.1 Read a Patient by ID
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id name { use family given } birthDate gender active } }"
+}
+
+### 3.2 Read with nested complex types
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id identifier { system value } telecom { system value use } address { line city state postalCode country } } }"
+}
+
+### 3.3 Read using GET method
+GET {{hostname}}/$graphql?query={Patient(id:"example"){id,name{family,given},birthDate}}
+
+### ============================================================================
+### SIMPLE LIST SEARCH (flat array, no pagination)
+### ============================================================================
+
+### 4.1 List patients — basic search
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(_count: 5) { id name { text family given } birthDate gender } }"
+}
+
+### 4.2 List patients — search by name
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(name: \"Smith\", _count: 10) { id name { family given } } }"
+}
+
+### 4.3 List observations — search by category
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ ObservationList(category: \"vital-signs\", _count: 5) { id code { coding { system code display } } valueQuantity { value unit } effectiveDateTime } }"
+}
+
+### 4.4 List conditions — search by clinical status
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ ConditionList(clinical_status: \"active\", _count: 10) { id code { coding { display } } clinicalStatus { coding { code } } subject { reference } } }"
+}
+
+### 4.5 List with sorting
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(_count: 10, _sort: [\"-birthdate\", \"name\"]) { id name { family } birthDate } }"
+}
+
+### ============================================================================
+### CONNECTION SEARCH (paginated with edges)
+### ============================================================================
+
+### 5.1 Paginated patient search
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientConnection(_count: 5, _total: \"accurate\") { count pagesize offset edges { mode score resource { id name { family given } birthDate } } next previous } }"
+}
+
+### 5.2 Follow pagination cursor
+# Use the 'next' value from the previous response as the _cursor
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientConnection(_cursor: \"PASTE_CURSOR_HERE\") { count pagesize edges { resource { id name { family } } } next } }"
+}
+
+### ============================================================================
+### REFERENCE RESOLUTION (inline traversal)
+### ============================================================================
+
+### 6.1 Observation with resolved Patient subject
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ ObservationList(_count: 3) { id code { coding { display } } subject { reference display resource { ... on Patient { id name { text } birthDate } } } } }"
+}
+
+### 6.2 Reference with type filter — only resolve Patient references
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ ObservationList(_count: 5) { id subject { reference resource(type: \"Patient\") { ... on Patient { id name { family } } } } } }"
+}
+
+### 6.3 Reference with optional — don't error on unresolvable
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ ObservationList(_count: 5) { id subject { reference resource(optional: true) { ... on Patient { id name { text } } } } } }"
+}
+
+### 6.4 Encounter with resolved subject and participant references
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ EncounterList(_count: 3) { id status class { code } subject { reference resource(optional: true) { ... on Patient { id name { text } } } } } }"
+}
+
+### ============================================================================
+### INSTANCE-LEVEL QUERIES
+### ============================================================================
+
+### 7.1 Instance query on a Patient
+POST {{hostname}}/Patient/example/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ id name { use family given } birthDate gender }"
+}
+
+### 7.2 Instance query with reverse references
+# Find all Conditions referencing this Patient
+POST {{hostname}}/Patient/example/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ id name { family given } ConditionList(_reference: \"patient\", _count: 10) { id code { coding { display } } clinicalStatus { coding { code } } } }"
+}
+
+### 7.3 Instance query — Patient with their Observations
+POST {{hostname}}/Patient/example/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ id name { text } ObservationList(_reference: \"patient\", _count: 5) { id code { coding { display } } valueQuantity { value unit } effectiveDateTime } }"
+}
+
+### ============================================================================
+### PRIMITIVE EXTENSIONS
+### ============================================================================
+
+### 8.1 Access extensions on primitive fields
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(_count: 3) { id birthDate _birthDate { extension { url valueDateTime valueString } } } }"
+}
+
+### ============================================================================
+### LIST NAVIGATION (filtering within a resource's arrays)
+### ============================================================================
+
+### 9.1 Filter names using FHIRPath — only official names
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id officialName: name(fhirpath: \"use = 'official'\") { family given } allNames: name { use family given } } }"
+}
+
+### 9.2 Filter using exists()
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id namesWithFamily: name(fhirpath: \"family.exists()\") { family given } } }"
+}
+
+### 9.3 Paginate within a list — offset and limit
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id firstTwoNames: name(_limit: 2) { family given } remainingNames: name(_offset: 2) { family given } } }"
+}
+
+### ============================================================================
+### GRAPHQL VARIABLES
+### ============================================================================
+
+### 10.1 Query with variables
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "query GetPatient($patientId: ID!) { Patient(id: $patientId) { id name { family given } birthDate } }",
+  "operationName": "GetPatient",
+  "variables": {
+    "patientId": "example"
+  }
+}
+
+### 10.2 Search with variables
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "query SearchPatients($count: Int, $nameFilter: String) { PatientList(_count: $count, name: $nameFilter) { id name { family given } } }",
+  "operationName": "SearchPatients",
+  "variables": {
+    "count": 5,
+    "nameFilter": "Smith"
+  }
+}
+
+### ============================================================================
+### DIRECTIVES
+### ============================================================================
+
+### 11.1 @first — select only first name
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id name @first { family given } } }"
+}
+
+### 11.2 @singleton — assert single identifier
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id identifier @first @singleton { system value } } }"
+}
+
+### 11.3 @flatten — promote children to parent level
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id identifier @flatten { system value } active } }"
+}
+
+### 11.4 @slice — split list by index
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Patient(id: \"example\") { id name @slice(path: \"$index\") @flatten { given family } } }"
+}
+
+### 11.5 @skip / @include — standard GraphQL conditionals
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "query GetPatient($showAddress: Boolean!) { Patient(id: \"example\") { id name { family } address @include(if: $showAddress) { city state } } }",
+  "variables": { "showAddress": false }
+}
+
+### ============================================================================
+### MUTATIONS
+### ============================================================================
+
+### 12.1 Create a Patient
+# @name createPatient
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { PatientCreate(res: \"{\\\"resourceType\\\":\\\"Patient\\\",\\\"name\\\":[{\\\"family\\\":\\\"GraphQL\\\",\\\"given\\\":[\\\"Test\\\"]}],\\\"birthDate\\\":\\\"2000-01-01\\\",\\\"gender\\\":\\\"other\\\"}\") { id name { family given } birthDate gender } }"
+}
+
+### 12.2 Update a Patient (use ID from create response)
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { PatientUpdate(id: \"PASTE_ID_HERE\", res: \"{\\\"resourceType\\\":\\\"Patient\\\",\\\"name\\\":[{\\\"family\\\":\\\"GraphQL-Updated\\\",\\\"given\\\":[\\\"Test\\\"]}],\\\"birthDate\\\":\\\"2000-01-01\\\"}\") { id name { family given } } }"
+}
+
+### 12.3 Delete a Patient (use ID from create response)
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { PatientDelete(id: \"PASTE_ID_HERE\") }"
+}
+
+### ============================================================================
+### MULTI-RESOURCE QUERIES
+### ============================================================================
+
+### 13.1 Query multiple resource types in one request
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ patients: PatientList(_count: 3) { id name { text } } observations: ObservationList(category: \"vital-signs\", _count: 3) { id code { coding { display } } valueQuantity { value unit } } conditions: ConditionList(clinical_status: \"active\", _count: 3) { id code { coding { display } } } }"
+}
+
+### 13.2 Aliased fields — same type, different filters
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ active: PatientList(active: \"true\", _count: 5) { id name { family } } inactive: PatientList(active: \"false\", _count: 5) { id name { family } } }"
+}
+
+### ============================================================================
+### ADVANCED SEARCH
+### ============================================================================
+
+### 14.1 Search with _filter for complex criteria
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(_filter: \"name co 'john' and birthdate ge 1990-01-01\", _count: 10) { id name { family given } birthDate } }"
+}
+
+### 14.2 Token search — identifier system|value
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(identifier: \"http://example.org/mrn|12345\") { id identifier { system value } name { text } } }"
+}
+
+### 14.3 Date range search
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(birthdate: \"lt2000-01-01\", _count: 5) { id name { family } birthDate } }"
+}
+
+### ============================================================================
+### MULTI-TENANT
+### ============================================================================
+
+### 15.1 Tenant-explicit query
+POST {{hostname}}/tenant/1/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(_count: 5) { id name { family } } }"
+}
+
+### 15.2 Tenant-explicit instance query
+POST {{hostname}}/tenant/1/Patient/example/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ id name { family given } birthDate }"
+}
