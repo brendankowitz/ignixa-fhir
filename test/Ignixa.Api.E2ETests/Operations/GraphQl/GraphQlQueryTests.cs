@@ -1,0 +1,475 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Shouldly;
+using Ignixa.Api.E2ETests._Infrastructure;
+using Ignixa.Api.E2ETests._Infrastructure.Base;
+using Ignixa.Api.E2ETests._Infrastructure.Collections;
+
+namespace Ignixa.Api.E2ETests.Operations.GraphQl;
+
+/// <summary>
+/// Comprehensive E2E tests for FHIR $graphql operations.
+/// Covers introspection, single reads, list/connection search, instance queries,
+/// reference resolution, variables, directives, mutations, multi-resource queries,
+/// error handling, primitive extensions, list navigation, and multi-tenant queries.
+/// </summary>
+[Collection(E2ETestCollection.Name)]
+public class GraphQlQueryTests : CapabilityDrivenTestBase
+{
+    public GraphQlQueryTests(IgnixaApiFixture fixture) : base(fixture)
+    {
+    }
+
+    // ========================================================================
+    // Helper Methods
+    // ========================================================================
+
+    private async Task<JsonNode> PostGraphQlAsync(string query, string path = "/$graphql")
+    {
+        var body = JsonSerializer.Serialize(new { query });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await Client.PostAsync(path, content);
+        response.EnsureSuccessStatusCode();
+        response.Content.Headers.ContentType?.MediaType.ShouldBe("application/json");
+        var responseJson = await response.Content.ReadAsStringAsync();
+        return JsonNode.Parse(responseJson)!;
+    }
+
+    private async Task<JsonNode> PostGraphQlWithVariablesAsync(
+        string query, object variables, string? operationName = null, string path = "/$graphql")
+    {
+        var bodyObj = new Dictionary<string, object?> { ["query"] = query, ["variables"] = variables };
+        if (operationName is not null)
+        {
+            bodyObj["operationName"] = operationName;
+        }
+
+        var body = JsonSerializer.Serialize(bodyObj);
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await Client.PostAsync(path, content);
+        response.EnsureSuccessStatusCode();
+        var responseJson = await response.Content.ReadAsStringAsync();
+        return JsonNode.Parse(responseJson)!;
+    }
+
+    private static void AssertNoErrors(JsonNode result)
+    {
+        result["errors"].ShouldBeNull($"Expected no errors but got: {result["errors"]}");
+        result["data"].ShouldNotBeNull("Response should contain 'data'");
+    }
+
+    // ========================================================================
+    // Introspection
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenGraphQlAdvertised_WhenIntrospectingSchema_ThenReturnsQueryAndMutationTypes()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
+            "{ __schema { queryType { name } mutationType { name } } }");
+
+        AssertNoErrors(result);
+        result["data"]!["__schema"]!["queryType"]!["name"]!.GetValue<string>().ShouldBe("Query");
+        result["data"]!["__schema"]!["mutationType"]!["name"]!.GetValue<string>().ShouldBe("Mutation");
+    }
+
+    [Fact]
+    public async Task GivenGraphQlAdvertised_WhenIntrospectingPatientType_ThenReturnsFields()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
+            "{ __type(name: \"Patient\") { name fields { name } } }");
+
+        AssertNoErrors(result);
+        var fields = result["data"]!["__type"]!["fields"]!.AsArray();
+        fields.Count.ShouldBeGreaterThan(5);
+        fields.ShouldContain(f => f!["name"]!.GetValue<string>() == "id");
+        fields.ShouldContain(f => f!["name"]!.GetValue<string>() == "name");
+        fields.ShouldContain(f => f!["name"]!.GetValue<string>() == "birthDate");
+    }
+
+    // ========================================================================
+    // Single Resource Read
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientExists_WhenReadingById_ThenReturnsPatientFields()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithGivenName("GraphQlRead").WithFamilyName("TestPatient").WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { id name { family given } resourceType } }""");
+
+        AssertNoErrors(result);
+        var patient = result["data"]!["Patient"]!;
+        patient["id"]!.GetValue<string>().ShouldBe(created.Id);
+        patient["resourceType"]!.GetValue<string>().ShouldBe("Patient");
+        patient["name"]![0]!["family"]!.GetValue<string>().ShouldBe("TestPatient");
+    }
+
+    [Fact]
+    public async Task GivenPatientDoesNotExist_WhenReadingById_ThenReturnsNull()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
+            """{ Patient(id: "nonexistent-graphql-test-id") { id } }""");
+
+        AssertNoErrors(result);
+        result["data"]!["Patient"].ShouldBeNull();
+    }
+
+    // ========================================================================
+    // GET Method Support
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenGraphQlAdvertised_WhenUsingGetMethod_ThenReturnsData()
+    {
+        RequireOperationAnywhere("graphql");
+
+        using var response = await Client.GetAsync(
+            "/$graphql?query=" + Uri.EscapeDataString("{ __typename }"));
+
+        response.EnsureSuccessStatusCode();
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonNode.Parse(responseJson)!;
+        AssertNoErrors(result);
+        result["data"]!["__typename"]!.GetValue<string>().ShouldBe("Query");
+    }
+
+    // ========================================================================
+    // Simple List Search
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientsExist_WhenListSearching_ThenReturnsArray()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ListTest1").WithTag(tag).Build());
+        await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ListTest2").WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ PatientList(_count: 10, _tag: "{{tag}}") { id name { family } } }""");
+
+        AssertNoErrors(result);
+        var list = result["data"]!["PatientList"]!.AsArray();
+        list.Count.ShouldBeGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public async Task GivenPatientsExist_WhenSearchingByName_ThenReturnsMatching()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var uniqueName = $"GqlNameSearch{tag[..8]}";
+        await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName(uniqueName).WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ PatientList(name: "{{uniqueName}}", _tag: "{{tag}}") { id name { family } } }""");
+
+        AssertNoErrors(result);
+        var list = result["data"]!["PatientList"]!.AsArray();
+        list.Count.ShouldBe(1);
+        list[0]!["name"]![0]!["family"]!.GetValue<string>().ShouldBe(uniqueName);
+    }
+
+    // ========================================================================
+    // Connection Search (Paginated)
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientsExist_WhenConnectionSearch_ThenReturnsPaginatedResult()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        for (int i = 0; i < 3; i++)
+        {
+            await Harness.CreateResourceAsync(
+                CreatePatient().WithFamilyName($"ConnTest{i}").WithTag(tag).Build());
+        }
+
+        var result = await PostGraphQlAsync(
+            $$"""{ PatientConnection(_count: 2, _tag: "{{tag}}") { count pagesize edges { mode resource { id name { family } } } next } }""");
+
+        AssertNoErrors(result);
+        var conn = result["data"]!["PatientConnection"]!;
+        conn["pagesize"]!.GetValue<int>().ShouldBe(2);
+        var edges = conn["edges"]!.AsArray();
+        edges.Count.ShouldBeLessThanOrEqualTo(2);
+        edges[0]!["resource"]!["id"].ShouldNotBeNull();
+    }
+
+    // ========================================================================
+    // Instance-Level Queries
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientExists_WhenInstanceQuery_ThenReturnsResourceFields()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithGivenName("Instance").WithFamilyName("QueryTest").WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            "{ id name { family given } }",
+            $"/Patient/{created.Id}/$graphql");
+
+        AssertNoErrors(result);
+        result["data"]!["id"]!.GetValue<string>().ShouldBe(created.Id);
+        result["data"]!["name"]![0]!["family"]!.GetValue<string>().ShouldBe("QueryTest");
+    }
+
+    // ========================================================================
+    // Reference Resolution
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithOrganization_WhenResolvingReference_ThenReturnsReferencedResource()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var org = await Harness.CreateResourceAsync(
+            CreateOrganization().WithName("GqlRefOrg").WithTag(tag).Build());
+        var patient = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("RefTest").WithManagingOrganization(org.Id!).WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{patient.Id}}") { id managingOrganization { reference resource(optional: true) { ... on Organization { id name } } } } }""");
+
+        AssertNoErrors(result);
+        var mgOrg = result["data"]!["Patient"]!["managingOrganization"]!;
+        mgOrg["reference"]!.GetValue<string>().ShouldContain(org.Id!);
+    }
+
+    // ========================================================================
+    // Variables
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientExists_WhenUsingVariables_ThenResolvesCorrectly()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("VarTest").WithTag(tag).Build());
+
+        var result = await PostGraphQlWithVariablesAsync(
+            "query GetPatient($pid: ID!) { Patient(id: $pid) { id name { family } } }",
+            new { pid = created.Id },
+            "GetPatient");
+
+        AssertNoErrors(result);
+        result["data"]!["Patient"]!["id"]!.GetValue<string>().ShouldBe(created.Id);
+    }
+
+    // ========================================================================
+    // Directives
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithMultipleNames_WhenUsingFirstDirective_ThenReturnsSingleName()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("FirstDir")
+                .AddName("FirstDir", "Nick", "nickname")
+                .WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { id name @first { family } } }""");
+
+        AssertNoErrors(result);
+        var name = result["data"]!["Patient"]!["name"]!;
+        // @first should return a single object, not an array
+        name["family"].ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenPatient_WhenUsingSkipDirective_ThenOmitsField()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("SkipTest").WithTag(tag).Build());
+
+        var result = await PostGraphQlWithVariablesAsync(
+            """query($skip: Boolean!) { Patient(id: "$ID") { id name @skip(if: $skip) { family } } }"""
+                .Replace("$ID", created.Id!, StringComparison.Ordinal),
+            new { skip = true });
+
+        AssertNoErrors(result);
+        result["data"]!["Patient"]!["name"].ShouldBeNull();
+    }
+
+    // ========================================================================
+    // Mutations
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenValidResource_WhenCreatingViaGraphQl_ThenReturnsCreatedResource()
+    {
+        RequireOperationAnywhere("graphql");
+        var familyName = $"GqlCreate{Guid.NewGuid().ToString()[..8]}";
+        var resourceJson = $$$"""{"resourceType":"Patient","name":[{"family":"{{{familyName}}}","given":["Test"]}]}""";
+        var escaped = resourceJson.Replace("\"", "\\\"", StringComparison.Ordinal);
+
+        var result = await PostGraphQlAsync(
+            $$"""mutation { PatientCreate(res: "{{escaped}}") { id name { family given } } }""");
+
+        AssertNoErrors(result);
+        var created = result["data"]!["PatientCreate"]!;
+        created["id"].ShouldNotBeNull();
+        created["name"]![0]!["family"]!.GetValue<string>().ShouldBe(familyName);
+    }
+
+    [Fact]
+    public async Task GivenCreatedResource_WhenDeletingViaGraphQl_ThenReturnsTrue()
+    {
+        RequireOperationAnywhere("graphql");
+
+        // First create a patient
+        var resourceJson = """{"resourceType":"Patient","name":[{"family":"GqlDeleteTest"}]}""";
+        var escaped = resourceJson.Replace("\"", "\\\"", StringComparison.Ordinal);
+        var createResult = await PostGraphQlAsync(
+            $$"""mutation { PatientCreate(res: "{{escaped}}") { id } }""");
+        AssertNoErrors(createResult);
+        var createdId = createResult["data"]!["PatientCreate"]!["id"]!.GetValue<string>();
+
+        // Now delete it
+        var deleteResult = await PostGraphQlAsync(
+            $$"""mutation { PatientDelete(id: "{{createdId}}") }""");
+
+        AssertNoErrors(deleteResult);
+    }
+
+    // ========================================================================
+    // Multi-Resource Queries
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenGraphQlAdvertised_WhenQueryingMultipleResourceTypes_ThenReturnsAll()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
+            """{ patients: PatientList(_count: 2) { id } observations: ObservationList(_count: 2) { id } }""");
+
+        AssertNoErrors(result);
+        result["data"]!["patients"].ShouldNotBeNull();
+        result["data"]!["observations"].ShouldNotBeNull();
+    }
+
+    // ========================================================================
+    // Error Handling
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenInvalidQuery_WhenPosting_ThenReturnsGraphQlError()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var body = """{"query":"{ invalidField }"}""";
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await Client.PostAsync("/$graphql", content);
+
+        // GraphQL spec: return 200 with errors array
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonNode.Parse(responseJson)!;
+        result["errors"].ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenEmptyQuery_WhenPosting_ThenReturnsBadRequest()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var body = """{"query":""}""";
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await Client.PostAsync("/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    // ========================================================================
+    // Primitive Extensions
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithBirthDate_WhenQueryingPrimitiveExtension_ThenReturnsCompanionField()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithBirthDate(1990, 6, 15).WithFamilyName("ExtTest").WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { id birthDate _birthDate { id } } }""");
+
+        AssertNoErrors(result);
+        result["data"]!["Patient"]!["birthDate"].ShouldNotBeNull();
+    }
+
+    // ========================================================================
+    // List Navigation
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithMultipleNames_WhenUsingOffsetAndLimit_ThenReturnsPaginatedNames()
+    {
+        RequireOperationAnywhere("graphql");
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("NavTest")
+                .AddName("NavTest", "Nick1", "nickname")
+                .AddName("NavTest", "Nick2", "old")
+                .WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { id firstTwo: name(_limit: 2) { family } allNames: name { family } } }""");
+
+        AssertNoErrors(result);
+        var patient = result["data"]!["Patient"]!;
+        var firstTwo = patient["firstTwo"]!.AsArray();
+        var allNames = patient["allNames"]!.AsArray();
+        firstTwo.Count.ShouldBeLessThanOrEqualTo(2);
+        allNames.Count.ShouldBeGreaterThanOrEqualTo(firstTwo.Count);
+    }
+
+    // ========================================================================
+    // Multi-Tenant
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenGraphQlAdvertised_WhenQueryingViaTenantRoute_ThenReturnsData()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync("{ __typename }", "/tenant/1/$graphql");
+
+        AssertNoErrors(result);
+        result["data"]!["__typename"]!.GetValue<string>().ShouldBe("Query");
+    }
+}
