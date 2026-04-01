@@ -18,6 +18,7 @@ namespace Ignixa.Api.Endpoints.Experimental;
 public static class GraphQlEndpoints
 {
     private static readonly JsonResultFormatter ResultFormatter = new();
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static IEndpointRouteBuilder MapGraphQlEndpoints(
         this IEndpointRouteBuilder endpoints,
@@ -100,9 +101,7 @@ public static class GraphQlEndpoints
         GraphQlRequestBody body;
         try
         {
-            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(
-                context.Request.Body,
-                cancellationToken: cancellationToken)
+            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(context.Request.Body, JsonOptions, cancellationToken)
                 ?? new GraphQlRequestBody(null, null, null);
         }
         catch (JsonException)
@@ -160,9 +159,7 @@ public static class GraphQlEndpoints
         GraphQlRequestBody body;
         try
         {
-            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(
-                context.Request.Body,
-                cancellationToken: cancellationToken)
+            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(context.Request.Body, JsonOptions, cancellationToken)
                 ?? new GraphQlRequestBody(null, null, null);
         }
         catch (JsonException)
@@ -237,3 +234,4 @@ public static class GraphQlEndpoints
         return Results.Empty;
     }
 }
+

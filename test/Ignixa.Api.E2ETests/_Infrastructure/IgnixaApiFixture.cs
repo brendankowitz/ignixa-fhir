@@ -142,6 +142,9 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // Disable MCP for tests
                 ["Experimental:Features:Mcp:Enabled"] = "false",
 
+                // Enable GraphQL for E2E tests
+                ["Experimental:Features:GraphQl:Enabled"] = "true",
+
                 // Disable terminology auto-import for faster test startup
                 ["Experimental:Features:Terminology:EnableAutoImport"] = "false",
 
