@@ -53,6 +53,7 @@ internal static class FlattenResultProcessor
         // Collect directives before modifying (can't modify dict while iterating)
         var fieldsToFlatten = new List<(string fieldName, FieldNode fieldNode)>();
         var fieldsToSlice = new List<(string fieldName, FieldNode fieldNode, string path)>();
+        var fieldsToFirst = new List<string>();
 
         foreach (var selection in selectionSet.Selections.OfType<FieldNode>())
         {
@@ -60,6 +61,9 @@ internal static class FlattenResultProcessor
 
             if (HasDirective(selection, "flatten"))
                 fieldsToFlatten.Add((fieldName, selection));
+
+            if (HasDirective(selection, "first"))
+                fieldsToFirst.Add(fieldName);
 
             var slicePath = GetDirectiveArgument(selection, "slice", "path");
             if (slicePath is not null)
@@ -89,6 +93,13 @@ internal static class FlattenResultProcessor
         {
             if (parentData.TryGetValue(fieldName, out var fieldValue))
                 ApplyFlatten(parentData, fieldName, fieldValue);
+        }
+
+        // @first: replace list with its first element (or null if empty)
+        foreach (var fieldName in fieldsToFirst)
+        {
+            if (parentData.TryGetValue(fieldName, out var fieldValue) && fieldValue is IList<object?> list)
+                parentData[fieldName] = list.Count > 0 ? list[0] : null;
         }
 
         foreach (var (fieldName, _, path) in fieldsToSlice)

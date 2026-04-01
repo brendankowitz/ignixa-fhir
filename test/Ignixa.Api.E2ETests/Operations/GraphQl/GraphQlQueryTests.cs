@@ -150,27 +150,34 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     [Fact]
     public async Task GivenPatientsExist_WhenListSearching_ThenReturnsArray()
     {
+        var tag = Guid.NewGuid().ToString();
+        await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ListTest1").WithTag(tag).Build());
+        await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ListTest2").WithTag(tag).Build());
+
         var result = await PostGraphQlAsync(
-            """{ PatientList(_count: 3) { id name { family } } }""");
+            $$"""{ PatientList(_count: 10, _tag: "{{tag}}") { id name { family } } }""");
 
         AssertNoErrors(result);
         var list = result["data"]!["PatientList"]!.AsArray();
-        list.Count.ShouldBeGreaterThan(0);
+        list.Count.ShouldBeGreaterThanOrEqualTo(2);
     }
 
     [Fact]
     public async Task GivenPatientsExist_WhenSearchingByName_ThenReturnsMatching()
     {
-        var uniqueName = $"GqlNameSearch{Guid.NewGuid().ToString()[..8]}";
+        var tag = Guid.NewGuid().ToString();
+        var uniqueName = $"GqlNameSearch{tag[..8]}";
         await Harness.CreateResourceAsync(
-            CreatePatient().WithFamilyName(uniqueName).Build());
+            CreatePatient().WithFamilyName(uniqueName).WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ PatientList(name: "{{uniqueName}}") { id name { family } } }""");
+            $$"""{ PatientList(name: "{{uniqueName}}", _tag: "{{tag}}") { id name { family } } }""");
 
         AssertNoErrors(result);
         var list = result["data"]!["PatientList"]!.AsArray();
-        list.Count.ShouldBeGreaterThanOrEqualTo(1);
+        list.Count.ShouldBe(1);
         list[0]!["name"]![0]!["family"]!.GetValue<string>().ShouldBe(uniqueName);
     }
 
@@ -181,14 +188,22 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     [Fact]
     public async Task GivenPatientsExist_WhenConnectionSearch_ThenReturnsPaginatedResult()
     {
+        var tag = Guid.NewGuid().ToString();
+        for (int i = 0; i < 3; i++)
+        {
+            await Harness.CreateResourceAsync(
+                CreatePatient().WithFamilyName($"ConnTest{i}").WithTag(tag).Build());
+        }
+
         var result = await PostGraphQlAsync(
-            """{ PatientConnection(_count: 2) { count pagesize edges { mode resource { id name { family } } } next } }""");
+            $$"""{ PatientConnection(_count: 2, _tag: "{{tag}}") { count pagesize edges { mode resource { id name { family } } } next } }""");
 
         AssertNoErrors(result);
         var conn = result["data"]!["PatientConnection"]!;
         conn["pagesize"]!.GetValue<int>().ShouldBe(2);
         var edges = conn["edges"]!.AsArray();
         edges.Count.ShouldBeLessThanOrEqualTo(2);
+        edges[0]!["resource"]!["id"].ShouldNotBeNull();
     }
 
     // ========================================================================
@@ -196,19 +211,19 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // ========================================================================
 
     [Fact]
-    public async Task GivenPatientExists_WhenInstanceQuery_ThenReturnsResponse()
+    public async Task GivenPatientExists_WhenInstanceQuery_ThenReturnsResourceFields()
     {
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
-            CreatePatient().WithGivenName("Instance").WithFamilyName("QueryTest").Build());
+            CreatePatient().WithGivenName("Instance").WithFamilyName("QueryTest").WithTag(tag).Build());
 
-        var body = JsonSerializer.Serialize(new { query = "{ id resourceType }" });
-        using var content = new StringContent(body, Encoding.UTF8, "application/json");
-        using var response = await Client.PostAsync($"/Patient/{created.Id}/$graphql", content);
-        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = await PostGraphQlAsync(
+            "{ id name { family given } }",
+            $"/Patient/{created.Id}/$graphql");
 
-        // Instance-level endpoint should return a response (200 with data or errors)
-        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
-        responseJson.ShouldNotBeNullOrEmpty();
+        AssertNoErrors(result);
+        result["data"]!["id"]!.GetValue<string>().ShouldBe(created.Id);
+        result["data"]!["name"]![0]!["family"]!.GetValue<string>().ShouldBe("QueryTest");
     }
 
     // ========================================================================
@@ -256,42 +271,39 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Directives
     // ========================================================================
 
-    [Fact(Skip = "Directive middleware requires runtime investigation — directives are registered but execution path needs debugging")]
-    public async Task GivenPatient_WhenUsingFirstDirective_ThenReturnsResponse()
+    [Fact]
+    public async Task GivenPatientWithMultipleNames_WhenUsingFirstDirective_ThenReturnsSingleName()
     {
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
-            CreatePatient().WithFamilyName("FirstDir").Build());
+            CreatePatient()
+                .WithFamilyName("FirstDir")
+                .AddName("FirstDir", "Nick", "nickname")
+                .WithTag(tag).Build());
 
-        var body = JsonSerializer.Serialize(new { query = $$"""{ Patient(id: "{{created.Id}}") { id name @first { family } } }""" });
-        using var content = new StringContent(body, Encoding.UTF8, "application/json");
-        using var response = await Client.PostAsync("/$graphql", content);
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { id name @first { family } } }""");
 
-        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
-        var responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonNode.Parse(responseJson)!;
-        // @first directive should be accepted (no validation error)
-        result["data"].ShouldNotBeNull();
+        AssertNoErrors(result);
+        var name = result["data"]!["Patient"]!["name"]!;
+        // @first should return a single object, not an array
+        name["family"].ShouldNotBeNull();
     }
 
-    [Fact(Skip = "Directive middleware requires runtime investigation — directives are registered but execution path needs debugging")]
-    public async Task GivenPatient_WhenUsingSkipDirective_ThenReturnsResponse()
+    [Fact]
+    public async Task GivenPatient_WhenUsingSkipDirective_ThenOmitsField()
     {
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
-            CreatePatient().WithFamilyName("SkipTest").Build());
+            CreatePatient().WithFamilyName("SkipTest").WithTag(tag).Build());
 
-        var bodyObj = new Dictionary<string, object?>
-        {
-            ["query"] = $$"""query($skip: Boolean!) { Patient(id: "{{created.Id}}") { id name @skip(if: $skip) { family } } }""",
-            ["variables"] = new { skip = true },
-        };
-        var body = JsonSerializer.Serialize(bodyObj);
-        using var content = new StringContent(body, Encoding.UTF8, "application/json");
-        using var response = await Client.PostAsync("/$graphql", content);
+        var result = await PostGraphQlWithVariablesAsync(
+            """query($skip: Boolean!) { Patient(id: "$ID") { id name @skip(if: $skip) { family } } }"""
+                .Replace("$ID", created.Id!, StringComparison.Ordinal),
+            new { skip = true });
 
-        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
-        var responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonNode.Parse(responseJson)!;
-        result["data"].ShouldNotBeNull();
+        AssertNoErrors(result);
+        result["data"]!["Patient"]!["name"].ShouldBeNull();
     }
 
     // ========================================================================

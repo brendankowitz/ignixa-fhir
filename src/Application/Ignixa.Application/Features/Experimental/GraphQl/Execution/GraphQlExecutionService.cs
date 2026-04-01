@@ -41,8 +41,21 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         var schemaName = GraphQlNamingHelper.GetSchemaName(version);
         var executor = await executorResolver.GetRequestExecutorAsync(schemaName, cancellationToken);
 
+        var effectiveQuery = request.Query ?? string.Empty;
+
+        // Instance-level queries: wrap the user's selection set in a resource field.
+        // Per the FHIR $graphql spec, instance queries like /Patient/123/$graphql
+        // accept a bare selection set (e.g., { id name { family } }) that applies
+        // directly to the resource. We rewrite this as { Patient(id: "123") { ... } }
+        // so it's valid against the root Query type.
+        var isInstanceQuery = resourceType is not null && resourceId is not null;
+        if (isInstanceQuery)
+        {
+            effectiveQuery = WrapInstanceQuery(effectiveQuery, resourceType!, resourceId!);
+        }
+
         var builder = OperationRequestBuilder.New()
-            .SetDocument(request.Query ?? string.Empty);
+            .SetDocument(effectiveQuery);
 
         if (request.OperationName is not null)
             builder.SetOperationName(request.OperationName);
@@ -58,7 +71,56 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
 
         var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
 
-        return PostProcessDirectives(result, request.Query);
+        result = PostProcessDirectives(result, effectiveQuery);
+
+        // Instance-level queries: unwrap the resource data to the root level.
+        // The wrapped query produces { data: { Patient: { ... } } } but the caller
+        // expects { data: { id: ..., name: ... } }.
+        if (isInstanceQuery)
+        {
+            result = UnwrapInstanceResult(result, resourceType!);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Wraps an instance-level selection set into a typed resource query.
+    /// Input: <c>{ id name { family } }</c>
+    /// Output: <c>{ Patient(id: "123") { id name { family } } }</c>
+    /// </summary>
+    private static string WrapInstanceQuery(string query, string resourceType, string resourceId)
+    {
+        var trimmed = query.Trim();
+
+        // Extract inner selections from the braces
+        if (trimmed.StartsWith('{') && trimmed.EndsWith('}'))
+        {
+            var innerSelections = trimmed[1..^1].Trim();
+            // Escape any double quotes in the resource ID
+            var escapedId = resourceId.Replace("\"", "\\\"", StringComparison.Ordinal);
+            return $"{{ {resourceType}(id: \"{escapedId}\") {{ {innerSelections} }} }}";
+        }
+
+        return query;
+    }
+
+    /// <summary>
+    /// Unwraps instance query result: extracts the resource object from the wrapper field
+    /// so fields appear at the data root level.
+    /// </summary>
+    private static IExecutionResult UnwrapInstanceResult(IExecutionResult result, string resourceType)
+    {
+        if (result is not IOperationResult { Data: { } data } opResult)
+            return result;
+
+        if (!data.TryGetValue(resourceType, out var resourceData))
+            return result;
+
+        if (resourceData is not IReadOnlyDictionary<string, object?> resourceDict)
+            return result;
+
+        return CreateResultWithData(opResult, resourceDict);
     }
 
     private static IExecutionResult PostProcessDirectives(IExecutionResult result, string? query)
@@ -92,18 +154,7 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
             var dataCopy = FlattenResultProcessor.DeepCopyData(readOnlyData);
             FlattenResultProcessor.Process(document, dataCopy);
 
-            return new OperationResult(
-                dataCopy,
-                result.ExpectOperationResult().Errors,
-                result.ExpectOperationResult().Extensions,
-                result.ContextData,
-                result.ExpectOperationResult().Items,
-                result.ExpectOperationResult().Incremental,
-                result.ExpectOperationResult().Label,
-                result.ExpectOperationResult().Path,
-                result.ExpectOperationResult().HasNext,
-                result.ExpectOperationResult().RequestIndex,
-                result.ExpectOperationResult().VariableIndex);
+            return CreateResultWithData(result.ExpectOperationResult(), dataCopy);
         }
         catch
         {
@@ -126,6 +177,23 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="IOperationResult"/> by replacing the data dictionary
+    /// while preserving all other properties from the original result.
+    /// Uses <see cref="OperationResultBuilder"/> to ensure <c>IsDataSet</c> is <c>true</c>.
+    /// Constructing <see cref="OperationResult"/> directly via its public constructor
+    /// defaults <c>IsDataSet</c> to <c>false</c>, causing the JSON formatter to omit data.
+    /// </summary>
+    private static IOperationResult CreateResultWithData(
+        IOperationResult original,
+        IReadOnlyDictionary<string, object?> data)
+    {
+        return OperationResultBuilder
+            .FromResult(original)
+            .SetData(data)
+            .Build();
     }
 
     private static IReadOnlyDictionary<string, object?> DeserializeVariables(JsonElement variables)

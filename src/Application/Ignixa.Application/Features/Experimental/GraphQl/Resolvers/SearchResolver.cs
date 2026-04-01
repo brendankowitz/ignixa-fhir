@@ -205,7 +205,10 @@ public sealed class SearchResolver(
             if (argName is "_count" or "_cursor" or "_sort" or "_total" or "_filter" or "_reference")
                 continue;
 
-            var fhirParamName = argName.Replace('_', '-');
+            // FHIR system-level params start with '_' (e.g., _tag, _id, _lastUpdated).
+            // Only replace internal underscores with hyphens for user-defined params
+            // (e.g., general_practitioner → general-practitioner).
+            var fhirParamName = argName.StartsWith('_') ? argName : argName.Replace('_', '-');
             var valueOptional = context.ArgumentOptional<string?>(argName);
             if (valueOptional.HasValue && !string.IsNullOrEmpty(valueOptional.Value))
                 parameters.Add(new QueryParameter(fhirParamName, valueOptional.Value));

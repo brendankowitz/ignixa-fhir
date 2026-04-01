@@ -14,6 +14,12 @@ public sealed class FhirGraphQlErrorFilter : IErrorFilter
         var issueCode = MapToFhirIssueCode(error.Code);
         var severity = "error";
 
+        // Include the original exception message when available for debuggability.
+        // HC hides exception details behind "Unexpected Execution Error" by default.
+        var diagnostics = error.Exception is not null
+            ? $"{error.Message}: {error.Exception.GetType().Name}: {error.Exception.Message}"
+            : error.Message;
+
         var operationOutcome = new Dictionary<string, object?>
         {
             ["resourceType"] = "OperationOutcome",
@@ -23,7 +29,7 @@ public sealed class FhirGraphQlErrorFilter : IErrorFilter
                 {
                     ["severity"] = severity,
                     ["code"] = issueCode,
-                    ["diagnostics"] = error.Message,
+                    ["diagnostics"] = diagnostics,
                 },
             },
         };
