@@ -1,0 +1,182 @@
+name: Mutation Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      projects:
+        description: >
+          Comma-separated project names to test (e.g. "FhirPath,Validation").
+          Leave empty to run all projects.
+        required: false
+        type: string
+        default: ''
+  schedule:
+    # Weekly on Sunday at 03:00 UTC
+    - cron: '0 3 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Build the matrix dynamically so workflow_dispatch can scope to specific projects
+  resolve-matrix:
+    name: Resolve project matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          all='[
+            {"test-project":"test/Ignixa.FhirPath.Tests","project-name":"FhirPath"},
+            {"test-project":"test/Ignixa.Validation.Tests","project-name":"Validation"},
+            {"test-project":"test/Ignixa.Serialization.Tests","project-name":"Serialization"},
+            {"test-project":"test/Ignixa.FhirMappingLanguage.Tests","project-name":"FhirMappingLanguage"},
+            {"test-project":"test/Ignixa.Anonymizer.Tests","project-name":"Anonymizer"},
+            {"test-project":"test/Ignixa.SqlOnFhir.Tests","project-name":"SqlOnFhir"},
+            {"test-project":"test/Ignixa.Application.Tests","project-name":"Application"},
+            {"test-project":"test/Ignixa.Api.Tests","project-name":"Api"}
+          ]'
+          filter='${{ inputs.projects }}'
+          if [ -z "$filter" ]; then
+            echo "matrix={\"include\":$(echo "$all" | jq -c '.')}" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix={\"include\":$(echo "$all" | jq -c --arg f "$filter" '[.[] | select(.["project-name"] as $n | ($f | split(",") | map(gsub("^\\s+|\\s+$";"")) | index($n)) != null)]')}" >> "$GITHUB_OUTPUT"
+          fi
+
+  mutation-test:
+    name: Mutation Tests (${{ matrix.project-name }})
+    needs: resolve-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve-matrix.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore packages
+        run: dotnet restore ${{ matrix.test-project }}
+
+      - name: Run Stryker
+        working-directory: ${{ matrix.test-project }}
+        run: dotnet stryker
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stryker-${{ matrix.project-name }}
+          path: ${{ matrix.test-project }}/StrykerOutput/
+          retention-days: 30
+          if-no-files-found: warn
+
+  mutation-summary:
+    name: Mutation Score Summary
+    runs-on: ubuntu-latest
+    needs: [ mutation-test ]
+    if: always()
+
+    steps:
+      - name: Download all mutation reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stryker-*
+          path: stryker-reports
+          merge-multiple: false
+
+      - name: Post mutation score summary
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const reportsDir = 'stryker-reports';
+          const rows = [];
+
+          if (!fs.existsSync(reportsDir)) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## Mutation Testing Results\n\nNo reports found.\n');
+            process.exit(0);
+          }
+
+          function findReportFile(dir) {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                const found = findReportFile(fullPath);
+                if (found) return found;
+              } else if (entry.name === 'mutation-report.json') {
+                return fullPath;
+              }
+            }
+            return null;
+          }
+
+          const dirs = fs.readdirSync(reportsDir).sort();
+          for (const dir of dirs) {
+            const artifactDir = path.join(reportsDir, dir);
+            const reportPath = findReportFile(artifactDir);
+
+            if (!reportPath) {
+              rows.push(`| ${dir.replace('stryker-', '')} | — | — | — | — | ⚠️ No report |`);
+              continue;
+            }
+
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+            } catch (e) {
+              rows.push(`| ${dir.replace('stryker-', '')} | — | — | — | — | ❌ Parse error |`);
+              continue;
+            }
+
+            let killed = 0, survived = 0, timeout = 0, noCoverage = 0;
+            for (const file of Object.values(report.files || {})) {
+              for (const mutant of file.mutants || []) {
+                switch (mutant.status) {
+                  case 'Killed': killed++; break;
+                  case 'Survived': survived++; break;
+                  case 'Timeout': timeout++; break;
+                  case 'NoCoverage': noCoverage++; break;
+                }
+              }
+            }
+
+            const detected = killed + timeout;
+            const total = killed + survived + timeout + noCoverage;
+            const score = total > 0 ? Math.round(detected / total * 100) : 0;
+            const emoji = score >= 80 ? '🟢' : score >= 60 ? '🟡' : '🔴';
+            const projectName = dir.replace('stryker-', '');
+
+            rows.push(`| ${projectName} | ${killed} | ${survived} | ${noCoverage} | ${total} | ${emoji} **${score}%** |`);
+          }
+
+          let summary = '## Mutation Testing Results\n\n';
+          summary += '> Scores are informational — no threshold enforced.\n\n';
+          summary += '| Project | Killed | Survived | No Coverage | Total Mutants | Score |\n';
+          summary += '|---|---|---|---|---|---|\n';
+          summary += rows.join('\n') + '\n\n';
+          summary += '🟢 ≥ 80%  🟡 ≥ 60%  🔴 < 60%\n';
+
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          console.log('Summary written.');
+          EOF

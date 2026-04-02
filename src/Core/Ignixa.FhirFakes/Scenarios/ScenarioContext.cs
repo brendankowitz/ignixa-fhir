@@ -206,7 +206,16 @@ public sealed class ScenarioContext
     /// <summary>
     /// Gets the current age of the patient in years.
     /// </summary>
-    public int CurrentAge => (int)((CurrentTime - BirthDate).TotalDays / 365.25);
+    public int CurrentAge
+    {
+        get
+        {
+            var age = CurrentTime.Year - BirthDate.Year;
+            if (CurrentTime < BirthDate.AddYears(age))
+                age--;
+            return age;
+        }
+    }
 
     /// <summary>
     /// Sets the resource registry for automatic resource tracking.

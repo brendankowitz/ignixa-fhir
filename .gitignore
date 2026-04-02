@@ -355,3 +355,4 @@ bundle-*.json
 
 # Downloaded FHIR test cases
 test/Ignixa.FhirPath.Tests/TestData/
+StrykerOutput/
