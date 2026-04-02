@@ -121,7 +121,11 @@ public class OperationsSegment : ICapabilitySegment
             }
             else
             {
-                _logger.LogWarning("Operation definition not found for system operation: {OperationName}", opName);
+                var fallbackCanonical = $"http://hl7.org/fhir/OperationDefinition/{opName}";
+                statement.AddSystemOperation(opName, fallbackCanonical);
+                _logger.LogDebug(
+                    "Added system operation {OperationName} with fallback canonical (OperationDefinition not in package database)",
+                    opName);
             }
         }
 
@@ -137,8 +141,10 @@ public class OperationsSegment : ICapabilitySegment
                 }
                 else
                 {
-                    _logger.LogWarning(
-                        "Operation definition not found for resource operation: {ResourceType}/{OperationName}",
+                    var fallbackCanonical = $"http://hl7.org/fhir/OperationDefinition/{opName}";
+                    statement.AddResourceOperation(resourceType, opName, fallbackCanonical);
+                    _logger.LogDebug(
+                        "Added resource operation {ResourceType}/{OperationName} with fallback canonical (OperationDefinition not in package database)",
                         resourceType,
                         opName);
                 }
