@@ -102,7 +102,7 @@ internal class ScribanTemplateLoader(ITemplateResolver templateResolver) : ITemp
     /// This is the preferred method for loading templates as it doesn't block the calling thread.
     /// Scriban will use this method when rendering templates asynchronously via Template.RenderAsync.
     /// </remarks>
-    public async ValueTask<string> LoadAsync(TemplateContext context, SourceSpan callerSpan, string templatePath)
+    public async ValueTask<string?> LoadAsync(TemplateContext context, SourceSpan callerSpan, string templatePath)
     {
         var content = await _templateResolver.ResolveByPathAsync(templatePath, CancellationToken.None);
 

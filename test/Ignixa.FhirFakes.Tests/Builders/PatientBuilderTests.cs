@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Shouldly;
+using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
@@ -229,18 +230,8 @@ public class PatientBuilderTests
 
         // Assert
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
-        // Use calendar-correct arithmetic to verify birth year
-        var today = DateTime.UtcNow;
-        var expectedYear = today.Year - 45;
-        // Adjust if mid-year birthday assumption means patient hasn't had birthday yet
-        var tentativeBirthDate = new DateTime(expectedYear, 7, 1);
-        var actualAge = today.Year - tentativeBirthDate.Year;
-        if (today < tentativeBirthDate.AddYears(actualAge))
-        {
-            actualAge--;
-        }
-        var adjustedExpectedYear = expectedYear - (45 - actualAge);
-        birthDate.ShouldStartWith(adjustedExpectedYear.ToString());
+        var expectedYear = AgeHelper.BirthYearFromAge(45);
+        birthDate.ShouldStartWith(expectedYear.ToString());
     }
 
     [Fact]

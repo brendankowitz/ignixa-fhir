@@ -793,18 +793,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         // Calculate birthYear from age if needed
         if (_birthYear == null && _age != null)
         {
-            // Use calendar-correct arithmetic: subtract age, then adjust if birthday hasn't occurred yet
-            var today = DateTime.UtcNow;
-            var tentativeBirthYear = today.Year - _age.Value;
-            // Assume mid-year birthday (July 1) to reduce off-by-one errors
-            var tentativeBirthDate = new DateTime(tentativeBirthYear, 7, 1);
-            var actualAge = today.Year - tentativeBirthDate.Year;
-            if (today < tentativeBirthDate.AddYears(actualAge))
-            {
-                actualAge--;
-            }
-            // Adjust birth year if our assumed age differs from target age
-            _birthYear = tentativeBirthYear - (_age.Value - actualAge);
+            _birthYear = AgeHelper.BirthYearFromAge(_age.Value);
         }
 
         // Set default birthYear if neither age nor birthYear provided
@@ -824,13 +813,12 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     {
         if (_birthYear.HasValue)
         {
-            return new DateTime(_birthYear.Value, 1, 1);
+            return new DateTime(_birthYear.Value, 7, 1);
         }
 
         // Default: age 30, assuming mid-year birthday
-        var today = DateTime.UtcNow;
-        var tentativeBirthYear = today.Year - 30;
-        return new DateTime(tentativeBirthYear, 7, 1);
+        var defaultBirthYear = AgeHelper.BirthYearFromAge(30);
+        return new DateTime(defaultBirthYear, 7, 1);
     }
 
     private JsonArray BuildName()
@@ -998,15 +986,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     /// </summary>
     private static int CalculateAge(int year)
     {
-        var today = DateTime.UtcNow;
-        // Assume mid-year birthday to avoid off-by-one before/after birthday
-        var assumedBirthDate = new DateTime(year, 7, 1);
-        var age = today.Year - assumedBirthDate.Year;
-        if (today < assumedBirthDate.AddYears(age))
-        {
-            age--;
-        }
-        return age;
+        return AgeHelper.AgeFromBirthYear(year);
     }
 
     /// <summary>

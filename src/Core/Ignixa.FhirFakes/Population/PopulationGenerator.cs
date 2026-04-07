@@ -76,17 +76,7 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
 
             // 3. Extract sampled demographics for lifecycle simulation
             var age = patientBuilder.Age!.Value;
-            // Use calendar-correct arithmetic: assume mid-year birthday (July 1) to reduce off-by-one errors
-            var today = DateTime.Now;
-            var tentativeBirthYear = today.Year - age;
-            var tentativeBirthDate = new DateTime(tentativeBirthYear, 7, 1);
-            var actualAge = today.Year - tentativeBirthDate.Year;
-            if (today < tentativeBirthDate.AddYears(actualAge))
-            {
-                actualAge--;
-            }
-            // Adjust birth year if our assumed age differs from target age
-            var birthYear = tentativeBirthYear - (age - actualAge);
+            var birthYear = AgeHelper.BirthYearFromAge(age);
 
             // 4. Configure lifecycle generator with sampled demographics
             var lifecycle = new PatientLifecycleGenerator(_schemaProvider)

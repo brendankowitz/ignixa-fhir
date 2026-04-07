@@ -1002,7 +1002,7 @@ public class FhirNarrativeGeneratorTests
         narrative.ShouldContain("Jones");
         narrative.ShouldContain("Brown");
         // Verify all three entries are rendered
-        var smithCount = System.Text.RegularExpressions.Regex.Matches(narrative, "Smith").Count;
+        var smithCount = System.Text.RegularExpressions.Regex.Count(narrative, "Smith");
         smithCount.ShouldBeGreaterThan(0);
     }
 

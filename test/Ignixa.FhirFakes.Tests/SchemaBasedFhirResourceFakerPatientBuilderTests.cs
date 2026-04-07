@@ -62,7 +62,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
         // Verify birth year is approximately 45 years ago
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
-        birthDate.ShouldStartWith((DateTime.UtcNow.Year - 45).ToString());
+        birthDate.ShouldStartWith(AgeHelper.BirthYearFromAge(45).ToString());
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
         // Assert
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
-        var expectedYear = DateTime.UtcNow.Year - 35;
+        var expectedYear = AgeHelper.BirthYearFromAge(35);
         birthDate.ShouldStartWith(expectedYear.ToString());
     }
 
