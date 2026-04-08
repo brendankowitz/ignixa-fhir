@@ -10,7 +10,7 @@ namespace Ignixa.Domain.Caching;
 /// NOTE: Currently uses a global IPackageResourceRepository for all tenants.
 /// Phase 2: Will be updated to use tenant-scoped repositories when IFhirRepository.PackageResources is available.
 /// </summary>
-public class ConformanceResourceResolver : IConformanceResourceResolver
+public partial class ConformanceResourceResolver : IConformanceResourceResolver
 {
     private readonly IFhirConformanceCache _cache;
     private readonly IPackageResourceRepository _packageRepository;
@@ -56,9 +56,7 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
         var cached = await _cache.GetAsync(tenantId, canonical, version, cancellationToken);
         if (cached != null)
         {
-            _logger.LogDebug(
-                "Conformance resource resolved from cache. Canonical: {Canonical}, Version: {Version}",
-                canonical, version ?? "latest");
+            LogResolvedFromCache(_logger, canonical, version ?? "latest");
             return cached;
         }
 
@@ -80,9 +78,7 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
 
         if (packageResource != null && packageResource.IsActive)
         {
-            _logger.LogDebug(
-                "Conformance resource resolved from database. Canonical: {Canonical}, Version: {Version}, Package: {PackageId}@{PackageVersion}",
-                canonical, packageResource.Version, packageResource.PackageId, packageResource.PackageVersion);
+            LogResolvedFromDatabase(_logger, canonical, packageResource.Version, packageResource.PackageId, packageResource.PackageVersion);
 
             // Cache for future requests
             await _cache.SetAsync(tenantId, canonical, packageResource.ResourceJson, cancellationToken: cancellationToken);
@@ -91,9 +87,7 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
         }
 
         // Step 3: Not found
-        _logger.LogDebug(
-            "Conformance resource not found. Canonical: {Canonical}, Version: {Version}",
-            canonical, version ?? "latest");
+        LogResourceNotFound(_logger, canonical, version ?? "latest");
 
         return null;
     }
@@ -123,25 +117,19 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
         if (string.IsNullOrWhiteSpace(canonical))
             throw new ArgumentException("Canonical URL cannot be null or empty", nameof(canonical));
 
-        _logger.LogDebug(
-            "Resolving conformance resource from package. Package: {PackageId}@{PackageVersion}, Canonical: {Canonical}",
-            packageId, packageVersion, canonical);
+        LogResolvingFromPackage(_logger, packageId, packageVersion, canonical);
 
         var packageResource = await _packageRepository.GetFromPackageAsync(
             packageId, packageVersion, canonical, cancellationToken);
 
         if (packageResource != null && packageResource.IsActive)
         {
-            _logger.LogDebug(
-                "Conformance resource resolved from package {PackageId}@{PackageVersion}",
-                packageId, packageVersion);
+            LogResolvedFromPackage(_logger, packageId, packageVersion);
 
             return packageResource.ResourceJson;
         }
 
-        _logger.LogDebug(
-            "Conformance resource not found in package {PackageId}@{PackageVersion}",
-            packageId, packageVersion);
+        LogResourceNotFoundInPackage(_logger, packageId, packageVersion);
 
         return null;
     }
@@ -169,16 +157,12 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
         if (string.IsNullOrWhiteSpace(packageVersion))
             throw new ArgumentException("Package version cannot be null or empty", nameof(packageVersion));
 
-        _logger.LogDebug(
-            "Listing conformance resources from package {PackageId}@{PackageVersion}. Filter: {ResourceType}",
-            packageId, packageVersion, resourceType ?? "all");
+        LogListingResources(_logger, packageId, packageVersion, resourceType ?? "all");
 
         var resources = await _packageRepository.ListPackageResourcesAsync(
             packageId, packageVersion, resourceType, cancellationToken);
 
-        _logger.LogDebug(
-            "Found {Count} conformance resources in package {PackageId}@{PackageVersion}",
-            resources.Count, packageId, packageVersion);
+        LogFoundResources(_logger, resources.Count, packageId, packageVersion);
 
         return resources;
     }
@@ -195,7 +179,7 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
         if (string.IsNullOrWhiteSpace(tenantId))
             throw new ArgumentException("Tenant ID cannot be null or empty", nameof(tenantId));
 
-        _logger.LogInformation("Invalidating conformance cache for tenant {TenantId}", tenantId);
+        LogInvalidatingTenantCache(_logger, tenantId);
 
         await _cache.InvalidateTenantAsync(tenantId, cancellationToken);
     }
@@ -216,10 +200,38 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
         if (string.IsNullOrWhiteSpace(canonical))
             throw new ArgumentException("Canonical URL cannot be null or empty", nameof(canonical));
 
-        _logger.LogDebug(
-            "Invalidating conformance resource cache. Canonical: {Canonical}",
-            canonical);
+        LogInvalidatingResourceCache(_logger, canonical);
 
         await _cache.InvalidateAsync(tenantId, canonical, cancellationToken);
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Conformance resource resolved from cache. Canonical: {Canonical}, Version: {Version}")]
+    private static partial void LogResolvedFromCache(ILogger logger, string canonical, string version);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Conformance resource resolved from database. Canonical: {Canonical}, Version: {Version}, Package: {PackageId}@{PackageVersion}")]
+    private static partial void LogResolvedFromDatabase(ILogger logger, string canonical, string? version, string packageId, string packageVersion);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Conformance resource not found. Canonical: {Canonical}, Version: {Version}")]
+    private static partial void LogResourceNotFound(ILogger logger, string canonical, string version);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Resolving conformance resource from package. Package: {PackageId}@{PackageVersion}, Canonical: {Canonical}")]
+    private static partial void LogResolvingFromPackage(ILogger logger, string packageId, string packageVersion, string canonical);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Conformance resource resolved from package {PackageId}@{PackageVersion}")]
+    private static partial void LogResolvedFromPackage(ILogger logger, string packageId, string packageVersion);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Conformance resource not found in package {PackageId}@{PackageVersion}")]
+    private static partial void LogResourceNotFoundInPackage(ILogger logger, string packageId, string packageVersion);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Listing conformance resources from package {PackageId}@{PackageVersion}. Filter: {ResourceType}")]
+    private static partial void LogListingResources(ILogger logger, string packageId, string packageVersion, string resourceType);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} conformance resources in package {PackageId}@{PackageVersion}")]
+    private static partial void LogFoundResources(ILogger logger, int count, string packageId, string packageVersion);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Invalidating conformance cache for tenant {TenantId}")]
+    private static partial void LogInvalidatingTenantCache(ILogger logger, string tenantId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Invalidating conformance resource cache. Canonical: {Canonical}")]
+    private static partial void LogInvalidatingResourceCache(ILogger logger, string canonical);
 }

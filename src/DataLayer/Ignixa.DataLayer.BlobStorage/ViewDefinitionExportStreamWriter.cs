@@ -28,7 +28,7 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// 2. Create ParquetExportStreamWriter with viewDefinitionNode and schemaProvider
 /// 3. Call WriteResourceAsync on the writer - it handles evaluation automatically
 /// </summary>
-public class ViewDefinitionExportStreamWriter : IExportStreamWriter
+public partial class ViewDefinitionExportStreamWriter : IExportStreamWriter
 {
     private readonly ParquetExportStreamWriter _parquetWriter;
 
@@ -77,7 +77,8 @@ public class ViewDefinitionExportStreamWriter : IExportStreamWriter
             }
 
             schema = new ParquetSchema(fields);
-            logger.LogDebug("Built Parquet schema from ViewDefinition: {ColumnCount} columns", schema.Fields.Count);
+            var columnCount = schema.Fields.Count;
+            LogBuiltParquetSchema(logger, columnCount);
         }
         catch (Exception ex)
         {
@@ -150,4 +151,8 @@ public class ViewDefinitionExportStreamWriter : IExportStreamWriter
             _ => new DataField<string>(column.Name) // Unknown type - default to string
         };
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Built Parquet schema from ViewDefinition: {ColumnCount} columns")]
+    private static partial void LogBuiltParquetSchema(ILogger logger, int columnCount);
+
 }

@@ -15,7 +15,7 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// Helper class to load ViewDefinition resources from the FHIR datastore.
 /// ViewDefinitions are FHIR resources (resourceType: "ViewDefinition") that can be fetched like any other resource.
 /// </summary>
-public class ViewDefinitionLoader
+public partial class ViewDefinitionLoader
 {
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly ILogger<ViewDefinitionLoader> _logger;
@@ -41,10 +41,7 @@ public class ViewDefinitionLoader
         string viewDefinitionId,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation(
-            "Loading ViewDefinition: {ViewDefinitionId} for tenant {TenantId}",
-            viewDefinitionId,
-            tenantId);
+        LogLoadingViewDefinition(_logger, viewDefinitionId, tenantId);
 
         // Get repository for tenant
         var repository = await _repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
@@ -68,10 +65,14 @@ public class ViewDefinitionLoader
                 $"Failed to parse ViewDefinition: {viewDefinitionId}");
         }
 
-        _logger.LogDebug(
-            "Successfully loaded ViewDefinition: {ViewDefinitionId}",
-            viewDefinitionId);
+        LogLoadedViewDefinition(_logger, viewDefinitionId);
 
         return resourceNode.ToSourceNavigator();
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Loading ViewDefinition: {ViewDefinitionId} for tenant {TenantId}")]
+    private static partial void LogLoadingViewDefinition(ILogger logger, string viewDefinitionId, int tenantId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Successfully loaded ViewDefinition: {ViewDefinitionId}")]
+    private static partial void LogLoadedViewDefinition(ILogger logger, string viewDefinitionId);
 }

@@ -15,7 +15,7 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// Writes NDJSON resources with write-ahead buffering and RecyclableMemoryStream to minimize GC pressure.
 /// Memory pooling eliminates allocations after warmup, enabling sustained high-throughput export (28K+ res/sec).
 /// </summary>
-public class BlobStorageExportStreamWriter : IExportStreamWriter
+public partial class BlobStorageExportStreamWriter : IExportStreamWriter
 {
     private readonly IBlobStorageClient _blobStorage;
     private readonly string _outputPath;
@@ -91,10 +91,8 @@ public class BlobStorageExportStreamWriter : IExportStreamWriter
         _buffer.Position = 0;
         await _blobStorage.AppendBlobAsync(_outputPath, _buffer, cancellationToken);
 
-        _logger.LogDebug(
-            "Flushed {BytesWritten} bytes to export file: {OutputPath}",
-            _buffer.Length,
-            _outputPath);
+        var flushedBytes = _buffer.Length;
+        LogFlushedToExport(_logger, flushedBytes, _outputPath);
 
         // Clear buffer for next batch
         _buffer.SetLength(0);
@@ -120,6 +118,9 @@ public class BlobStorageExportStreamWriter : IExportStreamWriter
             GC.SuppressFinalize(this);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Flushed {BytesWritten} bytes to export file: {OutputPath}")]
+    private static partial void LogFlushedToExport(ILogger logger, long bytesWritten, string outputPath);
 
     private void ThrowIfDisposed()
     {

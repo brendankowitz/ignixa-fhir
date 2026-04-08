@@ -10,7 +10,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// Defines resilience policies for FHIR package downloads.
 /// Implements retry and circuit breaker patterns for robustness.
 /// </summary>
-public static class PackageLoaderResiliencePolicies
+public static partial class PackageLoaderResiliencePolicies
 {
     /// <summary>
     /// Creates a retry policy for transient HTTP failures.
@@ -29,25 +29,18 @@ public static class PackageLoaderResiliencePolicies
                 {
                     // Exponential backoff: 1s, 2s, 4s
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
-                    logger.LogInformation(
-                        "Retrying package download (attempt {Attempt}/3). Waiting {DelayMs}ms",
-                        attempt + 1, delay.TotalMilliseconds);
+                    LogRetrying(logger, attempt + 1, delay.TotalMilliseconds);
                     return delay;
                 },
                 onRetry: (outcome, delay, retryCount, context) =>
                 {
                     if (outcome.Exception != null)
                     {
-                        logger.LogWarning(
-                            outcome.Exception,
-                            "Package download failed (attempt {Attempt}). Retrying after {DelayMs}ms. Error: {ErrorMessage}",
-                            retryCount, delay.TotalMilliseconds, outcome.Exception.Message);
+                        LogRetryAfterFailure(logger, outcome.Exception, retryCount, delay.TotalMilliseconds, outcome.Exception.Message);
                     }
                     else if (outcome.Result != null)
                     {
-                        logger.LogWarning(
-                            "Package download returned {StatusCode} (attempt {Attempt}). Retrying after {DelayMs}ms",
-                            outcome.Result.StatusCode, retryCount, delay.TotalMilliseconds);
+                        LogRetryAfterStatusCode(logger, outcome.Result.StatusCode, retryCount, delay.TotalMilliseconds);
                     }
                 });
     }
@@ -68,18 +61,15 @@ public static class PackageLoaderResiliencePolicies
                 durationOfBreak: TimeSpan.FromSeconds(30),
                 onBreak: (outcome, duration) =>
                 {
-                    logger.LogError(
-                        "Circuit breaker opened for package downloads. Will retry after {DurationSeconds}s. Reason: {Reason}",
-                        duration.TotalSeconds,
-                        outcome.Exception?.Message ?? $"HTTP {outcome.Result?.StatusCode}");
+                    LogCircuitBreakerOpened(logger, duration.TotalSeconds, outcome.Exception?.Message ?? $"HTTP {outcome.Result?.StatusCode}");
                 },
                 onReset: () =>
                 {
-                    logger.LogInformation("Circuit breaker reset. Package downloads resumed.");
+                    LogCircuitBreakerReset(logger);
                 },
                 onHalfOpen: () =>
                 {
-                    logger.LogInformation("Circuit breaker half-open. Testing package download connectivity.");
+                    LogCircuitBreakerHalfOpen(logger);
                 });
     }
 
@@ -96,9 +86,7 @@ public static class PackageLoaderResiliencePolicies
             timeoutStrategy: TimeoutStrategy.Optimistic,
             onTimeoutAsync: (outcome, delay, context, ct) =>
             {
-                logger.LogError(
-                    "Package download timed out after {TimeoutMs}ms",
-                    delay.TotalMilliseconds);
+                LogDownloadTimedOut(logger, delay.TotalMilliseconds);
                 return Task.CompletedTask;
             });
     }
@@ -119,4 +107,25 @@ public static class PackageLoaderResiliencePolicies
         // This ensures timeout applies to the entire retry sequence
         return Policy.WrapAsync(timeoutPolicy, retryPolicy, circuitBreakerPolicy);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Retrying package download (attempt {Attempt}/3). Waiting {DelayMs}ms")]
+    private static partial void LogRetrying(ILogger logger, int attempt, double delayMs);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Package download failed (attempt {Attempt}). Retrying after {DelayMs}ms. Error: {ErrorMessage}")]
+    private static partial void LogRetryAfterFailure(ILogger logger, Exception ex, int attempt, double delayMs, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Package download returned {StatusCode} (attempt {Attempt}). Retrying after {DelayMs}ms")]
+    private static partial void LogRetryAfterStatusCode(ILogger logger, System.Net.HttpStatusCode statusCode, int attempt, double delayMs);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Circuit breaker opened for package downloads. Will retry after {DurationSeconds}s. Reason: {Reason}")]
+    private static partial void LogCircuitBreakerOpened(ILogger logger, double durationSeconds, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Circuit breaker reset. Package downloads resumed.")]
+    private static partial void LogCircuitBreakerReset(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Circuit breaker half-open. Testing package download connectivity.")]
+    private static partial void LogCircuitBreakerHalfOpen(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Package download timed out after {TimeoutMs}ms")]
+    private static partial void LogDownloadTimedOut(ILogger logger, double timeoutMs);
 }

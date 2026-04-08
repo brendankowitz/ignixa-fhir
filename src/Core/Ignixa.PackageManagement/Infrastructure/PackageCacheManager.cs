@@ -6,7 +6,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// Manages local filesystem caching of downloaded FHIR packages.
 /// Prevents re-downloading packages and supports offline access.
 /// </summary>
-public class PackageCacheManager
+public partial class PackageCacheManager
 {
     private readonly string _cacheDirectory;
     private readonly ILogger<PackageCacheManager> _logger;
@@ -61,9 +61,7 @@ public class PackageCacheManager
         if (exists)
         {
             var fileInfo = new FileInfo(cachePath);
-            _logger.LogDebug(
-                "Found cached package {PackageId}@{Version}. Size: {Size} bytes",
-                packageId, version, fileInfo.Length);
+            LogFoundCachedPackage(_logger, packageId, version, fileInfo.Length);
         }
 
         return exists;
@@ -86,9 +84,7 @@ public class PackageCacheManager
                 $"Package '{packageId}@{version}' not found in cache at '{cachePath}'");
         }
 
-        _logger.LogInformation(
-            "Reading cached package {PackageId}@{Version} from {CachePath}",
-            packageId, version, cachePath);
+        LogReadingCachedPackage(_logger, packageId, version, cachePath);
 
         // Read entire file into memory stream
         var memoryStream = new MemoryStream();
@@ -125,9 +121,7 @@ public class PackageCacheManager
 
         var cachePath = GetCachePath(packageId, version);
 
-        _logger.LogInformation(
-            "Caching package {PackageId}@{Version} to {CachePath}",
-            packageId, version, cachePath);
+        LogCachingPackage(_logger, packageId, version, cachePath);
 
         try
         {
@@ -150,16 +144,11 @@ public class PackageCacheManager
             }
 
             var fileInfo = new FileInfo(cachePath);
-            _logger.LogInformation(
-                "Successfully cached package {PackageId}@{Version}. Size: {Size} bytes",
-                packageId, version, fileInfo.Length);
+            LogSuccessfullyCachedPackage(_logger, packageId, version, fileInfo.Length);
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Failed to cache package {PackageId}@{Version} to {CachePath}",
-                packageId, version, cachePath);
+            LogCacheFailed(_logger, ex, packageId, version, cachePath);
 
             // Try to clean up partial file
             try
@@ -171,10 +160,7 @@ public class PackageCacheManager
             }
             catch (Exception deleteEx)
             {
-                _logger.LogWarning(
-                    deleteEx,
-                    "Failed to clean up partial cache file for {PackageId}@{Version}",
-                    packageId, version);
+                LogCleanupFailed(_logger, deleteEx, packageId, version);
             }
 
             throw;
@@ -192,25 +178,18 @@ public class PackageCacheManager
 
         if (!File.Exists(cachePath))
         {
-            _logger.LogDebug(
-                "Package {PackageId}@{Version} not in cache",
-                packageId, version);
+            LogPackageNotInCache(_logger, packageId, version);
             return;
         }
 
         try
         {
             File.Delete(cachePath);
-            _logger.LogInformation(
-                "Removed cached package {PackageId}@{Version}",
-                packageId, version);
+            LogRemovedCachedPackage(_logger, packageId, version);
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Failed to remove cached package {PackageId}@{Version} at {CachePath}",
-                packageId, version, cachePath);
+            LogRemoveFailed(_logger, ex, packageId, version, cachePath);
             throw;
         }
     }
@@ -232,17 +211,13 @@ public class PackageCacheManager
             var files = cacheDir.GetFiles("*.tgz");
             var totalSize = files.Sum(f => f.Length);
 
-            _logger.LogDebug(
-                "Cache statistics: {PackageCount} packages, {TotalSize} bytes",
-                files.Length, totalSize);
+            LogCacheStats(_logger, files.Length, totalSize);
 
             return (files.Length, totalSize);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Failed to get cache statistics");
+            LogCacheStatsFailed(_logger, ex);
             return (0, 0);
         }
     }
@@ -265,12 +240,51 @@ public class PackageCacheManager
                 file.Delete();
             }
 
-            _logger.LogInformation("Cache cleared. Removed all cached packages.");
+            LogCacheCleared(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to clear cache");
+            LogClearCacheFailed(_logger, ex);
             throw;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found cached package {PackageId}@{Version}. Size: {Size} bytes")]
+    private static partial void LogFoundCachedPackage(ILogger logger, string packageId, string version, long size);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reading cached package {PackageId}@{Version} from {CachePath}")]
+    private static partial void LogReadingCachedPackage(ILogger logger, string packageId, string version, string cachePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Caching package {PackageId}@{Version} to {CachePath}")]
+    private static partial void LogCachingPackage(ILogger logger, string packageId, string version, string cachePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully cached package {PackageId}@{Version}. Size: {Size} bytes")]
+    private static partial void LogSuccessfullyCachedPackage(ILogger logger, string packageId, string version, long size);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to cache package {PackageId}@{Version} to {CachePath}")]
+    private static partial void LogCacheFailed(ILogger logger, Exception ex, string packageId, string version, string cachePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to clean up partial cache file for {PackageId}@{Version}")]
+    private static partial void LogCleanupFailed(ILogger logger, Exception ex, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Package {PackageId}@{Version} not in cache")]
+    private static partial void LogPackageNotInCache(ILogger logger, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed cached package {PackageId}@{Version}")]
+    private static partial void LogRemovedCachedPackage(ILogger logger, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to remove cached package {PackageId}@{Version} at {CachePath}")]
+    private static partial void LogRemoveFailed(ILogger logger, Exception ex, string packageId, string version, string cachePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache statistics: {PackageCount} packages, {TotalSize} bytes")]
+    private static partial void LogCacheStats(ILogger logger, int packageCount, long totalSize);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to get cache statistics")]
+    private static partial void LogCacheStatsFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache cleared. Removed all cached packages.")]
+    private static partial void LogCacheCleared(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to clear cache")]
+    private static partial void LogClearCacheFailed(ILogger logger, Exception ex);
 }

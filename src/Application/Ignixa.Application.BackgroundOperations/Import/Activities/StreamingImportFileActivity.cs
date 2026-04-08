@@ -335,10 +335,10 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             using var reader = new StreamReader(stream, Encoding.UTF8);
 
             var lineNumber = 0;
+            string? line;
 
-            while (!reader.EndOfStream)
+            while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
                 lineNumber++;
 
                 if (string.IsNullOrWhiteSpace(line))

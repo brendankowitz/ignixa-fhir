@@ -9,7 +9,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// <summary>
 /// Extracts FHIR resources from a package tarball.
 /// </summary>
-public class PackageExtractor : IPackageExtractor
+public partial class PackageExtractor : IPackageExtractor
 {
     private readonly ILogger<PackageExtractor> _logger;
 
@@ -56,7 +56,7 @@ public class PackageExtractor : IPackageExtractor
         if (!packageStream.CanRead)
             throw new ArgumentException("Package stream must be readable", nameof(packageStream));
 
-        _logger.LogInformation("Starting package extraction");
+        LogStartingExtraction(_logger);
 
         try
         {
@@ -64,7 +64,7 @@ public class PackageExtractor : IPackageExtractor
             var buffer = new byte[packageStream.Length];
             await packageStream.ReadExactlyAsync(buffer, 0, buffer.Length, cancellationToken);
 
-            _logger.LogInformation("Read {Size} bytes from package stream", buffer.Length);
+            LogReadBytes(_logger, buffer.Length);
 
             PackageManifest? manifest = null;
             var resources = new List<ExtractedResource>();
@@ -104,17 +104,14 @@ public class PackageExtractor : IPackageExtractor
                 throw new InvalidOperationException("Package does not contain a valid package.json file");
             }
 
-            _logger.LogInformation(
-                "Package extraction complete. Manifest: {PackageId}@{Version}. Resources: {Count}",
-                manifest.Name, manifest.Version, resources.Count);
+            LogExtractionComplete(_logger, manifest.Name, manifest.Version, resources.Count);
 
-            // Log breakdown by resource type
-            var byType = resources.GroupBy(r => r.ResourceType);
-            foreach (var group in byType)
+            if (_logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.LogDebug(
-                    "Extracted {Count} {ResourceType} resources",
-                    group.Count(), group.Key);
+                foreach (var group in resources.CountBy(r => r.ResourceType))
+                {
+                    LogExtractedResources(_logger, group.Value, group.Key);
+                }
             }
 
             return new PackageExtractionResult
@@ -125,7 +122,7 @@ public class PackageExtractor : IPackageExtractor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to extract package");
+            LogExtractionFailed(_logger, ex);
             throw;
         }
     }
@@ -165,7 +162,7 @@ public class PackageExtractor : IPackageExtractor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to extract package manifest");
+            LogManifestExtractionFailed(_logger, ex);
             throw;
         }
     }
@@ -231,12 +228,12 @@ public class PackageExtractor : IPackageExtractor
         catch (JsonException ex)
         {
             // Log but continue - some JSON files may not be FHIR resources
-            _logger.LogDebug(ex, "Skipping entry {EntryName} - not valid JSON or not a conformance resource", entry.Name);
+            LogSkippingEntry(_logger, ex, entry.Name);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error extracting resource from entry {EntryName}", entry.Name);
+            LogResourceExtractionError(_logger, ex, entry.Name);
             return null;
         }
     }
@@ -266,4 +263,28 @@ public class PackageExtractor : IPackageExtractor
     {
         return ConformanceResourceTypes.Contains(resourceType);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting package extraction")]
+    private static partial void LogStartingExtraction(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Read {Size} bytes from package stream")]
+    private static partial void LogReadBytes(ILogger logger, int size);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Package extraction complete. Manifest: {PackageId}@{Version}. Resources: {Count}")]
+    private static partial void LogExtractionComplete(ILogger logger, string packageId, string version, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Extracted {Count} {ResourceType} resources")]
+    private static partial void LogExtractedResources(ILogger logger, int count, string resourceType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to extract package")]
+    private static partial void LogExtractionFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to extract package manifest")]
+    private static partial void LogManifestExtractionFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping entry {EntryName} - not valid JSON or not a conformance resource")]
+    private static partial void LogSkippingEntry(ILogger logger, Exception ex, string entryName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error extracting resource from entry {EntryName}")]
+    private static partial void LogResourceExtractionError(ILogger logger, Exception ex, string entryName);
 }

@@ -21,7 +21,7 @@ namespace Ignixa.Search.Definition;
 /// <summary>
 /// Provides mechanism to access search parameter definition.
 /// </summary>
-public class SearchParameterDefinitionManager : ISearchParameterDefinitionManager
+public partial class SearchParameterDefinitionManager : ISearchParameterDefinitionManager
 {
     private readonly IFhirSchemaProvider _modelInfoProvider;
     private readonly ConcurrentDictionary<string, string> _resourceTypeSearchParameterHashMap;
@@ -178,10 +178,7 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
             }
         }
 
-        logger.LogInformation(
-            "Resolved {ResolvedCount} composite search parameter components, {UnresolvedCount} unresolved",
-            resolvedCount,
-            unresolvedCount);
+        LogCompositeComponentsResolved(logger, resolvedCount, unresolvedCount);
     }
 
     internal ConcurrentDictionary<Uri, SearchParameterInfo> UrlLookup { get; set; }
@@ -307,4 +304,7 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
                 (resourceType, existingValue) => searchParamHash);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resolved {ResolvedCount} composite search parameter components, {UnresolvedCount} unresolved")]
+    private static partial void LogCompositeComponentsResolved(ILogger logger, int resolvedCount, int unresolvedCount);
 }

@@ -15,7 +15,7 @@ namespace Ignixa.DataLayer.FileSystem.DurableTask;
 /// Wraps InMemoryOrchestrationService and adds persistence to {BaseDirectory}/_jobs/.
 /// Provides durability across application restarts while maintaining zero external dependencies.
 /// </summary>
-public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrationServiceClient, IDisposable
+public partial class FileBasedOrchestrationService : IOrchestrationService, IOrchestrationServiceClient, IDisposable
 {
     private readonly FileBasedOrchestrationServiceOptions _options;
     private readonly ILogger<FileBasedOrchestrationService> _logger;
@@ -66,9 +66,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
         // Set up periodic flush timer
         _flushTimer = new Timer(FlushStateToDisk, null, _options.StateFlushInterval, _options.StateFlushInterval);
 
-        _logger.LogInformation(
-            "FileBasedOrchestrationService initialized with jobs directory: {JobsDirectory}",
-            _jobsDirectory);
+        LogServiceInitialized(_logger, _jobsDirectory);
     }
 
     #region IOrchestrationService Implementation
@@ -110,7 +108,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
 
     public async Task StartAsync()
     {
-        _logger.LogInformation("Starting FileBasedOrchestrationService and recovering persisted state...");
+        LogStarting(_logger);
 
         // Recover state from disk before starting
         await RecoverPersistedStateAsync();
@@ -118,7 +116,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
         // Start the inner service
         await InnerService.StartAsync();
 
-        _logger.LogInformation("FileBasedOrchestrationService started successfully");
+        LogStarted(_logger);
     }
 
     public async Task StopAsync()
@@ -128,7 +126,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
 
     public async Task StopAsync(bool isForced)
     {
-        _logger.LogInformation("Stopping FileBasedOrchestrationService...");
+        LogStopping(_logger);
 
         // Final flush before shutdown
         await FlushStateToDiskAsync();
@@ -140,7 +138,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
         await _flushTimer.DisposeAsync();
         _flushLock.Dispose();
 
-        _logger.LogInformation("FileBasedOrchestrationService stopped");
+        LogStopped(_logger);
     }
 
     public async Task<TaskOrchestrationWorkItem?> LockNextTaskOrchestrationWorkItemAsync(
@@ -311,10 +309,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
         {
             var instanceFiles = Directory.GetFiles(_instancesDirectory, "*.json");
 
-            _logger.LogInformation(
-                "Recovering {Count} orchestration instances from {Directory}",
-                instanceFiles.Length,
-                _instancesDirectory);
+            LogRecoveringInstances(_logger, instanceFiles.Length, _instancesDirectory);
 
             foreach (var filePath in instanceFiles)
             {
@@ -325,26 +320,23 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
 
                     if (state == null)
                     {
-                        _logger.LogWarning("Failed to deserialize state from {FilePath}", filePath);
+                        LogDeserializeFailed(_logger, filePath);
                         continue;
                     }
 
-                    _logger.LogDebug(
-                        "Recovered instance {InstanceId} in state {State}",
-                        state.InstanceId,
-                        state.OrchestrationStatus);
+                    LogRecoveredInstance(_logger, state.InstanceId, state.OrchestrationStatus);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error recovering state from {FilePath}", filePath);
+                    LogRecoverStateError(_logger, ex, filePath);
                 }
             }
 
-            _logger.LogInformation("State recovery completed");
+            LogRecoveryCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during state recovery");
+            LogRecoveryError(_logger, ex);
         }
     }
 
@@ -382,11 +374,11 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
             var filePath = Path.Combine(_instancesDirectory, $"{instanceId}.json");
             await WriteJsonFileAtomicallyAsync(filePath, stateFile);
 
-            _logger.LogTrace("Persisted state for instance {InstanceId}", instanceId);
+            LogPersistedState(_logger, instanceId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error persisting state for instance {InstanceId}", instanceId);
+            LogPersistStateError(_logger, ex, instanceId);
         }
     }
 
@@ -405,14 +397,11 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
             var filePath = Path.Combine(_historyDirectory, $"{instanceId}.json");
             await WriteJsonFileAtomicallyAsync(filePath, runtimeState.Events);
 
-            _logger.LogTrace(
-                "Persisted {EventCount} history events for instance {InstanceId}",
-                runtimeState.Events.Count,
-                instanceId);
+            LogPersistedHistory(_logger, runtimeState.Events.Count, instanceId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error persisting history for instance {InstanceId}", instanceId);
+            LogPersistHistoryError(_logger, ex, instanceId);
         }
     }
 
@@ -477,7 +466,7 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during state flush");
+            LogFlushError(_logger, ex);
         }
         finally
         {
@@ -532,4 +521,52 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
     }
 
     #endregion
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FileBasedOrchestrationService initialized with jobs directory: {JobsDirectory}")]
+    private static partial void LogServiceInitialized(ILogger logger, string jobsDirectory);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Recovering {Count} orchestration instances from {Directory}")]
+    private static partial void LogRecoveringInstances(ILogger logger, int count, string directory);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Recovered instance {InstanceId} in state {State}")]
+    private static partial void LogRecoveredInstance(ILogger logger, string instanceId, string state);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Persisted state for instance {InstanceId}")]
+    private static partial void LogPersistedState(ILogger logger, string instanceId);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Persisted {EventCount} history events for instance {InstanceId}")]
+    private static partial void LogPersistedHistory(ILogger logger, int eventCount, string instanceId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting FileBasedOrchestrationService and recovering persisted state...")]
+    private static partial void LogStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FileBasedOrchestrationService started successfully")]
+    private static partial void LogStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Stopping FileBasedOrchestrationService...")]
+    private static partial void LogStopping(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FileBasedOrchestrationService stopped")]
+    private static partial void LogStopped(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize state from {FilePath}")]
+    private static partial void LogDeserializeFailed(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error recovering state from {FilePath}")]
+    private static partial void LogRecoverStateError(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "State recovery completed")]
+    private static partial void LogRecoveryCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during state recovery")]
+    private static partial void LogRecoveryError(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error persisting state for instance {InstanceId}")]
+    private static partial void LogPersistStateError(ILogger logger, Exception exception, string instanceId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error persisting history for instance {InstanceId}")]
+    private static partial void LogPersistHistoryError(ILogger logger, Exception exception, string instanceId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during state flush")]
+    private static partial void LogFlushError(ILogger logger, Exception exception);
 }

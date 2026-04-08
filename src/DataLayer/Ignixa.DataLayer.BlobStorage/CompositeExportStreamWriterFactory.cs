@@ -16,7 +16,7 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// - .parquet → ParquetExportStreamWriter (Parquet format)
 /// - Default/unknown → BlobStorageExportStreamWriter (backward compatibility)
 /// </summary>
-public class CompositeExportStreamWriterFactory : IExportStreamWriterFactory
+public partial class CompositeExportStreamWriterFactory : IExportStreamWriterFactory
 {
     private readonly IBlobStorageClient _blobStorage;
     private readonly ILoggerFactory _loggerFactory;
@@ -68,13 +68,14 @@ public class CompositeExportStreamWriterFactory : IExportStreamWriterFactory
             ".NDJSON" or "" or _ => CreateNdjsonWriter(outputPath)
         };
 
-        _logger.LogDebug(
-            "Created {WriterType} for output path: {OutputPath}",
-            writer.GetType().Name,
-            outputPath);
+        var writerType = writer.GetType().Name;
+        LogCreatedWriter(_logger, writerType, outputPath);
 
         return Task.FromResult(writer);
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Created {WriterType} for output path: {OutputPath}")]
+    private static partial void LogCreatedWriter(ILogger logger, string writerType, string outputPath);
 
     private IExportStreamWriter CreateParquetWriter(string outputPath)
     {

@@ -10,7 +10,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// Service for searching FHIR packages using the Simplifier.net FHIR Package API.
 /// Uses server-side filtering with the /catalog?name= endpoint for better search results.
 /// </summary>
-public class NpmPackageSearchService : INpmPackageSearchService
+public partial class NpmPackageSearchService : INpmPackageSearchService
 {
     private readonly HttpClient _httpClient;
     private readonly NpmPackageLoaderOptions _options;
@@ -46,7 +46,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
             throw new ArgumentException("Max results must be greater than 0", nameof(maxResults));
         }
 
-        _logger.LogDebug("Searching for packages with query: {Query}", query);
+        LogSearching(_logger, query);
 
         // Step 1: Get catalog with server-side filtering
         var catalog = await GetCatalogAsync(query, cancellationToken);
@@ -66,7 +66,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
 
         if (scoredResults.Count == 0)
         {
-            _logger.LogInformation("No packages found matching query: {Query}", query);
+            LogNoPackagesFound(_logger, query);
             return Array.Empty<PackageSearchResult>();
         }
 
@@ -86,7 +86,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
             });
         }
 
-        _logger.LogInformation("Found {Count} packages matching query: {Query}", results.Count, query);
+        LogFoundPackages(_logger, results.Count, query);
         return results;
     }
 
@@ -102,7 +102,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
             throw new ArgumentException("Package ID cannot be empty", nameof(packageId));
         }
 
-        _logger.LogDebug("Fetching details for package: {PackageId}", packageId);
+        LogFetchingDetails(_logger, packageId);
 
         try
         {
@@ -113,7 +113,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    _logger.LogWarning("Package not found: {PackageId}", packageId);
+                    LogPackageNotFound(_logger, packageId);
                     return null;
                 }
 
@@ -125,7 +125,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
 
             if (metadata == null)
             {
-                _logger.LogWarning("Failed to deserialize package metadata for: {PackageId}", packageId);
+                LogDeserializationFailed(_logger, packageId);
                 return null;
             }
 
@@ -150,7 +150,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch package details for: {PackageId}", packageId);
+            LogFetchDetailsFailed(_logger, ex, packageId);
             throw;
         }
     }
@@ -162,7 +162,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
     /// </summary>
     private async Task<CatalogEntry[]> GetCatalogAsync(string? nameFilter, CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Fetching catalog from registry with filter: {Filter}", nameFilter ?? "(none)");
+        LogFetchingCatalog(_logger, nameFilter ?? "(none)");
 
         try
         {
@@ -181,12 +181,12 @@ public class NpmPackageSearchService : INpmPackageSearchService
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             var catalog = JsonSerializer.Deserialize<CatalogEntry[]>(json, JsonOptions) ?? Array.Empty<CatalogEntry>();
 
-            _logger.LogInformation("Fetched catalog with {Count} packages", catalog.Length);
+            LogFetchedCatalog(_logger, catalog.Length);
             return catalog;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch catalog");
+            LogFetchCatalogFailed(_logger, ex);
             throw;
         }
     }
@@ -204,7 +204,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to fetch latest version for package: {PackageId}", packageId);
+            LogFetchLatestVersionFailed(_logger, ex, packageId);
             return null;
         }
     }
@@ -245,4 +245,37 @@ public class NpmPackageSearchService : INpmPackageSearchService
 
         return score;
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Searching for packages with query: {Query}")]
+    private static partial void LogSearching(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "No packages found matching query: {Query}")]
+    private static partial void LogNoPackagesFound(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Found {Count} packages matching query: {Query}")]
+    private static partial void LogFoundPackages(ILogger logger, int count, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Fetching details for package: {PackageId}")]
+    private static partial void LogFetchingDetails(ILogger logger, string packageId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Package not found: {PackageId}")]
+    private static partial void LogPackageNotFound(ILogger logger, string packageId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize package metadata for: {PackageId}")]
+    private static partial void LogDeserializationFailed(ILogger logger, string packageId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to fetch package details for: {PackageId}")]
+    private static partial void LogFetchDetailsFailed(ILogger logger, Exception ex, string packageId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Fetching catalog from registry with filter: {Filter}")]
+    private static partial void LogFetchingCatalog(ILogger logger, string filter);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fetched catalog with {Count} packages")]
+    private static partial void LogFetchedCatalog(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to fetch catalog")]
+    private static partial void LogFetchCatalogFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to fetch latest version for package: {PackageId}")]
+    private static partial void LogFetchLatestVersionFailed(ILogger logger, Exception ex, string packageId);
 }

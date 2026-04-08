@@ -26,7 +26,7 @@ namespace Ignixa.DataLayer.FileSystem.FileSystem;
 /// Directory structure: {baseDir}/{resourceType}/{YYYY}/{MM}/{DD}/tx-{transactionId}.ndjson
 /// Metadata: {baseDir}/{resourceType}/{YYYY}/{MM}/{DD}/tx-{transactionId}.metadata.ndjson
 /// </remarks>
-public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
+public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposable
 {
     private readonly string _baseDirectory;
     private readonly ILogger<FileBasedFhirRepository> _logger;
@@ -69,7 +69,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             var metadataFile = await FindLatestMetadataFileAsync(key, ct).ConfigureAwait(false);
             if (metadataFile == null)
             {
-                _logger.LogDebug("Resource not found: {ResourceType}/{Id}", key.ResourceType, key.Id);
+                LogResourceNotFound(_logger, key.ResourceType, key.Id);
                 return null;
             }
 
@@ -101,14 +101,13 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                 Request = metadata.Request
             };
 
-            _logger.LogDebug("Retrieved resource: {ResourceType}/{Id} version {VersionId}",
-                key.ResourceType, key.Id, metadata.VersionId);
+            LogResourceRetrieved(_logger, key.ResourceType, key.Id, metadata.VersionId);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to read resource: {ResourceType}/{Id}", key.ResourceType, key.Id);
+            LogFailedToReadResource(_logger, ex, key.ResourceType, key.Id);
             throw;
         }
     }
@@ -167,8 +166,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
             await File.WriteAllTextAsync(internalMetadataPath, metadataJson, ct).ConfigureAwait(false);
 
-            _logger.LogInformation("Stored resource: {ResourceType}/{Id} version {VersionId} tx {TransactionId}",
-                resource.ResourceType, resource.ResourceId, metadata.VersionId, transactionId);
+            LogResourceStored(_logger, resource.ResourceType, resource.ResourceId, metadata.VersionId, transactionId);
 
             // Return UpdateResult with ResourceKey + raw bytes (only deserialize if needed)
             var resourceBytes = System.Text.Encoding.UTF8.GetBytes(resourceJson);
@@ -204,17 +202,14 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            _logger.LogDebug("Deleting resource {ResourceType}/{Id}", key.ResourceType, key.Id);
+            LogDeletingResource(_logger, key.ResourceType, key.Id);
 
             // Check if resource exists
             var metadataFile = await FindLatestMetadataFileAsync(key, ct).ConfigureAwait(false);
             if (metadataFile == null)
             {
                 // Resource never existed - return null (404 Not Found)
-                _logger.LogWarning(
-                    "Cannot delete {ResourceType}/{Id}: resource never existed",
-                    key.ResourceType,
-                    key.Id);
+                LogCannotDeleteNonExistent(_logger, key.ResourceType, key.Id);
                 return null;
             }
 
@@ -224,11 +219,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             // Check if already deleted (idempotency)
             if (currentMetadata.IsDeleted)
             {
-                _logger.LogDebug(
-                    "Resource {ResourceType}/{Id} already deleted at version {Version} (idempotent)",
-                    key.ResourceType,
-                    key.Id,
-                    currentMetadata.VersionId);
+                LogResourceAlreadyDeleted(_logger, key.ResourceType, key.Id, currentMetadata.VersionId);
 
                 return new ResourceKey(
                     key.ResourceType,
@@ -280,11 +271,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
             var resultKey = new ResourceKey(key.ResourceType, key.Id, newVersion.ToString(), key.TenantId);
 
-            _logger.LogInformation(
-                "Deleted resource: {ResourceType}/{Id} (created tombstone version {Version})",
-                key.ResourceType,
-                key.Id,
-                newVersion);
+            LogResourceDeleted(_logger, key.ResourceType, key.Id, newVersion);
 
             return resultKey;
         }
@@ -378,9 +365,9 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
         // Read all resource lines and find matching ID
-        while (!reader.EndOfStream)
+        string? resourceJson;
+        while ((resourceJson = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
         {
-            string? resourceJson = await reader.ReadLineAsync(ct).ConfigureAwait(false);
             if (string.IsNullOrEmpty(resourceJson))
             {
                 continue;
@@ -423,14 +410,14 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
         if (!File.Exists(lockFilePath))
         {
-            _logger.LogWarning("Lock file not found for transaction {TransactionId}: {LockFile}", transactionId, lockFilePath);
+            LogLockFileNotFound(_logger, transactionId, lockFilePath);
             return;
         }
 
         // Rename lock file to committed file
         File.Move(lockFilePath, committedFilePath);
 
-        _logger.LogInformation("Transaction {TransactionId} committed: {CommittedFile}", transactionId, committedFilePath);
+        LogTransactionCommitted(_logger, transactionId, committedFilePath);
 
         await ValueTask.CompletedTask;
     }
@@ -445,7 +432,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string transactionsDir = Path.Combine(_baseDirectory, "_transactions");
         if (!Directory.Exists(transactionsDir))
         {
-            _logger.LogDebug("No _transactions directory found at {TransactionsDir}", transactionsDir);
+            LogNoTransactionsDirectory(_logger, transactionsDir);
             return stalledTransactions;
         }
 
@@ -454,10 +441,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
         var threshold = DateTimeOffset.UtcNow - stallThreshold;
 
-        _logger.LogDebug(
-            "Scanning {Count} lock files for stalled transactions (threshold: {Threshold})",
-            lockFiles.Length,
-            threshold);
+        LogScanningLockFiles(_logger, lockFiles.Length, threshold);
 
         foreach (var lockFile in lockFiles)
         {
@@ -484,28 +468,19 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                         {
                             stalledTransactions.Add(transactionId);
 
-                            _logger.LogWarning(
-                                "Found stalled transaction {TransactionId} in file {LockFile} (age: {Age})",
-                                transactionId,
-                                lockFile,
-                                DateTimeOffset.UtcNow - lastWriteTime);
+                            var age = DateTimeOffset.UtcNow - lastWriteTime;
+                            LogFoundStalledTransaction(_logger, transactionId, lockFile, age);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to process lock file {LockFile}",
-                    lockFile);
+                LogFailedToProcessLockFile(_logger, ex, lockFile);
             }
         }
 
-        _logger.LogDebug(
-            "Found {Count} stalled transactions out of {TotalCount} lock files",
-            stalledTransactions.Count,
-            lockFiles.Length);
+        LogStalledTransactionsSummary(_logger, stalledTransactions.Count, lockFiles.Length);
 
         return await ValueTask.FromResult(stalledTransactions);
     }
@@ -525,10 +500,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         {
             var timestamp = DateTimeOffset.UtcNow;
 
-            _logger.LogInformation(
-                "Starting batch write of {Count} resources with transaction ID {TransactionId}",
-                operations.Count,
-                transactionId);
+            LogBatchWriteStarting(_logger, operations.Count, transactionId);
 
             // Step 1: Create lock file directory (_transactions/YYYY/MM/DD/)
             string transactionDir = Path.Combine(
@@ -554,10 +526,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                 .GroupBy(op => op.resourceType)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
-            _logger.LogDebug(
-                "Grouped {TotalCount} operations into {GroupCount} resource types",
-                operations.Count,
-                operationsByType.Count);
+            LogGroupedOperations(_logger, operations.Count, operationsByType.Count);
 
             // Step 4: Get next versions for all resources
             var results = new List<ResourceKey>();
@@ -590,11 +559,11 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
             if (lockFileExists)
             {
-                _logger.LogDebug("Appended to lock file: {LockFile}", lockFilePath);
+                LogAppendedToLockFile(_logger, lockFilePath);
             }
             else
             {
-                _logger.LogDebug("Created lock file: {LockFile}", lockFilePath);
+                LogCreatedLockFile(_logger, lockFilePath);
             }
 
             // Step 6: Write resource files grouped by type (append mode)
@@ -612,17 +581,11 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
                 if (fileExists)
                 {
-                    _logger.LogDebug(
-                        "Appending {Count} resources to existing file: {FilePath}",
-                        typeOperations.Count,
-                        resourceFilePath);
+                    LogAppendingResources(_logger, typeOperations.Count, resourceFilePath);
                 }
                 else
                 {
-                    _logger.LogDebug(
-                        "Creating new file with {Count} resources: {FilePath}",
-                        typeOperations.Count,
-                        resourceFilePath);
+                    LogCreatingResourceFile(_logger, typeOperations.Count, resourceFilePath);
                 }
 
                 // Write or append resources
@@ -649,16 +612,11 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                 string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
                 await File.WriteAllTextAsync(metadataPath, metadataJson, ct).ConfigureAwait(false);
 
-                _logger.LogDebug(
-                    "Metadata written: {MetadataPath}",
-                    metadataPath);
+                LogMetadataWritten(_logger, metadataPath);
             }
 
             // Step 8: Batch complete - lock file remains until transaction is committed externally
-            _logger.LogInformation(
-                "Batch write completed: {Count} resources written in transaction {TransactionId}",
-                operations.Count,
-                transactionId);
+            LogBatchWriteCompleted(_logger, operations.Count, transactionId);
 
             return results;
         }
@@ -796,17 +754,14 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string resourceTypeDir = Path.Combine(_baseDirectory, "_internal", resourceType);
         if (!Directory.Exists(resourceTypeDir))
         {
-            _logger.LogDebug("No metadata directory found for resource type {ResourceType}", resourceType);
+            LogNoMetadataDirectory(_logger, resourceType);
             return results;
         }
 
         // Get all resource ID directories (_internal/ResourceType/[resourceid]/)
         var resourceIdDirs = Directory.GetDirectories(resourceTypeDir, "*", SearchOption.TopDirectoryOnly);
 
-        _logger.LogDebug(
-            "Found {Count} resource directories for type {ResourceType}",
-            resourceIdDirs.Length,
-            resourceType);
+        LogFoundResourceDirectories(_logger, resourceIdDirs.Length, resourceType);
 
         // For each resource ID directory, find the latest metadata file
         foreach (var resourceIdDir in resourceIdDirs)
@@ -860,17 +815,11 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to load latest metadata from directory {Directory}",
-                    resourceIdDir);
+                LogFailedToLoadMetadata(_logger, ex, resourceIdDir);
             }
         }
 
-        _logger.LogDebug(
-            "Loaded metadata for {Count} {ResourceType} resources (latest versions only)",
-            results.Count,
-            resourceType);
+        LogMetadataLoaded(_logger, results.Count, resourceType);
 
         return results;
     }
@@ -887,7 +836,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string metadataDir = Path.Combine(_baseDirectory, "_internal", key.ResourceType, key.Id);
         if (!Directory.Exists(metadataDir))
         {
-            _logger.LogDebug("No history found for resource: {ResourceType}/{Id}", key.ResourceType, key.Id);
+            LogNoHistoryForResource(_logger, key.ResourceType, key.Id);
             yield break;
         }
 
@@ -906,7 +855,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to read metadata file {File}", file);
+                LogFailedToReadMetadataFile(_logger, ex, file);
             }
         }
 
@@ -943,11 +892,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             }
         }
 
-        _logger.LogDebug(
-            "Resource history query: {ResourceType}/{Id} returned {Count} versions",
-            key.ResourceType,
-            key.Id,
-            returned);
+        LogResourceHistoryResult(_logger, key.ResourceType, key.Id, returned);
     }
 
     public async IAsyncEnumerable<SearchEntryResult> GetTypeHistoryAsync(
@@ -963,7 +908,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string resourceTypeDir = Path.Combine(_baseDirectory, "_internal", resourceType);
         if (!Directory.Exists(resourceTypeDir))
         {
-            _logger.LogDebug("No history found for resource type: {ResourceType}", resourceType);
+            LogNoHistoryForType(_logger, resourceType);
             yield break;
         }
 
@@ -987,7 +932,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to read metadata file {File}", file);
+                    LogFailedToReadMetadataFile(_logger, ex, file);
                 }
             }
         }
@@ -1025,10 +970,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             }
         }
 
-        _logger.LogDebug(
-            "Type history query: {ResourceType} returned {Count} versions",
-            resourceType,
-            returned);
+        LogTypeHistoryResult(_logger, resourceType, returned);
     }
 
     public async IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
@@ -1043,7 +985,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string internalDir = Path.Combine(_baseDirectory, "_internal");
         if (!Directory.Exists(internalDir))
         {
-            _logger.LogDebug("No history found in system");
+            LogNoSystemHistory(_logger);
             yield break;
         }
 
@@ -1073,7 +1015,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to read metadata file {File}", file);
+                        LogFailedToReadMetadataFile(_logger, ex, file);
                     }
                 }
             }
@@ -1112,9 +1054,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             }
         }
 
-        _logger.LogDebug(
-            "System history query returned {Count} versions",
-            returned);
+        LogSystemHistoryResult(_logger, returned);
     }
 
     /// <summary>
@@ -1180,12 +1120,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Failed to load resource version {ResourceType}/{Id} v{Version}",
-                metadata.ResourceType,
-                metadata.ResourceId,
-                metadata.VersionId);
+            LogFailedToLoadResourceVersion(_logger, ex, metadata.ResourceType, metadata.ResourceId, metadata.VersionId);
             return null;
         }
     }
@@ -1194,8 +1129,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         int batchSize,
         CancellationToken ct = default)
     {
-        _logger.LogWarning(
-            "GetExpiredResourcesAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported");
+        LogExpiredResourcesNotImplemented(_logger);
         return Task.FromResult<IReadOnlyList<ExpiredResourceInfo>>(Array.Empty<ExpiredResourceInfo>());
     }
 
@@ -1204,8 +1138,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string resourceId,
         CancellationToken ct = default)
     {
-        _logger.LogWarning(
-            "HardDeleteResourceAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported");
+        LogHardDeleteNotImplemented(_logger);
         return Task.CompletedTask;
     }
 
@@ -1235,4 +1168,115 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         public string ResourceType { get; set; } = string.Empty;
         public string ResourceId { get; set; } = string.Empty;
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Resource not found: {ResourceType}/{Id}")]
+    private static partial void LogResourceNotFound(ILogger logger, string resourceType, string id);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Debug, Message = "Retrieved resource: {ResourceType}/{Id} version {VersionId}")]
+    private static partial void LogResourceRetrieved(ILogger logger, string resourceType, string id, string versionId);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "Failed to read resource: {ResourceType}/{Id}")]
+    private static partial void LogFailedToReadResource(ILogger logger, Exception ex, string resourceType, string id);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Stored resource: {ResourceType}/{Id} version {VersionId} tx {TransactionId}")]
+    private static partial void LogResourceStored(ILogger logger, string resourceType, string id, string versionId, TransactionId transactionId);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Debug, Message = "Deleting resource {ResourceType}/{Id}")]
+    private static partial void LogDeletingResource(ILogger logger, string resourceType, string id);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Warning, Message = "Cannot delete {ResourceType}/{Id}: resource never existed")]
+    private static partial void LogCannotDeleteNonExistent(ILogger logger, string resourceType, string id);
+
+    [LoggerMessage(EventId = 7, Level = LogLevel.Debug, Message = "Resource {ResourceType}/{Id} already deleted at version {Version} (idempotent)")]
+    private static partial void LogResourceAlreadyDeleted(ILogger logger, string resourceType, string id, string version);
+
+    [LoggerMessage(EventId = 8, Level = LogLevel.Information, Message = "Deleted resource: {ResourceType}/{Id} (created tombstone version {Version})")]
+    private static partial void LogResourceDeleted(ILogger logger, string resourceType, string id, int version);
+
+    [LoggerMessage(EventId = 9, Level = LogLevel.Warning, Message = "Lock file not found for transaction {TransactionId}: {LockFile}")]
+    private static partial void LogLockFileNotFound(ILogger logger, TransactionId transactionId, string lockFile);
+
+    [LoggerMessage(EventId = 10, Level = LogLevel.Information, Message = "Transaction {TransactionId} committed: {CommittedFile}")]
+    private static partial void LogTransactionCommitted(ILogger logger, TransactionId transactionId, string committedFile);
+
+    [LoggerMessage(EventId = 11, Level = LogLevel.Debug, Message = "No _transactions directory found at {TransactionsDir}")]
+    private static partial void LogNoTransactionsDirectory(ILogger logger, string transactionsDir);
+
+    [LoggerMessage(EventId = 12, Level = LogLevel.Debug, Message = "Scanning {Count} lock files for stalled transactions (threshold: {Threshold})")]
+    private static partial void LogScanningLockFiles(ILogger logger, int count, DateTimeOffset threshold);
+
+    [LoggerMessage(EventId = 13, Level = LogLevel.Warning, Message = "Found stalled transaction {TransactionId} in file {LockFile} (age: {Age})")]
+    private static partial void LogFoundStalledTransaction(ILogger logger, TransactionId transactionId, string lockFile, TimeSpan age);
+
+    [LoggerMessage(EventId = 14, Level = LogLevel.Warning, Message = "Failed to process lock file {LockFile}")]
+    private static partial void LogFailedToProcessLockFile(ILogger logger, Exception ex, string lockFile);
+
+    [LoggerMessage(EventId = 15, Level = LogLevel.Debug, Message = "Found {Count} stalled transactions out of {TotalCount} lock files")]
+    private static partial void LogStalledTransactionsSummary(ILogger logger, int count, int totalCount);
+
+    [LoggerMessage(EventId = 16, Level = LogLevel.Information, Message = "Starting batch write of {Count} resources with transaction ID {TransactionId}")]
+    private static partial void LogBatchWriteStarting(ILogger logger, int count, TransactionId transactionId);
+
+    [LoggerMessage(EventId = 17, Level = LogLevel.Debug, Message = "Grouped {TotalCount} operations into {GroupCount} resource types")]
+    private static partial void LogGroupedOperations(ILogger logger, int totalCount, int groupCount);
+
+    [LoggerMessage(EventId = 18, Level = LogLevel.Debug, Message = "Appended to lock file: {LockFile}")]
+    private static partial void LogAppendedToLockFile(ILogger logger, string lockFile);
+
+    [LoggerMessage(EventId = 19, Level = LogLevel.Debug, Message = "Created lock file: {LockFile}")]
+    private static partial void LogCreatedLockFile(ILogger logger, string lockFile);
+
+    [LoggerMessage(EventId = 20, Level = LogLevel.Debug, Message = "Appending {Count} resources to existing file: {FilePath}")]
+    private static partial void LogAppendingResources(ILogger logger, int count, string filePath);
+
+    [LoggerMessage(EventId = 21, Level = LogLevel.Debug, Message = "Creating new file with {Count} resources: {FilePath}")]
+    private static partial void LogCreatingResourceFile(ILogger logger, int count, string filePath);
+
+    [LoggerMessage(EventId = 22, Level = LogLevel.Debug, Message = "Metadata written: {MetadataPath}")]
+    private static partial void LogMetadataWritten(ILogger logger, string metadataPath);
+
+    [LoggerMessage(EventId = 23, Level = LogLevel.Information, Message = "Batch write completed: {Count} resources written in transaction {TransactionId}")]
+    private static partial void LogBatchWriteCompleted(ILogger logger, int count, TransactionId transactionId);
+
+    [LoggerMessage(EventId = 24, Level = LogLevel.Debug, Message = "No metadata directory found for resource type {ResourceType}")]
+    private static partial void LogNoMetadataDirectory(ILogger logger, string resourceType);
+
+    [LoggerMessage(EventId = 25, Level = LogLevel.Debug, Message = "Found {Count} resource directories for type {ResourceType}")]
+    private static partial void LogFoundResourceDirectories(ILogger logger, int count, string resourceType);
+
+    [LoggerMessage(EventId = 26, Level = LogLevel.Warning, Message = "Failed to load latest metadata from directory {Directory}")]
+    private static partial void LogFailedToLoadMetadata(ILogger logger, Exception ex, string directory);
+
+    [LoggerMessage(EventId = 27, Level = LogLevel.Debug, Message = "Loaded metadata for {Count} {ResourceType} resources (latest versions only)")]
+    private static partial void LogMetadataLoaded(ILogger logger, int count, string resourceType);
+
+    [LoggerMessage(EventId = 28, Level = LogLevel.Debug, Message = "No history found for resource: {ResourceType}/{Id}")]
+    private static partial void LogNoHistoryForResource(ILogger logger, string resourceType, string id);
+
+    [LoggerMessage(EventId = 29, Level = LogLevel.Warning, Message = "Failed to read metadata file {File}")]
+    private static partial void LogFailedToReadMetadataFile(ILogger logger, Exception ex, string file);
+
+    [LoggerMessage(EventId = 30, Level = LogLevel.Debug, Message = "Resource history query: {ResourceType}/{Id} returned {Count} versions")]
+    private static partial void LogResourceHistoryResult(ILogger logger, string resourceType, string id, int count);
+
+    [LoggerMessage(EventId = 31, Level = LogLevel.Debug, Message = "No history found for resource type: {ResourceType}")]
+    private static partial void LogNoHistoryForType(ILogger logger, string resourceType);
+
+    [LoggerMessage(EventId = 32, Level = LogLevel.Debug, Message = "Type history query: {ResourceType} returned {Count} versions")]
+    private static partial void LogTypeHistoryResult(ILogger logger, string resourceType, int count);
+
+    [LoggerMessage(EventId = 33, Level = LogLevel.Debug, Message = "No history found in system")]
+    private static partial void LogNoSystemHistory(ILogger logger);
+
+    [LoggerMessage(EventId = 34, Level = LogLevel.Debug, Message = "System history query returned {Count} versions")]
+    private static partial void LogSystemHistoryResult(ILogger logger, int count);
+
+    [LoggerMessage(EventId = 35, Level = LogLevel.Warning, Message = "Failed to load resource version {ResourceType}/{Id} v{Version}")]
+    private static partial void LogFailedToLoadResourceVersion(ILogger logger, Exception ex, string resourceType, string id, string version);
+
+    [LoggerMessage(EventId = 36, Level = LogLevel.Warning, Message = "GetExpiredResourcesAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported")]
+    private static partial void LogExpiredResourcesNotImplemented(ILogger logger);
+
+    [LoggerMessage(EventId = 37, Level = LogLevel.Warning, Message = "HardDeleteResourceAsync not implemented for FileBasedFhirRepository - TTL cleanup not supported")]
+    private static partial void LogHardDeleteNotImplemented(ILogger logger);
 }

@@ -14,7 +14,7 @@ namespace Ignixa.SqlOnFhir.Writers;
 /// Writes rows to a Parquet file on the local file system.
 /// Buffers rows in memory and writes them in batches for efficiency.
 /// </summary>
-public class ParquetFileWriter : IAsyncDisposable
+public partial class ParquetFileWriter : IAsyncDisposable
 {
     private readonly string _outputPath;
     private readonly ILogger _logger;
@@ -113,10 +113,7 @@ public class ParquetFileWriter : IAsyncDisposable
                 await _fileStream.DisposeAsync();
                 _fileStream = null;
 
-                _logger.LogDebug(
-                    "Wrote Parquet file ({BytesWritten} bytes) to: {OutputPath}",
-                    BytesWritten,
-                    _outputPath);
+                LogParquetFileWritten(_logger, BytesWritten, _outputPath);
             }
         }
         catch (Exception ex)
@@ -179,7 +176,7 @@ public class ParquetFileWriter : IAsyncDisposable
                 await WriteColumnAsync(groupWriter, field.Name, cancellationToken);
             }
 
-            _logger.LogDebug("Wrote Parquet row group with {RowCount} rows", _rowBuffer.Count);
+            LogParquetRowGroupWritten(_logger, _rowBuffer.Count);
 
             // Clear buffer for next batch
             _rowBuffer.Clear();
@@ -199,7 +196,7 @@ public class ParquetFileWriter : IAsyncDisposable
         // Create Parquet writer
         _parquetWriter = await ParquetWriter.CreateAsync(_schema, _fileStream, cancellationToken: cancellationToken);
 
-        _logger.LogDebug("Initialized Parquet writer for file: {OutputPath}", _outputPath);
+        LogParquetWriterInitialized(_logger, _outputPath);
     }
 
     private async Task WriteColumnAsync(ParquetRowGroupWriter groupWriter, string columnName, CancellationToken cancellationToken)
@@ -339,4 +336,13 @@ public class ParquetFileWriter : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, GetType());
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Wrote Parquet file ({BytesWritten} bytes) to: {OutputPath}")]
+    private static partial void LogParquetFileWritten(ILogger logger, long bytesWritten, string outputPath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Wrote Parquet row group with {RowCount} rows")]
+    private static partial void LogParquetRowGroupWritten(ILogger logger, int rowCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Initialized Parquet writer for file: {OutputPath}")]
+    private static partial void LogParquetWriterInitialized(ILogger logger, string outputPath);
 }

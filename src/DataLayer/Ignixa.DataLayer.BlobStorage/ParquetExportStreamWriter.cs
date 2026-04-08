@@ -23,7 +23,7 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// Buffers rows in memory, writes row groups periodically, then uploads the complete Parquet file.
 /// Unlike NDJSON (which appends incrementally), Parquet requires buffering and a single upload.
 /// </summary>
-public class ParquetExportStreamWriter : IExportStreamWriter
+public partial class ParquetExportStreamWriter : IExportStreamWriter
 {
     private readonly IBlobStorageClient _blobStorage;
     private readonly string _outputPath;
@@ -172,11 +172,7 @@ public class ParquetExportStreamWriter : IExportStreamWriter
         if (_resourcesProcessed % 1000 == 0)
         {
             var rate = _stopwatch.Elapsed.TotalSeconds > 0 ? _resourcesProcessed / _stopwatch.Elapsed.TotalSeconds : 0;
-            _logger.LogDebug(
-                "ViewDefinition export progress: {ResourcesProcessed} resources processed, {RowsGenerated} rows generated, {Rate:F1} resources/sec",
-                _resourcesProcessed,
-                _rowsGenerated,
-                rate);
+            LogViewDefinitionExportProgress(_logger, _resourcesProcessed, _rowsGenerated, rate);
         }
 
         return Task.CompletedTask;
@@ -224,19 +220,12 @@ public class ParquetExportStreamWriter : IExportStreamWriter
 
                 _bytesWritten = _parquetStream.Length;
 
-                _logger.LogDebug(
-                    "Uploaded Parquet file ({BytesWritten} bytes) to: {OutputPath}",
-                    _bytesWritten,
-                    _outputPath);
+                LogUploadedParquetFile(_logger, _bytesWritten, _outputPath);
 
                 // If ViewDefinition was used, log final stats
                 if (_viewDefinitionNode != null)
                 {
-                    _logger.LogInformation(
-                        "ViewDefinition export completed: {ResourcesProcessed} resources processed, {RowsGenerated} rows generated, {BytesWritten} bytes written",
-                        _resourcesProcessed,
-                        _rowsGenerated,
-                        _bytesWritten);
+                    LogViewDefinitionExportCompleted(_logger, _resourcesProcessed, _rowsGenerated, _bytesWritten);
                 }
             }
         }
@@ -301,7 +290,8 @@ public class ParquetExportStreamWriter : IExportStreamWriter
                 await WriteColumnAsync(groupWriter, field.Name, cancellationToken);
             }
 
-            _logger.LogDebug("Wrote Parquet row group with {RowCount} rows", _rowBuffer.Count);
+            var rowCount = _rowBuffer.Count;
+            LogWroteRowGroup(_logger, rowCount);
 
             // Clear buffer for next batch
             _rowBuffer.Clear();
@@ -322,7 +312,8 @@ public class ParquetExportStreamWriter : IExportStreamWriter
         // Create Parquet writer
         _parquetWriter = ParquetWriter.CreateAsync(schema, _parquetStream).GetAwaiter().GetResult();
 
-        _logger.LogDebug("Initialized Parquet writer with schema: {Schema}", schema);
+        var schemaDescription = schema.ToString();
+        LogInitializedWriter(_logger, schemaDescription);
     }
 
     private ParquetSchema CreateDefaultSchema()
@@ -506,6 +497,21 @@ public class ParquetExportStreamWriter : IExportStreamWriter
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "ViewDefinition export progress: {ResourcesProcessed} resources processed, {RowsGenerated} rows generated, {Rate:F1} resources/sec")]
+    private static partial void LogViewDefinitionExportProgress(ILogger logger, long resourcesProcessed, long rowsGenerated, double rate);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Uploaded Parquet file ({BytesWritten} bytes) to: {OutputPath}")]
+    private static partial void LogUploadedParquetFile(ILogger logger, long bytesWritten, string outputPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "ViewDefinition export completed: {ResourcesProcessed} resources processed, {RowsGenerated} rows generated, {BytesWritten} bytes written")]
+    private static partial void LogViewDefinitionExportCompleted(ILogger logger, long resourcesProcessed, long rowsGenerated, long bytesWritten);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Wrote Parquet row group with {RowCount} rows")]
+    private static partial void LogWroteRowGroup(ILogger logger, int rowCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Initialized Parquet writer with schema: {SchemaDescription}")]
+    private static partial void LogInitializedWriter(ILogger logger, string? schemaDescription);
 
     private void ThrowIfDisposed()
     {

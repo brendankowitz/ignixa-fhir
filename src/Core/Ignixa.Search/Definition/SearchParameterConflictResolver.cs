@@ -18,7 +18,7 @@ namespace Ignixa.Search.Definition;
 /// 2. Semantic versioning (fallback - highest version wins)
 /// 3. Alphabetical package ID (stable sort for equal versions)
 /// </summary>
-public class SearchParameterConflictResolver
+public partial class SearchParameterConflictResolver
 {
     private readonly SearchParameterResolutionOptions _options;
     private readonly ILogger<SearchParameterConflictResolver> _logger;
@@ -151,10 +151,8 @@ public class SearchParameterConflictResolver
             var conflictInfo = string.Join(", ", candidates.Select(c =>
                 $"{c.Metadata.PackageId}#{c.Metadata.PackageVersion} (URL: {c.Parameter.Url}, rank {_options.GetPriorityRank(c.Metadata.PackageId)})"));
 
-            // Debug level: Expected behavior when loading multi-IG configurations (e.g., US Core + base FHIR)
-            _logger.LogDebug(
-                "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. " +
-                "Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, priority rank {WinnerRank}, resolution: explicit priority)",
+            LogPriorityConflictResolved(
+                _logger,
                 code,
                 resourceType,
                 conflictInfo,
@@ -194,17 +192,15 @@ public class SearchParameterConflictResolver
             var conflictInfo = string.Join(", ", sorted.Select(s =>
                 $"{s.Candidate.Metadata.PackageId}#{s.Candidate.Metadata.PackageVersion} (URL: {s.Candidate.Parameter.Url})"));
 
-            // Debug level: Expected behavior when multiple versions of same parameter exist
-            _logger.LogDebug(
-                "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. " +
-                "Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, resolution: semantic version {WinnerSemanticVersion})",
+            LogVersionConflictResolved(
+                _logger,
                 code,
                 resourceType,
                 conflictInfo,
                 winner.Candidate.Metadata.PackageId,
                 winner.Candidate.Metadata.PackageVersion,
                 winner.Candidate.Parameter.Url,
-                winner.Version ?? new SemanticVersion(0, 0, 0));
+                winner.Version);
         }
 
         return winner.Candidate;
@@ -226,9 +222,7 @@ public class SearchParameterConflictResolver
             return version;
         }
 
-        _logger.LogDebug(
-            "Failed to parse semantic version: {Version}. Using as-is for comparison.",
-            versionString);
+        LogVersionParseFailed(_logger, versionString);
 
         return null;
     }
@@ -327,12 +321,7 @@ public class SearchParameterConflictResolver
         if (baseParameter != null && baseParameter.Url != null && winner.Url != baseParameter.Url)
         {
             winner.OverridesUrl = baseParameter.Url;
-            // Debug level: Expected behavior when IGs override base FHIR parameters
-            _logger.LogDebug(
-                "SearchParameter {WinnerUrl} overrides base parameter {BaseUrl} (code: {Code})",
-                winner.Url,
-                baseParameter.Url,
-                winner.Code);
+            LogParameterOverride(_logger, winner.Url, baseParameter.Url, winner.Code);
         }
     }
 
@@ -350,6 +339,18 @@ public class SearchParameterConflictResolver
     /// Enriched candidate with package metadata for conflict resolution.
     /// </summary>
     private record EnrichedCandidate(SearchParameterInfo Parameter, PackageMetadata Metadata);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, priority rank {WinnerRank}, resolution: explicit priority)")]
+    private static partial void LogPriorityConflictResolved(ILogger logger, string code, string resourceType, string conflicts, string winnerPackage, string winnerVersion, Uri? winnerUrl, int winnerRank);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, resolution: semantic version {WinnerSemanticVersion})")]
+    private static partial void LogVersionConflictResolved(ILogger logger, string code, string resourceType, string conflicts, string winnerPackage, string winnerVersion, Uri? winnerUrl, SemanticVersion? winnerSemanticVersion);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to parse semantic version: {Version}. Using as-is for comparison.")]
+    private static partial void LogVersionParseFailed(ILogger logger, string version);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "SearchParameter {WinnerUrl} overrides base parameter {BaseUrl} (code: {Code})")]
+    private static partial void LogParameterOverride(ILogger logger, Uri? winnerUrl, Uri? baseUrl, string code);
 }
 
 /// <summary>

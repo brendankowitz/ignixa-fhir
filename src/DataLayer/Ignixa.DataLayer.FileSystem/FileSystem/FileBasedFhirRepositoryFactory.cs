@@ -16,7 +16,7 @@ namespace Ignixa.DataLayer.FileSystem.FileSystem;
 /// Factory for creating and caching FileSystem-based FHIR repositories per tenant.
 /// Implements O(1) repository lookup after first access via ConcurrentDictionary caching.
 /// </summary>
-public class FileBasedFhirRepositoryFactory : IFhirRepositoryFactory
+public partial class FileBasedFhirRepositoryFactory : IFhirRepositoryFactory
 {
     private readonly ITenantConfigurationStore _configStore;
     private readonly IConfiguration _configuration;
@@ -45,27 +45,24 @@ public class FileBasedFhirRepositoryFactory : IFhirRepositoryFactory
         // Check cache first (O(1) lookup after first access)
         if (_repositoryCache.TryGetValue(tenantId, out var cachedRepository))
         {
-            _logger.LogTrace("Repository cache hit for tenant {TenantId}", tenantId);
+            LogCacheHit(_logger, tenantId);
             return cachedRepository;
         }
 
-        _logger.LogDebug("Repository cache miss for tenant {TenantId}, creating new repository", tenantId);
+        LogCacheMiss(_logger, tenantId);
 
         // Load tenant configuration
         var tenantConfig = await _configStore.GetTenantConfigurationAsync(tenantId, ct);
         if (tenantConfig == null)
         {
-            _logger.LogWarning("Tenant {TenantId} not found or inactive", tenantId);
+            LogTenantNotFound(_logger, tenantId);
             throw new InvalidOperationException($"Tenant {tenantId} not found or inactive");
         }
 
         // Validate storage type
         if (!string.Equals(tenantConfig.Storage.Type, "FileSystem", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogError(
-                "Storage type '{StorageType}' not supported by FileBasedFhirRepositoryFactory for tenant {TenantId}",
-                tenantConfig.Storage.Type,
-                tenantId);
+            LogUnsupportedStorageType(_logger, tenantConfig.Storage.Type, tenantId);
             throw new NotSupportedException(
                 $"Storage type '{tenantConfig.Storage.Type}' not supported by FileBasedFhirRepositoryFactory. " +
                 $"Only 'FileSystem' storage is supported.");
@@ -93,19 +90,31 @@ public class FileBasedFhirRepositoryFactory : IFhirRepositoryFactory
 
         if (ReferenceEquals(finalRepository, repository))
         {
-            _logger.LogInformation(
-                "Created repository for tenant {TenantId} ({DisplayName}) at {BaseDirectory}",
-                tenantId,
-                tenantConfig.DisplayName,
-                tenantBaseDirectory);
+            LogRepositoryCreated(_logger, tenantId, tenantConfig.DisplayName, tenantBaseDirectory);
         }
         else
         {
-            _logger.LogTrace(
-                "Another thread already created repository for tenant {TenantId}, using existing instance",
-                tenantId);
+            LogCacheRace(_logger, tenantId);
         }
 
         return finalRepository;
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Trace, Message = "Repository cache hit for tenant {TenantId}")]
+    private static partial void LogCacheHit(ILogger logger, int tenantId);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Debug, Message = "Repository cache miss for tenant {TenantId}, creating new repository")]
+    private static partial void LogCacheMiss(ILogger logger, int tenantId);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Tenant {TenantId} not found or inactive")]
+    private static partial void LogTenantNotFound(ILogger logger, int tenantId);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Storage type '{StorageType}' not supported by FileBasedFhirRepositoryFactory for tenant {TenantId}")]
+    private static partial void LogUnsupportedStorageType(ILogger logger, string? storageType, int tenantId);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "Created repository for tenant {TenantId} ({DisplayName}) at {BaseDirectory}")]
+    private static partial void LogRepositoryCreated(ILogger logger, int tenantId, string? displayName, string baseDirectory);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Trace, Message = "Another thread already created repository for tenant {TenantId}, using existing instance")]
+    private static partial void LogCacheRace(ILogger logger, int tenantId);
 }

@@ -9,7 +9,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// Supports local caching to prevent re-downloading packages.
 /// Default registry: https://packages.fhir.org
 /// </summary>
-public class NpmPackageLoader : IPackageLoader
+public partial class NpmPackageLoader : IPackageLoader
 {
     private readonly HttpClient _httpClient;
     private readonly PackageCacheManager? _cacheManager;
@@ -46,7 +46,7 @@ public class NpmPackageLoader : IPackageLoader
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         // Log the configured registry URL
-        _logger.LogDebug("NpmPackageLoader initialized with registry URL: {RegistryUrl}", _options.RegistryUrl);
+        LogInitialized(_logger, _options.RegistryUrl);
     }
 
     /// <summary>
@@ -72,17 +72,13 @@ public class NpmPackageLoader : IPackageLoader
         // Step 1: Check local cache
         if (_cacheManager != null && _cacheManager.IsCached(packageId, version))
         {
-            _logger.LogInformation(
-                "Found cached package {PackageId}@{Version}",
-                packageId, version);
+            LogFoundCachedPackage(_logger, packageId, version);
             return _cacheManager.ReadFromCache(packageId, version);
         }
 
         var url = BuildPackageUrl(packageId, version);
 
-        _logger.LogInformation(
-            "Downloading FHIR package {PackageId}@{Version} from {Url}",
-            packageId, version, url);
+        LogDownloadingPackage(_logger, packageId, version, url);
 
         try
         {
@@ -90,18 +86,14 @@ public class NpmPackageLoader : IPackageLoader
             var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            _logger.LogInformation(
-                "Package {PackageId}@{Version} download started. Size: {ContentLength} bytes",
-                packageId, version, response.Content.Headers.ContentLength);
+            LogDownloadStarted(_logger, packageId, version, response.Content.Headers.ContentLength);
 
             // Read entire response to memory stream
             var memoryStream = new MemoryStream();
             await response.Content.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
 
-            _logger.LogInformation(
-                "Package {PackageId}@{Version} downloaded successfully. Total size: {Size} bytes",
-                packageId, version, memoryStream.Length);
+            LogDownloadComplete(_logger, packageId, version, memoryStream.Length);
 
             // Step 2: Cache the downloaded package
             if (_cacheManager != null)
@@ -113,10 +105,7 @@ public class NpmPackageLoader : IPackageLoader
                 }
                 catch (Exception cacheEx)
                 {
-                    _logger.LogWarning(
-                        cacheEx,
-                        "Failed to cache package {PackageId}@{Version}, but download was successful. Proceeding without cache.",
-                        packageId, version);
+                    LogCacheWriteFailed(_logger, cacheEx, packageId, version);
                     // Don't fail the operation if caching fails
                     memoryStream.Position = 0;
                 }
@@ -126,27 +115,18 @@ public class NpmPackageLoader : IPackageLoader
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            _logger.LogError(
-                ex,
-                "Package {PackageId}@{Version} not found in registry",
-                packageId, version);
+            LogPackageNotFoundInRegistry(_logger, ex, packageId, version);
             throw new InvalidOperationException(
                 $"Package '{packageId}@{version}' not found in NPM registry", ex);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(
-                ex,
-                "Failed to download package {PackageId}@{Version}. Status: {StatusCode}",
-                packageId, version, ex.StatusCode);
+            LogDownloadFailed(_logger, ex, packageId, version, ex.StatusCode);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Unexpected error downloading package {PackageId}@{Version}",
-                packageId, version);
+            LogUnexpectedDownloadError(_logger, ex, packageId, version);
             throw;
         }
     }
@@ -160,4 +140,31 @@ public class NpmPackageLoader : IPackageLoader
         // Example: https://packages.fhir.org/hl7.fhir.us.core/5.0.1
         return $"{_options.RegistryUrl.TrimEnd('/')}/{packageId}/{version}";
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "NpmPackageLoader initialized with registry URL: {RegistryUrl}")]
+    private static partial void LogInitialized(ILogger logger, string registryUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Found cached package {PackageId}@{Version}")]
+    private static partial void LogFoundCachedPackage(ILogger logger, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Downloading FHIR package {PackageId}@{Version} from {Url}")]
+    private static partial void LogDownloadingPackage(ILogger logger, string packageId, string version, string url);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Package {PackageId}@{Version} download started. Size: {ContentLength} bytes")]
+    private static partial void LogDownloadStarted(ILogger logger, string packageId, string version, long? contentLength);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Package {PackageId}@{Version} downloaded successfully. Total size: {Size} bytes")]
+    private static partial void LogDownloadComplete(ILogger logger, string packageId, string version, long size);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to cache package {PackageId}@{Version}, but download was successful. Proceeding without cache.")]
+    private static partial void LogCacheWriteFailed(ILogger logger, Exception ex, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Package {PackageId}@{Version} not found in registry")]
+    private static partial void LogPackageNotFoundInRegistry(ILogger logger, Exception ex, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to download package {PackageId}@{Version}. Status: {StatusCode}")]
+    private static partial void LogDownloadFailed(ILogger logger, Exception ex, string packageId, string version, System.Net.HttpStatusCode? statusCode);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error downloading package {PackageId}@{Version}")]
+    private static partial void LogUnexpectedDownloadError(ILogger logger, Exception ex, string packageId, string version);
 }

@@ -10,7 +10,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// Used for bundled packages like SQL-on-FHIR ViewDefinition.
 /// Supports multiple embedded packages registered via IEmbeddedPackage.
 /// </summary>
-public class EmbeddedPackageLoader : IPackageLoader
+public partial class EmbeddedPackageLoader : IPackageLoader
 {
     private readonly List<IEmbeddedPackage> _embeddedPackages;
     private readonly ILogger<EmbeddedPackageLoader> _logger;
@@ -59,11 +59,11 @@ public class EmbeddedPackageLoader : IPackageLoader
 
         try
         {
-            _logger.LogInformation(
-                "Loading embedded package {PackageId}@{Version} from assembly {AssemblyName}",
-                packageId,
-                version,
-                embeddedPackage.Assembly.GetName().Name);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                var assemblyName = embeddedPackage.Assembly.GetName().Name;
+            LogLoadingEmbeddedPackage(_logger, packageId, version, assemblyName);
+            }
 
             // Get all resource names from assembly
             var resourceNames = embeddedPackage.Assembly.GetManifestResourceNames();
@@ -80,27 +80,18 @@ public class EmbeddedPackageLoader : IPackageLoader
                     $"Expected resource with name starting with '{embeddedPackage.ResourcePrefix}' and ending with 'package.json'");
             }
 
-            _logger.LogDebug(
-                "Found embedded package resource: {ResourceName}",
-                packageJsonName);
+            LogFoundEmbeddedResource(_logger, packageJsonName);
 
             // Create in-memory tarball
             var packageStream = await CreatePackageStreamAsync(embeddedPackage, cancellationToken);
 
-            _logger.LogInformation(
-                "Successfully loaded embedded package {PackageId}@{Version}",
-                packageId,
-                version);
+            LogEmbeddedPackageLoaded(_logger, packageId, version);
 
             return packageStream;
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Error loading embedded package {PackageId}@{Version}",
-                packageId,
-                version);
+            LogErrorLoadingEmbeddedPackage(_logger, ex, packageId, version);
             throw;
         }
     }
@@ -120,7 +111,7 @@ public class EmbeddedPackageLoader : IPackageLoader
             .Where(r => r.StartsWith(embeddedPackage.ResourcePrefix, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        _logger.LogDebug("Found {Count} embedded resources for package", resourceNames.Count);
+        LogFoundEmbeddedResources(_logger, resourceNames.Count);
 
         // Create tarball with gzip compression
         using (var gzipStream = new System.IO.Compression.GZipStream(resultStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
@@ -132,12 +123,12 @@ public class EmbeddedPackageLoader : IPackageLoader
                 // Example: "Ignixa.SqlOnFhir.packages.sql-on-fhir-v2.package.package.json" -> "package/package.json"
                 var relativePath = ExtractRelativePathFromResourceName(resourceName, embeddedPackage.ResourcePrefix);
 
-                _logger.LogDebug("Adding {ResourceName} as {RelativePath} to tarball", resourceName, relativePath);
+                LogAddingResourceToTarball(_logger, resourceName, relativePath);
 
                 using var resourceStream = embeddedPackage.Assembly.GetManifestResourceStream(resourceName);
                 if (resourceStream == null)
                 {
-                    _logger.LogWarning("Could not load embedded resource: {ResourceName}", resourceName);
+                    LogCouldNotLoadEmbeddedResource(_logger, resourceName);
                     continue;
                 }
 
@@ -181,4 +172,25 @@ public class EmbeddedPackageLoader : IPackageLoader
 
         return relativePart.Replace('.', '/');
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Loading embedded package {PackageId}@{Version} from assembly {AssemblyName}")]
+    private static partial void LogLoadingEmbeddedPackage(ILogger logger, string packageId, string version, string? assemblyName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found embedded package resource: {ResourceName}")]
+    private static partial void LogFoundEmbeddedResource(ILogger logger, string resourceName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully loaded embedded package {PackageId}@{Version}")]
+    private static partial void LogEmbeddedPackageLoaded(ILogger logger, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error loading embedded package {PackageId}@{Version}")]
+    private static partial void LogErrorLoadingEmbeddedPackage(ILogger logger, Exception ex, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} embedded resources for package")]
+    private static partial void LogFoundEmbeddedResources(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Adding {ResourceName} as {RelativePath} to tarball")]
+    private static partial void LogAddingResourceToTarball(ILogger logger, string resourceName, string relativePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not load embedded resource: {ResourceName}")]
+    private static partial void LogCouldNotLoadEmbeddedResource(ILogger logger, string resourceName);
 }

@@ -12,7 +12,7 @@ namespace Ignixa.DataLayer.BlobStorage.Infrastructure;
 /// Factory for creating blob storage clients based on configuration.
 /// Supports both local filesystem and Azure Blob Storage implementations.
 /// </summary>
-public class BlobClientFactory
+public partial class BlobClientFactory
 {
     private readonly IConfiguration _configuration;
     private readonly IServiceProvider _serviceProvider;
@@ -132,7 +132,7 @@ public class BlobClientFactory
 
         // Container existence check is deferred to first use (lazy initialization)
         // This avoids blocking startup if blob storage is temporarily unavailable
-        _logger.LogInformation("Azure Blob Storage client created. Container '{ContainerName}' will be initialized on first use", options.ContainerName);
+        LogAzureClientCreated(_logger, options.ContainerName);
 
         var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<AzureBlobStorageClient>();
@@ -140,6 +140,9 @@ public class BlobClientFactory
 
         return Task.FromResult<IBlobStorageClient>(client);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Azure Blob Storage client created. Container '{ContainerName}' will be initialized on first use")]
+    private static partial void LogAzureClientCreated(ILogger logger, string? containerName);
 
     /// <summary>
     /// Registers blob storage services in the dependency injection container.

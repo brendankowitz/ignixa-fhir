@@ -7,7 +7,7 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// Composite package loader that tries multiple sources in priority order.
 /// Resolution chain: Embedded (built-in) -> NPM Registry (packages.fhir.org)
 /// </summary>
-public class CompositePackageLoader : IPackageLoader
+public partial class CompositePackageLoader : IPackageLoader
 {
     private readonly IPackageLoader[] _loaders;
     private readonly ILogger<CompositePackageLoader> _logger;
@@ -43,45 +43,40 @@ public class CompositePackageLoader : IPackageLoader
         {
             try
             {
-                _logger.LogDebug(
-                    "Attempting to load package {PackageId}@{Version} from {LoaderType}",
-                    packageId,
-                    version,
-                    loader.GetType().Name);
+                LogAttemptingLoad(_logger, packageId, version, loader.GetType().Name);
 
                 var stream = await loader.DownloadPackageAsync(packageId, version, cancellationToken);
 
-                _logger.LogInformation(
-                    "Successfully loaded package {PackageId}@{Version} from {LoaderType}",
-                    packageId,
-                    version,
-                    loader.GetType().Name);
+                LogSuccessfullyLoaded(_logger, packageId, version, loader.GetType().Name);
 
                 return stream;
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(
-                    ex,
-                    "Loader {LoaderType} could not load {PackageId}@{Version}, trying next loader",
-                    loader.GetType().Name,
-                    packageId,
-                    version);
+                LogLoaderFailed(_logger, ex, loader.GetType().Name, packageId, version);
 
                 errors.Add(ex);
             }
         }
 
         // All loaders failed
-        _logger.LogError(
-            "Failed to load package {PackageId}@{Version} from any source. Tried {Count} loader(s)",
-            packageId,
-            version,
-            _loaders.Length);
+        LogAllLoadersFailed(_logger, packageId, version, _loaders.Length);
 
         throw new InvalidOperationException(
             $"Package '{packageId}@{version}' not found in any configured package source. " +
             $"Tried: {string.Join(", ", _loaders.Select(l => l.GetType().Name))}",
             new AggregateException("Failed to load from any package loader", errors));
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Attempting to load package {PackageId}@{Version} from {LoaderType}")]
+    private static partial void LogAttemptingLoad(ILogger logger, string packageId, string version, string loaderType);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully loaded package {PackageId}@{Version} from {LoaderType}")]
+    private static partial void LogSuccessfullyLoaded(ILogger logger, string packageId, string version, string loaderType);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Loader {LoaderType} could not load {PackageId}@{Version}, trying next loader")]
+    private static partial void LogLoaderFailed(ILogger logger, Exception ex, string loaderType, string packageId, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to load package {PackageId}@{Version} from any source. Tried {Count} loader(s)")]
+    private static partial void LogAllLoadersFailed(ILogger logger, string packageId, string version, int count);
 }

@@ -13,7 +13,7 @@ namespace Ignixa.SqlOnFhir.Writers;
 /// Writes rows to a CSV file on the local file system.
 /// Writes header row automatically based on first row's keys.
 /// </summary>
-public class CsvFileWriter : IAsyncDisposable
+public partial class CsvFileWriter : IAsyncDisposable
 {
     private readonly string _outputPath;
     private readonly ILogger _logger;
@@ -89,11 +89,7 @@ public class CsvFileWriter : IAsyncDisposable
             var fileInfo = new FileInfo(_outputPath);
             BytesWritten = fileInfo.Exists ? fileInfo.Length : 0;
 
-            _logger.LogDebug(
-                "Wrote CSV file with {RowsWritten} rows ({BytesWritten} bytes) to: {OutputPath}",
-                _rowsWritten,
-                BytesWritten,
-                _outputPath);
+            LogCsvFileWritten(_logger, _rowsWritten, BytesWritten, _outputPath);
         }
     }
 
@@ -129,7 +125,7 @@ public class CsvFileWriter : IAsyncDisposable
         var fileStream = File.Create(_outputPath);
         _writer = new StreamWriter(fileStream, Encoding.UTF8);
 
-        _logger.LogDebug("Initialized CSV writer for file: {OutputPath}", _outputPath);
+        LogCsvWriterInitialized(_logger, _outputPath);
     }
 
     private async Task WriteHeaderAsync(string[] columnNames, CancellationToken cancellationToken)
@@ -181,4 +177,10 @@ public class CsvFileWriter : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, GetType());
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Wrote CSV file with {RowsWritten} rows ({BytesWritten} bytes) to: {OutputPath}")]
+    private static partial void LogCsvFileWritten(ILogger logger, long rowsWritten, long bytesWritten, string outputPath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Initialized CSV writer for file: {OutputPath}")]
+    private static partial void LogCsvWriterInitialized(ILogger logger, string outputPath);
 }

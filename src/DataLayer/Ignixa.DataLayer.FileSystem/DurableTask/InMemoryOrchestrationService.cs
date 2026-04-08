@@ -14,7 +14,7 @@ namespace Ignixa.DataLayer.FileSystem.DurableTask;
 /// Simple in-memory implementation of IOrchestrationService for development/prototype use.
 /// Stores all orchestration state in memory using concurrent collections.
 /// </summary>
-public class InMemoryOrchestrationService : IOrchestrationService, IOrchestrationServiceClient
+public partial class InMemoryOrchestrationService : IOrchestrationService, IOrchestrationServiceClient
 {
     private readonly ILogger<InMemoryOrchestrationService> _logger;
     private readonly ConcurrentDictionary<string, OrchestrationState> _instances = new();
@@ -53,7 +53,7 @@ public class InMemoryOrchestrationService : IOrchestrationService, IOrchestratio
     public Task StartAsync()
     {
         _isStarted = true;
-        _logger.LogInformation("InMemoryOrchestrationService started");
+        LogStarted(_logger);
         return Task.CompletedTask;
     }
 
@@ -62,7 +62,7 @@ public class InMemoryOrchestrationService : IOrchestrationService, IOrchestratio
     public Task StopAsync(bool isForced)
     {
         _isStarted = false;
-        _logger.LogInformation("InMemoryOrchestrationService stopped");
+        LogStopped(_logger);
         return Task.CompletedTask;
     }
 
@@ -230,7 +230,7 @@ public class InMemoryOrchestrationService : IOrchestrationService, IOrchestratio
         _instances[instanceId] = state;
         _orchestrationQueue.Enqueue(creationMessage);
 
-        _logger.LogDebug("Created orchestration {InstanceId}", instanceId);
+        LogCreatedOrchestration(_logger, instanceId);
         return Task.CompletedTask;
     }
 
@@ -336,4 +336,13 @@ public class InMemoryOrchestrationService : IOrchestrationService, IOrchestratio
     }
 
     #endregion
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Created orchestration {InstanceId}")]
+    private static partial void LogCreatedOrchestration(ILogger logger, string instanceId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "InMemoryOrchestrationService started")]
+    private static partial void LogStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "InMemoryOrchestrationService stopped")]
+    private static partial void LogStopped(ILogger logger);
 }

@@ -56,6 +56,18 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
         [LoggerMessage(Level = LogLevel.Debug, Message = "Generated blob URL for {Path}")]
         public static partial void GeneratedBlobUrl(ILogger logger, string path);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Ensured container exists: {ContainerName}")]
+        public static partial void EnsuredContainerExists(ILogger logger, string containerName);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Created container client for container: {ContainerName}")]
+        public static partial void CreatedContainerClient(ILogger logger, string containerName);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Ensuring container '{ContainerName}' exists (first use)")]
+        public static partial void EnsuringContainerExists(ILogger logger, string containerName);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Container '{ContainerName}' initialized successfully")]
+        public static partial void ContainerInitialized(ILogger logger, string containerName);
     }
 
     /// <summary>
@@ -111,7 +123,7 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
             try
             {
                 newClient.CreateIfNotExistsAsync(cancellationToken: CancellationToken.None).GetAwaiter().GetResult();
-                _logger.LogDebug("Ensured container exists: {ContainerName}", containerName);
+                Log.EnsuredContainerExists(_logger, containerName);
             }
             catch (Exception ex)
             {
@@ -119,7 +131,7 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
             }
 
             _containerClientCache[containerName] = newClient;
-            _logger.LogDebug("Created container client for container: {ContainerName}", containerName);
+            Log.CreatedContainerClient(_logger, containerName);
             return newClient;
         }
     }
@@ -147,7 +159,7 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
             try
             {
-                _logger.LogDebug("Ensuring container '{ContainerName}' exists (first use)", containerName);
+                Log.EnsuringContainerExists(_logger, containerName);
                 var containerClient = GetContainerClient(containerName);
 
                 // Use synchronous CreateIfNotExists inside lock to avoid async in lock
@@ -156,7 +168,7 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 #pragma warning restore CA1849
 
                 _initializedContainers.Add(containerName);
-                _logger.LogInformation("Container '{ContainerName}' initialized successfully", containerName);
+                Log.ContainerInitialized(_logger, containerName);
             }
             catch (Exception ex)
             {
