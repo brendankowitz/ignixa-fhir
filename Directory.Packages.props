@@ -37,9 +37,9 @@
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.12" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <!-- Entity Framework Core -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.14" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.14" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.14" />
     <!-- SQL Server -->
     <!-- OpenIddict -->
     <PackageVersion Include="OpenIddict.AspNetCore" Version="6.4.0" />
