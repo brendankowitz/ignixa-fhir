@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using HotChocolate;
 using Ignixa.Application.Features.Experimental.GraphQl.Pipeline;
 using Shouldly;
@@ -26,9 +27,9 @@ public class FhirGraphQlErrorFilterTests
         // Assert
         result.Extensions.ShouldNotBeNull();
         result.Extensions.ShouldContainKey("resource");
-        var resource = result.Extensions!["resource"] as IDictionary<string, object?>;
+        var resource = result.Extensions!["resource"] as JsonObject;
         resource.ShouldNotBeNull();
-        resource!["resourceType"].ShouldBe("OperationOutcome");
+        resource!["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
     }
 
     [Fact]
@@ -45,11 +46,12 @@ public class FhirGraphQlErrorFilterTests
         var result = filter.OnError(error);
 
         // Assert
-        var resource = result.Extensions!["resource"] as IDictionary<string, object?>;
-        var issues = resource!["issue"] as IEnumerable<object>;
-        var issue = issues!.Cast<IDictionary<string, object?>>().First();
-        issue["code"].ShouldBe("not-found");
-        issue["severity"].ShouldBe("error");
+        var resource = result.Extensions!["resource"] as JsonObject;
+        var issues = resource!["issue"] as JsonArray;
+        issues.ShouldNotBeNull();
+        var issue = issues![0] as JsonObject;
+        issue!["code"]!.GetValue<string>().ShouldBe("not-found");
+        issue["severity"]!.GetValue<string>().ShouldBe("error");
     }
 
     [Fact]
@@ -66,9 +68,9 @@ public class FhirGraphQlErrorFilterTests
 
         // Assert
         result.Message.ShouldBe("Test error message");
-        var resource = result.Extensions!["resource"] as IDictionary<string, object?>;
-        var issues = resource!["issue"] as IEnumerable<object>;
-        var issue = issues!.Cast<IDictionary<string, object?>>().First();
-        issue["diagnostics"].ShouldBe("Test error message");
+        var resource = result.Extensions!["resource"] as JsonObject;
+        var issues = resource!["issue"] as JsonArray;
+        var issue = issues![0] as JsonObject;
+        issue!["diagnostics"]!.GetValue<string>().ShouldBe("Test error message");
     }
 }

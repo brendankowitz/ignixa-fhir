@@ -15,6 +15,7 @@ using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Indexing.SearchValues;
 using Microsoft.Extensions.Logging;
 using FhirIType = Ignixa.Abstractions.IType;
 using FhirITypeExtended = Ignixa.Abstractions.ITypeExtended;
@@ -32,6 +33,7 @@ public sealed class FhirTypeModule(
     ISearchParameterDefinitionManager searchParameterManager,
     ILogger<FhirTypeModule> logger) : ITypeModule, IFhirTypeModule
 {
+    private readonly IReferenceSearchValueParser _referenceParser = new ReferenceSearchValueParser(schemaProvider);
     private static readonly string[] ComplexExtensionValueTypes =
     [
         "valueCoding", "valueCodeableConcept", "valueQuantity",
@@ -535,9 +537,16 @@ public sealed class FhirTypeModule(
                 {
                     var parent = ctx.Parent<JsonElement>();
                     var reference = FhirFieldResolver.GetStringProperty(parent, "reference");
-                    var key = FhirFieldResolver.ParseFhirReference(reference);
-                    if (key is null)
+                    if (string.IsNullOrEmpty(reference)
+                        || reference.StartsWith('#')
+                        || reference.StartsWith("urn:", StringComparison.OrdinalIgnoreCase))
                         return null;
+
+                    var parsed = _referenceParser.Parse(reference);
+                    if (parsed.ResourceType is null)
+                        return null;
+
+                    var key = new Models.ResourceKey(parsed.ResourceType, parsed.ResourceId);
 
                     var typeFilter = ctx.ArgumentOptional<string?>("type");
                     if (typeFilter.HasValue && typeFilter.Value is not null

@@ -138,39 +138,6 @@ internal static class FieldResolver
             : null;
     }
 
-    internal static ResourceKey? ParseFhirReference(string? reference)
-    {
-        if (string.IsNullOrEmpty(reference))
-            return null;
-
-        // Skip contained references (#id) and URN references (urn:...)
-        if (reference.StartsWith('#') || reference.StartsWith("urn:", StringComparison.Ordinal))
-            return null;
-
-        // Strip versioned reference suffix (e.g., Patient/123/_history/2)
-        var historyIndex = reference.IndexOf("/_history/", StringComparison.Ordinal);
-        if (historyIndex >= 0)
-            reference = reference[..historyIndex];
-
-        // Handle both relative (Patient/123) and absolute (https://server/fhir/Patient/123)
-        var lastSlash = reference.LastIndexOf('/');
-        if (lastSlash <= 0)
-            return null;
-
-        var id = reference[(lastSlash + 1)..];
-        var preceding = reference[..lastSlash];
-
-        var typeSlash = preceding.LastIndexOf('/');
-        var resourceType = typeSlash >= 0 ? preceding[(typeSlash + 1)..] : preceding;
-
-        // Validate: resource type should start with uppercase letter
-        if (string.IsNullOrEmpty(resourceType) || string.IsNullOrEmpty(id)
-            || !char.IsUpper(resourceType[0]))
-            return null;
-
-        return new ResourceKey(resourceType, id);
-    }
-
     internal static JsonElement? GetParentElement(IResolverContext context)
     {
         var raw = context.Parent<object?>();

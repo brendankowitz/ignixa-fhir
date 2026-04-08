@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using HotChocolate;
+using Ignixa.Serialization.Models;
+using static Ignixa.Serialization.Models.OperationOutcomeJsonNode;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Pipeline;
 
@@ -11,8 +13,7 @@ public sealed class FhirGraphQlErrorFilter : IErrorFilter
 {
     public IError OnError(IError error)
     {
-        var issueCode = MapToFhirIssueCode(error.Code);
-        var severity = "error";
+        var issueType = MapToFhirIssueType(error.Code);
 
         // Include the original exception message when available for debuggability.
         // HC hides exception details behind "Unexpected Execution Error" by default.
@@ -20,31 +21,25 @@ public sealed class FhirGraphQlErrorFilter : IErrorFilter
             ? $"{error.Message}: {error.Exception.GetType().Name}: {error.Exception.Message}"
             : error.Message;
 
-        var operationOutcome = new Dictionary<string, object?>
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.Issue.Add(new IssueComponent
         {
-            ["resourceType"] = "OperationOutcome",
-            ["issue"] = new[]
-            {
-                new Dictionary<string, object?>
-                {
-                    ["severity"] = severity,
-                    ["code"] = issueCode,
-                    ["diagnostics"] = diagnostics,
-                },
-            },
-        };
+            Severity = IssueSeverity.Error,
+            Code = issueType,
+            Diagnostics = diagnostics,
+        });
 
         return ErrorBuilder.FromError(error)
-            .SetExtension("resource", operationOutcome)
+            .SetExtension("resource", outcome.MutableNode)
             .Build();
     }
 
-    private static string MapToFhirIssueCode(string? errorCode) => errorCode switch
+    private static IssueType MapToFhirIssueType(string? errorCode) => errorCode switch
     {
-        "FHIR_REFERENCE_NOT_FOUND" => "not-found",
-        "HC0013" => "too-costly",      // Max execution depth exceeded
-        "HC0014" => "too-costly",      // Execution timeout
-        "AUTH_NOT_AUTHORIZED" => "forbidden",
-        _ => "exception",
+        "FHIR_REFERENCE_NOT_FOUND" => IssueType.NotFound,
+        "HC0013" => IssueType.TooCostly,      // Max execution depth exceeded
+        "HC0014" => IssueType.TooCostly,      // Execution timeout
+        "AUTH_NOT_AUTHORIZED" => IssueType.Forbidden,
+        _ => IssueType.Exception,
     };
 }
