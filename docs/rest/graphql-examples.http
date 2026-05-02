@@ -7,6 +7,8 @@
 ### system-level and instance-level queries. The GraphQL endpoint accepts
 ### POST with JSON body or GET with query parameter.
 ###
+### For tenant-scoped examples see graphql-examples.tenant.http.
+###
 ### Interactive IDE: Open {{hostname}}/graphql in a browser for Banana Cake Pop
 ### ============================================================================
 
@@ -225,12 +227,12 @@ Content-Type: application/json
   "query": "{ Patient(id: \"example\") { id namesWithFamily: name(fhirpath: \"family.exists()\") { family given } } }"
 }
 
-### 9.3 Paginate within a list — offset and limit
+### 9.3 Paginate within a list — offset and count
 POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id firstTwoNames: name(_limit: 2) { family given } remainingNames: name(_offset: 2) { family given } } }"
+  "query": "{ Patient(id: \"example\") { id firstTwoNames: name(_count: 2) { family given } remainingNames: name(_offset: 2) { family given } } }"
 }
 
 ### ============================================================================
@@ -385,21 +387,98 @@ Content-Type: application/json
 }
 
 ### ============================================================================
-### MULTI-TENANT
+### META FIELDS
 ### ============================================================================
 
-### 15.1 Tenant-explicit query
-POST {{hostname}}/tenant/1/$graphql
+### 15.1 Access meta profile, versionId, lastUpdated
+POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ PatientList(_count: 5) { id name { family } } }"
+  "query": "{ Patient(id: \"example\") { id meta { profile source versionId lastUpdated } } }"
 }
 
-### 15.2 Tenant-explicit instance query
-POST {{hostname}}/tenant/1/Patient/example/$graphql
+### ============================================================================
+### CHOICE TYPE FIELDS (value[x] alternatives)
+### ============================================================================
+
+### 16.1 Condition with onset choice fields
+POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ id name { family given } birthDate }"
+  "query": "{ Condition(id: \"example\") { id onsetDateTime onsetString abatementDateTime code { text } } }"
 }
+
+### 16.2 ServiceRequest with occurrence choice fields
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ ServiceRequest(id: \"example\") { id occurrenceDateTime occurrencePeriod { start end } } }"
+}
+
+### ============================================================================
+### COMPLEX EXTENSION QUERIES
+### ============================================================================
+
+### 17.1 Nested extension filtering — DSP payload version
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Encounter(id: \"example\") { id payloadVersion: extension(url: \"https://dsp-fhir.org/StructureDefinition/payload-version\") { major: extension(url: \"major\") { valueInteger } minor: extension(url: \"minor\") { valueInteger } revision: extension(url: \"revision\") { valueInteger } quality: extension(url: \"quality\") { valueCode } } callbackUrl: extension(url: \"https://dsp-fhir.org/StructureDefinition/external-callback-url\") { valueUrl } } }"
+}
+
+### 17.2 Extension with valueReference
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Encounter(id: \"example\") { id turnRefs: extension(url: \"https://dsp-fhir.org/StructureDefinition/dsp-transcript-turn-ref\") { transcript: extension(url: \"transcript\") { valueReference { reference } } turn: extension(url: \"turn\") { valueInteger } } } }"
+}
+
+### ============================================================================
+### REFERENCE RESOLUTION — PRACTITIONER
+### ============================================================================
+
+### 18.1 Encounter with resolved Practitioner participant
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ Encounter(id: \"example\") { id participant { individual { resource { ... on Practitioner { id name { given family } identifier { system value } qualification { code { coding { system code display } } } } } } } } }"
+}
+
+### ============================================================================
+### DSP-STYLE ENVELOPE QUERY
+### ============================================================================
+### Note: Backbone element fields (dosageInstruction, section, activity, etc.)
+### are typed as Element pending a schema generation fix. Queries drilling into
+### backbone children will fail. The example below uses only complex/primitive
+### fields that resolve correctly.
+
+### 19.1 DSP envelope — encounter with resource lists
+POST {{hostname}}/$graphql
+Content-Type: application/json
+
+{
+  "query": "query DSP($encId: ID!) { encounter: Encounter(id: $encId) { id status class { code display } period { start end } subject { resource { ... on Patient { id identifier { system value } name { given family } gender birthDate } } } reasonCode { coding { system code display } } payloadVersion: extension(url: \"https://dsp-fhir.org/StructureDefinition/payload-version\") { major: extension(url: \"major\") { valueInteger } minor: extension(url: \"minor\") { valueInteger } } callbackUrl: extension(url: \"https://dsp-fhir.org/StructureDefinition/external-callback-url\") { valueUrl } } conditions: ConditionList(encounter: $encId) { id code { coding { display } } clinicalStatus { coding { code } } } medications: MedicationRequestList(encounter: $encId) { id status intent medicationCodeableConcept { text coding { system code display } } } transcripts: DocumentReferenceList(encounter: $encId, category: \"https://dsp-fhir.org/CodeSystem/doc-category|transcript\") { id status type { coding { code display } } } }",
+  "variables": { "encId": "example" }
+}
+
+### ============================================================================
+### GRAPHQL ON OPERATIONS (_graphql parameter)
+### ============================================================================
+
+### 20.1 Apply GraphQL to $validate output
+POST {{hostname}}/Patient/$validate?_graphql=%7B%20resourceType%20%7D
+Content-Type: application/fhir+json
+
+{"resourceType":"Patient","name":[{"family":"Test"}]}
+
+### 20.2 Apply GraphQL to $validate output with nested fields
+POST {{hostname}}/Patient/$validate?_graphql=%7B%20id%20meta%20%7B%20versionId%20%7D%20%7D
+Content-Type: application/fhir+json
+
+{"resourceType":"Patient","id":"example","meta":{"versionId":"1"}}

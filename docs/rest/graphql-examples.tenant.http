@@ -1,0 +1,68 @@
+@hostname = https://localhost:7058
+
+### ============================================================================
+### FHIR GraphQL ($graphql) — Multi-Tenant Examples
+### ============================================================================
+### These examples demonstrate tenant-scoped GraphQL queries.
+### Single-tenant deployments can use /$graphql directly (see graphql-examples.http).
+### ============================================================================
+
+### 1.1 Get Admin Token (for authenticated endpoints)
+# @name adminToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=fhir-admin-client
+&client_secret=dev-secret
+&scope=system/*.cruds
+
+### ============================================================================
+### TENANT-EXPLICIT QUERIES
+### ============================================================================
+
+### 2.1 Tenant list search
+POST {{hostname}}/tenant/1/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientList(_count: 5) { id name { family } } }"
+}
+
+### 2.2 Tenant instance query
+POST {{hostname}}/tenant/1/Patient/example/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ id name { family given } birthDate }"
+}
+
+### 2.3 Tenant connection search with pagination
+POST {{hostname}}/tenant/1/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ PatientConnection(_count: 5, _total: \"accurate\") { count pagesize offset edges { mode score resource { id name { family given } birthDate } } next previous } }"
+}
+
+### 2.4 Tenant multi-resource query
+POST {{hostname}}/tenant/1/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ patients: PatientList(_count: 3) { id name { text } } observations: ObservationList(category: \"vital-signs\", _count: 3) { id code { coding { display } } valueQuantity { value unit } } }"
+}
+
+### 2.5 Tenant instance query with reverse references
+POST {{hostname}}/tenant/1/Patient/example/$graphql
+Content-Type: application/json
+
+{
+  "query": "{ id name { family given } ConditionList(_reference: \"patient\", _count: 10) { id code { coding { display } } clinicalStatus { coding { code } } } }"
+}
+
+### 2.6 Tenant GraphQL on operation
+POST {{hostname}}/tenant/1/Patient/$validate?_graphql=%7B%20resourceType%20%7D
+Content-Type: application/fhir+json
+
+{"resourceType":"Patient","name":[{"family":"Test"}]}
