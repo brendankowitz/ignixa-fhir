@@ -11,6 +11,9 @@ using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Operations.GraphQl;
 
@@ -421,7 +424,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { id firstTwo: name(_limit: 2) { family } allNames: name { family } } }""");
+            $$"""{ Patient(id: "{{created.Id}}") { id firstTwo: name(_count: 2) { family } allNames: name { family } } }""");
 
         AssertNoErrors(result);
         var patient = result["data"]!["Patient"]!;
@@ -429,6 +432,262 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         var allNames = patient["allNames"]!.AsArray();
         firstTwo.Count.ShouldBeLessThanOrEqualTo(2);
         allNames.Count.ShouldBeGreaterThanOrEqualTo(firstTwo.Count);
+    }
+
+    // ========================================================================
+    // Extension Filtering
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithExtensions_WhenFilteringByUrl_ThenReturnsMatchingExtensions()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("ExtFilter")
+                .WithExtension("http://example.org/ext1", "FirstExtension")
+                .WithExtension("http://example.org/ext2", "SecondExtension")
+                .WithTag(tag)
+                .Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { extension(url: "http://example.org/ext1") { url valueString } } }""");
+
+        AssertNoErrors(result);
+        var extensions = result["data"]!["Patient"]!["extension"]!.AsArray();
+        extensions.Count.ShouldBe(1);
+        extensions[0]!["url"]!.GetValue<string>().ShouldBe("http://example.org/ext1");
+        extensions[0]!["valueString"]!.GetValue<string>().ShouldBe("FirstExtension");
+    }
+
+    [Fact]
+    public async Task GivenPatientWithNestedExtensions_WhenFilteringByUrl_ThenReturnsMatchingNestedExtensions()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("NestedExt")
+                .WithExtension("http://example.org/complex", ext =>
+                {
+                    ext.Extension.Add(new ExtensionJsonNode(new JsonObject
+                    {
+                        ["url"] = "http://example.org/nested1",
+                        ["valueString"] = "NestedValue1"
+                    }));
+                    ext.Extension.Add(new ExtensionJsonNode(new JsonObject
+                    {
+                        ["url"] = "http://example.org/nested2",
+                        ["valueString"] = "NestedValue2"
+                    }));
+                })
+                .WithTag(tag)
+                .Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { extension(url: "http://example.org/complex") { url extension(url: "http://example.org/nested1") { url valueString } } } }""");
+
+        AssertNoErrors(result);
+        var ext = result["data"]!["Patient"]!["extension"]![0]!;
+        ext["url"]!.GetValue<string>().ShouldBe("http://example.org/complex");
+        var nested = ext["extension"]!.AsArray();
+        nested.Count.ShouldBe(1);
+        nested[0]!["url"]!.GetValue<string>().ShouldBe("http://example.org/nested1");
+        nested[0]!["valueString"]!.GetValue<string>().ShouldBe("NestedValue1");
+    }
+
+    // ========================================================================
+    // Flatten Directive
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithIdentifiers_WhenUsingFlattenDirective_ThenCollatesProperties()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("FlattenTest")
+                .WithIdentifier("http://sys1", "val1")
+                .WithIdentifier("http://sys2", "val2")
+                .WithTag(tag)
+                .Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { identifier @flatten { system value } } }""");
+
+        AssertNoErrors(result);
+        var patient = result["data"]!["Patient"]!;
+        patient["identifier"].ShouldBeNull();
+        var systems = patient["system"]!.AsArray();
+        systems.Count.ShouldBe(2);
+        systems[0]!.GetValue<string>().ShouldBe("http://sys1");
+        systems[1]!.GetValue<string>().ShouldBe("http://sys2");
+        var values = patient["value"]!.AsArray();
+        values.Count.ShouldBe(2);
+        values[0]!.GetValue<string>().ShouldBe("val1");
+        values[1]!.GetValue<string>().ShouldBe("val2");
+    }
+
+    // ========================================================================
+    // Slice Directive
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithNames_WhenUsingSliceByProperty_ThenSuffixesByPropertyValue()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var resourceJson = $$"""{"resourceType":"Patient","id":"{{Guid.NewGuid()}}","meta":{"tag":[{"system":"http://test.ignixa.io/tag","code":"{{tag}}"}]},"name":[{"use":"official","family":"Chalmers","given":["Peter","James"]},{"use":"usual","given":["Jim"]}]}""";
+        var created = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(resourceJson));
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { name @flatten @slice(path: "use") { given family } } }""");
+
+        AssertNoErrors(result);
+        var patient = result["data"]!["Patient"]!;
+        patient["name"].ShouldBeNull();
+        patient["given.official"]!.AsArray().Count.ShouldBe(2);
+        patient["family.official"]!.GetValue<string>().ShouldBe("Chalmers");
+        patient["given.usual"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenPatientWithNames_WhenUsingSliceByIndex_ThenSuffixesByIndex()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var resourceJson = $$"""{"resourceType":"Patient","id":"{{Guid.NewGuid()}}","meta":{"tag":[{"system":"http://test.ignixa.io/tag","code":"{{tag}}"}]},"name":[{"family":"First","given":["A"]},{"family":"Second","given":["B"]}]}""";
+        var created = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(resourceJson));
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { name @flatten @slice(path: "$index") { given family } } }""");
+
+        AssertNoErrors(result);
+        var patient = result["data"]!["Patient"]!;
+        patient["name"].ShouldBeNull();
+        patient["given.0"]!.AsArray().Count.ShouldBe(1);
+        patient["family.0"]!.GetValue<string>().ShouldBe("First");
+        patient["given.1"]!.AsArray().Count.ShouldBe(1);
+        patient["family.1"]!.GetValue<string>().ShouldBe("Second");
+    }
+
+    // ========================================================================
+    // Sub-Property Filters
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithMultipleNames_WhenFilteringBySubProperty_ThenReturnsMatchingNames()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("SubPropTest")
+                .AddName("SubPropTest", "Official", "official")
+                .AddName("SubPropTest", "Nickname", "nickname")
+                .WithTag(tag)
+                .Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ Patient(id: "{{created.Id}}") { name(use: "official") { use family given } } }""");
+
+        AssertNoErrors(result);
+        var names = result["data"]!["Patient"]!["name"]!.AsArray();
+        names.Count.ShouldBe(2); // primary official name + added official name
+        names.All(n => n!["use"]!.GetValue<string>() == "official").ShouldBeTrue();
+        names[0]!["family"]!.GetValue<string>().ShouldBe("SubPropTest");
+    }
+
+    // ========================================================================
+    // Reverse References at Instance Level
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithCondition_WhenQueryingInstanceReverseReference_ThenReturnsCondition()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var patient = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ReverseRef").WithTag(tag).Build());
+
+        var conditionJson = $$$"""{"resourceType":"Condition","id":"{{{Guid.NewGuid()}}}","meta":{"tag":[{"system":"http://test.ignixa.io/tag","code":"{{{tag}}}"}]},"subject":{"reference":"Patient/{{{patient.Id}}}"},"code":{"text":"Test condition"}}""";
+        var condition = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(conditionJson));
+
+        var result = await PostGraphQlAsync(
+            $$"""{ ConditionList(_reference: "patient") { id code { text } } }""",
+            $"/Patient/{patient.Id}/$graphql");
+
+        AssertNoErrors(result);
+        var conditions = result["data"]!["ConditionList"]!.AsArray();
+        conditions.Count.ShouldBe(1);
+        conditions[0]!["id"]!.GetValue<string>().ShouldBe(condition.Id);
+        conditions[0]!["code"]!["text"]!.GetValue<string>().ShouldBe("Test condition");
+    }
+
+    // ========================================================================
+    // Search Parameter Array Syntax
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenMultiplePatients_WhenQueryingWithArrayId_ThenReturnsMatchingPatients()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var patient1 = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ArrayTest1").WithTag(tag).Build());
+        var patient2 = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ArrayTest2").WithTag(tag).Build());
+        var patient3 = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("ArrayTest3").WithTag(tag).Build());
+
+        var result = await PostGraphQlAsync(
+            $$"""{ PatientList(_id: ["{{patient1.Id}}", "{{patient2.Id}}"]) { id } }""");
+
+        AssertNoErrors(result);
+        var patients = result["data"]!["PatientList"]!.AsArray();
+        patients.Count.ShouldBe(2);
+        var ids = patients.Select(p => p!["id"]!.GetValue<string>()).ToHashSet();
+        ids.ShouldContain(patient1.Id);
+        ids.ShouldContain(patient2.Id);
+        ids.ShouldNotContain(patient3.Id);
+    }
+
+    // ========================================================================
+    // _graphql on Operations
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenValidResource_WhenValidatingWithGraphQlParam_ThenReturnsTransformedOperationOutcome()
+    {
+        var patientJson = """{"resourceType":"Patient","name":[{"family":"OpTest"}]}""";
+        var graphQlQuery = Uri.EscapeDataString("{ resourceType }");
+
+        using var content = new StringContent(patientJson, Encoding.UTF8, "application/fhir+json");
+        using var response = await Client.PostAsync($"/Patient/$validate?_graphql={graphQlQuery}", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/json");
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonNode.Parse(responseJson)!;
+
+        // Should be GraphQL-shaped response, not raw OperationOutcome
+        result["data"].ShouldNotBeNull();
+        result["data"]!["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        result["resourceType"].ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenInvalidOperation_WhenGraphQlParamPresent_ThenPassesThroughErrorResponse()
+    {
+        var graphQlQuery = Uri.EscapeDataString("{ issue { severity code } }");
+
+        // Empty body triggers a 400 Bad Request from $validate
+        using var content = new StringContent("", Encoding.UTF8, "application/fhir+json");
+        using var response = await Client.PostAsync($"/Patient/$validate?_graphql={graphQlQuery}", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonNode.Parse(responseJson)!;
+
+        // Should be raw OperationOutcome, not GraphQL response
+        result["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        result["data"].ShouldBeNull();
     }
 
     // ========================================================================

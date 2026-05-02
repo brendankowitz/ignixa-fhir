@@ -385,8 +385,8 @@ public class SearchResolverTests
 
         SetupFieldArguments(resolverContext, [nameArg, birthDateArg]);
 
-        resolverContext.ArgumentOptional<string?>("name").Returns(new Optional<string?>("Smith"));
-        resolverContext.ArgumentOptional<string?>("birth_date").Returns(new Optional<string?>("gt2000"));
+        resolverContext.ArgumentOptional<IReadOnlyList<string>?>("name").Returns(new Optional<IReadOnlyList<string>?>(["Smith"]));
+        resolverContext.ArgumentOptional<IReadOnlyList<string>?>("birth_date").Returns(new Optional<IReadOnlyList<string>?>(["gt2000"]));
 
         mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
             .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
@@ -417,7 +417,7 @@ public class SearchResolverTests
         SetupFieldArguments(resolverContext, [nameArg]);
 
         // Argument exists but has no value provided
-        resolverContext.ArgumentOptional<string?>("name").Returns(new Optional<string?>());
+        resolverContext.ArgumentOptional<IReadOnlyList<string>?>("name").Returns(new Optional<IReadOnlyList<string>?>());
 
         mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
             .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
@@ -432,6 +432,35 @@ public class SearchResolverTests
             "Patient",
             Arg.Is<IReadOnlyList<QueryParameter>>(p =>
                 p.All(q => q.Name != "name")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenArraySearchParameter_WhenSearching_ThenJoinsValuesWithComma()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+
+        var idArg = Substitute.For<IInputField>();
+        idArg.Name.Returns("_id");
+
+        SetupFieldArguments(resolverContext, [idArg]);
+
+        resolverContext.ArgumentOptional<IReadOnlyList<string>?>("_id").Returns(new Optional<IReadOnlyList<string>?>(["p1", "p2", "p3"]));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_id" && q.Value == "p1,p2,p3")),
             Arg.Any<FhirISchema?>());
     }
 }

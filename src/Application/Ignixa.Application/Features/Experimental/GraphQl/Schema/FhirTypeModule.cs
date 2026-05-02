@@ -127,7 +127,7 @@ public sealed class FhirTypeModule(
         {
             var fhirType = schemaProvider.GetTypeDefinition(resourceTypeName);
             if (fhirType is null) continue;
-            types.Add(BuildResourceObjectType(resourceTypeName, fhirType));
+            types.Add(BuildResourceObjectType(resourceTypeName, fhirType, concreteResourceTypes));
         }
 
         types.Add(BuildResourceReferenceType());
@@ -251,12 +251,14 @@ public sealed class FhirTypeModule(
 
             descriptor.Field("extension")
                 .Type(new ListTypeNode(new NamedTypeNode("Extension")))
+                .Argument("url", a => a.Type<StringType>()
+                    .Description("Filter extensions by their canonical URL"))
                 .Resolve(ctx =>
                 {
                     var parent = ctx.Parent<JsonElement>();
-                    if (parent.TryGetProperty("extension", out var ext) && ext.ValueKind == JsonValueKind.Array)
-                        return ext.EnumerateArray().ToList();
-                    return (object?)null;
+                    var urlFilter = ctx.ArgumentOptional<string?>("url");
+                    var url = urlFilter.HasValue ? urlFilter.Value : null;
+                    return FhirFieldResolver.FilterExtensionsByUrl(parent, url);
                 });
         }));
 
@@ -268,12 +270,27 @@ public sealed class FhirTypeModule(
             descriptor.Field("url").Type<NonNullType<StringType>>()
                 .Resolve(ctx => FhirFieldResolver.GetStringProperty(ctx.Parent<JsonElement>(), "url"));
 
+            // Nested extensions (extensions can contain extensions)
+            descriptor.Field("extension")
+                .Type(new ListTypeNode(new NamedTypeNode("Extension")))
+                .Argument("url", a => a.Type<StringType>()
+                    .Description("Filter nested extensions by their canonical URL"))
+                .Resolve(ctx =>
+                {
+                    var parent = ctx.Parent<JsonElement>();
+                    var urlFilter = ctx.ArgumentOptional<string?>("url");
+                    var url = urlFilter.HasValue ? urlFilter.Value : null;
+                    return FhirFieldResolver.FilterExtensionsByUrl(parent, url);
+                });
+
             // Common value[x] types
             foreach (var (valueName, graphQlType) in new[]
             {
                 ("valueString", "String"),
                 ("valueBoolean", "Boolean"),
                 ("valueInteger", "Int"),
+                ("valuePositiveInt", "Int"),
+                ("valueUnsignedInt", "Int"),
                 ("valueDecimal", "Decimal"),
                 ("valueCode", "String"),
                 ("valueUri", "String"),
@@ -304,7 +321,8 @@ public sealed class FhirTypeModule(
 
     private ObjectType BuildResourceObjectType(
         string resourceTypeName,
-        FhirIType fhirType)
+        FhirIType fhirType,
+        IReadOnlyList<string> allResourceTypes)
     {
         return new ObjectType(descriptor =>
         {
@@ -324,6 +342,64 @@ public sealed class FhirTypeModule(
             {
                 foreach (var child in extended.Children)
                     AddFieldForElement(descriptor, child, resourceTypeName);
+            }
+
+            // Reverse reference fields for instance-level queries
+            foreach (var otherType in allResourceTypes)
+            {
+                var capturedOtherType = otherType;
+
+                var listField = descriptor.Field($"{capturedOtherType}List")
+                    .Type(new ListTypeNode(new NamedTypeNode(capturedOtherType)))
+                    .Argument("_reference", a => a.Type<NonNullType<StringType>>()
+                        .Description("Search parameter on the target type that references this resource"));
+                AddSearchArguments(listField);
+                listField.Resolve(async ctx =>
+                {
+                    var parent = ctx.Parent<JsonElement>();
+                    if (!parent.TryGetProperty("resourceType", out var rtProp)
+                        || rtProp.GetString() is not string rt)
+                    {
+                        return null;
+                    }
+
+                    if (!parent.TryGetProperty("id", out var idProp)
+                        || idProp.GetString() is not string id)
+                    {
+                        return null;
+                    }
+
+                    var referenceParam = ctx.ArgumentValue<string>("_reference");
+                    var resolver = ctx.Service<AppSearchResolver>();
+                    return await resolver.SearchReverseListAsync(
+                        capturedOtherType, referenceParam, rt, id, ctx, ctx.RequestAborted);
+                });
+
+                var connectionField = descriptor.Field($"{capturedOtherType}Connection")
+                    .Type(new NamedTypeNode(GraphQlNamingHelper.ToConnectionTypeName(capturedOtherType)))
+                    .Argument("_reference", a => a.Type<NonNullType<StringType>>()
+                        .Description("Search parameter on the target type that references this resource"));
+                AddSearchArguments(connectionField);
+                connectionField.Resolve(async ctx =>
+                {
+                    var parent = ctx.Parent<JsonElement>();
+                    if (!parent.TryGetProperty("resourceType", out var rtProp)
+                        || rtProp.GetString() is not string rt)
+                    {
+                            return null;
+                        }
+
+                        if (!parent.TryGetProperty("id", out var idProp)
+                            || idProp.GetString() is not string id)
+                        {
+                            return null;
+                        }
+
+                        var referenceParam = ctx.ArgumentValue<string>("_reference");
+                        var resolver = ctx.Service<AppSearchResolver>();
+                        return await resolver.SearchReverseAsync(
+                            capturedOtherType, referenceParam, rt, id, ctx, ctx.RequestAborted);
+                    });
             }
         });
     }
@@ -382,6 +458,7 @@ public sealed class FhirTypeModule(
                 {
                     backboneField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
                     AddListNavigationArguments(backboneField);
+                    AddSubPropertyFilterArguments(backboneField, (FhirITypeExtended)child);
                 }
                 else
                 {
@@ -395,10 +472,40 @@ public sealed class FhirTypeModule(
             {
                 var complexField = descriptor.Field(GraphQlNamingHelper.ToCamelCase(elementName))
                     .Type(ApplyCardinality(new NamedTypeNode(MapFhirTypeToGraphQl(typeName)), child));
-                if (child.IsCollection)
+
+                // Add url filter argument to extension fields (FHIR GraphQL spec: extension(url: "..."))
+                if (elementName == "extension" && typeName == "Extension")
+                {
+                    complexField.Argument("url", a => a.Type<StringType>()
+                        .Description("Filter extensions by their canonical URL"));
+                    if (child.IsCollection)
+                    {
+                        complexField.Resolve(ctx =>
+                        {
+                            var urlFilter = ctx.ArgumentOptional<string?>("url");
+                            var url = urlFilter.HasValue ? urlFilter.Value : null;
+                            var parent = FhirFieldResolver.GetParentElement(ctx);
+                            if (parent?.ValueKind != JsonValueKind.Object)
+                                return [];
+                            return FhirFieldResolver.FilterExtensionsByUrl(parent.Value, url);
+                        });
+                        AddListNavigationArguments(complexField);
+                        AddSubPropertyFilterArguments(complexField, (FhirITypeExtended)child, new HashSet<string>(StringComparer.Ordinal) { "url" });
+                    }
+                    else
+                    {
+                        complexField.Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, elementName));
+                    }
+                }
+                else if (child.IsCollection)
                 {
                     complexField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
                     AddListNavigationArguments(complexField);
+                    var filterTypeDef = child.Children.Count > 0
+                        ? (FhirITypeExtended)child
+                        : schemaProvider.GetTypeDefinition(typeName) as FhirITypeExtended;
+                    if (filterTypeDef is not null)
+                        AddSubPropertyFilterArguments(complexField, filterTypeDef);
                 }
                 else
                 {
@@ -651,12 +758,32 @@ public sealed class FhirTypeModule(
                 var capturedType = resourceType;
 
                 // Single resource read: Patient(id: "p1")
+                // id is optional when querying via _graphql on operations
                 descriptor.Field(capturedType)
-                    .Argument("id", a => a.Type<NonNullType<IdType>>())
+                    .Argument("id", a => a.Type<IdType>())
                     .Type(new NamedTypeNode(capturedType))
                     .Resolve(async ctx =>
                     {
-                        var id = ctx.ArgumentValue<string>("id");
+                        var id = ctx.ArgumentValue<string?>("id");
+                        if (string.IsNullOrEmpty(id))
+                        {
+                            var opResult = ctx.GetGlobalStateOrDefault<JsonElement>("OperationResult");
+                            if (opResult.ValueKind != JsonValueKind.Undefined
+                                && opResult.TryGetProperty("resourceType", out var rtProp)
+                                && rtProp.GetString() == capturedType)
+                            {
+                                return opResult;
+                            }
+
+                            ctx.ReportError(
+                                ErrorBuilder.New()
+                                    .SetMessage("id is required unless querying via _graphql parameter")
+                                    .SetCode("FHIR_GRAPHQL_ID_REQUIRED")
+                                    .SetPath(ctx.Path)
+                                    .Build());
+                            return null;
+                        }
+
                         var resolver = ctx.Service<AppResourceResolver>();
                         return await resolver.ResolveByIdAsync(capturedType, id, ctx.RequestAborted);
                     });
@@ -821,7 +948,7 @@ public sealed class FhirTypeModule(
                 continue;
 
             var graphQlName = param.Code.Replace('-', '_');
-            fieldDescriptor.Argument(graphQlName, a => a.Type<StringType>()
+            fieldDescriptor.Argument(graphQlName, a => a.Type<ListType<StringType>>()
                 .Description(string.IsNullOrEmpty(param.Description)
                     ? $"FHIR search parameter: {param.Code}"
                     : param.Description));
@@ -860,8 +987,28 @@ public sealed class FhirTypeModule(
             .Description("FHIRPath expression to filter list elements"));
         fieldDescriptor.Argument("_offset", a => a.Type<IntType>()
             .Description("Number of elements to skip"));
-        fieldDescriptor.Argument("_limit", a => a.Type<IntType>()
+        fieldDescriptor.Argument("_count", a => a.Type<IntType>()
             .Description("Maximum number of elements to return from this list"));
+    }
+
+    private static void AddSubPropertyFilterArguments(
+        IObjectFieldDescriptor fieldDescriptor,
+        FhirITypeExtended typeDefinition,
+        IReadOnlySet<string>? existingArgumentNames = null)
+    {
+        var skip = new HashSet<string>(existingArgumentNames ?? new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal)
+        {
+            "fhirpath", "_offset", "_count",
+        };
+
+        foreach (var subChild in typeDefinition.Children)
+        {
+            if (!subChild.Info.IsPrimitive) continue;
+            var argName = GraphQlNamingHelper.ToCamelCase(subChild.Info.Name);
+            if (skip.Contains(argName)) continue;
+            fieldDescriptor.Argument(argName, a => a.Type<StringType>()
+                .Description($"Filter by {subChild.Info.Name}"));
+        }
     }
 
     private static ITypeNode ApplyCardinality(INullableTypeNode baseType, FhirIType child)

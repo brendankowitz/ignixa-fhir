@@ -89,6 +89,14 @@ internal static class FlattenResultProcessor
             }
         }
 
+        // @slice must run before @flatten when both are on the same field,
+        // since slice removes the field and promotes suffixed children to the parent.
+        foreach (var (fieldName, _, path) in fieldsToSlice)
+        {
+            if (parentData.TryGetValue(fieldName, out var fieldValue))
+                ApplySlice(parentData, fieldName, fieldValue, path);
+        }
+
         foreach (var (fieldName, _) in fieldsToFlatten)
         {
             if (parentData.TryGetValue(fieldName, out var fieldValue))
@@ -100,12 +108,6 @@ internal static class FlattenResultProcessor
         {
             if (parentData.TryGetValue(fieldName, out var fieldValue) && fieldValue is IList<object?> list)
                 parentData[fieldName] = list.Count > 0 ? list[0] : null;
-        }
-
-        foreach (var (fieldName, _, path) in fieldsToSlice)
-        {
-            if (parentData.TryGetValue(fieldName, out var fieldValue))
-                ApplySlice(parentData, fieldName, fieldValue, path);
         }
     }
 
@@ -178,7 +180,11 @@ internal static class FlattenResultProcessor
                     : i.ToString();
 
             foreach (var (key, value) in itemDict)
+            {
+                if (key == path)
+                    continue;
                 parentData[$"{key}.{suffix}"] = value;
+            }
         }
     }
 

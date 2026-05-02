@@ -107,6 +107,8 @@ public class FlattenResultProcessorTests
         data["given.official"].ShouldBe("Peter");
         data["family.official"].ShouldBe("Chalmers");
         data["given.usual"].ShouldBe("Jim");
+        data.ShouldNotContainKey("use.official");
+        data.ShouldNotContainKey("use.usual");
     }
 
     [Fact]

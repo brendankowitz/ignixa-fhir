@@ -10,6 +10,7 @@ using Bogus;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -83,6 +84,9 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
     // Additional names (beyond the primary official name)
     private readonly List<AdditionalName> _additionalNames = [];
+
+    // Custom extensions
+    private readonly List<ExtensionJsonNode> _extensions = [];
 
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
@@ -335,6 +339,49 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         ArgumentNullException.ThrowIfNull(given);
         ArgumentNullException.ThrowIfNull(use);
         _additionalNames.Add(new AdditionalName(family, given, use));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a custom extension to the patient.
+    /// </summary>
+    /// <param name="url">The extension canonical URL.</param>
+    /// <param name="configure">Action to configure the extension content.</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithExtension("http://example.org/ext1", ext => ext.ValueString = "value1")
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithExtension(string url, Action<ExtensionJsonNode> configure)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var ext = new ExtensionJsonNode();
+        ext.Url = url;
+        configure(ext);
+        _extensions.Add(ext);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a simple string-valued extension to the patient.
+    /// </summary>
+    /// <param name="url">The extension canonical URL.</param>
+    /// <param name="valueString">The string value.</param>
+    /// <returns>This builder for method chaining</returns>
+    public PatientBuilder WithExtension(string url, string valueString)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(valueString);
+
+        var ext = new ExtensionJsonNode();
+        ext.Url = url;
+        ext.ValueString = valueString;
+        _extensions.Add(ext);
         return this;
     }
 
@@ -911,7 +958,8 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     private bool HasExtensions()
     {
         // Has extensions if BMI is set OR if profile has any attributes to build extensions from
-        return _bmi.HasValue || _profileAttributes.Count > 0;
+        // OR if custom extensions were added via WithExtension
+        return _bmi.HasValue || _profileAttributes.Count > 0 || _extensions.Count > 0;
     }
 
     private JsonArray BuildExtensions()
@@ -922,6 +970,12 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         foreach (var extension in _profile.BuildExtensions(_profileAttributes, _bmi))
         {
             extensions.Add(extension);
+        }
+
+        // Add custom extensions added via WithExtension
+        foreach (var extension in _extensions)
+        {
+            extensions.Add(extension.MutableNode);
         }
 
         return extensions;

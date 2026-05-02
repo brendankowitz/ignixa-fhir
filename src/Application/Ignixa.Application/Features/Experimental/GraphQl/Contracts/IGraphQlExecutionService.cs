@@ -16,6 +16,12 @@ public interface IGraphQlExecutionService
         FhirVersion version,
         CancellationToken cancellationToken);
 
+    Task<IExecutionResult> ExecuteAsync(
+        GraphQlRequestBody request,
+        FhirVersion version,
+        IReadOnlyDictionary<string, object?> globalState,
+        CancellationToken cancellationToken);
+
     Task<IExecutionResult> ExecuteInstanceAsync(
         GraphQlRequestBody request,
         FhirVersion version,

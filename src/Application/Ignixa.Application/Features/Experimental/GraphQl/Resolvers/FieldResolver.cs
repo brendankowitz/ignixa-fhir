@@ -65,13 +65,29 @@ internal static class FieldResolver
         if (fhirpathOpt.HasValue && !string.IsNullOrEmpty(fhirpathOpt.Value))
             items = ApplyFhirPathFilter(items, fhirpathOpt.Value);
 
+        // Apply sub-property filters (e.g., name(use: "official"))
+        foreach (var argument in context.Selection.Field.Arguments)
+        {
+            var argName = argument.Name;
+            if (argName is "fhirpath" or "_offset" or "_count" or "url")
+                continue;
+
+            var argOpt = context.ArgumentOptional<string?>(argName);
+            if (!argOpt.HasValue || string.IsNullOrEmpty(argOpt.Value))
+                continue;
+
+            var targetValue = argOpt.Value;
+            items = items.Where(e =>
+                MatchesSubPropertyFilter(e, argName, targetValue));
+        }
+
         // Apply _offset
         var offsetOpt = context.ArgumentOptional<int?>("_offset");
         if (offsetOpt.HasValue && offsetOpt.Value is > 0)
             items = items.Skip(offsetOpt.Value.Value);
 
-        // Apply _limit
-        var countOpt = context.ArgumentOptional<int?>("_limit");
+        // Apply _count
+        var countOpt = context.ArgumentOptional<int?>("_count");
         if (countOpt.HasValue && countOpt.Value is >= 0)
             items = items.Take(countOpt.Value.Value);
 
@@ -126,6 +142,45 @@ internal static class FieldResolver
 
         // Unsupported expressions pass through unfiltered
         return items;
+    }
+
+    private static bool MatchesSubPropertyFilter(JsonElement element, string propertyName, string targetValue)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (!element.TryGetProperty(propertyName, out var property))
+            return false;
+
+        // Scalar string match
+        if (property.ValueKind == JsonValueKind.String)
+            return property.GetString() == targetValue;
+
+        // Array of strings — match if any element equals target
+        if (property.ValueKind == JsonValueKind.Array)
+            return property.EnumerateArray().Any(a =>
+                a.ValueKind == JsonValueKind.String && a.GetString() == targetValue);
+
+        return false;
+    }
+
+    internal static IEnumerable<JsonElement> FilterExtensionsByUrl(
+        JsonElement parentElement, string? urlFilter)
+    {
+        if (parentElement.ValueKind != JsonValueKind.Object)
+            return [];
+
+        if (!parentElement.TryGetProperty("extension", out var ext) || ext.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var items = ext.EnumerateArray().ToList();
+        if (string.IsNullOrEmpty(urlFilter))
+            return items;
+
+        return items.Where(e =>
+            e.TryGetProperty("url", out var urlProp)
+            && urlProp.ValueKind == JsonValueKind.String
+            && urlProp.GetString() == urlFilter);
     }
 
     internal static string? GetStringProperty(JsonElement element, string propertyName)

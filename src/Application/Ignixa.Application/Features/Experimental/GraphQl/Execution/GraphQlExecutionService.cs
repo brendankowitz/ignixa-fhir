@@ -21,7 +21,14 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         GraphQlRequestBody request,
         FhirVersion version,
         CancellationToken cancellationToken)
-        => ExecuteCoreAsync(request, version, null, null, cancellationToken);
+        => ExecuteCoreAsync(request, version, null, null, null, cancellationToken);
+
+    public Task<IExecutionResult> ExecuteAsync(
+        GraphQlRequestBody request,
+        FhirVersion version,
+        IReadOnlyDictionary<string, object?> globalState,
+        CancellationToken cancellationToken)
+        => ExecuteCoreAsync(request, version, null, null, globalState, cancellationToken);
 
     public Task<IExecutionResult> ExecuteInstanceAsync(
         GraphQlRequestBody request,
@@ -29,13 +36,14 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         string resourceType,
         string resourceId,
         CancellationToken cancellationToken)
-        => ExecuteCoreAsync(request, version, resourceType, resourceId, cancellationToken);
+        => ExecuteCoreAsync(request, version, resourceType, resourceId, null, cancellationToken);
 
     private async Task<IExecutionResult> ExecuteCoreAsync(
         GraphQlRequestBody request,
         FhirVersion version,
         string? resourceType,
         string? resourceId,
+        IReadOnlyDictionary<string, object?>? globalState,
         CancellationToken cancellationToken)
     {
         var schemaName = GraphQlNamingHelper.GetSchemaName(version);
@@ -54,6 +62,8 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
             effectiveQuery = WrapInstanceQuery(effectiveQuery, resourceType!, resourceId!);
         }
 
+        effectiveQuery = InjectSlicePathFields(effectiveQuery);
+
         var builder = OperationRequestBuilder.New()
             .SetDocument(effectiveQuery);
 
@@ -67,6 +77,12 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         {
             builder.AddGlobalState("InstanceResourceType", resourceType);
             builder.AddGlobalState("InstanceResourceId", (object?)resourceId);
+        }
+
+        if (globalState is not null)
+        {
+            foreach (var (key, value) in globalState)
+                builder.AddGlobalState(key, value);
         }
 
         var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
@@ -221,4 +237,112 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         JsonValueKind.Array => element.EnumerateArray().Select(ExtractValue).ToList(),
         _ => element.GetRawText()
     };
+
+    /// <summary>
+    /// Scans the query for <c>@slice(path: "X")</c> directives and implicitly injects
+    /// <c>X</c> into the selection set so the discriminator is available in the execution
+    /// result for post-processing.
+    /// </summary>
+    private static string InjectSlicePathFields(string query)
+    {
+        if (string.IsNullOrEmpty(query))
+            return query;
+
+        var document = Utf8GraphQLParser.Parse(query);
+        var modified = RewriteDocument(document);
+        return modified.ToString();
+    }
+
+    private static DocumentNode RewriteDocument(DocumentNode document)
+    {
+        var modifiedDefinitions = new List<IDefinitionNode>();
+        foreach (var definition in document.Definitions)
+        {
+            if (definition is OperationDefinitionNode operation)
+            {
+                var modifiedSelectionSet = RewriteSelectionSet(operation.SelectionSet);
+                if (modifiedSelectionSet != operation.SelectionSet)
+                {
+                    modifiedDefinitions.Add(new OperationDefinitionNode(
+                        operation.Location,
+                        operation.Name,
+                        operation.Operation,
+                        operation.VariableDefinitions,
+                        operation.Directives,
+                        modifiedSelectionSet));
+                    continue;
+                }
+            }
+
+            modifiedDefinitions.Add(definition);
+        }
+
+        return new DocumentNode(modifiedDefinitions);
+    }
+
+    private static SelectionSetNode RewriteSelectionSet(SelectionSetNode selectionSet)
+    {
+        var modifiedSelections = new List<ISelectionNode>();
+        bool anyModified = false;
+
+        foreach (var selection in selectionSet.Selections)
+        {
+            if (selection is FieldNode field)
+            {
+                var modifiedField = RewriteField(field);
+                modifiedSelections.Add(modifiedField);
+                if (modifiedField != field)
+                    anyModified = true;
+            }
+            else
+            {
+                modifiedSelections.Add(selection);
+            }
+        }
+
+        if (!anyModified)
+            return selectionSet;
+
+        return new SelectionSetNode(modifiedSelections);
+    }
+
+    private static FieldNode RewriteField(FieldNode field)
+    {
+        // Recurse into nested selections first
+        SelectionSetNode? rewrittenSelectionSet = field.SelectionSet is not null
+            ? RewriteSelectionSet(field.SelectionSet)
+            : null;
+
+        // If this field has @slice(path: "X") and X != "$index", inject X into the selection set
+        var slicePath = GetSlicePath(field);
+        if (slicePath is not null && slicePath != "$index" && rewrittenSelectionSet is not null)
+        {
+            var fieldNames = rewrittenSelectionSet.Selections
+                .OfType<FieldNode>()
+                .Select(f => f.Alias?.Value ?? f.Name.Value)
+                .ToHashSet();
+
+            if (!fieldNames.Contains(slicePath))
+            {
+                var newSelections = rewrittenSelectionSet.Selections.ToList();
+                newSelections.Add(new FieldNode(slicePath));
+                rewrittenSelectionSet = new SelectionSetNode(newSelections);
+            }
+        }
+
+        if (rewrittenSelectionSet == field.SelectionSet)
+            return field;
+
+        return field.WithSelectionSet(rewrittenSelectionSet);
+    }
+
+    private static string? GetSlicePath(FieldNode field)
+    {
+        var sliceDirective = field.Directives.FirstOrDefault(d => d.Name.Value == "slice");
+        if (sliceDirective is null)
+            return null;
+
+        var pathArg = sliceDirective.Arguments.FirstOrDefault(a => a.Name.Value == "path");
+        return pathArg?.Value is StringValueNode strValue ? strValue.Value : null;
+    }
 }
