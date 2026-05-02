@@ -173,11 +173,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Generators"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Analyzers", "src\Core\Ignixa.Analyzers\Ignixa.Analyzers.csproj", "{65F6475D-AEFC-41CA-B45B-214C565F5C28}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Anonymizer", "src\Core\Ignixa.Anonymizer\Ignixa.Anonymizer.csproj", "{0683F492-9137-47A6-AED2-88425CDF1C8A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DeId", "src\Core\Ignixa.DeId\Ignixa.DeId.csproj", "{0683F492-9137-47A6-AED2-88425CDF1C8A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Anonymizer.Cli", "tools\Ignixa.Anonymizer.Cli\Ignixa.Anonymizer.Cli.csproj", "{83CE1B4E-F435-46F0-B526-D0E6B5E797C3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DeId.Cli", "tools\Ignixa.DeId.Cli\Ignixa.DeId.Cli.csproj", "{83CE1B4E-F435-46F0-B526-D0E6B5E797C3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Anonymizer.Tests", "test\Ignixa.Anonymizer.Tests\Ignixa.Anonymizer.Tests.csproj", "{32B45077-1720-4E0F-808F-DB3EBAC6559C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DeId.Tests", "test\Ignixa.DeId.Tests\Ignixa.DeId.Tests.csproj", "{32B45077-1720-4E0F-808F-DB3EBAC6559C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DeId.Darts", "src\Core\Ignixa.DeId.Darts\Ignixa.DeId.Darts.csproj", "{1C722D81-D314-42B2-A054-7D3228E79923}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -801,6 +803,18 @@ Global
 		{32B45077-1720-4E0F-808F-DB3EBAC6559C}.Release|x64.Build.0 = Release|Any CPU
 		{32B45077-1720-4E0F-808F-DB3EBAC6559C}.Release|x86.ActiveCfg = Release|Any CPU
 		{32B45077-1720-4E0F-808F-DB3EBAC6559C}.Release|x86.Build.0 = Release|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Debug|x64.Build.0 = Debug|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Debug|x86.Build.0 = Debug|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Release|x64.ActiveCfg = Release|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Release|x64.Build.0 = Release|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Release|x86.ActiveCfg = Release|Any CPU
+		{1C722D81-D314-42B2-A054-7D3228E79923}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -866,5 +880,6 @@ Global
 		{0683F492-9137-47A6-AED2-88425CDF1C8A} = {0955C698-034D-424C-A981-095EB50A5673}
 		{83CE1B4E-F435-46F0-B526-D0E6B5E797C3} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{32B45077-1720-4E0F-808F-DB3EBAC6559C} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
+		{1C722D81-D314-42B2-A054-7D3228E79923} = {0955C698-034D-424C-A981-095EB50A5673}
 	EndGlobalSection
 EndGlobal

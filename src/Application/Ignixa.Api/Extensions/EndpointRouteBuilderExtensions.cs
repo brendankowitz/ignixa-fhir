@@ -44,8 +44,9 @@ public static class EndpointRouteBuilderExtensions
         // FHIR _history endpoints
         app.MapFhirHistoryEndpoints();
 
-        // FHIR operation endpoints ($validate, etc.)
+        // FHIR operation endpoints ($validate, $de-identify, etc.)
         app.MapOperationEndpoints();
+        app.MapDeIdOperationEndpoints();
 
         // PATCH endpoints (direct and conditional)
         app.MapPatchEndpoints();

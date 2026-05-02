@@ -1,0 +1,27 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.
+// Copyright (c) Ignixa Contributors.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+namespace Ignixa.DeId.Exceptions;
+
+/// <summary>
+/// Thrown when a FHIR resource is structurally invalid or cannot be processed by the de-identifier.
+/// </summary>
+public class InvalidResourceException : Exception
+{
+    public InvalidResourceException()
+    {
+    }
+
+    public InvalidResourceException(string message)
+        : base(message)
+    {
+    }
+
+    public InvalidResourceException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

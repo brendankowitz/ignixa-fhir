@@ -19,7 +19,7 @@ All architectural decisions support the **F5 Developer Experience**: a developer
 | ADR | Title | Status |
 |-----|-------|--------|
 | [2501](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2501-authorization.md) | RBAC Authorization with Capability Statement Enforcement | Accepted |
-| [2602](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2602-anonymizer-library.md) | FHIR Anonymizer Library | Accepted |
+| [2602](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2602-deid-library.md) | FHIR DeId Library | Accepted |
 
 ### Architecture & Design
 

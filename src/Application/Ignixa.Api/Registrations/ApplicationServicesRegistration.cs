@@ -28,6 +28,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Application.Infrastructure.Caching;
+using Ignixa.Application.Operations.Features.DeIdentify;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Abstractions;
@@ -199,6 +200,11 @@ public static class ApplicationServicesRegistration
         // $validate
         builder.RegisterType<ValidateResourceHandler>()
             .As<IRequestHandler<ValidateResourceCommand, ValidateResourceResult>>()
+            .InstancePerDependency();
+
+        // $de-identify
+        builder.RegisterType<DeIdentifyHandler>()
+            .As<IRequestHandler<DeIdentifyCommand, DeIdentifyResult>>()
             .InstancePerDependency();
 
         // NOTE: Terminology ($expand, $translate, $subsumes) and $transform handlers

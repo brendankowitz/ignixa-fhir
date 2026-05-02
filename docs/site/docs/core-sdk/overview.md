@@ -77,7 +77,7 @@ The Ignixa Core SDK is a collection of high-performance, reusable .NET libraries
 | **Ignixa.FhirMappingLanguage** | FHIR Mapping Language (FML) evaluator |
 | **Ignixa.NarrativeGenerator** | FHIR narrative generation (HTML, Markdown, Compact) |
 | **Ignixa.SqlOnFhir** | SQL on FHIR v2 ViewDefinition evaluator |
-| **Ignixa.Anonymizer** | FHIR resource anonymization via FHIRPath rules (HIPAA Safe Harbor) |
+| **Ignixa.DeId** | FHIR resource de-identification via FHIRPath rules (HIPAA Safe Harbor) |
 | **Ignixa.PackageManagement** | FHIR package loading from NPM registry |
 
 ### Testing & Development
@@ -263,7 +263,7 @@ var result2 = element.Select("name.given.first()");
 - [FHIRPath](/docs/core-sdk/fhirpath)
 - [Validation](/docs/core-sdk/validation)
 - [Search](/docs/core-sdk/search)
-- [Anonymizer](/docs/core-sdk/anonymizer)
+- [DeId](/docs/core-sdk/deid)
 - [FHIR Fakes](/docs/core-sdk/fhir-fakes)
 - [Package Management](/docs/core-sdk/package-management)
 - [Narrative Generator](/docs/core-sdk/narrative-generator)

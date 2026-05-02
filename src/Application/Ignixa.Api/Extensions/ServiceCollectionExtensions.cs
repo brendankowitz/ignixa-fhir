@@ -6,6 +6,8 @@
 using Autofac;
 using Ignixa.Api.Registrations;
 using Ignixa.Application.Features.Experimental.Infrastructure;
+using Ignixa.DeId.Darts.Extensions;
+using Ignixa.DeId.Extensions;
 
 namespace Ignixa.Api.Extensions;
 
@@ -57,6 +59,10 @@ public static class ServiceCollectionExtensions
 
         // Conformance services (event store initializer)
         services.AddConformanceServices();
+
+        // De-identification services
+        services.AddFhirDeId();
+        services.AddDartsDeId();
 
         return services;
     }
