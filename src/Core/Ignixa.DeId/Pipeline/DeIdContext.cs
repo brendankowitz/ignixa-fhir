@@ -20,7 +20,7 @@ public sealed class DeIdContext
     private readonly Stopwatch _stopwatch;
 
     /// <summary>
-    /// The FHIR resource being anonymized.
+    /// The FHIR resource being de-identified.
     /// </summary>
     public ResourceJsonNode Resource { get; }
 
@@ -73,7 +73,7 @@ public sealed class DeIdContext
     /// <summary>
     /// Creates a new de-identifier context.
     /// </summary>
-    /// <param name="resource">The resource to anonymize.</param>
+    /// <param name="resource">The resource to de-identify.</param>
     /// <param name="element">The root element.</param>
     /// <param name="schema">The FHIR schema provider.</param>
     /// <param name="settings">Per-request settings.</param>
@@ -192,52 +192,11 @@ public sealed class DeIdContext
     }
 
     /// <summary>
-    /// Inserts the meta property after the 'id' property to maintain FHIR property ordering.
-    /// Per FHIR spec, the standard order is: resourceType, id, meta, implicitRules, language, then other properties.
+    /// Adds the meta property to the resource. JSON property order is not semantically significant in FHIR.
     /// </summary>
     private static void InsertMetaAfterIdProperty(System.Text.Json.Nodes.JsonObject mutableNode, System.Text.Json.Nodes.JsonObject metaObj)
     {
-        // Collect all current properties
-        var properties = mutableNode.ToList();
-
-        // Clear the object
-        mutableNode.Clear();
-
-        // Re-add properties in the correct order
-        bool metaInserted = false;
-        foreach (var kvp in properties)
-        {
-            mutableNode[kvp.Key] = kvp.Value;
-
-            // Insert meta after 'id'
-            if (kvp.Key == "id" && !metaInserted)
-            {
-                mutableNode["meta"] = metaObj;
-                metaInserted = true;
-            }
-        }
-
-        // If there was no 'id' property, insert after 'resourceType'
-        if (!metaInserted)
-        {
-            // Rebuild to put meta right after resourceType
-            var allProps = mutableNode.ToList();
-            mutableNode.Clear();
-            foreach (var kvp in allProps)
-            {
-                mutableNode[kvp.Key] = kvp.Value;
-                if (kvp.Key == "resourceType")
-                {
-                    mutableNode["meta"] = metaObj;
-                    metaInserted = true;
-                }
-            }
-
-            if (!metaInserted)
-            {
-                mutableNode["meta"] = metaObj;
-            }
-        }
+        mutableNode["meta"] = metaObj;
     }
 
     /// <summary>

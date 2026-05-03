@@ -30,6 +30,7 @@ namespace Ignixa.DeId.Tools
              * Acceptable key sizes: [128, 192, 256]
              */
             using Aes aes = Aes.Create();
+            aes.Padding = PaddingMode.PKCS7;
             byte[] iv = aes.IV;
             aes.Key = key;
             ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
@@ -72,6 +73,7 @@ namespace Ignixa.DeId.Tools
 
             // Get decryptor
             using Aes aes = Aes.Create();
+            aes.Padding = PaddingMode.PKCS7;
             aes.Key = key;
             aes.IV = iv;
             ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);

@@ -151,7 +151,18 @@ public static class DeIdOperationEndpoints
 
         // For now, use an inline Library resource for bootstrapping.
         // Future enhancement: load Library resource from database by policy code.
-        var configLibrary = CreateBootstrapLibrary(policy);
+        ResourceJsonNode configLibrary;
+        try
+        {
+            configLibrary = CreateBootstrapLibrary(policy);
+        }
+        catch (ArgumentException ex)
+        {
+            return FhirResults.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Invalid,
+                ex.Message));
+        }
 
         var command = new DeIdentifyCommand(
             tenantId,
@@ -175,7 +186,7 @@ public static class DeIdOperationEndpoints
         {
             DartsConstants.PolicySafeHarbor => CreateSafeHarborOptions(),
             DartsConstants.PolicyExpertDetermination => CreateExpertDeterminationOptions(),
-            _ => CreateSafeHarborOptions()
+            _ => throw new ArgumentException($"Unknown de-identification policy: '{policy}'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.")
         };
 
         return LibraryConfigurationLoader.CreateLibraryResource(

@@ -112,7 +112,13 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
                         return Result<DeIdResult>.Failure(processorResult.Error);
 
                     case ErrorHandlingMode.StopOnError:
-                        return Result<DeIdResult>.Failure(processorResult.Error);
+                        _logger.LogError(
+                            "Processor failed for rule {Path}: {Error}. Stopping further rule processing.",
+                            matchedRule.Rule.Path,
+                            processorResult.Error.Message);
+                        context.AddWarning($"Processor failed for rule '{matchedRule.Rule.Path}': {processorResult.Error.Message}");
+                        CleanupDocument(context.Resource.MutableNode);
+                        return await nextHandler(context, cancellationToken).ConfigureAwait(false);
 
                     case ErrorHandlingMode.LogAndContinue:
                         _logger.LogWarning(
@@ -241,6 +247,10 @@ internal sealed class ProcessorHandler : DeIdPipelineHandler
 
             CleanupEmptyProperties(element);
             RemoveIfEmpty(element);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

@@ -182,13 +182,14 @@ internal static class DateTimeTool
         }
     }
 
-    private static bool IndicateAgeOverThreshold(GroupCollection groups)
+    private static bool IndicateAgeOverThreshold(GroupCollection groups, DateTime? referenceDate = null)
     {
+        var refDate = referenceDate ?? DateTime.UtcNow;
         int year = int.Parse(groups[YearIndex].Value);
         int month = groups[MonthIndex].Captures.Any() ? int.Parse(groups[MonthIndex].Value) : 1;
         int day = groups[DayIndex].Captures.Any() ? int.Parse(groups[DayIndex].Value) : 1;
-        int age = DateTime.Now.Year - year -
-            (DateTime.Now.Month < month || (DateTime.Now.Month == month && DateTime.Now.Day < day) ? 1 : 0);
+        int age = refDate.Year - year -
+            (refDate.Month < month || (refDate.Month == month && refDate.Day < day) ? 1 : 0);
 
         return age > AgeThreshold;
     }

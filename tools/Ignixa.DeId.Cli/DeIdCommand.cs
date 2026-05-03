@@ -1,5 +1,4 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation.
 // Copyright (c) Ignixa Contributors.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -19,7 +18,7 @@ public static class DeIdCommand
         var command = new Command("deidentify", "De-identify FHIR resources in a folder");
 
         var inputOption = new Option<string?>("--input") { Description = "Input folder containing FHIR resource files" };
-        var outputOption = new Option<string?>("--output") { Description = "Output folder for anonymized resource files" };
+        var outputOption = new Option<string?>("--output") { Description = "Output folder for de-identified resource files" };
         var configOption = new Option<string>("--config") { Description = "Path to de-identification configuration file", DefaultValueFactory = _ => "configuration-sample.json" };
         var bulkDataOption = new Option<bool>("--bulk-data") { Description = "Process files in NDJSON bulk data format", DefaultValueFactory = _ => false };
         var skipOption = new Option<bool>("--skip-existing") { Description = "Skip files that already exist in the output folder", DefaultValueFactory = _ => false };

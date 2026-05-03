@@ -42,7 +42,16 @@ public class LibraryConfigurationLoader
             throw new InvalidOperationException("No application/json attachment found in Library.content.");
         }
 
-        var jsonBytes = Convert.FromBase64String(jsonContent);
+        byte[] jsonBytes;
+        try
+        {
+            jsonBytes = Convert.FromBase64String(jsonContent);
+        }
+        catch (FormatException)
+        {
+            throw new InvalidOperationException("Library.content data is not valid base64.");
+        }
+
         var json = Encoding.UTF8.GetString(jsonBytes);
 
         DeIdOptions? options;
@@ -66,39 +75,44 @@ public class LibraryConfigurationLoader
     public static ResourceJsonNode CreateLibraryResource(string id, string policyCode, DeIdOptions options, string? version = null)
     {
         var json = JsonSerializer.Serialize(options, SerializerOptions);
-
         var bytes = Encoding.UTF8.GetBytes(json);
         var base64 = Convert.ToBase64String(bytes);
 
-        var libraryJson = $$"""
+        var libraryObj = new System.Text.Json.Nodes.JsonObject
+        {
+            ["resourceType"] = "Library",
+            ["id"] = id,
+            ["status"] = "active",
+            ["type"] = new System.Text.Json.Nodes.JsonObject
             {
-                "resourceType": "Library",
-                "id": "{{id}}",
-                "status": "active",
-                "type": {
-                    "coding": [
-                        {
-                            "system": "{{DartsConstants.LibraryTypeSystem}}",
-                            "code": "{{DartsConstants.LibraryTypeCode}}"
-                        }
-                    ]
-                },
-                "version": "{{version ?? "1.0.0"}}",
-                "identifier": [
+                ["coding"] = new System.Text.Json.Nodes.JsonArray
+                {
+                    new System.Text.Json.Nodes.JsonObject
                     {
-                        "system": "http://hl7.org/fhir/us/darts/CodeSystem/DARTSPolicyIdentifiers",
-                        "value": "{{policyCode}}"
+                        ["system"] = DartsConstants.LibraryTypeSystem,
+                        ["code"] = DartsConstants.LibraryTypeCode
                     }
-                ],
-                "content": [
-                    {
-                        "contentType": "application/json",
-                        "data": "{{base64}}"
-                    }
-                ]
+                }
+            },
+            ["version"] = version ?? "1.0.0",
+            ["identifier"] = new System.Text.Json.Nodes.JsonArray
+            {
+                new System.Text.Json.Nodes.JsonObject
+                {
+                    ["system"] = "http://hl7.org/fhir/us/darts/CodeSystem/DARTSPolicyIdentifiers",
+                    ["value"] = policyCode
+                }
+            },
+            ["content"] = new System.Text.Json.Nodes.JsonArray
+            {
+                new System.Text.Json.Nodes.JsonObject
+                {
+                    ["contentType"] = "application/json",
+                    ["data"] = base64
+                }
             }
-            """;
+        };
 
-        return ResourceJsonNode.Parse(libraryJson);
+        return ResourceJsonNode.Parse(libraryObj.ToJsonString());
     }
 }

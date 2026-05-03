@@ -10,6 +10,7 @@ using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.DeId.Extensions;
@@ -88,6 +89,10 @@ public static class ServiceCollectionExtensions
         var dateShiftKey = parameters?.DateShiftKey;
         if (string.IsNullOrWhiteSpace(dateShiftKey))
         {
+            var logger = sp.GetService<ILogger<DateShiftProcessor>>();
+            logger?.LogWarning(
+                "No DateShiftKey configured. Using an auto-generated key. " +
+                "De-identification will not be deterministic across runs.");
             dateShiftKey = Guid.NewGuid().ToString("N");
         }
         return new DateShiftProcessor(
@@ -104,6 +109,10 @@ public static class ServiceCollectionExtensions
         var cryptoHashKey = options.Parameters?.CryptoHashKey;
         if (string.IsNullOrWhiteSpace(cryptoHashKey))
         {
+            var logger = sp.GetService<ILogger<CryptoHashProcessor>>();
+            logger?.LogWarning(
+                "No CryptoHashKey configured. Using an auto-generated key. " +
+                "De-identification will not be deterministic across runs.");
             cryptoHashKey = Guid.NewGuid().ToString("N");
         }
         return new CryptoHashProcessor(cryptoHashKey, schema);
@@ -115,6 +124,10 @@ public static class ServiceCollectionExtensions
         var encryptKey = options.Parameters?.EncryptKey;
         if (string.IsNullOrWhiteSpace(encryptKey))
         {
+            var logger = sp.GetService<ILogger<EncryptProcessor>>();
+            logger?.LogWarning(
+                "No EncryptKey configured. Using an auto-generated key. " +
+                "De-identification will not be deterministic across runs.");
             encryptKey = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
         }
         return new EncryptProcessor(encryptKey);

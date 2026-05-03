@@ -60,8 +60,15 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
                 $"Configuration error: {ex.Message}");
         }
 
-        var context = _contextAccessor.RequestContext
-            ?? throw new InvalidOperationException("FHIR request context not available");
+        var context = _contextAccessor.RequestContext;
+        if (context is null)
+        {
+            _logger.LogError("FHIR request context not available");
+            return new DeIdentifyResult(
+                false,
+                null,
+                "FHIR request context not available.");
+        }
 
         var tenantConfig = context.TenantConfiguration;
         var fhirVersionEnum = context.FhirVersion;
