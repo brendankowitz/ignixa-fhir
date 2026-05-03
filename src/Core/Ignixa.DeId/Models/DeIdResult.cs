@@ -8,18 +8,18 @@ using Ignixa.Serialization.SourceNodes;
 namespace Ignixa.DeId.Models;
 
 /// <summary>
-/// Represents the result of anonymizing a FHIR resource.
+/// Represents the result of de-identifying a FHIR resource.
 /// </summary>
 public sealed record DeIdResult
 {
     /// <summary>
-    /// The anonymized resource as a mutable node for pipeline chaining.
+    /// The de-identified resource as a mutable node for pipeline chaining.
     /// Use this when passing to other processing stages to avoid serialization overhead.
     /// </summary>
     public required ResourceJsonNode Resource { get; init; }
 
     /// <summary>
-    /// The anonymized resource JSON string.
+    /// The de-identified resource JSON string.
     /// Convenience property for final output. Computed from Resource if needed.
     /// </summary>
     public required string DeidentifiedJson { get; init; }

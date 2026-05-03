@@ -28,7 +28,7 @@ var patientJson = """
 }
 """;
 
-var deidentified = engine.DeidentifyJson(patientJson);
+var result = await engine.DeidentifyAsync(patientJson);
 ```
 
 ## Configuration Example
@@ -84,20 +84,29 @@ Partial redaction features for HIPAA compliance:
 ## Batch Processing
 
 ```csharp
-using Ignixa.DeId.PartitionedExecution;
+using Ignixa.Serialization.SourceNodes;
 
-var reader = new FhirStreamReader(inputStream);
-var consumer = new FhirStreamConsumer(outputStream);
-
-var executor = new FhirPartitionedExecutor<string, string>(reader, consumer)
+async IAsyncEnumerable<ResourceJsonNode> LoadResourcesAsync()
 {
-    PartitionCount = 8,
-    BatchSize = 100,
-    DeIdFunctionAsync = async content =>
-        await Task.Run(() => engine.DeidentifyJson(content))
-};
+    foreach (var line in File.ReadLines("patients.ndjson"))
+    {
+        yield return ResourceJsonNode.Parse(line);
+    }
+}
 
-await executor.ExecuteAsync(cancellationToken);
+var resources = LoadResourcesAsync();
+
+await foreach (var result in engine.DeidentifyManyAsync(resources))
+{
+    if (result.IsSuccess)
+    {
+        await File.AppendAllTextAsync("de-identified.ndjson", result.Value.DeidentifiedJson + "\n");
+    }
+    else
+    {
+        Console.Error.WriteLine($"Failed: {result.Error.Message}");
+    }
+}
 ```
 
 ## Documentation

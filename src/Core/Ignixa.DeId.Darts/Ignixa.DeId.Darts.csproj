@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
     <PackageId>Ignixa.DeId.Darts</PackageId>
+    <Description>DARTS FHIR IG support for Ignixa.DeId, including Library-based configuration loading</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>Ignixa.DeId.Darts</RootNamespace>
     <AssemblyName>Ignixa.DeId.Darts</AssemblyName>
   </PropertyGroup>

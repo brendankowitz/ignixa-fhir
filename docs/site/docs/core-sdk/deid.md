@@ -1,12 +1,12 @@
 ---
 sidebar_position: 6
-title: De-identifier
+title: DeId
 description: FHIR resource de-identification via FHIRPath-based rules
 ---
 
 # Ignixa.DeId
 
-The `Ignixa.DeId` package provides FHIR resource de-identification and de-identification via FHIRPath-based rules. Supports HIPAA Safe Harbor de-identification standards and multiple de-identification methods.
+The `Ignixa.DeId` package provides FHIR resource de-identification via FHIRPath-based rules. Supports HIPAA Safe Harbor de-identification standards and multiple de-identification methods.
 
 ## Installation
 
@@ -18,7 +18,7 @@ dotnet add package Ignixa.DeId
 
 ### 1. Register Services
 
-Register the de-identifier with dependency injection:
+Register DeId services with dependency injection:
 
 ```csharp
 using Ignixa.DeId.Extensions;
@@ -29,9 +29,9 @@ using Microsoft.Extensions.Logging;
 var services = new ServiceCollection();
 
 // Register de-identifier with configuration file
-services.AddFhirDe-identifier(builder =>
+services.AddFhirDeId(builder =>
 {
-    builder.WithConfigurationFile("de-identifier-config.json");
+    builder.WithConfigurationFile("deid-config.json");
 });
 
 // Register FHIR schema provider
@@ -43,9 +43,9 @@ services.AddLogging(logging => logging.AddConsole());
 var provider = services.BuildServiceProvider();
 ```
 
-### 2. Anonymize Resources
+### 2. De-identify Resources
 
-Use the `IDeIdEngine` interface to anonymize resources:
+Use the `IDeIdEngine` interface to de-identify resources:
 
 ```csharp
 using Ignixa.DeId;
@@ -183,7 +183,7 @@ await foreach (var result in engine.DeidentifyManyAsync(resources))
 ### Using Configuration File
 
 ```csharp
-services.AddFhirDe-identifier(builder =>
+services.AddFhirDeId(builder =>
 {
     builder.WithConfigurationFile("config.json");
 });
@@ -194,7 +194,7 @@ services.AddFhirDe-identifier(builder =>
 ```csharp
 using Ignixa.DeId.Configuration;
 
-services.AddFhirDe-identifier(builder =>
+services.AddFhirDeId(builder =>
 {
     builder.WithOptions(options =>
     {
@@ -514,7 +514,7 @@ Adds random noise to numeric values for statistical privacy.
 | `rangeType` | string | `"fixed"` or `"proportional"` |
 | `roundTo` | integer | Decimal places (0-28) |
 
-**Use case:** Anonymize lab values while preserving statistical properties.
+**Use case:** De-identify lab values while preserving statistical properties.
 
 **Before:**
 ```json
@@ -723,7 +723,7 @@ using Ignixa.DeId.Models;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
-public class CustomMaskProcessor : IDe-identifierProcessor
+public class CustomMaskProcessor : IDeIdProcessor
 {
     public ValueTask<ProcessResult> ProcessAsync(
         ResourceJsonNode resource,
@@ -747,7 +747,7 @@ public class CustomMaskProcessor : IDe-identifierProcessor
 
         node.Value = masked;
 
-        result.AddProcessRecord(De-identificationOperations.Custom, node);
+        result.AddProcessRecord("CUSTOMMASK", node);
         return ValueTask.FromResult(result);
     }
 }
@@ -756,7 +756,7 @@ public class CustomMaskProcessor : IDe-identifierProcessor
 ### Register Custom Processor
 
 ```csharp
-services.AddFhirDe-identifier(builder =>
+services.AddFhirDeId(builder =>
 {
     builder.WithConfigurationFile("config.json");
     builder.AddProcessor<CustomMaskProcessor>("customMask");
@@ -868,19 +868,19 @@ This configuration addresses the 18 HIPAA identifiers:
 ### IDeIdEngine
 
 ```csharp
-// Anonymize single resource from JSON
+// De-identify single resource from JSON
 ValueTask<Result<DeIdResult>> DeidentifyAsync(
     string resourceJson,
     RequestOptions? settings = null,
     CancellationToken cancellationToken = default);
 
-// Anonymize parsed resource node
+// De-identify parsed resource node
 ValueTask<Result<DeIdResult>> DeidentifyAsync(
     ResourceJsonNode resource,
     RequestOptions? settings = null,
     CancellationToken cancellationToken = default);
 
-// Anonymize stream of resources (bulk processing)
+// De-identify stream of resources (bulk processing)
 IAsyncEnumerable<Result<DeIdResult>> DeidentifyManyAsync(
     IAsyncEnumerable<ResourceJsonNode> resources,
     RequestOptions? settings = null,
@@ -920,7 +920,7 @@ public sealed record ProcessingMetrics
 
 ## CLI Tool
 
-The `ignixa-de-identifier` tool anonymizes FHIR resources from the command line.
+The `ignixa-deid` tool de-identifies FHIR resources from the command line.
 
 ### Installation
 
@@ -933,17 +933,17 @@ dotnet tool install --global Ignixa.DeId.Cli
 The CLI tool supports multiple FHIR versions and processes files in folders:
 
 ```bash
-# Anonymize R4 resources
-ignixa-de-identifier r4 anonymize --input ./input --output ./output --config config.json
+# De-identify R4 resources
+ignixa-deid r4 deidentify --input ./input --output ./output --config config.json
 
-# Anonymize R5 resources
-ignixa-de-identifier r5 anonymize --input ./fhir-data --output ./de-identified --config config.json
+# De-identify R5 resources
+ignixa-deid r5 deidentify --input ./fhir-data --output ./de-identified --config config.json
 
 # Process recursively through subdirectories
-ignixa-de-identifier r4 anonymize --input ./input --output ./output --config config.json --recursive
+ignixa-deid r4 deidentify --input ./input --output ./output --config config.json --recursive
 
 # Skip files that already exist in output
-ignixa-de-identifier r4 anonymize --input ./input --output ./output --config config.json --skip-existing
+ignixa-deid r4 deidentify --input ./input --output ./output --config config.json --skip-existing
 ```
 
 ### NDJSON Bulk Data Format
@@ -951,15 +951,15 @@ ignixa-de-identifier r4 anonymize --input ./input --output ./output --config con
 Process FHIR bulk data in NDJSON format:
 
 ```bash
-# Anonymize NDJSON bulk export files
-ignixa-de-identifier r4 anonymize \
+# De-identify NDJSON bulk export files
+ignixa-deid r4 deidentify \
   --input ./bulk-export \
   --output ./de-identified-bulk \
   --config config.json \
   --bulk-data
 
 # Process bulk data with validation
-ignixa-de-identifier r4 anonymize \
+ignixa-deid r4 deidentify \
   --input ./bulk-export \
   --output ./de-identified-bulk \
   --config config.json \
@@ -976,7 +976,7 @@ The `--bulk-data` flag processes files as NDJSON (newline-delimited JSON), where
 |--------|-------------|---------|
 | `--input` | Input folder containing FHIR resource files (required) | - |
 | `--output` | Output folder for de-identified files (required) | - |
-| `--config` | Path to de-identifier configuration file | `configuration-sample.json` |
+| `--config` | Path to de-identification configuration file | `configuration-sample.json` |
 | `--bulk-data` | Process files in NDJSON bulk data format | `false` |
 | `--skip-existing` | Skip files that already exist in output folder | `false` |
 | `--recursive` | Process resource files recursively through subdirectories | `false` |
@@ -990,11 +990,11 @@ The CLI tool supports all FHIR versions:
 
 | Command | FHIR Version |
 |---------|--------------|
-| `ignixa-de-identifier stu3 anonymize` | FHIR STU3 |
-| `ignixa-de-identifier r4 anonymize` | FHIR R4 |
-| `ignixa-de-identifier r4b anonymize` | FHIR R4B |
-| `ignixa-de-identifier r5 anonymize` | FHIR R5 |
-| `ignixa-de-identifier r6 anonymize` | FHIR R6 |
+| `ignixa-deid stu3 deidentify` | FHIR STU3 |
+| `ignixa-deid r4 deidentify` | FHIR R4 |
+| `ignixa-deid r4b deidentify` | FHIR R4B |
+| `ignixa-deid r5 deidentify` | FHIR R5 |
+| `ignixa-deid r6 deidentify` | FHIR R6 |
 
 ### Sample Configuration
 
@@ -1063,8 +1063,8 @@ cat > hipaa-config.json <<EOF
 }
 EOF
 
-# Anonymize all resources recursively with validation
-ignixa-de-identifier r4 anonymize \
+# De-identify all resources recursively with validation
+ignixa-deid r4 deidentify \
   --input ./patient-data \
   --output ./research-dataset \
   --config hipaa-config.json \
@@ -1076,8 +1076,8 @@ ignixa-de-identifier r4 anonymize \
 **Process Bulk Export for Data Sharing**:
 
 ```bash
-# Anonymize bulk export NDJSON files
-ignixa-de-identifier r4 anonymize \
+# De-identify bulk export NDJSON files
+ignixa-deid r4 deidentify \
   --input ./bulk-export \
   --output ./de-identified-export \
   --config config.json \
@@ -1090,4 +1090,4 @@ ignixa-de-identifier r4 anonymize \
 - [FHIRPath](/docs/core-sdk/fhirpath)
 - [Serialization](/docs/core-sdk/serialization)
 - [Specification](/docs/core-sdk/abstractions)
-- [ADR 2602: De-identifier Library](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2602-de-identifier-library.md)
+- [ADR 2602: DeId Library](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2602-deid-library.md)
