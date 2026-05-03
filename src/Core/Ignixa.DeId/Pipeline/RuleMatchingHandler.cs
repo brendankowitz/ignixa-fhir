@@ -62,6 +62,10 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
                     logger.LogTrace("Rule {RulePath} matched no elements", rule.Path);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(

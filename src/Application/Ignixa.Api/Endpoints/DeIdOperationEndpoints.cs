@@ -184,8 +184,8 @@ public static class DeIdOperationEndpoints
     {
         var options = policy switch
         {
-            DartsConstants.PolicySafeHarbor => CreateSafeHarborOptions(),
-            DartsConstants.PolicyExpertDetermination => CreateExpertDeterminationOptions(),
+            DartsConstants.PolicySafeHarbor => BootstrapPolicies.CreateSafeHarborOptions(),
+            DartsConstants.PolicyExpertDetermination => BootstrapPolicies.CreateExpertDeterminationOptions(),
             _ => throw new ArgumentException($"Unknown de-identification policy: '{policy}'. Supported policies: {DartsConstants.PolicySafeHarbor}, {DartsConstants.PolicyExpertDetermination}.")
         };
 
@@ -193,72 +193,6 @@ public static class DeIdOperationEndpoints
             $"deid-{policy.ToUpperInvariant()}",
             policy,
             options);
-    }
-
-    private static Ignixa.DeId.Configuration.DeIdOptions CreateSafeHarborOptions()
-    {
-        return new Ignixa.DeId.Configuration.DeIdOptions
-        {
-            FhirVersion = "R4",
-            Rules =
-            [
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.id", Method = "cryptoHash" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.identifier", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.name", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.address", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.telecom", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.birthDate", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.photo", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.contact", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Resource.text", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(date)", Method = "dateShift" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(dateTime)", Method = "dateShift" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(instant)", Method = "dateShift" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(Reference).display", Method = "redact" },
-            ],
-            Parameters = new Ignixa.DeId.Configuration.ParameterOptions
-            {
-                EnablePartialDatesForRedact = true,
-                EnablePartialAgesForRedact = true,
-                EnablePartialZipCodesForRedact = true
-            },
-            Processing = new Ignixa.DeId.Configuration.ProcessingOptions
-            {
-                ErrorHandling = Ignixa.DeId.Configuration.ErrorHandlingMode.LogAndContinue
-            }
-        };
-    }
-
-    private static Ignixa.DeId.Configuration.DeIdOptions CreateExpertDeterminationOptions()
-    {
-        return new Ignixa.DeId.Configuration.DeIdOptions
-        {
-            FhirVersion = "R4",
-            Rules =
-            [
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.id", Method = "cryptoHash" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.identifier", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.name", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.address", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.telecom", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.birthDate", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Patient.photo", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "Resource.text", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(date)", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(dateTime)", Method = "redact" },
-                new Ignixa.DeId.Configuration.FhirPathRule { Path = "descendants().ofType(Reference).display", Method = "redact" },
-            ],
-            Parameters = new Ignixa.DeId.Configuration.ParameterOptions
-            {
-                EnablePartialDatesForRedact = false,
-                EnablePartialAgesForRedact = false,
-                EnablePartialZipCodesForRedact = false
-            },
-            Processing = new Ignixa.DeId.Configuration.ProcessingOptions
-            {
-                ErrorHandling = Ignixa.DeId.Configuration.ErrorHandlingMode.FailFast
-            }
-        };
     }
 
     private static OperationOutcomeJsonNode CreateOperationOutcome(

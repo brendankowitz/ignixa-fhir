@@ -115,8 +115,7 @@ public static class DeIdOptionsLoader
 
             if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(method))
             {
-                throw new InvalidOperationException(
-                    $"Invalid rule at index {builder.Count}: 'path' and 'method' are required.");
+                continue;
             }
 
             var resourceType = ruleNode["resourceType"]?.GetValue<string>();

@@ -192,11 +192,31 @@ public sealed class DeIdContext
     }
 
     /// <summary>
-    /// Adds the meta property to the resource. JSON property order is not semantically significant in FHIR.
+    /// Inserts the meta property after 'id' (or 'resourceType' if no id) to maintain FHIR property ordering.
+    /// Per FHIR spec, the standard order is: resourceType, id, meta, implicitRules, language, then other properties.
     /// </summary>
     private static void InsertMetaAfterIdProperty(System.Text.Json.Nodes.JsonObject mutableNode, System.Text.Json.Nodes.JsonObject metaObj)
     {
-        mutableNode["meta"] = metaObj;
+        var properties = mutableNode.ToList();
+        bool hasId = properties.Exists(p => p.Key == "id");
+
+        mutableNode.Clear();
+
+        bool metaInserted = false;
+        foreach (var kvp in properties)
+        {
+            mutableNode[kvp.Key] = kvp.Value;
+            if (kvp.Key == "id" || (!hasId && kvp.Key == "resourceType"))
+            {
+                mutableNode["meta"] = metaObj;
+                metaInserted = true;
+            }
+        }
+
+        if (!metaInserted)
+        {
+            mutableNode["meta"] = metaObj;
+        }
     }
 
     /// <summary>

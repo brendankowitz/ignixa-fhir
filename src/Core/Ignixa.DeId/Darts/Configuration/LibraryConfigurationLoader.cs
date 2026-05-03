@@ -78,41 +78,34 @@ public class LibraryConfigurationLoader
         var bytes = Encoding.UTF8.GetBytes(json);
         var base64 = Convert.ToBase64String(bytes);
 
-        var libraryObj = new System.Text.Json.Nodes.JsonObject
+        var library = new
         {
-            ["resourceType"] = "Library",
-            ["id"] = id,
-            ["status"] = "active",
-            ["type"] = new System.Text.Json.Nodes.JsonObject
+            resourceType = "Library",
+            id,
+            status = "active",
+            type = new
             {
-                ["coding"] = new System.Text.Json.Nodes.JsonArray
+                coding = new[]
                 {
-                    new System.Text.Json.Nodes.JsonObject
-                    {
-                        ["system"] = DartsConstants.LibraryTypeSystem,
-                        ["code"] = DartsConstants.LibraryTypeCode
-                    }
+                    new { system = DartsConstants.LibraryTypeSystem, code = DartsConstants.LibraryTypeCode }
                 }
             },
-            ["version"] = version ?? "1.0.0",
-            ["identifier"] = new System.Text.Json.Nodes.JsonArray
+            version = version ?? "1.0.0",
+            identifier = new[]
             {
-                new System.Text.Json.Nodes.JsonObject
+                new
                 {
-                    ["system"] = "http://hl7.org/fhir/us/darts/CodeSystem/DARTSPolicyIdentifiers",
-                    ["value"] = policyCode
+                    system = "http://hl7.org/fhir/us/darts/CodeSystem/DARTSPolicyIdentifiers",
+                    value = policyCode
                 }
             },
-            ["content"] = new System.Text.Json.Nodes.JsonArray
+            content = new[]
             {
-                new System.Text.Json.Nodes.JsonObject
-                {
-                    ["contentType"] = "application/json",
-                    ["data"] = base64
-                }
+                new { contentType = "application/json", data = base64 }
             }
         };
 
-        return ResourceJsonNode.Parse(libraryObj.ToJsonString());
+        var libraryJson = JsonSerializer.Serialize(library, SerializerOptions);
+        return ResourceJsonNode.Parse(libraryJson);
     }
 }

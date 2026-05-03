@@ -96,6 +96,10 @@ public class GeneralizeSetting
                 Parser.Parse(key);
                 Parser.Parse(value?.ToString() ?? string.Empty);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 throw new ConfigurationException($"Invalid cases expression {key}: {value}", ex);
