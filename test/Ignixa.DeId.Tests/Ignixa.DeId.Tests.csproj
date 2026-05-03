@@ -27,7 +27,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.DeId\Ignixa.DeId.csproj" />
-    <ProjectReference Include="..\..\src\Core\Ignixa.DeId.Darts\Ignixa.DeId.Darts.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>

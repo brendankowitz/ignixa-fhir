@@ -71,7 +71,6 @@
     <ProjectReference Include="..\..\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.DeId\Ignixa.DeId.csproj" />
-    <ProjectReference Include="..\..\Core\Ignixa.DeId.Darts\Ignixa.DeId.Darts.csproj" />
   </ItemGroup>
 
 </Project>
