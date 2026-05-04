@@ -759,33 +759,13 @@ public sealed class FhirTypeModule(
             {
                 var capturedType = resourceType;
 
-                // Single resource read: Patient(id: "p1")
-                // id is optional when querying via _graphql on operations
+                // Single resource read: Patient(_id: "p1")
                 descriptor.Field(capturedType)
-                    .Argument("id", a => a.Type<IdType>())
+                    .Argument("_id", a => a.Type<NonNullType<IdType>>())
                     .Type(new NamedTypeNode(capturedType))
                     .Resolve(async ctx =>
                     {
-                        var id = ctx.ArgumentValue<string?>("id");
-                        if (string.IsNullOrEmpty(id))
-                        {
-                            var opResult = ctx.GetGlobalStateOrDefault<JsonElement>("OperationResult");
-                            if (opResult.ValueKind != JsonValueKind.Undefined
-                                && opResult.TryGetProperty("resourceType", out var rtProp)
-                                && rtProp.GetString() == capturedType)
-                            {
-                                return opResult;
-                            }
-
-                            ctx.ReportError(
-                                ErrorBuilder.New()
-                                    .SetMessage("id is required unless querying via _graphql parameter")
-                                    .SetCode("FHIR_GRAPHQL_ID_REQUIRED")
-                                    .SetPath(ctx.Path)
-                                    .Build());
-                            return null;
-                        }
-
+                        var id = ctx.ArgumentValue<string>("_id");
                         var resolver = ctx.Service<AppResourceResolver>();
                         return await resolver.ResolveByIdAsync(capturedType, id, ctx.RequestAborted);
                     });

@@ -51,7 +51,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id name { use family given } birthDate gender active } }"
+  "query": "{ Patient(_id: \"example\") { id name { use family given } birthDate gender active } }"
 }
 
 ### 3.2 Read with nested complex types
@@ -59,11 +59,11 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id identifier { system value } telecom { system value use } address { line city state postalCode country } } }"
+  "query": "{ Patient(_id: \"example\") { id identifier { system value } telecom { system value use } address { line city state postalCode country } } }"
 }
 
 ### 3.3 Read using GET method
-GET {{hostname}}/$graphql?query={Patient(id:"example"){id,name{family,given},birthDate}}
+GET {{hostname}}/$graphql?query={Patient(_id:"example"){id,name{family,given},birthDate}}
 
 ### ============================================================================
 ### SIMPLE LIST SEARCH (flat array, no pagination)
@@ -467,18 +467,3 @@ Content-Type: application/json
   "variables": { "encId": "example" }
 }
 
-### ============================================================================
-### GRAPHQL ON OPERATIONS (_graphql parameter)
-### ============================================================================
-
-### 20.1 Apply GraphQL to $validate output
-POST {{hostname}}/Patient/$validate?_graphql=%7B%20resourceType%20%7D
-Content-Type: application/fhir+json
-
-{"resourceType":"Patient","name":[{"family":"Test"}]}
-
-### 20.2 Apply GraphQL to $validate output with nested fields
-POST {{hostname}}/Patient/$validate?_graphql=%7B%20id%20meta%20%7B%20versionId%20%7D%20%7D
-Content-Type: application/fhir+json
-
-{"resourceType":"Patient","id":"example","meta":{"versionId":"1"}}

@@ -61,8 +61,3 @@ Content-Type: application/json
   "query": "{ id name { family given } ConditionList(_reference: \"patient\", _count: 10) { id code { coding { display } } clinicalStatus { coding { code } } } }"
 }
 
-### 2.6 Tenant GraphQL on operation
-POST {{hostname}}/tenant/1/Patient/$validate?_graphql=%7B%20resourceType%20%7D
-Content-Type: application/fhir+json
-
-{"resourceType":"Patient","name":[{"family":"Test"}]}

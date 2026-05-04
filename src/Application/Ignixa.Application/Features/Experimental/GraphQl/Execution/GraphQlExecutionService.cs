@@ -24,14 +24,7 @@ public sealed class GraphQlExecutionService(
         GraphQlRequestBody request,
         FhirVersion version,
         CancellationToken cancellationToken)
-        => ExecuteCoreAsync(request, version, null, null, null, cancellationToken);
-
-    public Task<IExecutionResult> ExecuteAsync(
-        GraphQlRequestBody request,
-        FhirVersion version,
-        IReadOnlyDictionary<string, object?> globalState,
-        CancellationToken cancellationToken)
-        => ExecuteCoreAsync(request, version, null, null, globalState, cancellationToken);
+        => ExecuteCoreAsync(request, version, null, null, cancellationToken);
 
     public Task<IExecutionResult> ExecuteInstanceAsync(
         GraphQlRequestBody request,
@@ -39,14 +32,13 @@ public sealed class GraphQlExecutionService(
         string resourceType,
         string resourceId,
         CancellationToken cancellationToken)
-        => ExecuteCoreAsync(request, version, resourceType, resourceId, null, cancellationToken);
+        => ExecuteCoreAsync(request, version, resourceType, resourceId, cancellationToken);
 
     private async Task<IExecutionResult> ExecuteCoreAsync(
         GraphQlRequestBody request,
         FhirVersion version,
         string? resourceType,
         string? resourceId,
-        IReadOnlyDictionary<string, object?>? globalState,
         CancellationToken cancellationToken)
     {
         var schemaName = GraphQlNamingHelper.GetSchemaName(version);
@@ -57,7 +49,7 @@ public sealed class GraphQlExecutionService(
         // Instance-level queries: wrap the user's selection set in a resource field.
         // Per the FHIR $graphql spec, instance queries like /Patient/123/$graphql
         // accept a bare selection set (e.g., { id name { family } }) that applies
-        // directly to the resource. We rewrite this as { Patient(id: "123") { ... } }
+        // directly to the resource. We rewrite this as { Patient(_id: "123") { ... } }
         // so it's valid against the root Query type.
         var isInstanceQuery = resourceType is not null && resourceId is not null;
         if (isInstanceQuery)
@@ -82,12 +74,6 @@ public sealed class GraphQlExecutionService(
             builder.AddGlobalState("InstanceResourceId", (object?)resourceId);
         }
 
-        if (globalState is not null)
-        {
-            foreach (var (key, value) in globalState)
-                builder.AddGlobalState(key, value);
-        }
-
         var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
 
         result = PostProcessDirectives(result, effectiveQuery, logger);
@@ -106,7 +92,7 @@ public sealed class GraphQlExecutionService(
     /// <summary>
     /// Wraps an instance-level selection set into a typed resource query.
     /// Input: <c>{ id name { family } }</c>
-    /// Output: <c>{ Patient(id: "123") { id name { family } } }</c>
+    /// Output: <c>{ Patient(_id: "123") { id name { family } } }</c>
     /// </summary>
     private static string WrapInstanceQuery(string query, string resourceType, string resourceId)
     {
@@ -118,7 +104,7 @@ public sealed class GraphQlExecutionService(
             var innerSelections = trimmed[1..^1].Trim();
             // Escape any double quotes in the resource ID
             var escapedId = resourceId.Replace("\"", "\\\"", StringComparison.Ordinal);
-            return $"{{ {resourceType}(id: \"{escapedId}\") {{ {innerSelections} }} }}";
+            return $"{{ {resourceType}(_id: \"{escapedId}\") {{ {innerSelections} }} }}";
         }
 
         return query;

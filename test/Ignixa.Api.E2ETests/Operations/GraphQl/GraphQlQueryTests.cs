@@ -110,7 +110,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
             CreatePatient().WithGivenName("GraphQlRead").WithFamilyName("TestPatient").WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { id name { family given } resourceType } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { id name { family given } resourceType } }""");
 
         AssertNoErrors(result);
         var patient = result["data"]!["Patient"]!;
@@ -123,7 +123,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     public async Task GivenPatientDoesNotExist_WhenReadingById_ThenReturnsNull()
     {
                 var result = await PostGraphQlAsync(
-            """{ Patient(id: "nonexistent-graphql-test-id") { id } }""");
+            """{ Patient(_id: "nonexistent-graphql-test-id") { id } }""");
 
         AssertNoErrors(result);
         result["data"]!["Patient"].ShouldBeNull();
@@ -243,7 +243,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
             CreatePatient().WithFamilyName("RefTest").WithManagingOrganization(org.Id!).WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{patient.Id}}") { id managingOrganization { reference resource(optional: true) { ... on Organization { id name } } } } }""");
+            $$"""{ Patient(_id: "{{patient.Id}}") { id managingOrganization { reference resource(optional: true) { ... on Organization { id name } } } } }""");
 
         AssertNoErrors(result);
         var mgOrg = result["data"]!["Patient"]!["managingOrganization"]!;
@@ -262,7 +262,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
             CreatePatient().WithFamilyName("VarTest").WithTag(tag).Build());
 
         var result = await PostGraphQlWithVariablesAsync(
-            "query GetPatient($pid: ID!) { Patient(id: $pid) { id name { family } } }",
+            "query GetPatient($pid: ID!) { Patient(_id: $pid) { id name { family } } }",
             new { pid = created.Id },
             "GetPatient");
 
@@ -285,7 +285,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { id name @first { family } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { id name @first { family } } }""");
 
         AssertNoErrors(result);
         var name = result["data"]!["Patient"]!["name"]!;
@@ -301,7 +301,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
             CreatePatient().WithFamilyName("SkipTest").WithTag(tag).Build());
 
         var result = await PostGraphQlWithVariablesAsync(
-            """query($skip: Boolean!) { Patient(id: "$ID") { id name @skip(if: $skip) { family } } }"""
+            """query($skip: Boolean!) { Patient(_id: "$ID") { id name @skip(if: $skip) { family } } }"""
                 .Replace("$ID", created.Id!, StringComparison.Ordinal),
             new { skip = true });
 
@@ -402,7 +402,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
             CreatePatient().WithBirthDate(1990, 6, 15).WithFamilyName("ExtTest").WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { id birthDate _birthDate { id } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { id birthDate _birthDate { id } } }""");
 
         AssertNoErrors(result);
         result["data"]!["Patient"]!["birthDate"].ShouldNotBeNull();
@@ -424,7 +424,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .WithTag(tag).Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { id firstTwo: name(_count: 2) { family } allNames: name { family } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { id firstTwo: name(_count: 2) { family } allNames: name { family } } }""");
 
         AssertNoErrors(result);
         var patient = result["data"]!["Patient"]!;
@@ -451,7 +451,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { extension(url: "http://example.org/ext1") { url valueString } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { extension(url: "http://example.org/ext1") { url valueString } } }""");
 
         AssertNoErrors(result);
         var extensions = result["data"]!["Patient"]!["extension"]!.AsArray();
@@ -484,7 +484,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { extension(url: "http://example.org/complex") { url extension(url: "http://example.org/nested1") { url valueString } } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { extension(url: "http://example.org/complex") { url extension(url: "http://example.org/nested1") { url valueString } } } }""");
 
         AssertNoErrors(result);
         var ext = result["data"]!["Patient"]!["extension"]![0]!;
@@ -512,7 +512,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { identifier @flatten { system value } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { identifier @flatten { system value } } }""");
 
         AssertNoErrors(result);
         var patient = result["data"]!["Patient"]!;
@@ -539,7 +539,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         var created = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(resourceJson));
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { name @flatten @slice(path: "use") { given family } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { name @flatten @slice(path: "use") { given family } } }""");
 
         AssertNoErrors(result);
         var patient = result["data"]!["Patient"]!;
@@ -557,7 +557,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         var created = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(resourceJson));
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { name @flatten @slice(path: "$index") { given family } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { name @flatten @slice(path: "$index") { given family } } }""");
 
         AssertNoErrors(result);
         var patient = result["data"]!["Patient"]!;
@@ -585,7 +585,7 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .Build());
 
         var result = await PostGraphQlAsync(
-            $$"""{ Patient(id: "{{created.Id}}") { name(use: "official") { use family given } } }""");
+            $$"""{ Patient(_id: "{{created.Id}}") { name(use: "official") { use family given } } }""");
 
         AssertNoErrors(result);
         var names = result["data"]!["Patient"]!["name"]!.AsArray();
@@ -644,50 +644,6 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         ids.ShouldContain(patient1.Id);
         ids.ShouldContain(patient2.Id);
         ids.ShouldNotContain(patient3.Id);
-    }
-
-    // ========================================================================
-    // _graphql on Operations
-    // ========================================================================
-
-    [Fact]
-    public async Task GivenValidResource_WhenValidatingWithGraphQlParam_ThenReturnsTransformedOperationOutcome()
-    {
-        var patientJson = """{"resourceType":"Patient","name":[{"family":"OpTest"}]}""";
-        var graphQlQuery = Uri.EscapeDataString("{ resourceType }");
-
-        using var content = new StringContent(patientJson, Encoding.UTF8, "application/fhir+json");
-        using var response = await Client.PostAsync($"/Patient/$validate?_graphql={graphQlQuery}", content);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/json");
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonNode.Parse(responseJson)!;
-
-        // Should be GraphQL-shaped response, not raw OperationOutcome
-        result["data"].ShouldNotBeNull();
-        result["data"]!["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-        result["resourceType"].ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task GivenInvalidOperation_WhenGraphQlParamPresent_ThenPassesThroughErrorResponse()
-    {
-        var graphQlQuery = Uri.EscapeDataString("{ issue { severity code } }");
-
-        // Empty body triggers a 400 Bad Request from $validate
-        using var content = new StringContent("", Encoding.UTF8, "application/fhir+json");
-        using var response = await Client.PostAsync($"/Patient/$validate?_graphql={graphQlQuery}", content);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonNode.Parse(responseJson)!;
-
-        // Should be raw OperationOutcome, not GraphQL response
-        result["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-        result["data"].ShouldBeNull();
     }
 
     // ========================================================================
