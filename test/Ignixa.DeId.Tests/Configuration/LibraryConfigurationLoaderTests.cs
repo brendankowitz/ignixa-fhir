@@ -77,6 +77,147 @@ public class LibraryConfigurationLoaderTests
     }
 
     [Fact]
+    public void GivenNonLibraryResource_WhenLoadingConfiguration_ThenThrowsInvalidOperationException()
+    {
+        // Arrange
+        var patientJson = """
+            {
+                "resourceType": "Patient",
+                "id": "p1"
+            }
+            """;
+        var patient = ResourceJsonNode.Parse(patientJson);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => _loader.LoadFromLibrary(patient))
+            .Message.ShouldContain("Expected resourceType 'Library'");
+    }
+
+    [Fact]
+    public void GivenLibraryWithoutTypeCoding_WhenLoadingConfiguration_ThenThrowsInvalidOperationException()
+    {
+        // Arrange
+        var libraryJson = """
+            {
+                "resourceType": "Library",
+                "id": "no-type-lib",
+                "status": "active",
+                "content": [
+                    {
+                        "contentType": "application/json",
+                        "data": "eyJmaGlyVmVyc2lvbiI6IlI0IiwicnVsZXMiOlt7InBhdGgiOiJQYXRpZW50Lm5hbWUiLCJtZXRob2QiOiJyZWRhY3QifV19"
+                    }
+                ]
+            }
+            """;
+        var library = ResourceJsonNode.Parse(libraryJson);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => _loader.LoadFromLibrary(library))
+            .Message.ShouldContain("Library.type is required and must contain a coding");
+    }
+
+    [Fact]
+    public void GivenLibraryWithWrongTypeCoding_WhenLoadingConfiguration_ThenThrowsInvalidOperationException()
+    {
+        // Arrange
+        var libraryJson = """
+            {
+                "resourceType": "Library",
+                "id": "wrong-type-lib",
+                "status": "active",
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/library-type",
+                            "code": "logic-library"
+                        }
+                    ]
+                },
+                "content": [
+                    {
+                        "contentType": "application/json",
+                        "data": "eyJmaGlyVmVyc2lvbiI6IlI0IiwicnVsZXMiOlt7InBhdGgiOiJQYXRpZW50Lm5hbWUiLCJtZXRob2QiOiJyZWRhY3QifV19"
+                    }
+                ]
+            }
+            """;
+        var library = ResourceJsonNode.Parse(libraryJson);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => _loader.LoadFromLibrary(library))
+            .Message.ShouldContain($"Library.type must contain coding with system '{DartsConstants.LibraryTypeSystem}'");
+    }
+
+    [Fact]
+    public void GivenLibraryWithEmptyFhirVersion_WhenLoadingConfiguration_ThenThrowsInvalidOperationException()
+    {
+        // Arrange
+        var invalidJsonBytes = System.Text.Encoding.UTF8.GetBytes("""{"fhirVersion":"","fhirPathRules":[]}""");
+        var base64 = Convert.ToBase64String(invalidJsonBytes);
+        var libraryJson = $$"""
+            {
+                "resourceType": "Library",
+                "id": "empty-version-lib",
+                "status": "active",
+                "type": {
+                    "coding": [
+                        {
+                            "system": "{{DartsConstants.LibraryTypeSystem}}",
+                            "code": "{{DartsConstants.LibraryTypeCode}}"
+                        }
+                    ]
+                },
+                "content": [
+                    {
+                        "contentType": "application/json",
+                        "data": "{{base64}}"
+                    }
+                ]
+            }
+            """;
+        var library = ResourceJsonNode.Parse(libraryJson);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => _loader.LoadFromLibrary(library))
+            .Message.ShouldContain("DeIdOptions.fhirVersion is required");
+    }
+
+    [Fact]
+    public void GivenLibraryWithEmptyRules_WhenLoadingConfiguration_ThenThrowsInvalidOperationException()
+    {
+        // Arrange
+        var invalidJsonBytes = System.Text.Encoding.UTF8.GetBytes("""{"fhirVersion":"R4","fhirPathRules":[]}""");
+        var base64 = Convert.ToBase64String(invalidJsonBytes);
+        var libraryJson = $$"""
+            {
+                "resourceType": "Library",
+                "id": "empty-rules-lib",
+                "status": "active",
+                "type": {
+                    "coding": [
+                        {
+                            "system": "{{DartsConstants.LibraryTypeSystem}}",
+                            "code": "{{DartsConstants.LibraryTypeCode}}"
+                        }
+                    ]
+                },
+                "content": [
+                    {
+                        "contentType": "application/json",
+                        "data": "{{base64}}"
+                    }
+                ]
+            }
+            """;
+        var library = ResourceJsonNode.Parse(libraryJson);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => _loader.LoadFromLibrary(library))
+            .Message.ShouldContain("DeIdOptions.rules must contain at least one rule");
+    }
+
+    [Fact]
     public void GivenLibraryWithoutContent_WhenLoadingConfiguration_ThenThrowsInvalidOperationException()
     {
         // Arrange
@@ -84,7 +225,15 @@ public class LibraryConfigurationLoaderTests
             {
                 "resourceType": "Library",
                 "id": "empty-lib",
-                "status": "active"
+                "status": "active",
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://ignixa.io/library-types",
+                            "code": "deid-configuration"
+                        }
+                    ]
+                }
             }
             """;
         var library = ResourceJsonNode.Parse(libraryJson);
@@ -103,6 +252,14 @@ public class LibraryConfigurationLoaderTests
                 "resourceType": "Library",
                 "id": "bad-content-lib",
                 "status": "active",
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://ignixa.io/library-types",
+                            "code": "deid-configuration"
+                        }
+                    ]
+                },
                 "content": [
                     {
                         "contentType": "text/plain",
@@ -129,6 +286,14 @@ public class LibraryConfigurationLoaderTests
                 "resourceType": "Library",
                 "id": "invalid-json-lib",
                 "status": "active",
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://ignixa.io/library-types",
+                            "code": "deid-configuration"
+                        }
+                    ]
+                },
                 "content": [
                     {
                         "contentType": "application/json",

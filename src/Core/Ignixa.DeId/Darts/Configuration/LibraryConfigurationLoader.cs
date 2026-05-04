@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.DeId.Configuration;
 using Ignixa.Serialization.SourceNodes;
 
@@ -24,6 +25,14 @@ public class LibraryConfigurationLoader
     public DeIdOptions LoadFromLibrary(ResourceJsonNode libraryResource)
     {
         var node = libraryResource.MutableNode;
+
+        var resourceType = node["resourceType"]?.GetValue<string>();
+        if (!string.Equals(resourceType, "Library", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected resourceType 'Library', but found '{resourceType ?? "null"}'.");
+        }
+
+        ValidateLibraryType(node);
 
         var contentArray = node["content"]?.AsArray();
         if (contentArray is null || contentArray.Count == 0)
@@ -69,7 +78,41 @@ public class LibraryConfigurationLoader
             throw new InvalidOperationException("Failed to deserialize DeIdOptions from Library.content.");
         }
 
+        if (string.IsNullOrWhiteSpace(options.FhirVersion))
+        {
+            throw new InvalidOperationException("DeIdOptions.fhirVersion is required.");
+        }
+
+        if (options.Rules.IsDefaultOrEmpty)
+        {
+            throw new InvalidOperationException("DeIdOptions.rules must contain at least one rule.");
+        }
+
         return options;
+    }
+
+    private static void ValidateLibraryType(JsonObject node)
+    {
+        var typeCodingArray = node["type"]?.AsObject()?["coding"]?.AsArray();
+        if (typeCodingArray is null)
+        {
+            throw new InvalidOperationException("Library.type is required and must contain a coding.");
+        }
+
+        foreach (var coding in typeCodingArray)
+        {
+            var system = coding?["system"]?.GetValue<string>();
+            var code = coding?["code"]?.GetValue<string>();
+
+            if (string.Equals(system, DartsConstants.LibraryTypeSystem, StringComparison.Ordinal) &&
+                string.Equals(code, DartsConstants.LibraryTypeCode, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Library.type must contain coding with system '{DartsConstants.LibraryTypeSystem}' and code '{DartsConstants.LibraryTypeCode}'.");
     }
 
     public static ResourceJsonNode CreateLibraryResource(string id, string policyCode, DeIdOptions options, string? version = null)
