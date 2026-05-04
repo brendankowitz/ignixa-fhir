@@ -10,6 +10,140 @@ Ignixa supports standard FHIR operations for validation, bulk data, patient acce
 
 ## Core Operations
 
+### $de-identify
+
+[DARTS Spec](http://hl7.org/fhir/us/darts/OperationDefinition/de-identify)
+
+De-identify a FHIR resource using DARTS policy configurations. Supports HIPAA Safe Harbor and Expert Determination methods.
+
+```bash
+# Tenant-scoped de-identify (FHIR standard Parameters format)
+POST /tenant/{tenantId}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "example",
+        "name": [{ "family": "Smith", "given": ["John"] }],
+        "birthDate": "1980-05-15",
+        "address": [{ "city": "Boston", "state": "MA" }]
+      }
+    },
+    {
+      "name": "policy",
+      "valueString": "HHS_SAFE_HARBOR_DETERMINISTIC_METHOD"
+    }
+  ]
+}
+```
+
+#### Request Formats
+
+The operation accepts two request formats:
+
+**Parameters resource** (FHIR standard):
+- `resource` (Resource, required) — The FHIR resource to de-identify
+- `policy` (string, optional) — Built-in de-identification policy. Defaults to `HHS_SAFE_HARBOR_DETERMINISTIC_METHOD`
+- `configuration` (Library, optional) — Custom de-identification configuration as a FHIR Library resource. When provided, `policy` is ignored.
+
+**Direct resource body** (convenience):
+```bash
+POST /tenant/{tenantId}/$de-identify?policy=HHS_SAFE_HARBOR_DETERMINISTIC_METHOD
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "example",
+  "name": [{ "family": "Smith", "given": ["John"] }]
+}
+```
+
+#### Policies
+
+| Policy | Description |
+|--------|-------------|
+| `HHS_SAFE_HARBOR_DETERMINISTIC_METHOD` | HIPAA Safe Harbor — redacts direct identifiers, date-shifts dates |
+| `HHS_EXPERT_DETERMINATION_METHOD` | Expert Determination — more aggressive redaction with fail-fast error handling |
+
+#### Custom Configuration
+
+Pass a custom de-identification configuration as a FHIR Library resource:
+
+```bash
+POST /tenant/{tenantId}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "example",
+        "name": [{ "family": "Smith", "given": ["John"] }]
+      }
+    },
+    {
+      "name": "configuration",
+      "resource": {
+        "resourceType": "Library",
+        "id": "custom-deid-policy",
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://ignixa.io/library-types",
+              "code": "deid-configuration"
+            }
+          ]
+        },
+        "content": [
+          {
+            "contentType": "application/json",
+            "data": "eyJmaGlyVmVyc2lvbiI6IlI0IiwiZmhpcmVQYXRoUnVsZXMiOlt7InBhdGgiOiJQYXRpZW50Lm5hbWUiLCJtZXRob2QiOiJyZWRhY3QifSx7InBhdGgiOiJQYXRpZW50LmFkZHJlc3MiLCJtZXRob2QiOiJyZWRhY3QifV19"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The Library `content` data is a base64-encoded JSON configuration following the [DeId Core SDK](/docs/core-sdk/deid) format.
+
+#### Response
+
+Returns the de-identified resource with security labels added to `meta.security`:
+
+```json
+{
+  "resourceType": "Patient",
+  "id": "a3f7...",
+  "meta": {
+    "security": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
+        "code": "REDACTED",
+        "display": "redacted"
+      },
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
+        "code": "CRYTOHASH",
+        "display": "cryptographic hash function"
+      }
+    ]
+  }
+}
+```
+
+See [DeId Core SDK](/docs/core-sdk/deid) for configuration format and supported de-identification methods.
+
 ### $validate
 
 [FHIR Spec](https://hl7.org/fhir/resource-operation-validate.html)

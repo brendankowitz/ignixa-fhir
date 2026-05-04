@@ -122,14 +122,18 @@ public static class DeIdOperationEndpoints
                 $"Request body must be valid JSON: {ex.Message}"));
         }
 
+        ResourceJsonNode? configLibrary = null;
+
         // The $de-identify operation accepts a Parameters resource per FHIR spec
         // parameter[0].name = "resource", parameter[0].resource = {Resource}
         // parameter[1].name = "policy", parameter[1].valueString = "HHS_SAFE_HARBOR_DETERMINISTIC_METHOD"
+        // parameter[2].name = "configuration", parameter[2].resource = {Library} (custom de-id config)
         if (resourceNode.ResourceType == "Parameters")
         {
             var parametersNode = resourceNode.As<ParametersJsonNode>();
             var resourceParam = parametersNode.GetParameterResource<ResourceJsonNode>("resource");
             var policyParam = parametersNode.GetParameterStringValue("policy");
+            var configurationParam = parametersNode.GetParameterResource<ResourceJsonNode>("configuration");
 
             if (resourceParam is null)
             {
@@ -141,6 +145,7 @@ public static class DeIdOperationEndpoints
 
             resourceNode = resourceParam;
             policy = policyParam ?? DartsConstants.PolicySafeHarbor;
+            configLibrary = configurationParam;
         }
         else
         {
@@ -149,19 +154,21 @@ public static class DeIdOperationEndpoints
                 ?? DartsConstants.PolicySafeHarbor;
         }
 
-        // For now, use an inline Library resource for bootstrapping.
+        // If no custom Library configuration was provided, use a built-in bootstrap policy.
         // Future enhancement: load Library resource from database by policy code.
-        ResourceJsonNode configLibrary;
-        try
+        if (configLibrary is null)
         {
-            configLibrary = CreateBootstrapLibrary(policy);
-        }
-        catch (ArgumentException ex)
-        {
-            return FhirResults.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
-                ex.Message));
+            try
+            {
+                configLibrary = CreateBootstrapLibrary(policy);
+            }
+            catch (ArgumentException ex)
+            {
+                return FhirResults.BadRequest(CreateOperationOutcome(
+                    OperationOutcomeJsonNode.IssueSeverity.Error,
+                    OperationOutcomeJsonNode.IssueType.Invalid,
+                    ex.Message));
+            }
         }
 
         var command = new DeIdentifyCommand(

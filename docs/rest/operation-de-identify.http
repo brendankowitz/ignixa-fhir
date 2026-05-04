@@ -1,0 +1,305 @@
+@hostname = http://localhost:5000
+@tenantId = 1
+
+###
+# De-identify Patient - Safe Harbor (Parameters format, FHIR standard)
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-001",
+        "name": [
+          {
+            "use": "official",
+            "family": "Smith",
+            "given": ["John", "Michael"]
+          }
+        ],
+        "birthDate": "1980-05-15",
+        "gender": "male",
+        "address": [
+          {
+            "line": ["123 Main St"],
+            "city": "Boston",
+            "state": "MA",
+            "postalCode": "02101"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "555-1234"
+          }
+        ]
+      }
+    },
+    {
+      "name": "policy",
+      "valueString": "HHS_SAFE_HARBOR_DETERMINISTIC_METHOD"
+    }
+  ]
+}
+
+###
+# De-identify Patient - Expert Determination (Parameters format)
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-002",
+        "name": [
+          {
+            "use": "official",
+            "family": "Doe",
+            "given": ["Jane"]
+          }
+        ],
+        "birthDate": "1990-03-20",
+        "gender": "female",
+        "address": [
+          {
+            "city": "Seattle",
+            "state": "WA",
+            "postalCode": "98101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "policy",
+      "valueString": "HHS_EXPERT_DETERMINATION_METHOD"
+    }
+  ]
+}
+
+###
+# De-identify Patient - Direct resource body (convenience format)
+# Defaults to Safe Harbor policy
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "patient-003",
+  "name": [
+    {
+      "use": "official",
+      "family": "Johnson",
+      "given": ["Robert"]
+    }
+  ],
+  "birthDate": "1975-12-10",
+  "gender": "male"
+}
+
+###
+# De-identify Patient - Direct resource body with explicit policy
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify?policy=HHS_SAFE_HARBOR_DETERMINISTIC_METHOD
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "patient-004",
+  "name": [
+    {
+      "use": "official",
+      "family": "Williams",
+      "given": ["Sarah"]
+    }
+  ],
+  "birthDate": "1988-07-04",
+  "gender": "female"
+}
+
+###
+# De-identify Observation (non-Patient resource)
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs-001",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "85354-9",
+              "display": "Blood pressure panel"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/patient-001",
+          "display": "John Smith"
+        },
+        "effectiveDateTime": "2024-01-15T09:30:00Z",
+        "component": [
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "8480-6",
+                  "display": "Systolic blood pressure"
+                }
+              ]
+            },
+            "valueQuantity": {
+              "value": 120,
+              "unit": "mmHg"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+
+###
+# Error - Missing required "resource" parameter
+# Should return 400 Bad Request
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "policy",
+      "valueString": "HHS_SAFE_HARBOR_DETERMINISTIC_METHOD"
+    }
+  ]
+}
+
+###
+# Error - Unknown policy
+# Should return 400 Bad Request
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-err",
+        "name": [{ "family": "Test" }]
+      }
+    },
+    {
+      "name": "policy",
+      "valueString": "UNKNOWN_POLICY"
+    }
+  ]
+}
+
+###
+# De-identify with custom Library configuration
+# The Library resource contains base64-encoded DeIdOptions JSON
+# This example only redacts name and address, leaving everything else intact
+POST {{hostname}}/tenant/{{tenantId}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-custom",
+        "name": [
+          {
+            "use": "official",
+            "family": "Miller",
+            "given": ["Emily"]
+          }
+        ],
+        "birthDate": "1985-09-12",
+        "gender": "female",
+        "address": [
+          {
+            "city": "Portland",
+            "state": "OR",
+            "postalCode": "97201"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "email",
+            "value": "emily@example.org"
+          }
+        ]
+      }
+    },
+    {
+      "name": "configuration",
+      "resource": {
+        "resourceType": "Library",
+        "id": "custom-minimal-policy",
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://ignixa.io/library-types",
+              "code": "deid-configuration"
+            }
+          ]
+        },
+        "content": [
+          {
+            "contentType": "application/json",
+            "data": "eyJmaGlyVmVyc2lvbiI6IlI0IiwiZmhpcmVQYXRoUnVsZXMiOlt7InBhdGgiOiJQYXRpZW50Lm5hbWUiLCJtZXRob2QiOiJyZWRhY3QifSx7InBhdGgiOiJQYXRpZW50LmFkZHJlc3MiLCJtZXRob2QiOiJyZWRhY3QifV19"
+          }
+        ]
+      }
+    }
+  ]
+}
+
+###
+# Tenant-agnostic de-identify (auto-detects tenant)
+POST {{hostname}}/$de-identify
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-agnostic",
+        "name": [
+          {
+            "use": "official",
+            "family": "Anderson",
+            "given": ["David"]
+          }
+        ],
+        "birthDate": "1992-11-30",
+        "gender": "male"
+      }
+    }
+  ]
+}
