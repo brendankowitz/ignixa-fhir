@@ -7,12 +7,14 @@ using HotChocolate.Types;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Directives;
 
-public sealed class FhirFlattenDirectiveType : DirectiveType
+public sealed class FhirSliceDirectiveType : DirectiveType
 {
     protected override void Configure(IDirectiveTypeDescriptor descriptor)
     {
-        descriptor.Name("flatten");
-        descriptor.Description("Hoist children up to parent level. Children become lists.");
+        descriptor.Name("slice");
+        descriptor.Description("Split a list into named singletons using a FHIRPath discriminator.");
         descriptor.Location(DirectiveLocation.Field);
+        descriptor.Argument("path").Type<NonNullType<StringType>>()
+            .Description("FHIRPath expression to evaluate on each element as the discriminator suffix.");
     }
 }

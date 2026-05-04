@@ -354,6 +354,7 @@ public sealed class FhirTypeModule(
                     .Argument("_reference", a => a.Type<NonNullType<StringType>>()
                         .Description("Search parameter on the target type that references this resource"));
                 AddSearchArguments(listField);
+                AddResourceSearchArguments(listField, capturedOtherType);
                 listField.Resolve(async ctx =>
                 {
                     var parent = ctx.Parent<JsonElement>();
@@ -380,6 +381,7 @@ public sealed class FhirTypeModule(
                     .Argument("_reference", a => a.Type<NonNullType<StringType>>()
                         .Description("Search parameter on the target type that references this resource"));
                 AddSearchArguments(connectionField);
+                AddResourceSearchArguments(connectionField, capturedOtherType);
                 connectionField.Resolve(async ctx =>
                 {
                     var parent = ctx.Parent<JsonElement>();
@@ -456,7 +458,7 @@ public sealed class FhirTypeModule(
                     .Type(ApplyCardinality(new NamedTypeNode(nestedTypeName), child));
                 if (child.IsCollection)
                 {
-                    backboneField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
+                    backboneField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName, nestedTypeName));
                     AddListNavigationArguments(backboneField);
                     AddSubPropertyFilterArguments(backboneField, (FhirITypeExtended)child);
                 }
@@ -499,7 +501,7 @@ public sealed class FhirTypeModule(
                 }
                 else if (child.IsCollection)
                 {
-                    complexField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
+                    complexField.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName, typeName));
                     AddListNavigationArguments(complexField);
                     var filterTypeDef = child.Children.Count > 0
                         ? (FhirITypeExtended)child
@@ -566,7 +568,7 @@ public sealed class FhirTypeModule(
             .Type(ApplyCardinality(new NamedTypeNode("ResourceReference"), child));
         if (child.IsCollection)
         {
-            field.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName));
+            field.Resolve(ctx => FhirFieldResolver.ResolveFilteredList(ctx, elementName, "Reference"));
             AddListNavigationArguments(field);
         }
         else

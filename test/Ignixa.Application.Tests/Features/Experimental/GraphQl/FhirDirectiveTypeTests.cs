@@ -3,8 +3,6 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json;
-using HotChocolate;
 using Ignixa.Application.Features.Experimental.GraphQl.Directives;
 using Shouldly;
 
@@ -38,65 +36,5 @@ public class FhirDirectiveTypeTests
     {
         var directive = new FhirSliceDirectiveType();
         directive.ShouldNotBeNull();
-    }
-
-    [Fact]
-    public void GivenListResult_WhenFirstApplied_ThenReturnsSingleElement()
-    {
-        var list = new List<JsonElement>
-        {
-            JsonSerializer.Deserialize<JsonElement>("""{"text":"A"}"""),
-            JsonSerializer.Deserialize<JsonElement>("""{"text":"B"}"""),
-        };
-
-        var result = FhirDirectiveMiddleware.ApplyFirst(list);
-
-        result.ShouldNotBeNull();
-        result.ShouldBeOfType<JsonElement>();
-        ((JsonElement)result).GetProperty("text").GetString().ShouldBe("A");
-    }
-
-    [Fact]
-    public void GivenEmptyList_WhenFirstApplied_ThenReturnsNull()
-    {
-        var list = new List<JsonElement>();
-        var result = FhirDirectiveMiddleware.ApplyFirst(list);
-        result.ShouldBeNull();
-    }
-
-    [Fact]
-    public void GivenSingleElementList_WhenSingletonApplied_ThenReturnsSingleElement()
-    {
-        var list = new List<JsonElement>
-        {
-            JsonSerializer.Deserialize<JsonElement>("""{"text":"Only"}"""),
-        };
-
-        var result = FhirDirectiveMiddleware.ApplySingleton(list);
-
-        result.ShouldNotBeNull();
-        result.ShouldBeOfType<JsonElement>();
-        ((JsonElement)result).GetProperty("text").GetString().ShouldBe("Only");
-    }
-
-    [Fact]
-    public void GivenMultiElementList_WhenSingletonApplied_ThenThrowsGraphQLException()
-    {
-        var list = new List<JsonElement>
-        {
-            JsonSerializer.Deserialize<JsonElement>("""{"text":"A"}"""),
-            JsonSerializer.Deserialize<JsonElement>("""{"text":"B"}"""),
-        };
-
-        var ex = Should.Throw<GraphQLException>(() => FhirDirectiveMiddleware.ApplySingleton(list));
-        ex.Errors[0].Code.ShouldBe("FHIR_SINGLETON_VIOLATION");
-    }
-
-    [Fact]
-    public void GivenEmptyList_WhenSingletonApplied_ThenReturnsNull()
-    {
-        var list = new List<JsonElement>();
-        var result = FhirDirectiveMiddleware.ApplySingleton(list);
-        result.ShouldBeNull();
     }
 }

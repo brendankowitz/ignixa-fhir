@@ -4,13 +4,16 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
+using Ignixa.Specification.Generated;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
 
 public class FieldResolverTests
 {
+    private static readonly IFhirSchemaProvider SchemaProvider = new R4CoreSchemaProvider();
     [Fact]
     public void GivenJsonWithUnderscoreField_WhenAccessingPrimitiveExtension_ThenReturnsElement()
     {
@@ -46,7 +49,7 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"family":"Doe","given":["Jim"]}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "family.exists()").ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "family.exists()", SchemaProvider, "HumanName").ToList();
 
         result.Count.ShouldBe(2);
         result[0].GetProperty("family").GetString().ShouldBe("Smith");
@@ -63,14 +66,14 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"text":"Third"}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "$index = 1").ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "$index = 1", SchemaProvider, null).ToList();
 
         result.Count.ShouldBe(1);
         result[0].GetProperty("text").GetString().ShouldBe("Second");
     }
 
     [Fact]
-    public void GivenUnsupportedExpression_WhenFiltering_ThenReturnsAllElements()
+    public void GivenInvalidExpression_WhenFiltering_ThenReturnsAllElements()
     {
         var items = new[]
         {
@@ -78,7 +81,7 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"a":2}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "complex.where(x > 1)").ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "(invalid", SchemaProvider, null).ToList();
 
         result.Count.ShouldBe(2);
     }
@@ -93,7 +96,7 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"use":"official","family":"Doe"}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "use = 'official'").ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "use = 'official'", SchemaProvider, "HumanName").ToList();
 
         result.Count.ShouldBe(2);
         result[0].GetProperty("family").GetString().ShouldBe("Smith");
@@ -109,7 +112,7 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"use":"temp","family":"Jones"}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "use != 'official'").ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "use != 'official'", SchemaProvider, "HumanName").ToList();
 
         result.Count.ShouldBe(1);
         result[0].GetProperty("family").GetString().ShouldBe("Jones");
@@ -123,7 +126,7 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"text":"Only"}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "$index = 5").ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "$index = 5", SchemaProvider, null).ToList();
 
         result.Count.ShouldBe(0);
     }

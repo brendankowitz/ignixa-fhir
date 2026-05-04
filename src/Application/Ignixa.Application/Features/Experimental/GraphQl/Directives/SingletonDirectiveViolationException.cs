@@ -3,16 +3,9 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using HotChocolate.Types;
-
 namespace Ignixa.Application.Features.Experimental.GraphQl.Directives;
 
-public sealed class FhirFlattenDirectiveType : DirectiveType
-{
-    protected override void Configure(IDirectiveTypeDescriptor descriptor)
-    {
-        descriptor.Name("flatten");
-        descriptor.Description("Hoist children up to parent level. Children become lists.");
-        descriptor.Location(DirectiveLocation.Field);
-    }
-}
+/// <summary>
+/// Thrown when a <c>@singleton</c> directive is applied to a list that does not contain exactly one element.
+/// </summary>
+public sealed class SingletonDirectiveViolationException(string message) : InvalidOperationException(message);

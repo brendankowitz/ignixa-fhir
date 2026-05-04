@@ -4,8 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using HotChocolate.Resolvers;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 
@@ -49,7 +53,7 @@ internal static class FieldResolver
         return parent.Value.TryGetProperty(fieldName, out var value) ? value : null;
     }
 
-    internal static object? ResolveFilteredList(IResolverContext context, string fieldName)
+    internal static object? ResolveFilteredList(IResolverContext context, string fieldName, string? instanceType = null)
     {
         var parent = GetParentElement(context);
         if (parent?.ValueKind != JsonValueKind.Object)
@@ -63,7 +67,10 @@ internal static class FieldResolver
         // Apply fhirpath filter
         var fhirpathOpt = context.ArgumentOptional<string?>("fhirpath");
         if (fhirpathOpt.HasValue && !string.IsNullOrEmpty(fhirpathOpt.Value))
-            items = ApplyFhirPathFilter(items, fhirpathOpt.Value);
+        {
+            var schemaProvider = context.Service<IFhirSchemaProvider>();
+            items = ApplyFhirPathFilter(items, fhirpathOpt.Value, schemaProvider, instanceType);
+        }
 
         // Apply sub-property filters (e.g., name(use: "official"))
         foreach (var argument in context.Selection.Field.Arguments)
@@ -95,17 +102,12 @@ internal static class FieldResolver
     }
 
     internal static IEnumerable<JsonElement> ApplyFhirPathFilter(
-        IEnumerable<JsonElement> items, string expression)
+        IEnumerable<JsonElement> items, string expression, IFhirSchemaProvider schemaProvider, string? instanceType)
     {
-        // "property.exists()" → filter where property exists and is not null
-        if (expression.EndsWith(".exists()", StringComparison.Ordinal))
-        {
-            var propertyName = expression[..^".exists()".Length];
-            return items.Where(e =>
-                e.TryGetProperty(propertyName, out var v) && v.ValueKind != JsonValueKind.Null);
-        }
+        if (string.IsNullOrEmpty(expression))
+            return items;
 
-        // "$index = N" → select element at index N
+        // "$index = N" → select element at index N (non-standard but useful shorthand)
         if (expression.StartsWith("$index", StringComparison.Ordinal) && expression.Contains('=', StringComparison.Ordinal))
         {
             var indexStr = expression.Split('=', 2)[1].Trim();
@@ -116,32 +118,24 @@ internal static class FieldResolver
             }
         }
 
-        // "property = 'value'" → simple equality
-        if (expression.Contains(" = ", StringComparison.Ordinal) && !expression.Contains("!=", StringComparison.Ordinal))
+        return items.Where(item =>
         {
-            var parts = expression.Split(" = ", 2);
-            var propName = parts[0].Trim();
-            var propValue = parts[1].Trim().Trim('\'', '"');
-            return items.Where(e =>
-                e.TryGetProperty(propName, out var val)
-                && val.ValueKind == JsonValueKind.String
-                && val.GetString() == propValue);
-        }
+            try
+            {
+                var node = JsonSerializer.SerializeToNode(item);
+                if (node is null)
+                    return false;
 
-        // "property != 'value'" → simple inequality
-        if (expression.Contains(" != ", StringComparison.Ordinal))
-        {
-            var parts = expression.Split(" != ", 2);
-            var propName = parts[0].Trim();
-            var propValue = parts[1].Trim().Trim('\'', '"');
-            return items.Where(e =>
-                !e.TryGetProperty(propName, out var val)
-                || val.ValueKind != JsonValueKind.String
-                || val.GetString() != propValue);
-        }
-
-        // Unsupported expressions pass through unfiltered
-        return items;
+                var sourceNode = JsonNodeSourceNode.Create(node, instanceType ?? "root");
+                var element = sourceNode.ToElement(schemaProvider);
+                return element.IsTrue(expression);
+            }
+            catch
+            {
+                // If FhirPath evaluation fails, include the item (fail open)
+                return true;
+            }
+        });
     }
 
     private static bool MatchesSubPropertyFilter(JsonElement element, string propertyName, string targetValue)
@@ -152,16 +146,23 @@ internal static class FieldResolver
         if (!element.TryGetProperty(propertyName, out var property))
             return false;
 
-        // Scalar string match
-        if (property.ValueKind == JsonValueKind.String)
-            return property.GetString() == targetValue;
-
-        // Array of strings — match if any element equals target
-        if (property.ValueKind == JsonValueKind.Array)
-            return property.EnumerateArray().Any(a =>
-                a.ValueKind == JsonValueKind.String && a.GetString() == targetValue);
-
-        return false;
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString() == targetValue,
+            JsonValueKind.Number => property.GetRawText() == targetValue,
+            JsonValueKind.True => targetValue.Equals("true", StringComparison.OrdinalIgnoreCase),
+            JsonValueKind.False => targetValue.Equals("false", StringComparison.OrdinalIgnoreCase),
+            JsonValueKind.Array => property.EnumerateArray().Any(a =>
+                a.ValueKind switch
+                {
+                    JsonValueKind.String => a.GetString() == targetValue,
+                    JsonValueKind.Number => a.GetRawText() == targetValue,
+                    JsonValueKind.True => targetValue.Equals("true", StringComparison.OrdinalIgnoreCase),
+                    JsonValueKind.False => targetValue.Equals("false", StringComparison.OrdinalIgnoreCase),
+                    _ => false,
+                }),
+            _ => false,
+        };
     }
 
     internal static IEnumerable<JsonElement> FilterExtensionsByUrl(

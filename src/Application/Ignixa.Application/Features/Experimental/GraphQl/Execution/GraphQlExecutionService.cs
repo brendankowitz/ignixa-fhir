@@ -11,10 +11,13 @@ using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.Directives;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Execution;
 
-public sealed class GraphQlExecutionService(IRequestExecutorResolver executorResolver)
+public sealed class GraphQlExecutionService(
+    IRequestExecutorResolver executorResolver,
+    ILogger<GraphQlExecutionService> logger)
     : IGraphQlExecutionService
 {
     public Task<IExecutionResult> ExecuteAsync(
@@ -87,7 +90,7 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
 
         var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
 
-        result = PostProcessDirectives(result, effectiveQuery);
+        result = PostProcessDirectives(result, effectiveQuery, logger);
 
         // Instance-level queries: unwrap the resource data to the root level.
         // The wrapped query produces { data: { Patient: { ... } } } but the caller
@@ -139,7 +142,8 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
         return CreateResultWithData(opResult, resourceDict);
     }
 
-    private static IExecutionResult PostProcessDirectives(IExecutionResult result, string? query)
+    private static IExecutionResult PostProcessDirectives(
+        IExecutionResult result, string? query, ILogger logger)
     {
         if (string.IsNullOrEmpty(query))
             return result;
@@ -172,9 +176,13 @@ public sealed class GraphQlExecutionService(IRequestExecutorResolver executorRes
 
             return CreateResultWithData(result.ExpectOperationResult(), dataCopy);
         }
-        catch
+        catch (SingletonDirectiveViolationException)
         {
-            // If post-processing fails, return the unmodified result
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "GraphQL post-processing failed for query: {Query}", query);
             return result;
         }
     }

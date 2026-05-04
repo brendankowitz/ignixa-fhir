@@ -54,6 +54,7 @@ internal static class FlattenResultProcessor
         var fieldsToFlatten = new List<(string fieldName, FieldNode fieldNode)>();
         var fieldsToSlice = new List<(string fieldName, FieldNode fieldNode, string path)>();
         var fieldsToFirst = new List<string>();
+        var fieldsToSingleton = new List<string>();
 
         foreach (var selection in selectionSet.Selections.OfType<FieldNode>())
         {
@@ -64,6 +65,9 @@ internal static class FlattenResultProcessor
 
             if (HasDirective(selection, "first"))
                 fieldsToFirst.Add(fieldName);
+
+            if (HasDirective(selection, "singleton"))
+                fieldsToSingleton.Add(fieldName);
 
             var slicePath = GetDirectiveArgument(selection, "slice", "path");
             if (slicePath is not null)
@@ -108,6 +112,21 @@ internal static class FlattenResultProcessor
         {
             if (parentData.TryGetValue(fieldName, out var fieldValue) && fieldValue is IList<object?> list)
                 parentData[fieldName] = list.Count > 0 ? list[0] : null;
+        }
+
+        // @singleton: assert list contains exactly one element
+        foreach (var fieldName in fieldsToSingleton)
+        {
+            if (parentData.TryGetValue(fieldName, out var fieldValue) && fieldValue is IList<object?> list)
+            {
+                parentData[fieldName] = list.Count switch
+                {
+                    1 => list[0],
+                    0 => null,
+                    _ => throw new SingletonDirectiveViolationException(
+                        $"@singleton assertion failed: field '{fieldName}' contains {list.Count} elements, expected exactly 1."),
+                };
+            }
         }
     }
 

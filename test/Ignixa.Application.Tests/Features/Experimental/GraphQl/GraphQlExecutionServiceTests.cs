@@ -9,6 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Execution;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
 
@@ -24,6 +25,9 @@ public class GraphQlExecutionServiceTests
         return resolver;
     }
 
+    private static ILogger<GraphQlExecutionService> BuildLogger()
+        => Substitute.For<ILogger<GraphQlExecutionService>>();
+
     [Fact]
     public async Task GivenValidQuery_WhenExecuteAsync_ThenDelegatesToExecutor()
     {
@@ -35,7 +39,7 @@ public class GraphQlExecutionServiceTests
 
         var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
         var resolver = BuildResolver(executor, schemaName);
-        var service = new GraphQlExecutionService(resolver);
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
         var body = new GraphQlRequestBody("{ __typename }", null, null);
 
         // Act
@@ -57,7 +61,7 @@ public class GraphQlExecutionServiceTests
 
         var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
         var resolver = BuildResolver(executor, schemaName);
-        var service = new GraphQlExecutionService(resolver);
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
         var body = new GraphQlRequestBody("{ __typename }", null, null);
 
         // Act
@@ -80,7 +84,7 @@ public class GraphQlExecutionServiceTests
 
         var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
         var resolver = BuildResolver(executor, schemaName);
-        var service = new GraphQlExecutionService(resolver);
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
         var body = new GraphQlRequestBody("query MyOp { __typename }", "MyOp", null);
 
         // Act
@@ -102,7 +106,7 @@ public class GraphQlExecutionServiceTests
 
         var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
         var resolver = BuildResolver(executor, schemaName);
-        var service = new GraphQlExecutionService(resolver);
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
         var variables = JsonSerializer.Deserialize<JsonElement>("""{"id":"abc","count":5}""");
         var body = new GraphQlRequestBody("query($id:ID!,$count:Int){__typename}", null, variables);
 
@@ -121,7 +125,7 @@ public class GraphQlExecutionServiceTests
         var executor = Substitute.For<IRequestExecutor>();
         var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
         var resolver = BuildResolver(executor, schemaName);
-        var service = new GraphQlExecutionService(resolver);
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
         var body = new GraphQlRequestBody(null, null, null);
 
         // Act / Assert
@@ -153,7 +157,7 @@ public class GraphQlExecutionServiceTests
         resolverMock.GetRequestExecutorAsync(r5SchemaName, Arg.Any<CancellationToken>())
             .Returns(new ValueTask<IRequestExecutor>(r5Executor));
 
-        var service = new GraphQlExecutionService(resolverMock);
+        var service = new GraphQlExecutionService(resolverMock, BuildLogger());
         var body = new GraphQlRequestBody("{ __typename }", null, null);
 
         // Act

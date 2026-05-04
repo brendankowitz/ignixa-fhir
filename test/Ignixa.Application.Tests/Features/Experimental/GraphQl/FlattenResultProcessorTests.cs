@@ -240,4 +240,64 @@ public class FlattenResultProcessorTests
         // Assert — non-list value stays
         data["name"].ShouldBe("not-a-list");
     }
+
+    [Fact]
+    public void GivenSingletonOnSingleElementList_WhenProcessing_ThenUnwrapsElement()
+    {
+        // Arrange
+        var query = """{ identifier @singleton { system value } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["identifier"] = new List<object?>
+            {
+                new Dictionary<string, object?> { ["system"] = "urn:oid:1.2.3", ["value"] = "12345" },
+            },
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, data);
+
+        // Assert
+        var identifier = data["identifier"].ShouldBeOfType<Dictionary<string, object?>>();
+        identifier["system"].ShouldBe("urn:oid:1.2.3");
+        identifier["value"].ShouldBe("12345");
+    }
+
+    [Fact]
+    public void GivenSingletonOnEmptyList_WhenProcessing_ThenSetsToNull()
+    {
+        // Arrange
+        var query = """{ identifier @singleton { system value } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["identifier"] = new List<object?>(),
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, data);
+
+        // Assert
+        data["identifier"].ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenSingletonOnMultiElementList_WhenProcessing_ThenThrows()
+    {
+        // Arrange
+        var query = """{ identifier @singleton { system value } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["identifier"] = new List<object?>
+            {
+                new Dictionary<string, object?> { ["system"] = "a", ["value"] = "1" },
+                new Dictionary<string, object?> { ["system"] = "b", ["value"] = "2" },
+            },
+        };
+
+        // Act + Assert
+        Should.Throw<SingletonDirectiveViolationException>(() => FlattenResultProcessor.Process(document, data));
+    }
 }

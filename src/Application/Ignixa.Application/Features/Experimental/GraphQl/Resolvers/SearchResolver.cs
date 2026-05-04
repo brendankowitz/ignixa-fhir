@@ -81,7 +81,7 @@ public sealed class SearchResolver(
         return new SearchConnectionResult
         {
             Count = result.Total,
-            Offset = 0,
+            Offset = DecodeOffset(searchOptions.ContinuationToken),
             Pagesize = searchOptions.MaxItemCount,
             Edges = edges,
             Next = result.ContinuationToken,
@@ -156,11 +156,25 @@ public sealed class SearchResolver(
         return new SearchConnectionResult
         {
             Count = result.Total,
-            Offset = 0,
+            Offset = DecodeOffset(searchOptions.ContinuationToken),
             Pagesize = searchOptions.MaxItemCount,
             Edges = edges,
             Next = result.ContinuationToken,
         };
+    }
+
+    private int DecodeOffset(string? continuationToken)
+    {
+        if (string.IsNullOrEmpty(continuationToken))
+            return 0;
+
+        if (!ContinuationToken.TryDecode(continuationToken, out var offset, out _))
+        {
+            logger.LogWarning("Malformed continuation token: {Token}", continuationToken);
+            return 0;
+        }
+
+        return offset;
     }
 
     private SearchOptions BuildSearchOptions(
