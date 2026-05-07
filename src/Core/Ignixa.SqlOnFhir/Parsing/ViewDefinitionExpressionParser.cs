@@ -235,10 +235,12 @@ public static class ViewDefinitionExpressionParser
                 var tagBuilder = ImmutableArray.CreateBuilder<(string Name, string Value)>(tagNodes.Count);
                 foreach (var tagNode in tagNodes)
                 {
-                    var tagName = tagNode.Children("name").FirstOrDefault()?.Text
-                        ?? throw new InvalidOperationException("Column tag must have a 'name' property");
-                    var tagValue = tagNode.Children("value").FirstOrDefault()?.Text
-                        ?? throw new InvalidOperationException("Column tag must have a 'value' property");
+                    var tagName = tagNode.Children("name").FirstOrDefault()?.Text;
+                    if (string.IsNullOrEmpty(tagName))
+                        throw new InvalidOperationException("Column tag 'name' must be a non-empty string");
+                    var tagValue = tagNode.Children("value").FirstOrDefault()?.Text;
+                    if (tagValue is null)
+                        throw new InvalidOperationException("Column tag must have a 'value' property");
                     tagBuilder.Add((tagName, tagValue));
                 }
                 tags = tagBuilder.ToImmutable();

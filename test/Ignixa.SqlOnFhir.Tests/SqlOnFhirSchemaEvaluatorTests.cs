@@ -229,6 +229,44 @@ public class SqlOnFhirSchemaEvaluatorTests
         Assert.Null(schema[0].Tags);
     }
 
+    [Fact]
+    public void GivenColumnTagWithMissingValue_WhenParsing_ThenThrows()
+    {
+        var json = """
+            {
+              "resource": "Patient",
+              "select": [{
+                "column": [{
+                  "name": "id",
+                  "path": "id",
+                  "tag": [{ "name": "ansi/type" }]
+                }]
+              }]
+            }
+            """;
+
+        Assert.Throws<InvalidOperationException>(() => ParseViewDefinitionJson(json));
+    }
+
+    [Fact]
+    public void GivenColumnTagWithEmptyName_WhenParsing_ThenThrows()
+    {
+        var json = """
+            {
+              "resource": "Patient",
+              "select": [{
+                "column": [{
+                  "name": "id",
+                  "path": "id",
+                  "tag": [{ "name": "", "value": "VARCHAR(64)" }]
+                }]
+              }]
+            }
+            """;
+
+        Assert.Throws<InvalidOperationException>(() => ParseViewDefinitionJson(json));
+    }
+
     #region Multiple SELECT Groups Tests
 
     [Fact]

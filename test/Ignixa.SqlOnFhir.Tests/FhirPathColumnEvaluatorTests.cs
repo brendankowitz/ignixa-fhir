@@ -427,6 +427,82 @@ public class SqlOnFhirEvaluatorTests
         Assert.Null(rows[0]["family"]);
     }
 
+    [Fact]
+    public void GivenEmptyForEachOrNullWithNestedSelect_WhenEvaluated_ThenNullRowIncludesNestedColumns()
+    {
+        // forEachOrNull with a nested select — null row must include columns from nested selects
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "name", Array.Empty<object>() }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        // Construct via JSON to express nested select structure not representable in SelectGroup model
+        var json = """
+            {
+              "resource": "Patient",
+              "select": [
+                { "column": [{ "name": "id", "path": "id", "type": "id" }] },
+                {
+                  "forEachOrNull": "name",
+                  "column": [{ "name": "family", "path": "family", "type": "string" }],
+                  "select": [
+                    { "column": [{ "name": "given", "path": "given", "type": "string" }] }
+                  ]
+                }
+              ]
+            }
+            """;
+
+        var jsonNode = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        var sourceNode = JsonNodeSourceNode.Create(jsonNode, "ViewDefinition");
+
+        // Act
+        var rows = _evaluator.Evaluate(sourceNode, resource).ToList();
+
+        // Assert: one null row with all columns present (including nested "given")
+        Assert.Single(rows);
+        Assert.True(rows[0].ContainsKey("family"), "null row should include direct column 'family'");
+        Assert.True(rows[0].ContainsKey("given"), "null row should include nested select column 'given'");
+        Assert.Null(rows[0]["family"]);
+    }
+
+    [Fact]
+    public void GivenRepeatWithNoMatchingPath_WhenEvaluated_ThenReturnsNoRows()
+    {
+        // Arrange: repeat path doesn't exist on the resource
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Repeat = "contact",
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "contact_id", Path = "id", Type = "string" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert: repeat with no matches yields no rows
+        Assert.Empty(rows);
+    }
+
     #endregion
 
     #region Helper Methods

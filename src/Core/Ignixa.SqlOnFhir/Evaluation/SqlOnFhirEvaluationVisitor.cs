@@ -40,10 +40,11 @@ internal class SqlOnFhirEvaluationVisitor
     private static EvaluationContext CreateEvaluationContext(ViewDefinitionExpression viewDef, IElement resource)
     {
         var context = new EvaluationContext() with { RootResource = resource };
-        context = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
         foreach (var constant in viewDef.Constants)
             if (constant.Value != null)
                 context = context.WithEnvironmentVariable(constant.Name, new PrimitiveValueElement(constant.Value));
+        // Inject after constants so %rowIndex cannot be shadowed by a user-defined constant
+        context = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
         return context;
     }
 
@@ -155,9 +156,8 @@ internal class SqlOnFhirEvaluationVisitor
         {
             var nullContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
             var nullRow = EvaluateNullRowColumns(node.Columns, resource, nullContext);
-            foreach (var unionAllGroup in node.UnionAll)
-                foreach (var col in unionAllGroup.Columns)
-                    nullRow.TryAdd(col.Name, null);
+            foreach (var colName in GetAllColumnNames(node).Skip(node.Columns.Length))
+                nullRow.TryAdd(colName, null);
             var nullRowProcessed = ProcessNestedSelects([nullRow], node.NestedSelect, resource, nullContext);
             forEachRows.AddRange(nullRowProcessed);
         }
@@ -185,8 +185,11 @@ internal class SqlOnFhirEvaluationVisitor
             {
                 results = _fhirPath.Evaluate(resource, col.Path, context).ToList();
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or ArgumentException)
             {
+                // Path evaluation against the base resource is expected to fail for expressions
+                // that navigate into the forEach element (e.g. "family" when the element is absent).
+                // Context-only expressions like %rowIndex succeed and return their value normally.
                 row[col.Name] = null;
                 continue;
             }
