@@ -1,8 +1,9 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Visitor implementation for evaluating SQL on FHIR ViewDefinition expressions.
- * Pure visitor pattern - separates traversal logic from expression structure.
+ * Stateless evaluator for SQL on FHIR ViewDefinition expressions.
+ * Context (resource + environment variables) is threaded as explicit parameters —
+ * no mutable fields, safe to reuse across calls.
  */
 
 using System.Collections.Immutable;
@@ -15,18 +16,16 @@ using Ignixa.SqlOnFhir.Expressions;
 namespace Ignixa.SqlOnFhir.Evaluation;
 
 /// <summary>
-/// Visitor that evaluates ViewDefinition expressions against FHIR resources.
-/// Implements the visitor pattern for clean separation of concerns.
+/// Evaluates ViewDefinition expressions against FHIR resources.
+/// Stateless: EvaluationContext is threaded as a method parameter, never stored as a field.
 /// </summary>
-internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
+internal class SqlOnFhirEvaluationVisitor
 {
-    private readonly FhirPathEvaluator _evaluator;
-    private IElement? _currentResource;
-    private EvaluationContext? _currentContext;
+    private readonly FhirPathEvaluator _fhirPath;
 
     public SqlOnFhirEvaluationVisitor()
     {
-        _evaluator = new FhirPathEvaluator();
+        _fhirPath = new FhirPathEvaluator();
     }
 
     /// <summary>
@@ -34,418 +33,273 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     /// </summary>
     public IEnumerable<Dictionary<string, object?>> Evaluate(ViewDefinitionExpression viewDef, IElement resource)
     {
-        _currentResource = resource;
-        var baseContext = CreateEvaluationContext(viewDef);
-
-        // Set the root resource for SQL on FHIR v2 functions like getResourceKey() (immutable pattern)
-        _currentContext = baseContext with { RootResource = resource };
-
-        return (IEnumerable<Dictionary<string, object?>>)viewDef.Accept(this)!;
+        var context = CreateEvaluationContext(viewDef, resource);
+        return EvaluateViewDefinition(viewDef, resource, context);
     }
 
-    /// <summary>
-    /// Visits a ViewDefinition expression and returns rows.
-    /// </summary>
-    public object? Visit(ViewDefinitionExpression node)
+    private static EvaluationContext CreateEvaluationContext(ViewDefinitionExpression viewDef, IElement resource)
     {
-        ArgumentNullException.ThrowIfNull(_currentResource);
+        var context = new EvaluationContext() with { RootResource = resource };
+        context = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
+        foreach (var constant in viewDef.Constants)
+            if (constant.Value != null)
+                context = context.WithEnvironmentVariable(constant.Name, new PrimitiveValueElement(constant.Value));
+        return context;
+    }
 
-        // Note: ViewDefinition.status is metadata about the ViewDefinition itself (draft/active/retired),
-        // not a filter on resources. Resource filtering is done via WHERE clauses.
+    private IEnumerable<Dictionary<string, object?>> EvaluateViewDefinition(
+        ViewDefinitionExpression node, IElement resource, EvaluationContext context)
+    {
+        foreach (var where in node.Where)
+            if (!EvaluateWhere(where, resource, context))
+                return [];
 
-        // Apply WHERE filters
-        foreach (var whereExpr in node.Where)
-        {
-            var result = (bool)whereExpr.Accept(this)!;
-            if (!result)
-            {
-                return Enumerable.Empty<Dictionary<string, object?>>();
-            }
-        }
-
-        // Evaluate SELECT groups with proper row merging
         if (node.Select.IsEmpty)
+            return [];
+
+        var rows = EvaluateSelect(node.Select[0], resource, context).ToList();
+
+        for (int i = 1; i < node.Select.Length; i++)
+            rows = MergeSelectGroup(rows, node.Select[i], resource, context);
+
+        return rows;
+    }
+
+    private List<Dictionary<string, object?>> MergeSelectGroup(
+        List<Dictionary<string, object?>> currentRows,
+        SelectExpression select,
+        IElement resource,
+        EvaluationContext context)
+    {
+        if (select.ForEach == null && select.ForEachOrNull == null && select.Repeat.IsEmpty && select.UnionAll.IsEmpty)
         {
-            return Enumerable.Empty<Dictionary<string, object?>>();
+            foreach (var row in currentRows)
+            {
+                var cols = EvaluateColumns(select.Columns, resource, context);
+                foreach (var kvp in cols) row[kvp.Key] = kvp.Value;
+            }
+            return currentRows;
         }
 
-        // Start with first SELECT group
-        var currentRows = ((IEnumerable<Dictionary<string, object?>>)node.Select[0].Accept(this)!).ToList();
+        var selectRows = EvaluateSelect(select, resource, context);
 
-        // Merge subsequent SELECT groups
-        for (int i = 1; i < node.Select.Length; i++)
+        if (selectRows.Count == 0)
         {
-            var selectExpr = node.Select[i];
-
-            // If no forEach/forEachOrNull/repeat/unionAll, just add columns to existing rows
-            if (selectExpr.ForEach == null && selectExpr.ForEachOrNull == null && selectExpr.Repeat.IsEmpty && selectExpr.UnionAll.IsEmpty)
+            if (select.ForEachOrNull != null)
             {
                 foreach (var row in currentRows)
-                {
-                    var columns = EvaluateColumns(selectExpr.Columns);
-                    foreach (var kvp in columns)
-                    {
-                        row[kvp.Key] = kvp.Value;
-                    }
-                }
+                    foreach (var col in select.Columns)
+                        row[col.Name] = null;
+                return currentRows;
             }
-            else
-            {
-                // Has forEach/forEachOrNull/repeat/unionAll: create Cartesian product
-                var selectRows = ((IEnumerable<Dictionary<string, object?>>)selectExpr.Accept(this)!).ToList();
-
-                if (selectRows.Count == 0)
-                {
-                    if (selectExpr.ForEachOrNull != null)
-                    {
-                        // forEachOrNull with empty result: add null columns
-                        foreach (var row in currentRows)
-                        {
-                            foreach (var column in selectExpr.Columns)
-                            {
-                                row[column.Name] = null;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // forEach with empty result: remove all rows
-                        // The Cartesian product of any set with an empty set is empty
-                        currentRows = new List<Dictionary<string, object?>>();
-                    }
-                }
-                else
-                {
-                    // Create Cartesian product
-                    // Note: The later SELECT (selectRows) varies in the outer loop,
-                    // earlier SELECTs (currentRows) vary in the inner loop
-                    var newRows = new List<Dictionary<string, object?>>();
-                    foreach (var selectRow in selectRows)
-                    {
-                        foreach (var currentRow in currentRows)
-                        {
-                            var mergedRow = new Dictionary<string, object?>(currentRow);
-                            foreach (var kvp in selectRow)
-                            {
-                                mergedRow[kvp.Key] = kvp.Value;
-                            }
-                            newRows.Add(mergedRow);
-                        }
-                    }
-                    currentRows = newRows;
-                }
-            }
+            return [];
         }
 
-        return currentRows;
+        var newRows = new List<Dictionary<string, object?>>();
+        foreach (var selectRow in selectRows)
+            foreach (var currentRow in currentRows)
+            {
+                var merged = new Dictionary<string, object?>(currentRow);
+                foreach (var kvp in selectRow) merged[kvp.Key] = kvp.Value;
+                newRows.Add(merged);
+            }
+        return newRows;
     }
 
-    /// <summary>
-    /// Visits a SELECT expression and returns rows.
-    /// </summary>
-    public object? Visit(SelectExpression node)
+    private List<Dictionary<string, object?>> EvaluateSelect(
+        SelectExpression node, IElement resource, EvaluationContext context)
     {
-        ArgumentNullException.ThrowIfNull(_currentResource);
-
-        // If no forEach/forEachOrNull/repeat, evaluate columns directly against the resource
+        // No iteration: evaluate columns directly against current resource
         if (node.ForEach == null && node.ForEachOrNull == null && node.Repeat.IsEmpty)
         {
-            var row = EvaluateColumns(node.Columns);
-
-            // Process nested SELECT groups (Cartesian product)
-            var rowsWithSelect = ProcessNestedSelectsCartesian(new[] { row }, node.NestedSelect);
-
-            // Process UnionAll groups (Concatenation)
-            var finalRows = ProcessUnionAllConcat(rowsWithSelect, node.UnionAll);
-            return finalRows;
+            var row = EvaluateColumns(node.Columns, resource, context);
+            var rows = ProcessNestedSelects([row], node.NestedSelect, resource, context);
+            return ProcessUnionAll(rows, node.UnionAll, resource, context);
         }
 
-        // repeat: recursively traverse paths and collect all results
+        // repeat: recursively traverse paths and collect all items
         if (!node.Repeat.IsEmpty)
         {
-            var allItems = RecursivelyCollectItems(_currentResource, node.Repeat);
-
+            var allItems = RecursivelyCollectItems(resource, node.Repeat, context);
             var repeatRows = new List<Dictionary<string, object?>>();
-
-            foreach (var item in allItems)
+            for (int i = 0; i < allItems.Count; i++)
             {
-                // Temporarily switch context to the repeat item
-                var previousResource = _currentResource;
-                _currentResource = item;
-
-                var row = EvaluateColumns(node.Columns);
-
-                // Process nested SELECT and UnionAll WITHIN the repeat context
-                var rowsForThisItem = ProcessNestedSelectsCartesian(new[] { row }, node.NestedSelect);
-                rowsForThisItem = ProcessUnionAllConcat(rowsForThisItem, node.UnionAll);
-
-                repeatRows.AddRange(rowsForThisItem);
-
-                _currentResource = previousResource;
+                var iterContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(i));
+                var row = EvaluateColumns(node.Columns, allItems[i], iterContext);
+                var rowsForItem = ProcessNestedSelects([row], node.NestedSelect, allItems[i], iterContext);
+                rowsForItem = ProcessUnionAll(rowsForItem, node.UnionAll, allItems[i], iterContext);
+                repeatRows.AddRange(rowsForItem);
             }
-
             return repeatRows;
         }
 
-        // forEach: unnest collection
+        // forEach / forEachOrNull: unnest collection
         var forEachExpr = node.ForEach ?? node.ForEachOrNull!;
-        var items = _evaluator.Evaluate(_currentResource, forEachExpr, _currentContext!);
+        var items = _fhirPath.Evaluate(resource, forEachExpr, context).ToList();
+        var forEachRows = new List<Dictionary<string, object?>>();
 
-        var rows = new List<Dictionary<string, object?>>();
-
-        foreach (var item in items)
+        for (int i = 0; i < items.Count; i++)
         {
-            // Temporarily switch context to the forEach item
-            var previousResource = _currentResource;
-            _currentResource = item;
-
-            var row = EvaluateColumns(node.Columns);
-
-            // Process nested SELECT and UnionAll WITHIN the forEach context
-            // This ensures the context is correct for evaluating nested expressions
-            var rowsForThisItem = ProcessNestedSelectsCartesian(new[] { row }, node.NestedSelect);
-            rowsForThisItem = ProcessUnionAllConcat(rowsForThisItem, node.UnionAll);
-
-            rows.AddRange(rowsForThisItem);
-
-            _currentResource = previousResource;
+            var iterContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(i));
+            var row = EvaluateColumns(node.Columns, items[i], iterContext);
+            var rowsForItem = ProcessNestedSelects([row], node.NestedSelect, items[i], iterContext);
+            rowsForItem = ProcessUnionAll(rowsForItem, node.UnionAll, items[i], iterContext);
+            forEachRows.AddRange(rowsForItem);
         }
 
-        // forEachOrNull: if no items, return a single row with nulls
-        if (node.ForEachOrNull != null && rows.Count == 0)
+        // forEachOrNull: if collection was empty, emit one null row with rowIndex=0.
+        // Evaluate columns against the base resource with rowIndex=0 context so that
+        // context-only expressions like %rowIndex return 0, while resource-path expressions
+        // that expect a forEach element return null (path won't resolve against the resource).
+        if (node.ForEachOrNull != null && forEachRows.Count == 0)
         {
-            var nullRow = new Dictionary<string, object?>();
-
-            // Add null for columns in this SELECT
-            foreach (var column in node.Columns)
-            {
-                nullRow[column.Name] = null;
-            }
-
-            // Add null for all columns in unionAll groups (don't evaluate, paths are relative to forEach context)
+            var nullContext = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
+            var nullRow = EvaluateNullRowColumns(node.Columns, resource, nullContext);
             foreach (var unionAllGroup in node.UnionAll)
-            {
-                foreach (var column in unionAllGroup.Columns)
-                {
-                    nullRow[column.Name] = null;
-                }
-            }
-
-            // Process nested SELECT for the null row (but not unionAll - already handled above)
-            var nullRowProcessed = ProcessNestedSelectsCartesian(new[] { nullRow }, node.NestedSelect);
-
-            rows.AddRange(nullRowProcessed);
+                foreach (var col in unionAllGroup.Columns)
+                    nullRow.TryAdd(col.Name, null);
+            var nullRowProcessed = ProcessNestedSelects([nullRow], node.NestedSelect, resource, nullContext);
+            forEachRows.AddRange(nullRowProcessed);
         }
 
-        return rows;
+        return forEachRows;
     }
 
-    /// <summary>
-    /// Visits a column expression and returns the evaluated value.
-    /// </summary>
-    public object? Visit(ColumnExpression node)
-    {
-        ArgumentNullException.ThrowIfNull(_currentResource);
-
-        // FHIRPath expression is already compiled - just evaluate it!
-        var results = _evaluator.Evaluate(_currentResource, node.Path, _currentContext!);
-        var resultsList = results.ToList();
-
-        // If collection=true, return all values as array
-        if (node.Collection)
-        {
-            var values = resultsList.Select(ExtractValue).Select(v => ConvertToSqlType(v, node.Type)).ToArray();
-            return FormatArrayAsJson(values);
-        }
-
-        // Otherwise, return first value only (SQL on FHIR default behavior)
-        // Per SQL on FHIR v2 spec Section 3.2.4: when collection=false, path MUST return at most one value
-        if (resultsList.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Column '{node.Name}' has collection=false but FHIRPath expression '{node.Path}' returned {resultsList.Count} values. " +
-                "Either set collection=true or ensure the path returns at most one value.");
-        }
-
-        var firstResult = resultsList.FirstOrDefault();
-        var rawValue = ExtractValue(firstResult);
-
-        // Per FHIRPath N1 spec and SQL on FHIR v2 spec:
-        // - Empty FHIRPath collection → SQL null (including for boolean columns)
-        // - FHIRPath comparison operators return empty when operand is missing
-        var converted = ConvertToSqlType(rawValue, node.Type);
-        return converted;
-    }
-
-    /// <summary>
-    /// Visits a WHERE expression and returns true if the filter passes.
-    /// </summary>
-    public object? Visit(WhereExpression node)
-    {
-        ArgumentNullException.ThrowIfNull(_currentResource);
-
-        // FHIRPath expression is already compiled - just evaluate it!
-        var result = _evaluator.Evaluate(_currentResource, node.Filter, _currentContext!);
-
-        // WHERE clause must evaluate to true
-        return IsTrue(result);
-    }
-
-    /// <summary>
-    /// Visits a constant expression (not directly evaluated, used in context setup).
-    /// </summary>
-    public object? Visit(ConstantExpression node)
-    {
-        return node.Value;
-    }
-
-    /// <summary>
-    /// Evaluates all columns in a SELECT group against the current context element.
-    /// </summary>
-    private Dictionary<string, object?> EvaluateColumns(ImmutableArray<ColumnExpression> columns)
+    private Dictionary<string, object?> EvaluateColumns(
+        ImmutableArray<ColumnExpression> columns, IElement resource, EvaluationContext context)
     {
         var row = new Dictionary<string, object?>();
-
-        foreach (var column in columns)
-        {
-            var value = column.Accept(this);
-            row[column.Name] = value;
-        }
-
+        foreach (var col in columns)
+            row[col.Name] = EvaluateColumn(col, resource, context);
         return row;
     }
 
-    /// <summary>
-    /// Processes nested SELECT groups using Cartesian product semantics.
-    /// Each nested select creates a Cartesian product with current rows.
-    /// Used for ViewDefinition "select" property.
-    /// </summary>
-    private IEnumerable<Dictionary<string, object?>> ProcessNestedSelectsCartesian(
-        IEnumerable<Dictionary<string, object?>> currentRows,
-        ImmutableArray<SelectExpression> nestedSelects)
+    private Dictionary<string, object?> EvaluateNullRowColumns(
+        ImmutableArray<ColumnExpression> columns, IElement resource, EvaluationContext context)
     {
-        if (nestedSelects.IsEmpty)
+        var row = new Dictionary<string, object?>();
+        foreach (var col in columns)
         {
-            return currentRows;
+            try
+            {
+                var result = EvaluateColumn(col, resource, context);
+                row[col.Name] = result;
+            }
+            catch
+            {
+                row[col.Name] = null;
+            }
+        }
+        return row;
+    }
+
+    private object? EvaluateColumn(ColumnExpression node, IElement resource, EvaluationContext context)
+    {
+        var results = _fhirPath.Evaluate(resource, node.Path, context).ToList();
+
+        if (node.Collection)
+        {
+            var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, node.Type)).ToArray();
+            return FormatArrayAsJson(values);
         }
 
-        var rows = currentRows.ToList();
+        if (results.Count > 1)
+            throw new InvalidOperationException(
+                $"Column '{node.Name}' has collection=false but FHIRPath expression returned {results.Count} values. " +
+                "Either set collection=true or ensure the path returns at most one value.");
 
-        // Each nested select creates Cartesian product with existing rows
-        for (int i = 0; i < nestedSelects.Length; i++)
+        return ConvertToSqlType(ExtractValue(results.FirstOrDefault()), node.Type);
+    }
+
+    private bool EvaluateWhere(WhereExpression node, IElement resource, EvaluationContext context)
+    {
+        var result = _fhirPath.Evaluate(resource, node.Filter, context);
+        return IsTrue(result);
+    }
+
+    private List<Dictionary<string, object?>> ProcessNestedSelects(
+        IEnumerable<Dictionary<string, object?>> current,
+        ImmutableArray<SelectExpression> nestedSelects,
+        IElement resource,
+        EvaluationContext context)
+    {
+        if (nestedSelects.IsEmpty)
+            return current.ToList();
+
+        var rows = current.ToList();
+        foreach (var nested in nestedSelects)
         {
-            var nestedSelect = nestedSelects[i];
             var newRows = new List<Dictionary<string, object?>>();
-
             foreach (var currentRow in rows)
             {
-                var nestedRows = ((IEnumerable<Dictionary<string, object?>>)nestedSelect.Accept(this)!).ToList();
-
+                var nestedRows = EvaluateSelect(nested, resource, context);
                 if (nestedRows.Count == 0)
                 {
-                    // Cartesian product semantics: Only drop the row if nested select has forEach/forEachOrNull
-                    // Regular selects without forEach should preserve rows with null values for their columns
-                    if (nestedSelect.ForEach == null && nestedSelect.ForEachOrNull == null)
-                    {
-                        // No forEach/forEachOrNull: keep the row (columns will be null)
+                    if (nested.ForEach == null && nested.ForEachOrNull == null)
                         newRows.Add(currentRow);
-                    }
-                    // If it has forEach/forEachOrNull: drop the row (Cartesian product with empty set)
+                    // else: Cartesian product with empty = drop row
                 }
                 else
                 {
-                    // Normal Cartesian product: merge each nested row with current row
                     foreach (var nestedRow in nestedRows)
                     {
-                        var mergedRow = new Dictionary<string, object?>(currentRow);
-                        foreach (var kvp in nestedRow)
-                        {
-                            mergedRow[kvp.Key] = kvp.Value;
-                        }
-                        newRows.Add(mergedRow);
+                        var merged = new Dictionary<string, object?>(currentRow);
+                        foreach (var kvp in nestedRow) merged[kvp.Key] = kvp.Value;
+                        newRows.Add(merged);
                     }
                 }
             }
-
             rows = newRows;
         }
-
         return rows;
     }
 
-    /// <summary>
-    /// Processes UnionAll groups using concatenation semantics.
-    /// Each unionAll result is concatenated (not Cartesian product).
-    /// Used for ViewDefinition "unionAll" property.
-    /// </summary>
-    private IEnumerable<Dictionary<string, object?>> ProcessUnionAllConcat(
-        IEnumerable<Dictionary<string, object?>> currentRows,
-        ImmutableArray<SelectExpression> unionAllGroups)
+    private List<Dictionary<string, object?>> ProcessUnionAll(
+        IEnumerable<Dictionary<string, object?>> current,
+        ImmutableArray<SelectExpression> unionAll,
+        IElement resource,
+        EvaluationContext context)
     {
-        if (unionAllGroups.IsEmpty)
-        {
-            return currentRows;
-        }
+        if (unionAll.IsEmpty)
+            return current.ToList();
 
         var result = new List<Dictionary<string, object?>>();
-
-        foreach (var currentRow in currentRows)
-        {
-            // Evaluate all unionAll groups and concatenate their results
-            foreach (var unionAllGroup in unionAllGroups)
+        foreach (var currentRow in current)
+            foreach (var branch in unionAll)
             {
-                var unionRows = ((IEnumerable<Dictionary<string, object?>>)unionAllGroup.Accept(this)!).ToList();
-
-                // Concatenate: merge each union row with current row
-                foreach (var unionRow in unionRows)
+                var branchRows = EvaluateSelect(branch, resource, context);
+                foreach (var branchRow in branchRows)
                 {
-                    var mergedRow = new Dictionary<string, object?>(currentRow);
-                    foreach (var kvp in unionRow)
-                    {
-                        mergedRow[kvp.Key] = kvp.Value;
-                    }
-                    result.Add(mergedRow);
+                    var merged = new Dictionary<string, object?>(currentRow);
+                    foreach (var kvp in branchRow) merged[kvp.Key] = kvp.Value;
+                    result.Add(merged);
                 }
             }
+        return result;
+    }
+
+    private List<IElement> RecursivelyCollectItems(
+        IElement root,
+        ImmutableArray<FhirPath.Expressions.Expression> repeatPaths,
+        EvaluationContext context)
+    {
+        var result = new List<IElement>();
+
+        void Traverse(IElement element)
+        {
+            result.Add(element);
+            foreach (var path in repeatPaths)
+                foreach (var child in _fhirPath.Evaluate(element, path, context))
+                    Traverse(child);
         }
+
+        foreach (var path in repeatPaths)
+            foreach (var item in _fhirPath.Evaluate(root, path, context))
+                Traverse(item);
 
         return result;
     }
 
-
-    /// <summary>
-    /// Creates a FHIRPath evaluation context with constants from the ViewDefinition.
-    /// Wraps primitive constant values as ITypedElement for FHIRPath compatibility.
-    /// </summary>
-    private static EvaluationContext CreateEvaluationContext(ViewDefinitionExpression viewDef)
-    {
-        var context = new EvaluationContext();
-
-        foreach (var constant in viewDef.Constants)
-        {
-            if (constant.Value != null)
-            {
-                // Wrap primitive values as ITypedElement (immutable pattern)
-                var typedElement = WrapConstantValue(constant.Value);
-                context = context.WithEnvironmentVariable(constant.Name, typedElement);
-            }
-        }
-
-        return context;
-    }
-
-    /// <summary>
-    /// Wraps a primitive constant value as an IElement for FHIRPath context.
-    /// </summary>
-    private static IElement WrapConstantValue(object value)
-    {
-        // Simple wrapper that stores the value for use in FHIRPath evaluation
-        return new PrimitiveValueElement(value);
-    }
-
-    /// <summary>
-    /// Simple wrapper for primitive constant values to be used as IElement.
-    /// </summary>
     private class PrimitiveValueElement : IElement
     {
         private readonly object _value;
@@ -454,7 +308,6 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         public PrimitiveValueElement(object value)
         {
             _value = value;
-            // Use centralized type name converter
             _type = FhirPathEvaluator.GetFhirPathTypeName(value);
         }
 
@@ -469,76 +322,44 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         public T? Meta<T>() where T : class => null;
     }
 
-
-    /// <summary>
-    /// Extracts the primitive value from a FHIRPath result.
-    /// </summary>
     private static object? ExtractValue(object? fhirPathResult)
     {
         if (fhirPathResult == null)
-        {
             return null;
-        }
 
-        // If it's already a primitive type, return it
         if (fhirPathResult is string or int or long or decimal or bool or DateTime)
-        {
             return fhirPathResult;
-        }
 
-        // If it's an IElement, extract the primitive value
         if (fhirPathResult is IElement element)
-        {
             return element.Value;
-        }
 
-        // Fallback: convert to string
         return fhirPathResult.ToString();
     }
 
-    /// <summary>
-    /// Checks if a FHIRPath result evaluates to true (for WHERE clauses).
-    /// </summary>
     private static bool IsTrue(IEnumerable<IElement> results)
     {
-        // Use explicit enumerator to avoid LINQ casting issues
         using var enumerator = results.GetEnumerator();
         if (!enumerator.MoveNext())
-        {
             return false;
-        }
 
         var firstResult = enumerator.Current;
 
-        // Boolean true
         if (firstResult.Value is bool b)
-        {
             return b;
-        }
 
-        // Non-empty collection is truthy (we already know we have at least one element)
         return true;
     }
 
-    /// <summary>
-    /// Converts a value to the specified SQL type (string, integer, boolean, etc.).
-    /// </summary>
     private static object? ConvertToSqlType(object? value, string? targetType)
     {
         if (value == null)
-        {
             return null;
-        }
 
-        // No type specified - return as-is
         if (string.IsNullOrEmpty(targetType))
-        {
             return value;
-        }
 
         try
         {
-            // Use uppercase for consistency with CA1308, but match against lowercase input
             return targetType.ToUpperInvariant() switch
             {
                 "STRING" => value.ToString(),
@@ -554,42 +375,34 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
                 {
                     DateTime dt => dt.ToString("yyyy-MM-dd"),
                     DateTimeOffset dto => dto.ToString("yyyy-MM-dd"),
-                    string s => s, // Already formatted
+                    string s => s,
                     _ => value.ToString()
                 },
                 "DATETIME" => value switch
                 {
                     DateTime dt => dt.ToString("yyyy-MM-ddTHH:mm:ss.fffK"),
                     DateTimeOffset dto => dto.ToString("yyyy-MM-ddTHH:mm:ss.fffK"),
-                    string s => s, // Already formatted
+                    string s => s,
                     _ => value.ToString()
                 },
-                _ => value // Unknown type - return as-is
+                _ => value
             };
         }
         catch
         {
-            // Conversion failed - return original value
             return value;
         }
     }
 
-    /// <summary>
-    /// Formats an array of values as a JSON array string.
-    /// </summary>
     private static string FormatArrayAsJson(object?[] values)
     {
         if (values.Length == 0)
-        {
             return "[]";
-        }
 
         var formattedValues = values.Select(v =>
         {
             if (v == null)
-            {
                 return "null";
-            }
 
             return v switch
             {
@@ -603,9 +416,6 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         return $"[{string.Join(", ", formattedValues)}]";
     }
 
-    /// <summary>
-    /// Escapes a string for use in JSON.
-    /// </summary>
     private static string EscapeJsonString(string value)
     {
         return value
@@ -614,54 +424,5 @@ internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
             .Replace("\n", "\\n", StringComparison.Ordinal)
             .Replace("\r", "\\r", StringComparison.Ordinal)
             .Replace("\t", "\\t", StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Recursively collects all items reachable via the repeat paths.
-    /// Implements breadth-first traversal to collect items at all nesting depths.
-    /// Per SQL on FHIR spec: evaluates repeat paths starting from the root, collecting
-    /// ALL items found at any depth (including the initial matches from root).
-    /// </summary>
-    /// <param name="root">The root element to start traversal from</param>
-    /// <param name="repeatPaths">Array of FHIRPath expressions defining recursive paths</param>
-    /// <returns>Flat list of all items found at any depth via the repeat paths</returns>
-    private List<IElement> RecursivelyCollectItems(
-        IElement root,
-        ImmutableArray<FhirPath.Expressions.Expression> repeatPaths)
-    {
-        var result = new List<IElement>();
-
-        // Helper function for depth-first recursive traversal
-        void DepthFirstTraversal(IElement element, int depth)
-        {
-            // Add current element to results
-            result.Add(element);
-
-            // Recursively follow all repeat paths from this element (depth-first)
-            foreach (var repeatPath in repeatPaths)
-            {
-                var children = _evaluator.Evaluate(element, repeatPath, _currentContext!);
-
-                // Recursively traverse each child
-                foreach (var child in children)
-                {
-                    DepthFirstTraversal(child, depth + 1);
-                }
-            }
-        }
-
-        // Start by evaluating repeat paths from the root (not the root itself)
-        foreach (var repeatPath in repeatPaths)
-        {
-            var initialItems = _evaluator.Evaluate(root, repeatPath, _currentContext!);
-
-            // Traverse each initial item depth-first
-            foreach (var item in initialItems)
-            {
-                DepthFirstTraversal(item, 0);
-            }
-        }
-
-        return result;
     }
 }

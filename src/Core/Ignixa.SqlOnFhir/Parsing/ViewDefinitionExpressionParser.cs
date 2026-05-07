@@ -435,10 +435,10 @@ public static class ViewDefinitionExpressionParser
         }
 
         // Find any referenced variables that are not defined constants
-        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', 'vs-*'
+        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', 'vs-*', 'rowIndex'
         var predefinedVariables = new HashSet<string>(StringComparer.Ordinal)
         {
-            "context", "resource", "rootResource", "ucum", "sct", "loinc"
+            "context", "resource", "rootResource", "ucum", "sct", "loinc", "rowIndex"
         };
 
         foreach (var varName in referencedVariables)
