@@ -99,25 +99,84 @@ ignixa-sqlonfhir r4 validate \
 
 ## Features
 
-- **ViewDefinition Support**: Full SQL on FHIR v2 ViewDefinition support with compiled FHIRPath expressions
+- **ViewDefinition Support**: SQL on FHIR v2 / 2.1.0-pre ViewDefinition support with compiled FHIRPath expressions
 - **Multiple FHIR Versions**: Supports STU3, R4, R4B, R5, and R6
 - **Multiple Output Formats**: Export to Parquet or CSV via the CLI tool
 - **FHIRPath Columns**: Define columns using FHIRPath expressions with automatic caching
+- **`%rowIndex`**: 0-based row index environment variable available inside `forEach`, `forEachOrNull`, and `repeat` iterations
+- **Column Tags**: Implementation metadata (`ansi/type`, custom tags) attached per column and exposed in schema output
 - **Streaming**: CLI tool processes large NDJSON datasets with minimal memory
-- **Schema Extraction**: Automatically extract column schemas from ViewDefinitions
+- **Schema Extraction**: Automatically extract column schemas (including tags) from ViewDefinitions
 
 ## ViewDefinition Example
 
 ```json
 {
   "resourceType": "ViewDefinition",
-  "name": "patient_demographics",
+  "name": "patient_names",
   "resource": "Patient",
+  "fhirVersion": ["4.0.1"],
   "select": [
     { "column": [{ "name": "id", "path": "id" }] },
-    { "column": [{ "name": "family_name", "path": "name.first().family" }] },
-    { "column": [{ "name": "birth_date", "path": "birthDate" }] }
+    {
+      "forEach": "name",
+      "column": [
+        {
+          "name": "row_index",
+          "path": "%rowIndex",
+          "type": "integer",
+          "tag": [{ "name": "ansi/type", "value": "INTEGER" }]
+        },
+        { "name": "family", "path": "family", "type": "string" }
+      ]
+    }
   ]
+}
+```
+
+## `%rowIndex`
+
+The `%rowIndex` environment variable is a 0-based integer available inside any `forEach`, `forEachOrNull`, or `repeat` iteration. It resets to 0 for each new outer context. At the top level (outside any iteration) it is always `0`.
+
+```json
+{
+  "forEach": "name",
+  "column": [
+    { "name": "name_index", "path": "%rowIndex", "type": "integer" },
+    { "name": "family",     "path": "family",    "type": "string"  }
+  ]
+}
+```
+
+A common use is constructing surrogate keys: `id & '-' & %rowIndex.toString()`.
+
+## Column Tags
+
+Tags attach implementation-specific metadata to a column. They flow through to `ColumnSchema.Tags` in the schema output and are not evaluated against FHIR data.
+
+```json
+{
+  "name": "family_name",
+  "path": "name.first().family",
+  "type": "string",
+  "tag": [
+    { "name": "ansi/type",      "value": "VARCHAR(100)" },
+    { "name": "custom/indexed", "value": "true" }
+  ]
+}
+```
+
+Retrieve tags programmatically:
+
+```csharp
+var schemaEvaluator = new SqlOnFhirSchemaEvaluator();
+var schema = schemaEvaluator.GetSchema(viewDefExpression);
+
+foreach (var column in schema)
+{
+    Console.WriteLine($"{column.Name}: {column.Type}");
+    foreach (var tag in column.Tags ?? [])
+        Console.WriteLine($"  [{tag.Name}] = {tag.Value}");
 }
 ```
 
