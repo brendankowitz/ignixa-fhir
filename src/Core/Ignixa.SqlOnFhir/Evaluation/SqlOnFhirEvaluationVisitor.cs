@@ -88,8 +88,8 @@ internal class SqlOnFhirEvaluationVisitor
             if (select.ForEachOrNull != null)
             {
                 foreach (var row in currentRows)
-                    foreach (var col in select.Columns)
-                        row[col.Name] = null;
+                    foreach (var colName in GetAllColumnNames(select))
+                        row[colName] = null;
                 return currentRows;
             }
             return [];
@@ -180,14 +180,25 @@ internal class SqlOnFhirEvaluationVisitor
         var row = new Dictionary<string, object?>();
         foreach (var col in columns)
         {
+            List<IElement> results;
             try
             {
-                var result = EvaluateColumn(col, resource, context);
-                row[col.Name] = result;
+                results = _fhirPath.Evaluate(resource, col.Path, context).ToList();
             }
             catch
             {
                 row[col.Name] = null;
+                continue;
+            }
+
+            if (col.Collection)
+            {
+                var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, col.Type)).ToArray();
+                row[col.Name] = FormatArrayAsJson(values);
+            }
+            else
+            {
+                row[col.Name] = ConvertToSqlType(ExtractValue(results.FirstOrDefault()), col.Type);
             }
         }
         return row;
@@ -300,6 +311,18 @@ internal class SqlOnFhirEvaluationVisitor
         return result;
     }
 
+    private static IEnumerable<string> GetAllColumnNames(SelectExpression select)
+    {
+        foreach (var col in select.Columns)
+            yield return col.Name;
+        foreach (var nested in select.NestedSelect)
+            foreach (var name in GetAllColumnNames(nested))
+                yield return name;
+        foreach (var union in select.UnionAll)
+            foreach (var name in GetAllColumnNames(union))
+                yield return name;
+    }
+
     private class PrimitiveValueElement : IElement
     {
         private readonly object _value;
@@ -388,9 +411,10 @@ internal class SqlOnFhirEvaluationVisitor
                 _ => value
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return value;
+            throw new InvalidOperationException(
+                $"Cannot convert value '{value}' ({value.GetType().Name}) to SQL type '{targetType}'", ex);
         }
     }
 
