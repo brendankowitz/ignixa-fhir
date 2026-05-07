@@ -33,6 +33,18 @@ public class ViewDefinition
     public IList<ViewConstant>? Constant { get; set; }
 
     /// <summary>
+    /// FHIR versions this ViewDefinition is compatible with (e.g., "4.0.1", "5.0.0").
+    /// Metadata only — no evaluation impact.
+    /// </summary>
+    public IList<string>? FhirVersion { get; set; }
+
+    /// <summary>
+    /// Profile URLs constraining the resources this ViewDefinition applies to.
+    /// Metadata only — no evaluation impact.
+    /// </summary>
+    public IList<string>? Profile { get; set; }
+
+    /// <summary>
     /// WHERE clauses for filtering resources before column extraction.
     /// Each clause contains a FHIRPath expression that must evaluate to true.
     /// </summary>

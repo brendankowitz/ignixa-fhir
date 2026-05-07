@@ -228,11 +228,28 @@ public static class ViewDefinitionExpressionParser
             // Compile FHIRPath expression once during parsing
             var path = Parser.Parse(pathText);
 
+            var tagNodes = columnNode.Children("tag").ToList();
+            var tags = ImmutableArray<(string Name, string Value)>.Empty;
+            if (tagNodes.Count > 0)
+            {
+                var tagBuilder = ImmutableArray.CreateBuilder<(string Name, string Value)>(tagNodes.Count);
+                foreach (var tagNode in tagNodes)
+                {
+                    var tagName = tagNode.Children("name").FirstOrDefault()?.Text
+                        ?? throw new InvalidOperationException("Column tag must have a 'name' property");
+                    var tagValue = tagNode.Children("value").FirstOrDefault()?.Text
+                        ?? throw new InvalidOperationException("Column tag must have a 'value' property");
+                    tagBuilder.Add((tagName, tagValue));
+                }
+                tags = tagBuilder.ToImmutable();
+            }
+
             builder.Add(new ColumnExpression(
                 Name: name,
                 Path: path,
                 Type: type,
-                Collection: collection
+                Collection: collection,
+                Tags: tags
             ));
         }
 

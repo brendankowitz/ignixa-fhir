@@ -121,10 +121,13 @@ internal class SqlOnFhirSchemaVisitor : ISqlOnFhirExpressionVisitor<IReadOnlyLis
     /// </summary>
     public IReadOnlyList<ColumnSchema> Visit(ColumnExpression node)
     {
-        // Return single column schema
+        IReadOnlyList<(string Name, string Value)>? tags = node.Tags.IsDefaultOrEmpty
+            ? null
+            : node.Tags;
+
         return new List<ColumnSchema>
         {
-            new ColumnSchema(node.Name, node.Type, node.Collection)
+            new ColumnSchema(node.Name, node.Type, node.Collection, tags)
         };
     }
 

@@ -48,7 +48,8 @@ public sealed record ColumnExpression(
     string Name,
     Expression Path,
     string? Type,
-    bool Collection) : SqlOnFhirExpression
+    bool Collection,
+    ImmutableArray<(string Name, string Value)> Tags = default) : SqlOnFhirExpression
 {
     public override TResult Accept<TResult>(ISqlOnFhirExpressionVisitor<TResult> visitor)
         => visitor.Visit(this);

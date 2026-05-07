@@ -159,6 +159,76 @@ public class SqlOnFhirSchemaEvaluatorTests
 
     #endregion
 
+    [Fact]
+    public void GivenColumnWithTags_WhenExtractingSchema_ThenTagsIncludedInSchema()
+    {
+        // Arrange
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition
+                        {
+                            Name = "id",
+                            Path = "id",
+                            Type = "id",
+                            Tag = new List<ColumnTag>
+                            {
+                                new ColumnTag { Name = "ansi/type", Value = "VARCHAR(64)" },
+                                new ColumnTag { Name = "custom/indexed", Value = "true" }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var schema = _evaluator.GetSchema(ParseViewDefinition(viewDef));
+
+        // Assert
+        Assert.Single(schema);
+        Assert.NotNull(schema[0].Tags);
+        var tags = schema[0].Tags!;
+        Assert.Equal(2, tags.Count);
+        Assert.Equal("ansi/type", tags[0].Name);
+        Assert.Equal("VARCHAR(64)", tags[0].Value);
+        Assert.Equal("custom/indexed", tags[1].Name);
+        Assert.Equal("true", tags[1].Value);
+    }
+
+    [Fact]
+    public void GivenColumnWithNoTags_WhenExtractingSchema_ThenTagsIsNull()
+    {
+        // Arrange
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var schema = _evaluator.GetSchema(ParseViewDefinition(viewDef));
+
+        // Assert
+        Assert.Single(schema);
+        Assert.Null(schema[0].Tags);
+    }
+
     #region Multiple SELECT Groups Tests
 
     [Fact]
@@ -785,6 +855,36 @@ public class SqlOnFhirSchemaEvaluatorTests
     }
 
     #endregion
+
+    [Fact]
+    public void GivenViewDefinitionWithFhirVersionAndProfile_WhenParsed_ThenModelAcceptsFields()
+    {
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            FhirVersion = new List<string> { "4.0.1", "5.0.0" },
+            Profile = new List<string> { "http://hl7.org/fhir/StructureDefinition/Patient" },
+            Where = new List<WhereClause>
+            {
+                new WhereClause { Path = "active = true", Description = "Only active patients" }
+            },
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                }
+            }
+        };
+
+        var schema = _evaluator.GetSchema(ParseViewDefinition(viewDef));
+
+        Assert.Single(schema);
+        Assert.Equal("id", schema[0].Name);
+    }
 
     #region Helper Methods
 

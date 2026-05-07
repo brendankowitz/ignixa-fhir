@@ -14,7 +14,11 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 /// <summary>
 /// Column schema information extracted from a ViewDefinition.
 /// </summary>
-public record ColumnSchema(string Name, string? Type, bool Collection);
+public record ColumnSchema(
+    string Name,
+    string? Type,
+    bool Collection,
+    IReadOnlyList<(string Name, string Value)>? Tags = null);
 
 /// <summary>
 /// Evaluates SQL on FHIR v2 ViewDefinitions to extract output schema (column names and types).

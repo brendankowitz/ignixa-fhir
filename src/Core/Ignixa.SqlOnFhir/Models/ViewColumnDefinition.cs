@@ -46,4 +46,13 @@ public class ViewColumnDefinition
     /// When false (default), only the first value is used.
     /// </summary>
     public bool Collection { get; set; }
+
+    /// <summary>
+    /// Implementation metadata tags for this column.
+    /// Per SQL on FHIR 2.1.0-pre spec: select.column.tag[0..*].
+    /// Example: [{"name": "ansi/type", "value": "VARCHAR(100)"}]
+    /// </summary>
+#pragma warning disable CA2227
+    public IList<ColumnTag>? Tag { get; set; }
+#pragma warning restore CA2227
 }

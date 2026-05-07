@@ -23,4 +23,10 @@ public class WhereClause
     /// - "birthDate > @1990-01-01" - include only resources with birthDate after 1990
     /// </summary>
     public required string Path { get; set; }
+
+    /// <summary>
+    /// Human-readable description of what this WHERE clause filters.
+    /// Metadata only — no evaluation impact.
+    /// </summary>
+    public string? Description { get; set; }
 }
