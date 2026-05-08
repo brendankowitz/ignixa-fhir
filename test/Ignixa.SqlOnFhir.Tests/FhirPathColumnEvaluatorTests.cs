@@ -487,7 +487,7 @@ public class SqlOnFhirEvaluatorTests
             {
                 new SelectGroup
                 {
-                    Repeat = "contact",
+                    Repeat = ["contact"],
                     Column = new List<ViewColumnDefinition>
                     {
                         new ViewColumnDefinition { Name = "contact_id", Path = "id", Type = "string" }
