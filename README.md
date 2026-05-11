@@ -158,7 +158,7 @@ Ignixa includes a suite of powerful CLI tools to accelerate development and test
 | Tool | Description |
 |------|-------------|
 | **[ignixa-fakes](tools/Ignixa.FhirFakes.Cli)** | Generate realistic synthetic patient data, clinical scenarios, and populations at scale. |
-| **[ignixa-sqlonfhir](tools/Ignixa.SqlOnFhir.Cli)** | Transform FHIR data into tabular formats (Parquet/CSV) using SQL-on-FHIR ViewDefinitions. |
+| **[ignixa-sqlonfhir](tools/Ignixa.SqlOnFhir.Cli)** | Transform FHIR data into Parquet, CSV, or NDJSON using SQL-on-FHIR ViewDefinitions, including batch run/preview/validate workflows. |
 | **[ignixa-validator](tools/Ignixa.Validation.Cli)** | High-performance FHIR resource validation (JSON) against official profiles. |
 
 Install any tool globally:

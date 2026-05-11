@@ -35,6 +35,21 @@ public class BatchProcessorTests : IAsyncDisposable
     }
 
     [Fact]
+    public void GivenPathComponentPattern_WhenDiscoveringViews_ThenMatchesRelativePath()
+    {
+        var views = Path.Combine(_tempDir, "views");
+        Directory.CreateDirectory(views);
+        File.WriteAllText(Path.Combine(views, "patient.json"), "{}");
+        File.WriteAllText(Path.Combine(_tempDir, "other.json"), "{}");
+
+        var files = BatchProcessor.DiscoverViewDefinitions(_tempDir, "views/*.json")
+            .Select(Path.GetFileName)
+            .ToList();
+
+        files.ShouldBe(["patient.json"]);
+    }
+
+    [Fact]
     public void GivenInputDirectory_WhenFindingFiles_ThenMatchesByResourceName()
     {
         File.WriteAllText(Path.Combine(_tempDir, "Patient.ndjson"), "{}");
@@ -44,6 +59,21 @@ public class BatchProcessorTests : IAsyncDisposable
 
         files.Count.ShouldBe(1);
         Path.GetFileName(files[0]).ShouldBe("Patient.ndjson");
+    }
+
+    [Fact]
+    public void GivenPathComponentPattern_WhenFindingInputFiles_ThenMatchesRelativePath()
+    {
+        var shard = Path.Combine(_tempDir, "data");
+        Directory.CreateDirectory(shard);
+        File.WriteAllText(Path.Combine(shard, "Patient.ndjson"), "{}");
+        File.WriteAllText(Path.Combine(_tempDir, "Patient.ndjson"), "{}");
+
+        var files = BatchProcessor.FindInputFiles(_tempDir, "Patient", "data/*{resource}*.ndjson")
+            .Select(Path.GetFileName)
+            .ToList();
+
+        files.ShouldBe(["Patient.ndjson"]);
     }
 
     [Fact]

@@ -67,7 +67,7 @@ Standalone command-line tools:
 ```bash
 dotnet tool install --global Ignixa.FhirFakes.Cli     # Generate test data
 dotnet tool install --global Ignixa.Validation.Cli   # Validate resources
-dotnet tool install --global Ignixa.SqlOnFhir.Cli    # Transform to Parquet/CSV
+dotnet tool install --global Ignixa.SqlOnFhir.Cli    # Transform to Parquet/CSV/NDJSON
 ```
 
 ## Next Steps

@@ -82,6 +82,8 @@ internal static class RunCommand
             var viewNav = ParseViewDefinition(viewsPath);
             if (viewNav is null) { Print(quiet, "✗ Failed to parse ViewDefinition"); Environment.ExitCode = 1; return; }
 
+            EnsureParentDirectory(outputPath);
+
             var schemaEval = new SqlOnFhirSchemaEvaluator();
             var viewExpr   = ViewDefinitionExpressionParser.Parse(viewNav);
             var colSchemas = schemaEval.GetSchema(viewExpr);
@@ -284,6 +286,13 @@ internal static class RunCommand
             ".NDJSON"  => "ndjson",
             _          => null
         };
+
+    private static void EnsureParentDirectory(string outputPath)
+    {
+        var parent = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+        if (!string.IsNullOrEmpty(parent))
+            Directory.CreateDirectory(parent);
+    }
 
     private static void Print(bool quiet, string message) { if (!quiet) Console.WriteLine(message); }
 

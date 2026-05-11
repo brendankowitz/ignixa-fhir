@@ -19,11 +19,13 @@ internal static class PreviewCommand
         var inputOpt   = new Option<string?>("--input")  { Description = "NDJSON file or directory (optional; omit for schema-only)" };
         var rowsOpt    = new Option<int>("--rows")       { Description = "Max sample rows per ViewDefinition (default: 5)", DefaultValueFactory = _ => 5 };
         var patternOpt = new Option<string>("--pattern") { Description = "ViewDefinition glob, dir mode only (default: **/*.json)", DefaultValueFactory = _ => "**/*.json" };
+        var varOpt     = new Option<string[]>("--var")   { Description = "FHIRPath variable name=value, repeatable", AllowMultipleArgumentsPerToken = false };
 
         cmd.Options.Add(viewsOpt);
         cmd.Options.Add(inputOpt);
         cmd.Options.Add(rowsOpt);
         cmd.Options.Add(patternOpt);
+        cmd.Options.Add(varOpt);
 
         cmd.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -31,11 +33,12 @@ internal static class PreviewCommand
             var input   = parseResult.GetValue(inputOpt);
             var rows    = parseResult.GetValue(rowsOpt);
             var pattern = parseResult.GetValue(patternOpt)!;
+            var vars    = VarParser.Parse(parseResult.GetValue(varOpt));
 
             if (Directory.Exists(views))
-                await PreviewDir(schemaProvider, fhirVersion, views, input, rows, pattern);
+                await PreviewDir(schemaProvider, fhirVersion, views, input, rows, pattern, vars);
             else
-                await PreviewSingle(schemaProvider, fhirVersion, views, input, rows);
+                await PreviewSingle(schemaProvider, fhirVersion, views, input, rows, vars);
         });
 
         return cmd;
@@ -46,7 +49,8 @@ internal static class PreviewCommand
         string fhirVersion,
         string viewsPath,
         string? inputPath,
-        int maxRows)
+        int maxRows,
+        IReadOnlyDictionary<string, string> vars)
     {
         if (!File.Exists(viewsPath)) { Console.WriteLine($"✗ ViewDefinition not found: {viewsPath}"); Environment.ExitCode = 1; return; }
         if (inputPath is not null && !File.Exists(inputPath)) { Console.WriteLine($"✗ Input not found: {inputPath}"); Environment.ExitCode = 1; return; }
@@ -57,7 +61,7 @@ internal static class PreviewCommand
         PrintSchema(viewNav, fhirVersion);
 
         if (inputPath is not null)
-            await PrintSampleRows(inputPath, viewNav, schemaProvider, maxRows);
+            await PrintSampleRows(inputPath, viewNav, schemaProvider, maxRows, vars);
     }
 
     private static async Task PreviewDir(
@@ -66,7 +70,8 @@ internal static class PreviewCommand
         string viewsDir,
         string? inputDir,
         int maxRows,
-        string pattern)
+        string pattern,
+        IReadOnlyDictionary<string, string> vars)
     {
         var viewFiles = BatchProcessor.DiscoverViewDefinitions(viewsDir, pattern).ToList();
         if (viewFiles.Count == 0) { Console.WriteLine($"✗ No ViewDefinition files found in {viewsDir}"); Environment.ExitCode = 1; return; }
@@ -86,7 +91,7 @@ internal static class PreviewCommand
                 var resource   = viewNav.Children("resource").FirstOrDefault()?.Text ?? string.Empty;
                 var inputFiles = BatchProcessor.FindInputFiles(inputDir, resource, "*{resource}*.ndjson").ToList();
                 if (inputFiles.Count > 0)
-                    await PrintSampleRows(inputFiles[0], viewNav, schemaProvider, maxRows);
+                    await PrintSampleRows(inputFiles[0], viewNav, schemaProvider, maxRows, vars);
                 else
                     Console.WriteLine($"  (no matching NDJSON for '{resource}')");
             }
@@ -127,7 +132,8 @@ internal static class PreviewCommand
         string inputPath,
         ISourceNavigator viewNav,
         IFhirSchemaProvider schemaProvider,
-        int maxRows)
+        int maxRows,
+        IReadOnlyDictionary<string, string> vars)
     {
         var evaluator  = new SqlOnFhirEvaluator();
         var sampleRows = new List<Dictionary<string, object?>>();
@@ -140,7 +146,7 @@ internal static class PreviewCommand
             var node = JsonSourceNodeFactory.Parse(line);
             if (node is null) continue;
             var element = node.ToElement(schemaProvider);
-            var rows = evaluator.Evaluate(viewNav, element);
+            var rows = evaluator.Evaluate(viewNav, element, vars);
             if (rows is null) continue;
             foreach (var row in rows)
             {

@@ -56,7 +56,7 @@ foreach (var row in rows)
 
 ## CLI Tool
 
-The `ignixa-sqlonfhir` tool converts FHIR NDJSON to Parquet or CSV using ViewDefinitions.
+The `ignixa-sqlonfhir` tool converts FHIR NDJSON to Parquet, CSV, or NDJSON using SQL on FHIR ViewDefinitions. It supports single-file processing and batch directory processing.
 
 ### Installation
 
@@ -68,25 +68,44 @@ dotnet tool install --global Ignixa.SqlOnFhir.Cli
 ### Usage
 
 ```bash
-# Convert FHIR NDJSON to Parquet using R4
-ignixa-sqlonfhir r4 convert \
-  --viewdefinition patient-view.json \
+# Convert one NDJSON file using R4
+ignixa-sqlonfhir r4 run \
+  --views patient-view.json \
   --input patients.ndjson \
   --out patients.parquet
 
-# Convert to CSV
-ignixa-sqlonfhir r4 convert \
-  --viewdefinition patient-view.json \
+# Convert to CSV or NDJSON by changing the output extension
+ignixa-sqlonfhir r4 run --views patient-view.json --input patients.ndjson --out patients.csv
+ignixa-sqlonfhir r4 run --views patient-view.json --input patients.ndjson --out patients.ndjson
+
+# Batch process ViewDefinitions and resource NDJSON directories
+ignixa-sqlonfhir r4 run \
+  --views views \
+  --input fhir-ndjson \
+  --out output \
+  --format parquet \
+  --pattern "**/*.json" \
+  --input-pattern "*{resource}*.ndjson" \
+  --stats-out output/stats.json
+
+# Preview schema only, or include sample rows with --input
+ignixa-sqlonfhir r4 preview --views patient-view.json
+ignixa-sqlonfhir r4 preview --views patient-view.json --input patients.ndjson --rows 10
+
+# Validate one ViewDefinition or a directory
+ignixa-sqlonfhir r4 validate --views patient-view.json
+ignixa-sqlonfhir r4 validate --views views --pattern "**/*.json"
+```
+
+Runtime FHIRPath variables are available for `run` and `preview`:
+
+```bash
+ignixa-sqlonfhir r4 run \
+  --views patient-view.json \
   --input patients.ndjson \
-  --out patients.csv
-
-# Preview schema without processing
-ignixa-sqlonfhir r4 preview \
-  --viewdefinition patient-view.json
-
-# Validate a ViewDefinition
-ignixa-sqlonfhir r4 validate \
-  --viewdefinition patient-view.json
+  --out patients.csv \
+  --var cohortId=research-2026 \
+  --var effectiveDate=2026-01-01
 ```
 
 ### Supported FHIR Versions
@@ -101,7 +120,9 @@ ignixa-sqlonfhir r4 validate \
 
 - **ViewDefinition Support**: SQL on FHIR v2 / 2.1.0-pre ViewDefinition support with compiled FHIRPath expressions
 - **Multiple FHIR Versions**: Supports STU3, R4, R4B, R5, and R6
-- **Multiple Output Formats**: Export to Parquet or CSV via the CLI tool
+- **Multiple Output Formats**: Export to Parquet, CSV, or NDJSON via the CLI tool
+- **Batch CLI Processing**: Run, preview, or validate ViewDefinitions from directories with resource-aware NDJSON matching
+- **Runtime Variables**: Override ViewDefinition constants through repeatable `--var name=value` CLI arguments
 - **FHIRPath Columns**: Define columns using FHIRPath expressions with automatic caching
 - **`%rowIndex`**: 0-based row index environment variable available inside `forEach`, `forEachOrNull`, and `repeat` iterations
 - **Column Tags**: Implementation metadata (`ansi/type`, custom tags) attached per column and exposed in schema output

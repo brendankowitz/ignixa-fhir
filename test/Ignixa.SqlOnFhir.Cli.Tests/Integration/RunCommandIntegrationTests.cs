@@ -48,6 +48,28 @@ public sealed class RunCommandIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task GivenSingleViewAndNestedOutput_WhenRunCsv_ThenCreatesParentDirectory()
+    {
+        var vdPath  = Path.Combine(Views, "patient-demographics.json");
+        var inPath  = Path.Combine(Fhir,  "Patient.ndjson");
+        var outPath = Path.Combine(_outDir, "nested", "out.csv");
+        var cmd     = RunCommand.Create(new R4CoreSchemaProvider(), "r4");
+        Environment.ExitCode = 0;
+
+        await cmd.Parse(["--views", vdPath, "--input", inPath, "--out", outPath, "--quiet"]).InvokeAsync();
+
+        try
+        {
+            Environment.ExitCode.ShouldBe(0);
+            File.Exists(outPath).ShouldBeTrue();
+        }
+        finally
+        {
+            Environment.ExitCode = 0;
+        }
+    }
+
+    [Fact]
     public async Task GivenViewsAndInputDirs_WhenRunBatch_ThenOneOutputFilePerViewDef()
     {
         var cmd = RunCommand.Create(new R4CoreSchemaProvider(), "r4");

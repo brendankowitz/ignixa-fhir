@@ -6,6 +6,7 @@ Writers for SQL on FHIR ViewDefinitions, providing output in various formats.
 
 - **Parquet Writer**: Convert FHIR resources using ViewDefinitions into Parquet format
 - **CSV Writer**: Convert FHIR resources using ViewDefinitions into CSV format
+- **NDJSON Writer**: Convert rows into newline-delimited JSON for streaming pipelines
 - **Schema Extraction**: Extract schema from ViewDefinitions for preview and validation
 
 ## Usage
@@ -26,6 +27,21 @@ foreach (var row in rows)
 }
 
 await writer.FlushAsync(cancellationToken);
+```
+
+### NDJSON Writer
+
+```csharp
+var writer = new NdjsonFileWriter(outputPath, logger);
+
+foreach (var row in rows)
+{
+    await writer.WriteRowAsync(row, cancellationToken);
+}
+
+await writer.FlushAsync(cancellationToken);
+
+Console.WriteLine($"Rows: {writer.RowsWritten}, bytes: {writer.BytesWritten}");
 ```
 
 ### CSV Writer

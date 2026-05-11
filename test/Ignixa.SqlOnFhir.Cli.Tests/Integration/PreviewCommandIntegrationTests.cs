@@ -36,6 +36,50 @@ public class PreviewCommandIntegrationTests
     }
 
     [Fact]
+    public async Task GivenViewWithVariable_WhenPreviewWithVar_ThenSampleUsesProvidedValue()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempDir);
+        var vdPath = Path.Combine(tempDir, "patient-variable.json");
+        var inPath = Path.Combine(Fhir, "Patient.ndjson");
+        await File.WriteAllTextAsync(vdPath,
+            """
+            {
+              "resourceType": "ViewDefinition",
+              "resource": "Patient",
+              "constant": [{ "name": "myTag", "valueString": "default" }],
+              "select": [{
+                "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "tag", "path": "%myTag" }
+                ]
+              }]
+            }
+            """);
+        var cmd = PreviewCommand.Create(new R4CoreSchemaProvider(), "r4");
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+        Environment.ExitCode = 0;
+
+        try
+        {
+            Console.SetOut(output);
+            var parseResult = cmd.Parse(["--views", vdPath, "--input", inPath, "--var", "myTag=from-cli"]);
+            parseResult.Errors.ShouldBeEmpty();
+            await parseResult.InvokeAsync();
+
+            Environment.ExitCode.ShouldBe(0);
+            output.ToString().ShouldContain("from-cli");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Environment.ExitCode = 0;
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task GivenViewsDir_WhenPreviewDir_ThenExitsZero()
     {
         var cmd = PreviewCommand.Create(new R4CoreSchemaProvider(), "r4");

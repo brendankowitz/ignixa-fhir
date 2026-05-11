@@ -17,44 +17,23 @@ dotnet add package Ignixa.SqlOnFhir
 
 ## Quick Start
 
-### Define a View
-
 ```csharp
-using Ignixa.SqlOnFhir.Models;
-
-// Create a view definition for patient demographics
-var viewDefinition = new ViewDefinition
-{
-    Resource = "Patient",
-    Select = new List<SelectGroup>
-    {
-        new SelectGroup
-        {
-            Column = new List<ViewColumnDefinition>
-            {
-                new() { Name = "id", Path = "id" },
-                new() { Name = "birth_date", Path = "birthDate", Type = "date" },
-                new() { Name = "gender", Path = "gender", Type = "string" }
-            }
-        }
-    }
-};
-```
-
-### Execute View Against Resources
-
-```csharp
+using Ignixa.Serialization;
+using Ignixa.Specification;
 using Ignixa.SqlOnFhir.Evaluation;
-using Ignixa.Abstractions;
 
-// Get FHIR resources
-IEnumerable<IElement> patients = GetPatientElements();
+var schemaProvider = FhirVersion.R4.GetSchemaProvider();
 
-// Create evaluator
-var evaluator = new SqlOnFhirEvaluator(schema);
+var viewDefinitionJson = File.ReadAllText("patient-view.json");
+var viewDefinitionNode = JsonSourceNodeFactory.Parse(viewDefinitionJson);
+var viewDefinitionNavigator = viewDefinitionNode.ToSourceNavigator();
 
-// Execute view
-var rows = evaluator.Evaluate(viewDefinition, patients);
+var patientJson = File.ReadAllText("patient.json");
+var patientNode = JsonSourceNodeFactory.Parse(patientJson);
+var patientElement = patientNode.ToElement(schemaProvider);
+
+var evaluator = new SqlOnFhirEvaluator();
+var rows = evaluator.Evaluate(viewDefinitionNavigator, patientElement);
 
 // Process results
 foreach (var row in rows)
@@ -162,6 +141,17 @@ var viewDefinition = new ViewDefinition
         }
     }
 };
+```
+
+Caller-supplied variables can override constants at evaluation time:
+
+```csharp
+var variables = new Dictionary<string, string>
+{
+    ["minValue"] = "120"
+};
+
+var rows = evaluator.Evaluate(viewDefinitionNavigator, observationElement, variables);
 ```
 
 ### Multiple Select Groups
