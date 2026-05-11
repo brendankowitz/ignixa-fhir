@@ -1,0 +1,2 @@
+{"resourceType":"Observation","id":"o1","code":{"coding":[{"code":"8480-6","system":"http://loinc.org"}]}}
+{"resourceType":"Observation","id":"o2","code":{"coding":[{"code":"8462-4","system":"http://loinc.org"}]}}

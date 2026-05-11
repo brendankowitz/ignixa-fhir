@@ -93,9 +93,9 @@ internal static class ValidateCommand
             if (node is null) return (false, "Failed to parse JSON", string.Empty);
 
             var nav          = node.ToSourceNavigator();
-            var resourceType = nav.Children("resourceType").FirstOrDefault()?.Text;
+            var resourceType = node.ResourceType;
             if (resourceType != "ViewDefinition")
-                return (false, $"Not a ViewDefinition (found: {resourceType ?? "null"})", string.Empty);
+                return (false, $"Not a ViewDefinition (found: {(string.IsNullOrEmpty(resourceType) ? "null" : resourceType)})", string.Empty);
 
             var viewDef   = ViewDefinitionExpressionParser.Parse(nav);
             var totalCols = viewDef.Select.Sum(s => s.Columns.Length);
