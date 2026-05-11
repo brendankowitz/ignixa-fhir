@@ -26,7 +26,7 @@ public partial class NdjsonFileWriter : IAsyncDisposable
     public async Task WriteRowAsync(Dictionary<string, object?> row, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        _writer ??= new StreamWriter(new FileStream(_outputPath, FileMode.Create, FileAccess.Write, FileShare.Read), Encoding.UTF8);
+        _writer ??= new StreamWriter(File.Create(_outputPath), Encoding.UTF8);
         var json = JsonSerializer.Serialize(row);
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken);
         _rowsWritten++;
@@ -38,10 +38,9 @@ public partial class NdjsonFileWriter : IAsyncDisposable
         if (_writer != null)
         {
             await _writer.FlushAsync(cancellationToken);
-            await _writer.BaseStream.FlushAsync(cancellationToken);
-            await _writer.BaseStream.DisposeAsync();
-            var fileInfo = new FileInfo(_outputPath);
-            BytesWritten = fileInfo.Exists ? fileInfo.Length : 0;
+            await _writer.DisposeAsync();
+            _writer = null;
+            BytesWritten = new FileInfo(_outputPath).Exists ? new FileInfo(_outputPath).Length : 0;
             LogNdjsonFileWritten(_logger, _rowsWritten, BytesWritten, _outputPath);
         }
     }
@@ -55,15 +54,9 @@ public partial class NdjsonFileWriter : IAsyncDisposable
         GC.SuppressFinalize(this);
         if (w != null)
         {
-            try
-            {
-                await w.FlushAsync();
-                await w.DisposeAsync();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
+            try { await w.FlushAsync(); }
             catch (Exception ex) { _logger.LogWarning(ex, "Error during final flush on dispose"); }
+            finally { await w.DisposeAsync(); }
         }
     }
 
