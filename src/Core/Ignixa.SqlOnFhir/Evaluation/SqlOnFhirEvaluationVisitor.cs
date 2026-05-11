@@ -49,6 +49,7 @@ internal class SqlOnFhirEvaluationVisitor
         foreach (var constant in viewDef.Constants)
             if (constant.Value != null)
                 context = context.WithEnvironmentVariable(constant.Name, new PrimitiveValueElement(constant.Value));
+        // Caller-supplied variables override ViewDefinition constants if names collide (caller wins).
         if (variables != null)
             foreach (var (name, value) in variables)
                 context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value));
