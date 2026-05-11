@@ -1,131 +1,109 @@
-// -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// -------------------------------------------------------------------------------------------------
-
-using Ignixa.Abstractions;
 using System.CommandLine;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
+using Ignixa.SqlOnFhir.Cli.Batch;
 using Ignixa.SqlOnFhir.Parsing;
 
 namespace Ignixa.SqlOnFhir.Cli.Commands;
 
-/// <summary>
-/// Command for validating ViewDefinition files.
-/// </summary>
 internal static class ValidateCommand
 {
     public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
-        var validateCommand = new Command("validate", "Validate a ViewDefinition file");
+        var cmd = new Command("validate", "Validate ViewDefinition file(s).");
 
-        var viewDefinitionOption = new Option<string>("--viewdefinition") { Description = "Path to ViewDefinition JSON file", Required = true };
+        var viewsOpt   = new Option<string>("--views")   { Description = "ViewDefinition file or directory", Required = true };
+        var patternOpt = new Option<string>("--pattern") { Description = "ViewDefinition glob, dir mode only (default: **/*.json)", DefaultValueFactory = _ => "**/*.json" };
 
-        validateCommand.Options.Add(viewDefinitionOption);
+        cmd.Options.Add(viewsOpt);
+        cmd.Options.Add(patternOpt);
 
-        validateCommand.SetAction(async (parseResult, cancellationToken) =>
+        cmd.SetAction(async (parseResult, cancellationToken) =>
         {
-            var viewDefinitionPath = parseResult.GetValue(viewDefinitionOption)!;
-            await HandleValidateCommand(viewDefinitionPath);
+            var views   = parseResult.GetValue(viewsOpt)!;
+            var pattern = parseResult.GetValue(patternOpt)!;
+
+            if (Directory.Exists(views))
+                await ValidateDir(views, pattern);
+            else
+                await ValidateSingle(views);
         });
 
-        return validateCommand;
+        return cmd;
     }
 
-    private static async Task HandleValidateCommand(string viewDefinitionPath)
+    private static async Task ValidateSingle(string viewsPath)
+    {
+        if (!File.Exists(viewsPath)) { Console.WriteLine($"✗ ViewDefinition not found: {viewsPath}"); Environment.ExitCode = 1; return; }
+
+        var (valid, message, info) = await Validate(viewsPath);
+        if (valid)
+        {
+            Console.WriteLine("✓ Valid JSON format");
+            Console.WriteLine("✓ Resource type is ViewDefinition");
+            Console.WriteLine("✓ ViewDefinition parsed successfully");
+            Console.WriteLine($"  {info}");
+            Console.WriteLine();
+            Console.WriteLine("✓ ViewDefinition is valid");
+        }
+        else
+        {
+            Console.WriteLine($"✗ {message}");
+            Environment.ExitCode = 1;
+        }
+    }
+
+    private static async Task ValidateDir(string viewsDir, string pattern)
+    {
+        var viewFiles = BatchProcessor.DiscoverViewDefinitions(viewsDir, pattern).ToList();
+        if (viewFiles.Count == 0) { Console.WriteLine($"✗ No ViewDefinition files found in {viewsDir}"); Environment.ExitCode = 1; return; }
+
+        Console.WriteLine($"Validating {viewFiles.Count} ViewDefinition(s)\n");
+
+        var results = new List<(string Name, bool Valid, string Detail)>();
+        foreach (var vdPath in viewFiles)
+        {
+            var (valid, message, info) = await Validate(vdPath);
+            results.Add((Path.GetFileName(vdPath), valid, valid ? info : message ?? string.Empty));
+        }
+
+        var nameWidth   = Math.Max(results.Max(r => r.Name.Length),   4);
+        var detailWidth = Math.Max(results.Max(r => r.Detail.Length), 6);
+        Console.WriteLine($"  {"Name".PadRight(nameWidth)}  Status  {"Detail".PadRight(detailWidth)}");
+        Console.WriteLine($"  {new string('-', nameWidth)}  ------  {new string('-', detailWidth)}");
+        foreach (var (name, valid, detail) in results)
+            Console.WriteLine($"  {name.PadRight(nameWidth)}  {(valid ? "  ✓  " : "  ✗  ")}  {detail}");
+
+        Console.WriteLine();
+        var passed = results.Count(r => r.Valid);
+        var failed = results.Count(r => !r.Valid);
+        Console.WriteLine($"{(failed > 0 ? "✗" : "✓")} {passed} passed, {failed} failed");
+
+        if (failed > 0 || passed == 0)
+            Environment.ExitCode = 1;
+    }
+
+    private static async Task<(bool Valid, string? Message, string Info)> Validate(string vdPath)
     {
         try
         {
-            // Validate file exists
-            if (!File.Exists(viewDefinitionPath))
-            {
-                Console.WriteLine($"✗ ViewDefinition file not found: {viewDefinitionPath}");
-                Environment.ExitCode = 1;
-                return;
-            }
+            var json = await File.ReadAllTextAsync(vdPath);
+            var node = JsonSourceNodeFactory.Parse(json);
+            if (node is null) return (false, "Failed to parse JSON", string.Empty);
 
-            // Read and parse ViewDefinition
-            var viewDefJson = await File.ReadAllTextAsync(viewDefinitionPath);
-            var viewDefNode = JsonSourceNodeFactory.Parse(viewDefJson);
-            if (viewDefNode == null)
-            {
-                Console.WriteLine($"✗ Failed to parse ViewDefinition JSON");
-                Environment.ExitCode = 1;
-                return;
-            }
-
-            Console.WriteLine("✓ Valid JSON format");
-
-            var viewDefNavigator = viewDefNode.ToSourceNavigator();
-
-            // Validate it's a ViewDefinition resource
-            var resourceType = viewDefNavigator.Children("resourceType").FirstOrDefault()?.Text;
+            var nav          = node.ToSourceNavigator();
+            var resourceType = nav.Children("resourceType").FirstOrDefault()?.Text;
             if (resourceType != "ViewDefinition")
-            {
-                Console.WriteLine($"✗ Resource is not a ViewDefinition (found: {resourceType ?? "null"})");
-                Environment.ExitCode = 1;
-                return;
-            }
+                return (false, $"Not a ViewDefinition (found: {resourceType ?? "null"})", string.Empty);
 
-            Console.WriteLine("✓ Resource type is ViewDefinition");
-
-            // Try to parse using ViewDefinitionExpressionParser
-            try
-            {
-                var viewDef = ViewDefinitionExpressionParser.Parse(viewDefNavigator);
-                
-                Console.WriteLine($"✓ ViewDefinition parsed successfully");
-                Console.WriteLine($"  Resource: {viewDef.Resource}");
-                Console.WriteLine($"  SELECT groups: {viewDef.Select.Length}");
-
-                var totalColumns = 0;
-                foreach (var selectGroup in viewDef.Select)
-                {
-                    totalColumns += selectGroup.Columns.Length;
-                }
-
-                Console.WriteLine($"  Total columns: {totalColumns}");
-
-                if (!viewDef.Constants.IsDefaultOrEmpty)
-                {
-                    Console.WriteLine($"  Constants: {viewDef.Constants.Length}");
-                }
-
-                if (!viewDef.Where.IsDefaultOrEmpty)
-                {
-                    Console.WriteLine($"  WHERE clauses: {viewDef.Where.Length}");
-                }
-
-                // List all columns
-                if (totalColumns > 0)
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("Columns:");
-                    foreach (var selectGroup in viewDef.Select)
-                    {
-                        foreach (var column in selectGroup.Columns)
-                        {
-                            var type = string.IsNullOrEmpty(column.Type) ? "inferred" : column.Type;
-                            Console.WriteLine($"  - {column.Name} ({type})");
-                        }
-                    }
-                }
-
-                Console.WriteLine();
-                Console.WriteLine("✓ ViewDefinition is valid");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"✗ Failed to parse ViewDefinition: {ex.Message}");
-                Environment.ExitCode = 1;
-            }
+            var viewDef   = ViewDefinitionExpressionParser.Parse(nav);
+            var totalCols = viewDef.Select.Sum(s => s.Columns.Length);
+            return (true, null, $"resource={viewDef.Resource}  columns={totalCols}  selects={viewDef.Select.Length}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Error: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
-            Environment.ExitCode = 1;
+            return (false, ex.Message, string.Empty);
         }
     }
 }
