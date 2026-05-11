@@ -1,0 +1,66 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+
+namespace Ignixa.SqlOnFhir.Writers;
+
+public partial class NdjsonFileWriter : IAsyncDisposable
+{
+    private readonly string _outputPath;
+    private readonly ILogger _logger;
+    private StreamWriter? _writer;
+    private bool _disposed;
+    private long _rowsWritten;
+
+    public long BytesWritten { get; private set; }
+    public long RowsWritten => _rowsWritten;
+
+    public NdjsonFileWriter(string outputPath, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(outputPath);
+        ArgumentNullException.ThrowIfNull(logger);
+        _outputPath = outputPath;
+        _logger = logger;
+    }
+
+    public async Task WriteRowAsync(Dictionary<string, object?> row, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        _writer ??= new StreamWriter(File.Create(_outputPath), Encoding.UTF8);
+        var json = JsonSerializer.Serialize(row);
+        await _writer.WriteLineAsync(json.AsMemory(), cancellationToken);
+        _rowsWritten++;
+    }
+
+    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (_writer != null)
+        {
+            await _writer.FlushAsync(cancellationToken);
+            await _writer.DisposeAsync();
+            _writer = null;
+            var fileInfo = new FileInfo(_outputPath);
+            BytesWritten = fileInfo.Exists ? fileInfo.Length : 0;
+            LogNdjsonFileWritten(_logger, _rowsWritten, BytesWritten, _outputPath);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        try { await FlushAsync(CancellationToken.None); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Error during final flush on dispose"); }
+        finally
+        {
+            if (_writer != null) await _writer.DisposeAsync();
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, GetType());
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Wrote NDJSON file with {RowsWritten} rows ({BytesWritten} bytes) to: {OutputPath}")]
+    private static partial void LogNdjsonFileWritten(ILogger logger, long rowsWritten, long bytesWritten, string outputPath);
+}
