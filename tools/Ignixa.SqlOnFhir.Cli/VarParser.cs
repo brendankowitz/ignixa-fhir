@@ -5,9 +5,7 @@
 
 namespace Ignixa.SqlOnFhir.Cli;
 
-#pragma warning disable CA1515
-public static class VarParser
-#pragma warning restore CA1515
+internal static class VarParser
 {
     public static IReadOnlyDictionary<string, string> Parse(IEnumerable<string>? vars)
     {
