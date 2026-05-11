@@ -34,8 +34,6 @@ public class SqlOnFhirEvaluatorTests
     private static readonly IFhirSchemaProvider _schemaProvider =
         FhirSpecificationExtensions.FromVersionString("4.0.1").GetSchemaProvider();
 
-    #region Basic Column Evaluation Tests
-
     [Fact]
     public void GivenSimpleColumnPath_WhenEvaluated_ThenReturnsValue()
     {
@@ -141,10 +139,6 @@ public class SqlOnFhirEvaluatorTests
         Assert.Null(rows[0]["birthDate"]);
     }
 
-    #endregion
-
-    #region Type Conversion Tests
-
     [Fact]
     public void GivenBooleanColumn_WhenEvaluated_ThenConvertsCorrectly()
     {
@@ -214,10 +208,6 @@ public class SqlOnFhirEvaluatorTests
         Assert.IsType<int>(rows[0]["value"]);
         Assert.Equal(42, rows[0]["value"]);
     }
-
-    #endregion
-
-    #region WHERE Clause Tests
 
     [Fact]
     public void GivenWhereClause_WhenEvaluated_ThenIncludesMatchingResource()
@@ -295,10 +285,6 @@ public class SqlOnFhirEvaluatorTests
         // Assert
         Assert.Empty(rows);
     }
-
-    #endregion
-
-    #region ForEach Array Unnesting Tests
 
     [Fact]
     public void GivenForEach_WhenEvaluated_ThenCreatesRowPerArrayElement()
@@ -503,10 +489,6 @@ public class SqlOnFhirEvaluatorTests
         Assert.Empty(rows);
     }
 
-    #endregion
-
-    #region Variable Injection Tests
-
     [Fact]
     public void GivenVariable_WhenEvaluated_ThenAccessibleAsFhirPathPercent()
     {
@@ -614,10 +596,6 @@ public class SqlOnFhirEvaluatorTests
         Assert.Equal("p3", rows[0]["id"]);
     }
 
-    #endregion
-
-    #region Helper Methods
-
     private static IElement CreateTypedElement(Dictionary<string, object?> data)
     {
         // Use real ResourceJsonNode instead of mocks for proper FHIR semantics
@@ -634,6 +612,4 @@ public class SqlOnFhirEvaluatorTests
         var jsonNode = JsonNode.Parse(json)!;
         return JsonNodeSourceNode.Create(jsonNode, "ViewDefinition");
     }
-
-    #endregion
 }

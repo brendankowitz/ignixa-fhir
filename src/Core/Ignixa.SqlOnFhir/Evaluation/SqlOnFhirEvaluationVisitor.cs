@@ -120,7 +120,6 @@ internal class SqlOnFhirEvaluationVisitor
     private List<Dictionary<string, object?>> EvaluateSelect(
         SelectExpression node, IElement resource, EvaluationContext context)
     {
-        // No iteration: evaluate columns directly against current resource
         if (node.ForEach == null && node.ForEachOrNull == null && node.Repeat.IsEmpty)
         {
             var row = EvaluateColumns(node.Columns, resource, context);
@@ -128,7 +127,6 @@ internal class SqlOnFhirEvaluationVisitor
             return ProcessUnionAll(rows, node.UnionAll, resource, context);
         }
 
-        // repeat: recursively traverse paths and collect all items
         if (!node.Repeat.IsEmpty)
         {
             var allItems = RecursivelyCollectItems(resource, node.Repeat, context);
@@ -144,7 +142,6 @@ internal class SqlOnFhirEvaluationVisitor
             return repeatRows;
         }
 
-        // forEach / forEachOrNull: unnest collection
         var forEachExpr = node.ForEach ?? node.ForEachOrNull!;
         var items = _fhirPath.Evaluate(resource, forEachExpr, context).ToList();
         var forEachRows = new List<Dictionary<string, object?>>();
