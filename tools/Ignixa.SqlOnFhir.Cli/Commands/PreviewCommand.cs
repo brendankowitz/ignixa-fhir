@@ -1,244 +1,211 @@
-// -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// -------------------------------------------------------------------------------------------------
-
 using System.CommandLine;
 using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
+using Ignixa.SqlOnFhir.Cli.Batch;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Parsing;
 
 namespace Ignixa.SqlOnFhir.Cli.Commands;
 
-/// <summary>
-/// Command for previewing the schema and sample rows from a ViewDefinition.
-/// </summary>
 internal static class PreviewCommand
 {
     public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
-        var previewCommand = new Command("preview", "Preview schema and sample rows from a ViewDefinition");
+        var cmd = new Command("preview", "Preview schema and sample rows. Omit --input for schema-only mode.");
 
-        var viewDefinitionOption = new Option<string>("--viewdefinition") { Description = "Path to ViewDefinition JSON file", Required = true };
-        var inputOption = new Option<string>("--input") { Description = "Path to input NDJSON file containing FHIR resources", Required = true };
-        var rowsOption = new Option<int>("--rows") { Description = "Number of sample rows to display", DefaultValueFactory = _ => 5 };
+        var viewsOpt   = new Option<string>("--views")   { Description = "ViewDefinition file or directory", Required = true };
+        var inputOpt   = new Option<string?>("--input")  { Description = "NDJSON file or directory (optional; omit for schema-only)" };
+        var rowsOpt    = new Option<int>("--rows")       { Description = "Max sample rows per ViewDefinition (default: 5)", DefaultValueFactory = _ => 5 };
+        var patternOpt = new Option<string>("--pattern") { Description = "ViewDefinition glob, dir mode only (default: **/*.json)", DefaultValueFactory = _ => "**/*.json" };
 
-        previewCommand.Options.Add(viewDefinitionOption);
-        previewCommand.Options.Add(inputOption);
-        previewCommand.Options.Add(rowsOption);
+        cmd.Options.Add(viewsOpt);
+        cmd.Options.Add(inputOpt);
+        cmd.Options.Add(rowsOpt);
+        cmd.Options.Add(patternOpt);
 
-        previewCommand.SetAction(async (parseResult, cancellationToken) =>
+        cmd.SetAction(async (parseResult, cancellationToken) =>
         {
-            var viewDefinitionPath = parseResult.GetValue(viewDefinitionOption)!;
-            var inputPath = parseResult.GetValue(inputOption)!;
-            var rows = parseResult.GetValue(rowsOption);
-            await HandlePreviewCommand(schemaProvider, fhirVersion, viewDefinitionPath, inputPath, rows);
+            var views   = parseResult.GetValue(viewsOpt)!;
+            var input   = parseResult.GetValue(inputOpt);
+            var rows    = parseResult.GetValue(rowsOpt);
+            var pattern = parseResult.GetValue(patternOpt)!;
+
+            if (Directory.Exists(views))
+                await PreviewDir(schemaProvider, fhirVersion, views, input, rows, pattern);
+            else
+                await PreviewSingle(schemaProvider, fhirVersion, views, input, rows);
         });
 
-        return previewCommand;
+        return cmd;
     }
 
-    private static async Task HandlePreviewCommand(
+    private static async Task PreviewSingle(
         IFhirSchemaProvider schemaProvider,
         string fhirVersion,
-        string viewDefinitionPath,
-        string inputPath,
+        string viewsPath,
+        string? inputPath,
         int maxRows)
     {
+        if (!File.Exists(viewsPath)) { Console.WriteLine($"✗ ViewDefinition not found: {viewsPath}"); Environment.ExitCode = 1; return; }
+        if (inputPath is not null && !File.Exists(inputPath)) { Console.WriteLine($"✗ Input not found: {inputPath}"); Environment.ExitCode = 1; return; }
+
+        var viewNav = ParseViewDefinition(viewsPath);
+        if (viewNav is null) { Console.WriteLine("✗ Failed to parse ViewDefinition"); Environment.ExitCode = 1; return; }
+
+        PrintSchema(viewNav, fhirVersion);
+
+        if (inputPath is not null)
+            await PrintSampleRows(inputPath, viewNav, schemaProvider, maxRows);
+    }
+
+    private static async Task PreviewDir(
+        IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
+        string viewsDir,
+        string? inputDir,
+        int maxRows,
+        string pattern)
+    {
+        var viewFiles = BatchProcessor.DiscoverViewDefinitions(viewsDir, pattern).ToList();
+        if (viewFiles.Count == 0) { Console.WriteLine($"✗ No ViewDefinition files found in {viewsDir}"); Environment.ExitCode = 1; return; }
+
+        Console.WriteLine($"Found {viewFiles.Count} ViewDefinition(s)\n");
+
+        foreach (var vdPath in viewFiles)
+        {
+            Console.WriteLine($"── {Path.GetFileName(vdPath)} ────────────────────────────────────");
+            var viewNav = ParseViewDefinition(vdPath);
+            if (viewNav is null) { Console.WriteLine("  ✗ Parse error\n"); continue; }
+
+            PrintSchema(viewNav, fhirVersion);
+
+            if (inputDir is not null && Directory.Exists(inputDir))
+            {
+                var resource   = viewNav.Children("resource").FirstOrDefault()?.Text ?? string.Empty;
+                var inputFiles = BatchProcessor.FindInputFiles(inputDir, resource, "*{resource}*.ndjson").ToList();
+                if (inputFiles.Count > 0)
+                    await PrintSampleRows(inputFiles[0], viewNav, schemaProvider, maxRows);
+                else
+                    Console.WriteLine($"  (no matching NDJSON for '{resource}')");
+            }
+
+            Console.WriteLine();
+        }
+    }
+
+    private static void PrintSchema(ISourceNavigator viewNav, string fhirVersion)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Schema ===");
+        Console.WriteLine();
+
         try
         {
-            // Validate input files exist
-            if (!File.Exists(viewDefinitionPath))
+            var viewExpr   = ViewDefinitionExpressionParser.Parse(viewNav);
+            var schemaEval = new SqlOnFhirSchemaEvaluator();
+            var columns    = schemaEval.GetSchema(viewExpr);
+
+            if (columns.Count > 0)
             {
-                Console.WriteLine($"✗ ViewDefinition file not found: {viewDefinitionPath}");
-                Environment.ExitCode = 1;
-                return;
-            }
-
-            if (!File.Exists(inputPath))
-            {
-                Console.WriteLine($"✗ Input file not found: {inputPath}");
-                Environment.ExitCode = 1;
-                return;
-            }
-
-            // Read and parse ViewDefinition
-            var viewDefJson = await File.ReadAllTextAsync(viewDefinitionPath);
-            var viewDefNode = JsonSourceNodeFactory.Parse(viewDefJson);
-            if (viewDefNode == null)
-            {
-                Console.WriteLine($"✗ Failed to parse ViewDefinition: {viewDefinitionPath}");
-                Environment.ExitCode = 1;
-                return;
-            }
-
-            var viewDefNavigator = viewDefNode.ToSourceNavigator();
-
-            // Parse ViewDefinition expression
-            var viewDefExpression = ViewDefinitionExpressionParser.Parse(viewDefNavigator);
-
-            // Extract schema using SqlOnFhirSchemaEvaluator
-            var schemaEvaluator = new SqlOnFhirSchemaEvaluator();
-            var columnSchemas = schemaEvaluator.GetSchema(viewDefExpression);
-            
-            Console.WriteLine();
-            Console.WriteLine("=== Schema ===");
-            Console.WriteLine();
-            
-            if (columnSchemas.Count > 0)
-            {
-                var maxColumnNameLength = columnSchemas.Max(c => c.Name.Length);
-                foreach (var column in columnSchemas.OrderBy(c => c.Name))
-                {
-                    var typeStr = column.Type ?? "inferred";
-                    var collectionStr = column.Collection ? " (collection)" : "";
-                    Console.WriteLine($"  {column.Name.PadRight(maxColumnNameLength)}  {typeStr}{collectionStr}");
-                }
-            }
-
-            // Use the provided schema provider from the command-line argument
-            Console.WriteLine();
-            Console.WriteLine($"Using FHIR version: {fhirVersion.ToUpperInvariant()}");
-
-            // Create evaluator
-            var evaluator = new SqlOnFhirEvaluator();
-
-            // Process and display sample rows
-            var sampleRows = new List<Dictionary<string, object?>>();
-            await foreach (var row in ProcessResourcesAsync(inputPath, viewDefNavigator, schemaProvider, evaluator))
-            {
-                sampleRows.Add(row);
-                if (sampleRows.Count >= maxRows)
-                {
-                    break;
-                }
-            }
-
-            if (sampleRows.Count == 0)
-            {
-                Console.WriteLine();
-                Console.WriteLine("✗ No rows generated from the input resources");
-                return;
+                var maxLen = columns.Max(c => c.Name.Length);
+                foreach (var col in columns.OrderBy(c => c.Name))
+                    Console.WriteLine($"  {col.Name.PadRight(maxLen)}  {col.Type ?? "inferred"}{(col.Collection ? " (collection)" : "")}");
             }
 
             Console.WriteLine();
-            Console.WriteLine($"=== Sample Rows ({sampleRows.Count}) ===");
-            Console.WriteLine();
-
-            // Display rows in a formatted table (using same order as schema output)
-            var columns = columnSchemas.OrderBy(c => c.Name).Select(c => c.Name).ToList();
-            DisplayTable(sampleRows, columns);
-
-            Console.WriteLine();
-            Console.WriteLine($"✓ Preview completed with {sampleRows.Count} sample rows");
+            Console.WriteLine($"Resource: {viewExpr.Resource}  |  FHIR: {fhirVersion.ToUpperInvariant()}  |  Columns: {columns.Count}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Error: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
-            Environment.ExitCode = 1;
+            Console.WriteLine($"  ✗ Schema extraction failed: {ex.Message}");
         }
+    }
+
+    private static async Task PrintSampleRows(
+        string inputPath,
+        ISourceNavigator viewNav,
+        IFhirSchemaProvider schemaProvider,
+        int maxRows)
+    {
+        var evaluator  = new SqlOnFhirEvaluator();
+        var sampleRows = new List<Dictionary<string, object?>>();
+        var reachedMax = false;
+
+        await foreach (var line in File.ReadLinesAsync(inputPath))
+        {
+            if (reachedMax) break;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var node = JsonSourceNodeFactory.Parse(line);
+            if (node is null) continue;
+            var element = node.ToElement(schemaProvider);
+            var rows = evaluator.Evaluate(viewNav, element);
+            if (rows is null) continue;
+            foreach (var row in rows)
+            {
+                sampleRows.Add(row);
+                if (sampleRows.Count >= maxRows) { reachedMax = true; break; }
+            }
+        }
+
+        if (sampleRows.Count == 0) { Console.WriteLine("\n(no rows generated)"); return; }
+
+        Console.WriteLine();
+        Console.WriteLine($"=== Sample Rows ({sampleRows.Count}) ===");
+        Console.WriteLine();
+
+        var viewExpr   = ViewDefinitionExpressionParser.Parse(viewNav);
+        var schemaEval = new SqlOnFhirSchemaEvaluator();
+        var columns    = schemaEval.GetSchema(viewExpr).OrderBy(c => c.Name).Select(c => c.Name).ToList();
+        DisplayTable(sampleRows, columns);
+        Console.WriteLine($"\n✓ Preview completed with {sampleRows.Count} sample row(s)");
     }
 
     private static void DisplayTable(List<Dictionary<string, object?>> rows, List<string> columns)
     {
-        if (rows.Count == 0)
+        var widths = columns.ToDictionary(c => c, c =>
         {
-            return;
-        }
-
-        // Calculate column widths
-        var columnWidths = new Dictionary<string, int>();
-        foreach (var column in columns)
-        {
-            var maxWidth = column.Length;
+            var max = c.Length;
             foreach (var row in rows)
-            {
-                if (row.TryGetValue(column, out var value) && value != null)
-                {
-                    var valueStr = FormatValue(value);
-                    maxWidth = Math.Max(maxWidth, valueStr.Length);
-                }
-            }
-            // Limit column width to 50 characters for readability
-            columnWidths[column] = Math.Min(maxWidth, 50);
-        }
+                if (row.TryGetValue(c, out var v) && v != null)
+                    max = Math.Max(max, FormatValue(v).Length);
+            return Math.Min(max, 50);
+        });
 
-        // Print header
-        var header = string.Join(" | ", columns.Select(c => c.PadRight(columnWidths[c])));
+        var header = string.Join(" | ", columns.Select(c => c.PadRight(widths[c])));
         Console.WriteLine(header);
         Console.WriteLine(new string('-', header.Length));
-
-        // Print rows
         foreach (var row in rows)
         {
-            var values = columns.Select(c =>
+            var cells = columns.Select(c =>
             {
-                if (row.TryGetValue(c, out var value) && value != null)
+                if (row.TryGetValue(c, out var v) && v != null)
                 {
-                    var valueStr = FormatValue(value);
-                    if (valueStr.Length > columnWidths[c])
-                    {
-                        valueStr = string.Concat(valueStr.AsSpan(0, columnWidths[c] - 3), "...");
-                    }
-                    return valueStr.PadRight(columnWidths[c]);
+                    var s = FormatValue(v);
+                    if (s.Length > widths[c]) s = string.Concat(s.AsSpan(0, widths[c] - 3), "...");
+                    return s.PadRight(widths[c]);
                 }
-                return string.Empty.PadRight(columnWidths[c]);
+                return string.Empty.PadRight(widths[c]);
             });
-            Console.WriteLine(string.Join(" | ", values));
+            Console.WriteLine(string.Join(" | ", cells));
         }
     }
 
-    private static string FormatValue(object value)
+    private static string FormatValue(object value) => value switch
     {
-        return value switch
-        {
-            DateTime dt => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            DateTimeOffset dto => dto.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
-            decimal d => d.ToString("0.##", CultureInfo.InvariantCulture),
-            double dbl => dbl.ToString("0.##", CultureInfo.InvariantCulture),
-            float f => f.ToString("0.##", CultureInfo.InvariantCulture),
-            bool b => b ? "true" : "false",
-            _ => value.ToString() ?? string.Empty
-        };
-    }
+        DateTime dt        => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTimeOffset dto => dto.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
+        decimal d          => d.ToString("0.##", CultureInfo.InvariantCulture),
+        double dbl         => dbl.ToString("0.##", CultureInfo.InvariantCulture),
+        float f            => f.ToString("0.##", CultureInfo.InvariantCulture),
+        bool b             => b ? "true" : "false",
+        _                  => value.ToString() ?? string.Empty
+    };
 
-    private static async IAsyncEnumerable<Dictionary<string, object?>> ProcessResourcesAsync(
-        string inputPath,
-        ISourceNavigator viewDefinition,
-        IFhirSchemaProvider schemaProvider,
-        SqlOnFhirEvaluator evaluator)
+    private static ISourceNavigator? ParseViewDefinition(string path)
     {
-        await foreach (var line in File.ReadLinesAsync(inputPath))
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            // Parse resource
-            var resourceNode = JsonSourceNodeFactory.Parse(line);
-            if (resourceNode == null)
-            {
-                continue;
-            }
-
-            var resourceElement = resourceNode.ToElement(schemaProvider);
-
-            // Evaluate ViewDefinition
-            var rows = evaluator.Evaluate(viewDefinition, resourceElement);
-            if (rows == null)
-            {
-                continue;
-            }
-
-            foreach (var row in rows)
-            {
-                yield return row;
-            }
-        }
+        var json = File.ReadAllText(path);
+        return JsonSourceNodeFactory.Parse(json)?.ToSourceNavigator();
     }
 }
