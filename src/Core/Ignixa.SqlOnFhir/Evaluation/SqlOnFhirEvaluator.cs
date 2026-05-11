@@ -32,8 +32,12 @@ public class SqlOnFhirEvaluator
     /// </summary>
     /// <param name="viewDefinitionNode">The ViewDefinition as ISourceNavigator</param>
     /// <param name="resource">The FHIR resource to evaluate against</param>
+    /// <param name="variables">Optional FHIRPath variables to inject into the evaluation context</param>
     /// <returns>List of rows, where each row is a dictionary mapping column names to values</returns>
-    public IEnumerable<Dictionary<string, object?>> Evaluate(ISourceNavigator viewDefinitionNode, IElement resource)
+    public IEnumerable<Dictionary<string, object?>> Evaluate(
+        ISourceNavigator viewDefinitionNode,
+        IElement resource,
+        IReadOnlyDictionary<string, string>? variables = null)
     {
         ArgumentNullException.ThrowIfNull(viewDefinitionNode);
         ArgumentNullException.ThrowIfNull(resource);
@@ -52,7 +56,7 @@ public class SqlOnFhirEvaluator
             }
 
             // Use the visitor to evaluate
-            return _visitor.Evaluate(viewExpr, resource);
+            return _visitor.Evaluate(viewExpr, resource, variables);
         }
         catch (Exception ex)
         {
