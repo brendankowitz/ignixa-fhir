@@ -97,10 +97,11 @@ public class BatchProcessorTests : IAsyncDisposable
         files.ShouldBe(["a-view.json", "m-view.json", "z-view.json"]);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
         GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 }

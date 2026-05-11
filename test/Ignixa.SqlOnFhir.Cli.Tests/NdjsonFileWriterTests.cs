@@ -65,9 +65,10 @@ public class NdjsonFileWriterTests : IAsyncDisposable
         writer.BytesWritten.ShouldBeGreaterThan(0);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (File.Exists(_outputPath)) File.Delete(_outputPath);
         GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 }

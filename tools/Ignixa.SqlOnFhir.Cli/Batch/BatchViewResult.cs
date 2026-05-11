@@ -9,5 +9,3 @@ internal record BatchViewResult(
     string? OutputPath = null,
     string? SkipReason = null,
     string? ErrorMessage = null);
-
-internal enum BatchViewStatus { Completed, Skipped, Failed }
