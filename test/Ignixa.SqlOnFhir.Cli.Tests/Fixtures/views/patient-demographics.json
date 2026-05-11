@@ -1,0 +1,10 @@
+{
+  "resourceType": "ViewDefinition",
+  "resource": "Patient",
+  "select": [{
+    "column": [
+      { "name": "id",     "path": "id",         "type": "id"     },
+      { "name": "family", "path": "name.family", "type": "string" }
+    ]
+  }]
+}

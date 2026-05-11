@@ -1,0 +1,10 @@
+{
+  "resourceType": "ViewDefinition",
+  "resource": "Observation",
+  "select": [{
+    "column": [
+      { "name": "id",   "path": "id",                "type": "id"     },
+      { "name": "code", "path": "code.coding.code",  "type": "string" }
+    ]
+  }]
+}
