@@ -1718,23 +1718,68 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var value = (double)quantity.Value * (add ? 1 : -1);
         DateTimeOffset result;
 
+        // FHIRPath spec - Date+Quantity arithmetic only accepts:
+        //   1. Calendar keyword units (year/years, month/months, week/weeks, day/days,
+        //      hour/hours, minute/minutes, second/seconds, millisecond/milliseconds).
+        //   2. Exact UCUM time units ('wk', 'd', 'h', 'min', 's', 'ms').
+        // UCUM 'a' (mean year) and 'mo' (mean month) are inexact and must be rejected
+        // (mapped to invalid="execution" by the official R5 test suite). Any other
+        // unit (e.g. 'cm', 'kg') must also be rejected rather than silently ignored.
+        // The parser preserves the original token: calendar keywords arrive as lowercase
+        // identifiers ("year"/"month"), while UCUM literals arrive verbatim from the
+        // quoted form ("a"/"mo"/"wk"/"d"/"cm"/...).
         try
         {
             // Calendar duration units (year, month, week, day) should be truncated to integers
             // Time-based units (hour, min, s, ms) can use fractional values in R5+
             // For R4/R4B, the spec truncates to integers, but this is a test data difference
-            result = quantity.Unit switch
+            switch (quantity.Unit)
             {
-                "a" or "year" or "years" => dt.AddYears((int)Math.Truncate(value)),
-                "mo" or "month" or "months" => dt.AddMonths((int)Math.Truncate(value)),
-                "wk" or "week" or "weeks" => dt.AddDays(Math.Truncate(value) * 7),
-                "d" or "day" or "days" => dt.AddDays(Math.Truncate(value)),
-                "h" or "hour" or "hours" => dt.AddHours(value),
-                "min" or "minute" or "minutes" => dt.AddMinutes(value),
-                "s" or "second" or "seconds" => dt.AddMilliseconds(value * 1000), // Convert to ms for precision
-                "ms" or "millisecond" or "milliseconds" => dt.AddMilliseconds(value),
-                _ => dt // Unknown unit, return original
-            };
+                case "year":
+                case "years":
+                    result = dt.AddYears((int)Math.Truncate(value));
+                    break;
+                case "month":
+                case "months":
+                    result = dt.AddMonths((int)Math.Truncate(value));
+                    break;
+                case "wk":
+                case "week":
+                case "weeks":
+                    result = dt.AddDays(Math.Truncate(value) * 7);
+                    break;
+                case "d":
+                case "day":
+                case "days":
+                    result = dt.AddDays(Math.Truncate(value));
+                    break;
+                case "h":
+                case "hour":
+                case "hours":
+                    result = dt.AddHours(value);
+                    break;
+                case "min":
+                case "minute":
+                case "minutes":
+                    result = dt.AddMinutes(value);
+                    break;
+                case "s":
+                case "second":
+                case "seconds":
+                    result = dt.AddMilliseconds(value * 1000); // Convert to ms for precision
+                    break;
+                case "ms":
+                case "millisecond":
+                case "milliseconds":
+                    result = dt.AddMilliseconds(value);
+                    break;
+                // UCUM 'a' (mean year ~ 365.25 days) and 'mo' (mean month ~ 30.44 days)
+                // are inexact durations; FHIRPath disallows them in date arithmetic.
+                // Any other unit (non-time UCUM such as 'cm', 'kg', '1', etc.) is also
+                // not a duration and must be rejected. Return empty per spec.
+                default:
+                    return [];
+            }
         }
         catch
         {
