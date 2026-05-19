@@ -545,6 +545,59 @@ public class EdgeCaseAndErrorTests
         Assert.Equal(5, result.Value);
     }
 
+    [Fact]
+    public void GivenBooleanOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // Regression for #246 (testLiteralIntegerNegative1Invalid, testPrecedence1):
+        // FHIRPath spec: unary minus on non-numeric operand (e.g. boolean) is undefined.
+        // Spec test '-1.convertsToInteger()' is marked invalid="semantic":
+        //   parses as -(1.convertsToInteger()) -> -(true) -> empty (not -1).
+        var expr = _parser.Parse("-1.convertsToInteger()");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenBooleanOperandFromConvertsToDecimal_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // Regression for #246 testLiteralDecimalNegative01Invalid:
+        // '-0.1.convertsToDecimal()' must parse as -(0.1.convertsToDecimal()) -> -(true) -> empty.
+        var expr = _parser.Parse("-0.1.convertsToDecimal()");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenStringOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // FHIRPath spec: unary minus on a string is undefined.
+        var expr = _parser.Parse("-'5'");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenDecimalLiteral_WhenUnaryMinus_ThenReturnsNegative()
+    {
+        // Sanity check: unary minus on a decimal still works.
+        var expr = _parser.Parse("-5.5");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.Equal(-5.5m, result.Value);
+        Assert.Equal("decimal", result.InstanceType);
+    }
+
     #endregion
 
     #region Where/All/Any Edge Cases
