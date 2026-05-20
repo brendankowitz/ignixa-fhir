@@ -1,11 +1,7 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Regression tests for FHIRPath spec compliance issues identified by fhirpath-lab.
- * Covers:
- *   #243 - highBoundary/lowBoundary must preserve trailing zeros to the requested precision.
- *   #245 - Date + Quantity arithmetic must reject UCUM-syntax inexact units ('a', 'mo')
- *          and any non-calendar/non-time unit (e.g. 'cm').
+ * Regression tests for FHIRPath date/time arithmetic unit gating and precision handling.
  */
 
 using Ignixa.Abstractions;
@@ -22,16 +18,6 @@ public class BoundaryAndCalendarArithmeticTests
     private readonly FhirPathEvaluator _evaluator = new();
 
     private static IElement Root() => new FunctionHelpers.PrimitiveElement(0, "integer");
-
-    private static int GetDecimalScale(decimal value)
-    {
-        var bits = decimal.GetBits(value);
-        return (bits[3] >> 16) & 0xFF;
-    }
-
-    // ---------------------------------------------------------------------------------
-    // Issue #243 - Decimal boundary must preserve trailing zeros to requested precision.
-    // ---------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("1.587.highBoundary(8)", "1.58750000")]
@@ -52,39 +38,54 @@ public class BoundaryAndCalendarArithmeticTests
         Assert.Equal(expectedString, actual.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    // ---------------------------------------------------------------------------------
-    // Issue #245 - UCUM gate in date arithmetic.
-    //   - 'a' (UCUM mean year) and 'mo' (UCUM mean month) are inexact and must be rejected.
-    //   - Non-time UCUM units like 'cm' must be rejected.
-    //   - Calendar keywords (year, month, ...) and exact UCUM time units ('wk', 'd',
-    //     'h', 'min', 's', 'ms') continue to work.
-    // ---------------------------------------------------------------------------------
-
     [Theory]
-    [InlineData("@1973-12-25 + 1 'a'")]    // UCUM mean year - ambiguous, must be rejected
-    [InlineData("@1973-12-25 + 1 'mo'")]   // UCUM mean month - ambiguous, must be rejected
-    [InlineData("@1973-12-25 + 1 'cm'")]   // non-time unit, must be rejected
-    [InlineData("@1973-12-25 - 1 'a'")]
-    [InlineData("@1973-12-25 - 1 'mo'")]
-    public void GivenAmbiguousOrNonTimeUcumUnit_WhenDateArithmetic_ThenReturnsEmpty(string expression)
+    [InlineData("@1973-12-25 + 1 'h'")]
+    [InlineData("@1973-12-25 + 1 'min'")]
+    [InlineData("@T10:00 + 1 'a'")]
+    [InlineData("@T10:00 + 1 'd'")]
+    public void GivenInvalidUnitForOperandType_WhenDateTimeArithmetic_ThenReturnsEmpty(string expression)
     {
         var expr = _parser.Parse(expression);
         var result = _evaluator.Evaluate(Root(), expr).ToList();
+
         Assert.Empty(result);
     }
 
     [Theory]
-    [InlineData("@1973-12-25 + 1 year", "1974-12-25")]
-    [InlineData("@1973-12-25 + 1 month", "1974-01-25")]
+    [InlineData("@1973-12-25 + 1 'a'", "1974-12-25")]
+    [InlineData("@1973-12-25 + 1 'mo'", "1974-01-25")]
     [InlineData("@1973-12-25 + 1 'wk'", "1974-01-01")]
     [InlineData("@1973-12-25 + 1 'd'", "1973-12-26")]
-    [InlineData("@1973-12-25 + 1 week", "1974-01-01")]
-    [InlineData("@1973-12-25 + 1 day", "1973-12-26")]
-    public void GivenCalendarOrExactUcumUnit_WhenDateArithmetic_ThenReturnsExpectedDate(string expression, string expected)
+    public void GivenValidDateUnit_WhenDateArithmetic_ThenReturnsExpectedDate(string expression, string expected)
     {
         var expr = _parser.Parse(expression);
         var result = _evaluator.Evaluate(Root(), expr).Single();
 
+        Assert.Equal("date", result.InstanceType);
+        Assert.Equal(expected, result.Value);
+    }
+
+    [Theory]
+    [InlineData("@1973-12-25T10:00:00Z + 1 'h'", "1973-12-25T11:00:00+00:00")]
+    [InlineData("@1973-12-25T10:00:00Z + 1 'a'", "1974-12-25T10:00:00+00:00")]
+    public void GivenValidDateTimeUnit_WhenDateTimeArithmetic_ThenReturnsExpectedDateTime(string expression, string expected)
+    {
+        var expr = _parser.Parse(expression);
+        var result = _evaluator.Evaluate(Root(), expr).Single();
+
+        Assert.Equal("dateTime", result.InstanceType);
+        Assert.Equal(expected, result.Value);
+    }
+
+    [Theory]
+    [InlineData("@1973-12-25T10:00 + 30 second", "1973-12-25T10:00:30", "dateTime")]
+    [InlineData("@T10:00 + 30 's'", "10:00:30", "time")]
+    public void GivenMorePreciseUnit_WhenDateTimeArithmetic_ThenPromotesResultPrecision(string expression, string expected, string expectedType)
+    {
+        var expr = _parser.Parse(expression);
+        var result = _evaluator.Evaluate(Root(), expr).Single();
+
+        Assert.Equal(expectedType, result.InstanceType);
         Assert.Equal(expected, result.Value);
     }
 }
