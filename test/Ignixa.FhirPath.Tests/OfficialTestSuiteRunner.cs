@@ -176,15 +176,15 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         var versionDirectory = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", versionLabel);
         var examplesDirectory = Path.Combine(versionDirectory, "examples");
 
-        // Filter like the Firely validator: exclude only CDA mode and predicate tests
+        // Filter like the Firely validator: exclude only CDA mode.
         // We include:
+        // - Predicate tests (converted to a boolean assertion after evaluation)
         // - Invalid expression tests (to test error handling)
         // - Tests without input files (use default patient)
         // - All function tests (NotImplementedException is thrown at runtime)
         // Note: Check version directory first, then examples (version may have modified files for tests)
         var filteredTests = testCases
             .Where(tc => tc.Mode != "cda")
-            .Where(tc => !tc.Predicate)
             .Where(tc => tc.InputFile is null ||
                          File.Exists(Path.Combine(versionDirectory, tc.InputFile)) ||
                          File.Exists(Path.Combine(examplesDirectory, tc.InputFile)));
@@ -194,7 +194,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         var predicateTests = testCases.Count(tc => tc.Predicate);
         var runningCount = filteredTests.Count();
 
-        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate excluded: {predicateTests}, Running: {runningCount}");
+        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate included: {predicateTests}, Running: {runningCount}");
 
         foreach (var testCase in filteredTests)
         {
@@ -335,6 +335,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         }
 
         // Assert
+        if (testCase.Predicate)
+        {
+            ValidatePredicateResult(testCase, resultList);
+            return;
+        }
+
         ValidateResults(testCase, resultList);
     }
 
@@ -406,6 +412,48 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             }
             throw;
         }
+    }
+
+    private static void ValidatePredicateResult(FhirPathTestCase testCase, IReadOnlyList<IElement> actualResults)
+    {
+        if (testCase.ExpectedOutputs.Count != 1 || testCase.ExpectedOutputs[0].Type != "boolean")
+        {
+            throw new InvalidOperationException($"Predicate test '{testCase.Name}' must declare a single boolean output.");
+        }
+
+        if (!bool.TryParse(testCase.ExpectedOutputs[0].Value, out var expectedValue))
+        {
+            throw new InvalidOperationException($"Predicate test '{testCase.Name}' has invalid expected boolean value '{testCase.ExpectedOutputs[0].Value}'.");
+        }
+
+        var actualValue = ConvertToPredicateBoolean(actualResults);
+        if (actualValue != expectedValue)
+        {
+            var message = $"""
+                Predicate mismatch in test '{testCase.Name}' (group: {testCase.GroupName})
+                Expression: {testCase.Expression}
+                Input file: {testCase.InputFile}
+                Expected predicate result: {expectedValue}
+                Actual predicate result: {actualValue}
+                Actual outputs: {FormatActualOutputs(actualResults.ToList())}
+                """;
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    private static bool ConvertToPredicateBoolean(IReadOnlyList<IElement> actualResults)
+    {
+        if (actualResults.Count == 0)
+        {
+            return false;
+        }
+
+        if (actualResults.Count == 1 && actualResults[0].Value is bool booleanValue)
+        {
+            return booleanValue;
+        }
+
+        return true;
     }
 
     private static void ValidateResults(FhirPathTestCase testCase, List<IElement> actualResults)
