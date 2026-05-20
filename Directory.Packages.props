@@ -66,7 +66,7 @@
     <!-- Localization -->
     <PackageVersion Include="Microsoft.Extensions.Localization.Abstractions" Version="9.0.14" />
     <!-- Templating -->
-    <PackageVersion Include="Scriban" Version="7.0.6" />
+    <PackageVersion Include="Scriban" Version="7.2.0" />
     <!-- Testing -->
     <PackageVersion Include="Bogus" Version="35.6.5" />
     <PackageVersion Include="xunit" Version="2.9.3" />
