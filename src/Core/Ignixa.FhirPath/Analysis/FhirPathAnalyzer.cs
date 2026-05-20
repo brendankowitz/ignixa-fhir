@@ -365,6 +365,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             focusTypes = expression.Focus.AcceptVisitor(visitor, context);
         }
 
+        var unorderedSource = GetUnorderedNavigationSource(expression.Focus);
+        if (unorderedSource != null && IsOrderDependentFunction(functionName))
+        {
+            context.AddError(
+                $"Function '{functionName}()' cannot be applied to unordered output from {unorderedSource}().",
+                expression);
+        }
+
         var funcDef = _symbolTable.Get(functionName);
 
         var innerContext = context.PushTypeContext(focusTypes);
@@ -1073,6 +1081,31 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 });
             }
         }
+    }
+
+    private static bool IsOrderDependentFunction(string functionName)
+    {
+        return functionName.Equals("first", StringComparison.OrdinalIgnoreCase) ||
+            functionName.Equals("last", StringComparison.OrdinalIgnoreCase) ||
+            functionName.Equals("tail", StringComparison.OrdinalIgnoreCase) ||
+            functionName.Equals("skip", StringComparison.OrdinalIgnoreCase) ||
+            functionName.Equals("take", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetUnorderedNavigationSource(Expression? focus)
+    {
+        if (focus is not FunctionCallExpression focusFunction)
+        {
+            return null;
+        }
+
+        if (focusFunction.FunctionName.Equals("children", StringComparison.OrdinalIgnoreCase) ||
+            focusFunction.FunctionName.Equals("descendants", StringComparison.OrdinalIgnoreCase))
+        {
+            return focusFunction.FunctionName;
+        }
+
+        return null;
     }
 
     /// <summary>
