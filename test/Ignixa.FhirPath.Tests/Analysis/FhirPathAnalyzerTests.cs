@@ -322,7 +322,7 @@ public class FhirPathAnalyzerTests
         var result = _analyzer.Analyze("%context.id", "Patient");
 
         Assert.True(result.IsValid);
-        Assert.Contains("string", result.TypeNames);
+        Assert.Contains("id", result.TypeNames);
     }
 
     [Fact]
@@ -522,11 +522,11 @@ public class FhirPathAnalyzerTests
         // Non-scoped function (contains) should NOT change $this
         // Patient.name.family.first().contains($this.id)
         // Inside contains(), $this should still be Patient (outer context), not string
-        // So $this.id should resolve to Patient.id (string)
+        // So $this.id should resolve to Patient.id (id)
         var result = _analyzer.Analyze("Patient.name.family.first().contains($this.id)", "Patient");
 
-        // This should be valid because $this.id resolves to Patient.id (string)
-        // and contains() takes a string argument
+        // This should be valid because $this.id resolves to Patient.id (id)
+        // and id is compatible with contains()'s string argument
         Assert.True(result.IsValid);
         Assert.Contains("boolean", result.TypeNames);
     }
