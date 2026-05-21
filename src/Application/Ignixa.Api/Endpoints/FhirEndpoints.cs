@@ -1746,7 +1746,7 @@ public static class FhirEndpoints
         }
     }
 
-    private static string SanitizeLog(string? value) =>
-        value is null ? string.Empty : value.Replace("\r", "", StringComparison.Ordinal)
-                                            .Replace("\n", "", StringComparison.Ordinal);
+    private static string? SanitizeLog(string? value) =>
+        value?.Replace("\r", " ", StringComparison.Ordinal)
+              .Replace("\n", " ", StringComparison.Ordinal);
 }

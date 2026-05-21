@@ -172,6 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: write
     # Run in parallel with unit tests for faster CI (both do their own build)
 
     steps:

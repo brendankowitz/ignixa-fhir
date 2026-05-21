@@ -77,8 +77,8 @@ public static class MiddlewareRegistration
                 logger.LogWarning(
                     "TenantResolutionMiddleware may not have run before FhirRequestContextMiddleware. " +
                     "Route: {Path}, TenantId in context: {TenantId}",
-                    context.Request.Path.Value?.Replace("\r", "", StringComparison.Ordinal)
-                                              .Replace("\n", "", StringComparison.Ordinal),
+                    context.Request.Path.Value?.Replace("\r", " ", StringComparison.Ordinal)
+                                              .Replace("\n", " ", StringComparison.Ordinal),
                     fhirContextAccessor.RequestContext?.TenantId);
             }
 
