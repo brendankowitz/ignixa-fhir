@@ -16,8 +16,6 @@ public sealed class TestScriptEvaluator(
     IFhirSchemaProvider schemaProvider,
     IFhirResourceValidator? validator = null) : ITestScriptActionVisitor
 {
-    private TestScriptResultRecorder _recorder = new();
-
     internal IFhirResourceValidator Validator { get; } = validator ?? new NoOpValidator();
 
     public async Task<TestScriptReport> ExecuteAsync(
@@ -25,9 +23,13 @@ public sealed class TestScriptEvaluator(
         CancellationToken cancellationToken)
     {
         var startTime = DateTimeOffset.UtcNow;
-        _recorder = new TestScriptResultRecorder();
+        var recorder = new TestScriptResultRecorder();
 
-        var context = new TestScriptContext { ClientRegistry = clientRegistry };
+        var context = new TestScriptContext
+        {
+            ClientRegistry = clientRegistry,
+            Recorder = recorder
+        };
 
         var fixtureCtx = new FixtureResolutionContext { Schema = schemaProvider };
         foreach (var fixture in definition.Fixtures)
@@ -45,33 +47,33 @@ public sealed class TestScriptEvaluator(
 
         if (definition.Setup.Count > 0)
         {
-            _recorder.BeginPhase(TestPhaseType.Setup);
+            recorder.BeginPhase(TestPhaseType.Setup);
             context = await ExecuteActionsAsync(definition.Setup, context, cancellationToken);
-            _recorder.EndPhase();
+            recorder.EndPhase();
         }
 
         var setupFailed = definition.Setup.Count > 0 &&
-            _recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow)
+            recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow)
                 .SetupResult?.Outcome is TestScriptOutcome.Fail or TestScriptOutcome.Error;
 
         if (!setupFailed)
         {
             foreach (var test in definition.Tests)
             {
-                _recorder.BeginPhase(TestPhaseType.Test, test.Name, test.Description);
+                recorder.BeginPhase(TestPhaseType.Test, test.Name, test.Description);
                 context = await ExecuteActionsAsync(test.Actions, context, cancellationToken);
-                _recorder.EndPhase();
+                recorder.EndPhase();
             }
         }
 
         if (definition.Teardown.Count > 0)
         {
-            _recorder.BeginPhase(TestPhaseType.Teardown);
+            recorder.BeginPhase(TestPhaseType.Teardown);
             context = await ExecuteActionsAsync(definition.Teardown, context, cancellationToken);
-            _recorder.EndPhase();
+            recorder.EndPhase();
         }
 
-        return _recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow);
+        return recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow);
     }
 
     private async Task<TestScriptContext> ExecuteActionsAsync(
@@ -103,14 +105,14 @@ public sealed class TestScriptEvaluator(
             context = context.WithResponse(expression.ResponseId, response);
 
             sw.Stop();
-            _recorder.RecordOperationResult(expression.Label, expression.Description,
+            context.Recorder.RecordOperationResult(expression.Label, expression.Description,
                 new OperationOutcome(true, response.StatusCode, Duration: sw.Elapsed));
             return context;
         }
         catch (Exception ex)
         {
             sw.Stop();
-            _recorder.RecordOperationResult(expression.Label, expression.Description,
+            context.Recorder.RecordOperationResult(expression.Label, expression.Description,
                 new OperationOutcome(false, ErrorMessage: ex.Message, Duration: sw.Elapsed));
             return context;
         }
@@ -123,7 +125,7 @@ public sealed class TestScriptEvaluator(
     {
         var passed = EvaluateAssertion(expression, context);
         var message = passed ? null : BuildAssertionMessage(expression, context);
-        _recorder.RecordAssertionResult(expression.Label, expression.Description,
+        context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
             new AssertionOutcome(passed, expression.WarningOnly, message));
         return ValueTask.FromResult(context);
     }

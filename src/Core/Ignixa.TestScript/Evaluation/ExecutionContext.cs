@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 using Ignixa.TestScript.Client;
+using Ignixa.TestScript.Reporting;
 
 namespace Ignixa.TestScript.Evaluation;
 
@@ -17,6 +18,8 @@ public sealed record TestScriptContext
         ImmutableDictionary<string, FhirResponse>.Empty;
     public ImmutableDictionary<string, FhirRequest> RequestHistory { get; init; } =
         ImmutableDictionary<string, FhirRequest>.Empty;
+
+    internal ITestScriptResultRecorder Recorder { get; init; } = new TestScriptResultRecorder();
 
     public TestScriptContext WithResponse(string? responseId, FhirResponse response)
     {

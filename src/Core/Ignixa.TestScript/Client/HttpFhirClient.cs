@@ -13,14 +13,17 @@ public sealed class HttpFhirClient(HttpClient httpClient) : IFhirClient
 
         if (request.Body is not null)
         {
+            var contentType = request.Headers.GetValueOrDefault("Content-Type", "application/fhir+json");
             httpRequest.Content = new StringContent(
                 request.Body.ToJsonString(),
                 Encoding.UTF8,
-                "application/fhir+json");
+                contentType);
         }
 
         foreach (var (key, value) in request.Headers)
         {
+            if (key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+                continue;
             httpRequest.Headers.TryAddWithoutValidation(key, value);
         }
 
