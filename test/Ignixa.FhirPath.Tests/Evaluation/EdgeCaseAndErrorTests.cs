@@ -638,6 +638,16 @@ public class EdgeCaseAndErrorTests
         Assert.Equal("decimal", result.InstanceType);
     }
 
+    [Fact]
+    public void GivenIntMinValue_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // -int.MinValue = 2147483648 overflows int32; per FHIRPath spec overflow → empty.
+        var root = CreateIntegerElement(int.MinValue);
+        var result = _evaluator.Evaluate(root, _parser.Parse("-$this")).ToList();
+
+        Assert.Empty(result);
+    }
+
     #endregion
 
     #region Where/All/Any Edge Cases
