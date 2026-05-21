@@ -1834,43 +1834,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         };
     }
 
-    private static bool IsOrderDependentFunction(string functionName)
-    {
-        return functionName.Equals("first", StringComparison.OrdinalIgnoreCase) ||
-            functionName.Equals("last", StringComparison.OrdinalIgnoreCase) ||
-            functionName.Equals("tail", StringComparison.OrdinalIgnoreCase) ||
-            functionName.Equals("skip", StringComparison.OrdinalIgnoreCase) ||
-            functionName.Equals("take", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsOrderDependentFunction(string functionName) =>
+        UnorderedCollectionDetection.IsOrderDependentFunction(functionName);
 
-    private static bool IsPositionalFunction(string functionName)
-    {
-        return functionName.Equals("skip", StringComparison.OrdinalIgnoreCase) ||
-            functionName.Equals("take", StringComparison.OrdinalIgnoreCase) ||
-            functionName.Equals("tail", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsPositionalFunction(string functionName) =>
+        UnorderedCollectionDetection.IsPositionalFunction(functionName);
 
-    private static string? GetUnorderedNavigationSource(Expression? focus)
-    {
-        return focus switch
-        {
-            null => null,
-            ParenthesizedExpression p => GetUnorderedNavigationSource(p.InnerExpression),
-            IndexerExpression idx => GetUnorderedNavigationSource(idx.Focus),
-            FunctionCallExpression fn when IsUnorderedSource(fn.FunctionName) => fn.FunctionName,
-            FunctionCallExpression fn when IsOrderIntroducing(fn.FunctionName) => null,
-            FunctionCallExpression fn => GetUnorderedNavigationSource(fn.Focus),
-            _ => null
-        };
-    }
-
-    private static bool IsUnorderedSource(string functionName) =>
-        functionName.Equals("children", StringComparison.OrdinalIgnoreCase) ||
-        functionName.Equals("descendants", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsOrderIntroducing(string functionName) =>
-        functionName.Equals("sort", StringComparison.OrdinalIgnoreCase) ||
-        functionName.Equals("sortBy", StringComparison.OrdinalIgnoreCase);
+    private static string? GetUnorderedNavigationSource(Expression? focus) =>
+        UnorderedCollectionDetection.GetUnorderedNavigationSource(focus);
 
     /// <summary>
     /// Simple implementation of IElement for primitive values.
