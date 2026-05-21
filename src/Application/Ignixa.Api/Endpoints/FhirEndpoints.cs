@@ -323,8 +323,8 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
-        
+        logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, S(resourceType), S(id));
+
         // Check for conditional read headers
         var ifNoneMatch = context.Request.Headers["If-None-Match"].FirstOrDefault();
         var ifModifiedSince = context.Request.Headers["If-Modified-Since"].FirstOrDefault();
@@ -347,21 +347,21 @@ public static class FhirEndpoints
             if (conditionalResult.Resource == null)
             {
                 // Resource not found
-                logger.LogInformation("Resource {ResourceType}/{Id} not found in tenant {TenantId}", resourceType, id, tenantId);
+                logger.LogInformation("Resource {ResourceType}/{Id} not found in tenant {TenantId}", S(resourceType), S(id), tenantId);
                 return Results.NotFound();
             }
 
             if (conditionalResult.NotModified)
             {
                 // 304 Not Modified: Include ETag and Last-Modified headers but no body
-                logger.LogInformation("Resource {ResourceType}/{Id} not modified, returning 304", resourceType, id);
+                logger.LogInformation("Resource {ResourceType}/{Id} not modified, returning 304", S(resourceType), S(id));
                 return FhirResults.NotModified()
                     .WithETag(conditionalResult.Resource.VersionId)
                     .WithLastModified(conditionalResult.Resource.LastModified);
             }
 
             // Resource modified: Return resource with headers
-            logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", resourceType, id);
+            logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", S(resourceType), S(id));
             return FhirResults.Ok(conditionalResult.Resource.ResourceBytes, context)
                 .WithETag(conditionalResult.Resource.VersionId)
                 .WithLastModified(conditionalResult.Resource.LastModified);
@@ -373,7 +373,7 @@ public static class FhirEndpoints
 
         if (result == null)
         {
-            logger.LogInformation("Resource {ResourceType}/{Id} not found in tenant {TenantId}", resourceType, id, tenantId);
+            logger.LogInformation("Resource {ResourceType}/{Id} not found in tenant {TenantId}", S(resourceType), S(id), tenantId);
             return Results.NotFound();
         }
 
@@ -382,8 +382,8 @@ public static class FhirEndpoints
         {
             logger.LogInformation(
                 "Resource {ResourceType}/{Id} has been deleted (version {VersionId})",
-                resourceType,
-                id,
+                S(resourceType),
+                S(id),
                 result.VersionId);
 
             // Return 410 Gone per FHIR R4 specification (Section 3.1.0.1.2)
@@ -416,7 +416,7 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("PUT /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
+        logger.LogInformation("PUT /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, S(resourceType), S(id));
 
         // Read request body
         ResourceJsonNode jsonNode;
@@ -432,8 +432,8 @@ public static class FhirEndpoints
         {
             logger.LogWarning(
                 "Resource type mismatch: expected '{ExpectedType}', got '{ActualType}'",
-                resourceType,
-                jsonNode.ResourceType);
+                S(resourceType),
+                S(jsonNode.ResourceType));
             throw new BadRequestException($"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'");
         }
 
@@ -443,8 +443,8 @@ public static class FhirEndpoints
         {
             logger.LogWarning(
                 "Resource ID missing in body for PUT request to {ResourceType}/{Id}",
-                resourceType,
-                id);
+                S(resourceType),
+                S(id));
             throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
         }
 
@@ -452,8 +452,8 @@ public static class FhirEndpoints
         {
             logger.LogWarning(
                 "Resource ID mismatch: URL has '{UrlId}', body has '{BodyId}'",
-                id,
-                bodyId);
+                S(id),
+                S(bodyId));
             throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{id}')");
         }
 
@@ -484,7 +484,7 @@ public static class FhirEndpoints
             // Validate ETag format: must be numeric and >= 1
             if (parsedIfMatch != null && (!int.TryParse(parsedIfMatch, out var versionId) || versionId < 1))
             {
-                logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", ifMatchHeader);
+                logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", S(ifMatchHeader));
                 throw new BadRequestException($"Invalid ETag value: {ifMatchHeader}. ETag must be a positive integer.");
             }
         }
@@ -530,7 +530,7 @@ public static class FhirEndpoints
 
         if (isCreated)
         {
-            logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
+            logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", S(resourceType), result.Key.Id, result.Key.VersionId, tenantId);
 
             if (actualReturnPreference == ReturnPreference.Representation)
             {
@@ -546,7 +546,7 @@ public static class FhirEndpoints
                 .WithLastModified(result.LastModified);
         }
 
-        logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
+        logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", S(resourceType), result.Key.Id, result.Key.VersionId, tenantId);
 
         if (actualReturnPreference == ReturnPreference.Representation)
         {
@@ -578,13 +578,13 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}?{QueryString}", tenantId, resourceType, context.Request.QueryString);
+        logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}?{QueryString}", tenantId, S(resourceType), S(context.Request.QueryString.Value));
 
         // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
         var fhirContext = fhirContextAccessor.RequestContext;
         if (fhirContext?.TenantConfiguration == null)
         {
-            logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", resourceType);
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", S(resourceType));
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
 
@@ -658,7 +658,7 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}/_search", tenantId, resourceType);
+        logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}/_search", tenantId, S(resourceType));
 
         // Read form data from request body
         var form = await context.Request.ReadFormAsync(ct);
@@ -683,7 +683,7 @@ public static class FhirEndpoints
         var fhirContext = fhirContextAccessor.RequestContext;
         if (fhirContext?.TenantConfiguration == null)
         {
-            logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", resourceType);
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", S(resourceType));
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
 
@@ -756,7 +756,7 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}", tenantId, resourceType);
+        logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}", tenantId, S(resourceType));
 
         // Check for If-None-Exist header (conditional create)
         // Note: Empty or whitespace-only header values are treated as no header (normal create)
@@ -766,8 +766,8 @@ public static class FhirEndpoints
         {
             logger.LogInformation(
                 "Conditional create detected for {ResourceType} with search criteria: {SearchCriteria}",
-                resourceType,
-                ifNoneExist.ToString());
+                S(resourceType),
+                S(ifNoneExist.ToString()));
 
             // Read request body
             ResourceJsonNode conditionalJsonNode;
@@ -834,8 +834,8 @@ public static class FhirEndpoints
 
                 logger.LogInformation(
                     "Conditional create: Created new {ResourceType}/{Id} (version {VersionId})",
-                    result.Resource.ResourceType,
-                    result.Resource.ResourceId,
+                    S(result.Resource.ResourceType),
+                    S(result.Resource.ResourceId),
                     result.Resource.VersionId);
 
                 if (actualReturnPreferenceConditional == ReturnPreference.Minimal)
@@ -867,8 +867,8 @@ public static class FhirEndpoints
                 // FHIR spec: Also include Location header for existing resource (for idempotency)
                 logger.LogInformation(
                     "Conditional create: Returned existing {ResourceType}/{Id} (version {VersionId})",
-                    result.Resource.ResourceType,
-                    result.Resource.ResourceId,
+                    S(result.Resource.ResourceType),
+                    S(result.Resource.ResourceId),
                     result.Resource.VersionId);
 
                 var isAgnosticRouteExisting = context.Items.ContainsKey("IsAgnosticRoute") && (bool)context.Items["IsAgnosticRoute"]!;
@@ -917,13 +917,13 @@ public static class FhirEndpoints
         if (!string.IsNullOrWhiteSpace(bundleAssignedId))
         {
             id = bundleAssignedId;
-            logger.LogInformation("Using bundle-assigned ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
+            logger.LogInformation("Using bundle-assigned ID {Id} for new {ResourceType} in tenant {TenantId}", S(id), S(resourceType), tenantId);
         }
         else
         {
             // Generate ID
             id = Guid.NewGuid().ToString("N");
-            logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
+            logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, S(resourceType), tenantId);
         }
 
         // Read request body
@@ -940,8 +940,8 @@ public static class FhirEndpoints
         {
             logger.LogWarning(
                 "Resource type mismatch: expected '{ExpectedType}', got '{ActualType}'",
-                resourceType,
-                jsonNode.ResourceType);
+                S(resourceType),
+                S(jsonNode.ResourceType));
             throw new BadRequestException($"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'");
         }
 
@@ -1005,7 +1005,7 @@ public static class FhirEndpoints
         string createLocation = $"{context.Request.Scheme}://{context.Request.Host}{relativePath}";
         logger.LogInformation(
             "Created {ResourceType}/{Id} (version {VersionId}) in tenant {TenantId}",
-            resourceType,
+            S(resourceType),
             createResult.Key.Id,
             createResult.Key.VersionId,
             tenantId);
@@ -1037,7 +1037,7 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("DELETE /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
+        logger.LogInformation("DELETE /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, S(resourceType), S(id));
 
         // Send delete command
         var command = new DeleteResourceCommand(resourceType, id);
@@ -1045,11 +1045,11 @@ public static class FhirEndpoints
 
         if (!deleted)
         {
-            logger.LogInformation("Resource {ResourceType}/{Id} not found for deletion", resourceType, id);
+            logger.LogInformation("Resource {ResourceType}/{Id} not found for deletion", S(resourceType), S(id));
             return Results.NotFound();
         }
 
-        logger.LogInformation("Deleted {ResourceType}/{Id}", resourceType, id);
+        logger.LogInformation("Deleted {ResourceType}/{Id}", S(resourceType), S(id));
         return Results.NoContent();
     }
 
@@ -1083,14 +1083,14 @@ public static class FhirEndpoints
         // Validate resource type
         if (bundleContext.ResourceType != "Bundle")
         {
-            logger.LogWarning("Expected Bundle resource, got '{ResourceType}'", bundleContext.ResourceType);
+            logger.LogWarning("Expected Bundle resource, got '{ResourceType}'", S(bundleContext.ResourceType));
             return Results.BadRequest(new { error = $"Expected Bundle resource, got '{bundleContext.ResourceType}'" });
         }
 
         // Log parsing issues
         foreach (var issue in bundleContext.ParsingIssues)
         {
-            logger.LogWarning("Bundle parsing issue: {Issue}", issue);
+            logger.LogWarning("Bundle parsing issue: {Issue}", S(issue));
         }
 
         // Determine bundle type (default to Batch if not specified)
@@ -1468,7 +1468,7 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger(typeof(FhirEndpoints).FullName!);
-        logger.LogInformation("GET /?{QueryString} (base-level search)", context.Request.QueryString);
+        logger.LogInformation("GET /?{QueryString} (base-level search)", S(context.Request.QueryString.Value));
 
         // Get tenant configuration from FHIR request context
         var fhirContext = fhirContextAccessor.RequestContext;
@@ -1745,4 +1745,8 @@ public static class FhirEndpoints
             await System.Threading.Tasks.Task.Yield(); // Allow cooperative multitasking
         }
     }
+
+    private static string S(string? value) =>
+        value is null ? string.Empty : value.Replace("\r", "", StringComparison.Ordinal)
+                                            .Replace("\n", "", StringComparison.Ordinal);
 }

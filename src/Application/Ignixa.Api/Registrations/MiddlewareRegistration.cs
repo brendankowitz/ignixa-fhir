@@ -74,12 +74,11 @@ public static class MiddlewareRegistration
                 !context.Items.ContainsKey("TenantId") &&
                 fhirContextAccessor.RequestContext?.TenantId == 0)
             {
-                // Safe: Using structured logging with placeholders prevents log injection.
-                // The Path value is passed as a parameter, not concatenated into the message.
                 logger.LogWarning(
                     "TenantResolutionMiddleware may not have run before FhirRequestContextMiddleware. " +
                     "Route: {Path}, TenantId in context: {TenantId}",
-                    context.Request.Path.ToString(),
+                    context.Request.Path.Value?.Replace("\r", "", StringComparison.Ordinal)
+                                              .Replace("\n", "", StringComparison.Ordinal),
                     fhirContextAccessor.RequestContext?.TenantId);
             }
 
