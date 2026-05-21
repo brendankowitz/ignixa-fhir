@@ -14,8 +14,50 @@ public class ResourceIdInstanceTypeRegressionTests
     [Fact]
     public void GivenContainedResourceId_WhenSelectingId_ThenInstanceTypeIsId()
     {
-        // Arrange
-        var patientJson = """
+        var element = ResourceJsonNode.Parse(CreatePatientJson()).ToElement(_schema);
+
+        var result = element.Select("Patient.contained.first().id").Single();
+
+        Assert.Equal("contained1", result.Value);
+        Assert.Equal("id", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenResourceId_WhenSelectingId_ThenInstanceTypeIsId()
+    {
+        var element = ResourceJsonNode.Parse(CreatePatientJson()).ToElement(_schema);
+
+        var result = element.Select("Patient.id").Single();
+
+        Assert.Equal("outer", result.Value);
+        Assert.Equal("id", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenHumanNameElementId_WhenSelectingId_ThenInstanceTypeIsString()
+    {
+        var element = ResourceJsonNode.Parse(CreatePatientJson()).ToElement(_schema);
+
+        var result = element.Select("Patient.name.id").Single();
+
+        Assert.Equal("name1", result.Value);
+        Assert.Equal("string", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenIdentifierElementId_WhenSelectingId_ThenInstanceTypeIsString()
+    {
+        var element = ResourceJsonNode.Parse(CreatePatientJson()).ToElement(_schema);
+
+        var result = element.Select("Patient.identifier.id").Single();
+
+        Assert.Equal("identifier1", result.Value);
+        Assert.Equal("string", result.InstanceType);
+    }
+
+    private string CreatePatientJson()
+    {
+        return """
         {
           "resourceType": "Patient",
           "id": "outer",
@@ -24,36 +66,21 @@ public class ResourceIdInstanceTypeRegressionTests
               "resourceType": "Patient",
               "id": "contained1"
             }
+          ],
+          "name": [
+            {
+              "id": "name1",
+              "family": "Smith"
+            }
+          ],
+          "identifier": [
+            {
+              "id": "identifier1",
+              "system": "http://example.org/mrn",
+              "value": "12345"
+            }
           ]
         }
         """;
-        var element = ResourceJsonNode.Parse(patientJson).ToElement(_schema);
-
-        // Act
-        var result = element.Select("Patient.contained.first().id").Single();
-
-        // Assert
-        Assert.Equal("contained1", result.Value);
-        Assert.Equal("id", result.InstanceType);
-    }
-
-    [Fact]
-    public void GivenResourceId_WhenSelectingId_ThenInstanceTypeIsId()
-    {
-        // Arrange
-        var patientJson = """
-        {
-          "resourceType": "Patient",
-          "id": "outer"
-        }
-        """;
-        var element = ResourceJsonNode.Parse(patientJson).ToElement(_schema);
-
-        // Act
-        var result = element.Select("Patient.id").Single();
-
-        // Assert
-        Assert.Equal("outer", result.Value);
-        Assert.Equal("id", result.InstanceType);
     }
 }
