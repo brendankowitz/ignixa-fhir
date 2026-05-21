@@ -43,6 +43,14 @@ public class OfficialTestSuiteRunnerPredicateTests
     }
 
     [Fact]
+    public void GivenPredicateExpressionReturnsBooleanTrue_WhenRunningR5OfficialSuite_ThenEvaluatesTrue()
+    {
+        var testCase = CreatePredicateTestCase("testPredicateBooleanTrue", "1 = 1", expectedValue: true);
+
+        _runner.OfficialTestSuite_R5(testCase);
+    }
+
+    [Fact]
     public void GivenPredicateExpressionReturnsMultipleItems_WhenRunningR5OfficialSuite_ThenEvaluatesTrue()
     {
         var testCase = CreatePredicateTestCase("testPredicateMultipleItems", "(1 | 2)", expectedValue: true);
