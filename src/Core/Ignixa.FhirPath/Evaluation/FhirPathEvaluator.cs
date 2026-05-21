@@ -110,11 +110,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitFunctionCall(FunctionCallExpression expression, EvaluationContext context)
     {
-        var unorderedSource = GetUnorderedNavigationSource(expression.Focus);
-        if (unorderedSource != null && IsOrderDependentFunction(expression.FunctionName))
+        if (IsPositionalFunction(expression.FunctionName))
         {
-            throw new InvalidOperationException(
-                $"Function '{expression.FunctionName}()' cannot be applied to unordered output from {unorderedSource}().");
+            var unorderedSource = GetUnorderedNavigationSource(expression.Focus);
+            if (unorderedSource != null)
+            {
+                return [];
+            }
         }
 
         var focusElements = expression.Focus != null
@@ -973,6 +975,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
     {
+        var unorderedSource = GetUnorderedNavigationSource(expression.Collection);
+        if (unorderedSource != null)
+        {
+            return [];
+        }
+
         var collectionElements = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
 
         // Optimization: Fast path for constant integer indexes
@@ -1835,21 +1843,34 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             functionName.Equals("take", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsPositionalFunction(string functionName)
+    {
+        return functionName.Equals("skip", StringComparison.OrdinalIgnoreCase) ||
+            functionName.Equals("take", StringComparison.OrdinalIgnoreCase) ||
+            functionName.Equals("tail", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? GetUnorderedNavigationSource(Expression? focus)
     {
-        if (focus is not FunctionCallExpression focusFunction)
+        return focus switch
         {
-            return null;
-        }
-
-        if (focusFunction.FunctionName.Equals("children", StringComparison.OrdinalIgnoreCase) ||
-            focusFunction.FunctionName.Equals("descendants", StringComparison.OrdinalIgnoreCase))
-        {
-            return focusFunction.FunctionName;
-        }
-
-        return null;
+            null => null,
+            ParenthesizedExpression p => GetUnorderedNavigationSource(p.InnerExpression),
+            IndexerExpression idx => GetUnorderedNavigationSource(idx.Focus),
+            FunctionCallExpression fn when IsUnorderedSource(fn.FunctionName) => fn.FunctionName,
+            FunctionCallExpression fn when IsOrderIntroducing(fn.FunctionName) => null,
+            FunctionCallExpression fn => GetUnorderedNavigationSource(fn.Focus),
+            _ => null
+        };
     }
+
+    private static bool IsUnorderedSource(string functionName) =>
+        functionName.Equals("children", StringComparison.OrdinalIgnoreCase) ||
+        functionName.Equals("descendants", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOrderIntroducing(string functionName) =>
+        functionName.Equals("sort", StringComparison.OrdinalIgnoreCase) ||
+        functionName.Equals("sortBy", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Simple implementation of IElement for primitive values.
