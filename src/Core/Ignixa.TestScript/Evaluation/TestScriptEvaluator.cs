@@ -189,10 +189,12 @@ public sealed class TestScriptEvaluator(
             return EvaluateWithOperator(headerValue, assertion.Value, assertion.Operator);
         }
 
-        if (assertion.Expression is not null && response?.Body is not null)
-            return true;
+        // FHIRPath expression assertions are not yet implemented (Phase 6)
+        if (assertion.Expression is not null)
+            return false;
 
-        return true;
+        // Unknown assertion type — fail-closed
+        return false;
     }
 
     private static bool EvaluateWithOperator(string? actual, string? expected, AssertOperator? op)
