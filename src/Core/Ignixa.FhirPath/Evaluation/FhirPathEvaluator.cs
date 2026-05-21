@@ -115,6 +115,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             var unorderedSource = GetUnorderedNavigationSource(expression.Focus);
             if (unorderedSource != null)
             {
+                // Result is undefined per FHIRPath spec. Return empty rather than throw;
+                // FhirPathAnalyzer surfaces this as a design-time error.
                 return [];
             }
         }
@@ -978,6 +980,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var unorderedSource = GetUnorderedNavigationSource(expression.Collection);
         if (unorderedSource != null)
         {
+            // Result is undefined per FHIRPath spec. Return empty rather than throw;
+            // FhirPathAnalyzer surfaces this as a design-time error.
             return [];
         }
 

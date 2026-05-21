@@ -55,6 +55,30 @@ public class ResourceIdInstanceTypeRegressionTests
         Assert.Equal("string", result.InstanceType);
     }
 
+    [Fact]
+    public void GivenR4ResourceId_WhenSelectingId_ThenInstanceTypeIsId()
+    {
+        var r4Schema = FhirVersion.R4.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(CreatePatientJson()).ToElement(r4Schema);
+
+        var result = element.Select("Patient.id").Single();
+
+        Assert.Equal("outer", result.Value);
+        Assert.Equal("id", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenR4ContainedResourceId_WhenSelectingId_ThenInstanceTypeIsId()
+    {
+        var r4Schema = FhirVersion.R4.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(CreatePatientJson()).ToElement(r4Schema);
+
+        var result = element.Select("Patient.contained.first().id").Single();
+
+        Assert.Equal("contained1", result.Value);
+        Assert.Equal("id", result.InstanceType);
+    }
+
     private string CreatePatientJson()
     {
         return """

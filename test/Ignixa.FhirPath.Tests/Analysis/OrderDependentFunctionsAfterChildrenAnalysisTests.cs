@@ -51,6 +51,7 @@ public class OrderDependentFunctionsAfterChildrenAnalysisTests
     {
         var result = _analyzer.Analyze(expression, "Patient");
 
+        Assert.True(result.IsValid);
         Assert.Contains(result.Issues, issue =>
             issue.Severity == ValidationIssueSeverity.Warning &&
             issue.Message.Contains("non-deterministic", StringComparison.OrdinalIgnoreCase));
@@ -82,6 +83,9 @@ public class OrderDependentFunctionsAfterChildrenAnalysisTests
     [InlineData("Patient.children().sort().skip(1)")]
     [InlineData("Patient.children().sort().first()")]
     [InlineData("Patient.children().sort()[0]")]
+    [InlineData("Patient.children().sortBy($this).skip(1)")]
+    [InlineData("Patient.children().sortBy($this).first()")]
+    [InlineData("Patient.children().sortBy($this)[0]")]
     public void GivenSortBreaksChain_WhenAnalyzing_ThenNoOrderIssues(string expression)
     {
         var result = _analyzer.Analyze(expression, "Patient");

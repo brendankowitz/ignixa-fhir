@@ -397,12 +397,8 @@ public class ChildrenSkipRegressionTests
     }
 
     [Fact]
-    public void GivenSingleElementArray_WhenAccessedViaChildrenSkip_ThenArrayStructureIsCorrupted()
+    public void GivenContactWithSingleRelationshipElement_WhenNavigatingDirectly_ThenPreservesJsonArrayStructure()
     {
-        // This test explicitly demonstrates the bug in issue #205.
-        // When SerializeComplexElement processes an element with a single-element array property,
-        // it doesn't create a JsonArray - it creates a plain property instead.
-
         // Arrange - Simple patient with contact.relationship having ONE element
         var json = """
         {
@@ -440,14 +436,9 @@ public class ChildrenSkipRegressionTests
         Assert.IsType<JsonObject>(contactNode);
         var contactObj = (JsonObject)contactNode;
 
-        // Assert - BUG: relationship should be a JsonArray, but it's corrupted to JsonObject
         Assert.True(contactObj.ContainsKey("relationship"));
         var relationshipProperty = contactObj["relationship"];
         Assert.NotNull(relationshipProperty);
-
-        // This assertion WILL FAIL until the bug is fixed:
-        // Expected: JsonArray (because FHIR spec says relationship is 0..*)
-        // Actual: JsonObject (because SerializeComplexElement only creates arrays for duplicate names)
         Assert.IsType<JsonArray>(relationshipProperty);
     }
 
