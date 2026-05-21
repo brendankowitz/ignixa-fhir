@@ -94,6 +94,7 @@ const sidebars = {
         'core-sdk/narrative-generator',
         'core-sdk/fhir-mapping-language',
         'core-sdk/sql-on-fhir',
+        'core-sdk/testscript',
         'core-sdk/firely-sdk-compatibility',
       ],
     },

@@ -8,8 +8,15 @@
 
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <Description>xUnit integration for FHIR TestScript execution engine</Description>
+    <PackageId>Ignixa.TestScript.XUnit</PackageId>
+    <Description>xUnit integration for FHIR TestScript execution - discover and run TestScript files as xUnit theories</Description>
+    <PackageTags>fhir;testscript;testing;xunit</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.TestScript\Ignixa.TestScript.csproj" />
