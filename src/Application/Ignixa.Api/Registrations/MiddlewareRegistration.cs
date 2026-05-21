@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Middleware;
 
 namespace Ignixa.Api.Registrations;
@@ -77,8 +78,7 @@ public static class MiddlewareRegistration
                 logger.LogWarning(
                     "TenantResolutionMiddleware may not have run before FhirRequestContextMiddleware. " +
                     "Route: {Path}, TenantId in context: {TenantId}",
-                    context.Request.Path.Value?.Replace("\r", " ", StringComparison.Ordinal)
-                                              .Replace("\n", " ", StringComparison.Ordinal),
+                    context.Request.Path.Value.SanitizeForLog(),
                     fhirContextAccessor.RequestContext?.TenantId);
             }
 
