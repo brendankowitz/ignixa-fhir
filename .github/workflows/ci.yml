@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: write
     strategy:
       matrix:
         dotnet-version: [ '9.0.x' ]
