@@ -25,6 +25,7 @@
   <ItemGroup>
     <PackageReference Include="xunit.extensibility.core" />
     <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" />
+    <PackageReference Include="Shouldly" />
   </ItemGroup>
 
 </Project>
