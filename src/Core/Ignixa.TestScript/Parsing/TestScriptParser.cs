@@ -33,21 +33,25 @@ public static class TestScriptParser
         if (errors.Any(e => e.Severity == ParseSeverity.Error))
             return ParseResult<TestScriptDefinition>.Failure([.. errors]);
 
+        var status = obj["status"]?.GetValue<string>();
+        if (string.IsNullOrEmpty(status))
+            errors.Add(new ParseError(ParseSeverity.Warning, "Recommended field 'status' is missing"));
+
         var metadata = new TestScriptMetadata
         {
             Name = name!,
             Description = obj["description"]?.GetValue<string>(),
             Url = obj["url"]?.GetValue<string>(),
-            Status = obj["status"]?.GetValue<string>(),
+            Status = status,
             Version = obj["version"]?.GetValue<string>()
         };
 
         var fixtures = ParseFixtures(obj["fixture"]?.AsArray());
         var variables = ParseVariables(obj["variable"]?.AsArray());
         var profiles = ParseProfiles(obj["profile"]?.AsArray());
-        var setup = ParseActions(obj["setup"]?["action"]?.AsArray());
+        var setup = ParseOperationActions(obj["setup"]?["action"]?.AsArray());
         var tests = ParseTests(obj["test"]?.AsArray());
-        var teardown = ParseActions(obj["teardown"]?["action"]?.AsArray());
+        var teardown = ParseOperationActions(obj["teardown"]?["action"]?.AsArray());
 
         var definition = new TestScriptDefinition
         {
@@ -67,7 +71,16 @@ public static class TestScriptParser
 
     public static ParseResult<TestScriptDefinition> ParseFile(string filePath)
     {
-        var json = File.ReadAllText(filePath);
+        string json;
+        try
+        {
+            json = File.ReadAllText(filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return ParseResult<TestScriptDefinition>.Failure(
+                new ParseError(ParseSeverity.Error, $"Cannot read file '{filePath}': {ex.Message}"));
+        }
         return Parse(json);
     }
 
@@ -100,14 +113,23 @@ public static class TestScriptParser
             {
                 Name = v["name"]?.GetValue<string>() ?? string.Empty,
                 DefaultValue = v["defaultValue"]?.GetValue<string>(),
-                Expression = v["expression"]?.GetValue<string>(),
-                Path = v["path"]?.GetValue<string>(),
-                HeaderField = v["headerField"]?.GetValue<string>(),
                 SourceId = v["sourceId"]?.GetValue<string>(),
-                Description = v["description"]?.GetValue<string>()
+                Description = v["description"]?.GetValue<string>(),
+                Extraction = BuildVariableExtraction(v)
             });
         }
         return result;
+    }
+
+    private static VariableExtraction? BuildVariableExtraction(JsonObject v)
+    {
+        if (v["expression"]?.GetValue<string>() is { } expr)
+            return new ExpressionExtraction(expr);
+        if (v["path"]?.GetValue<string>() is { } path)
+            return new PathExtraction(path);
+        if (v["headerField"]?.GetValue<string>() is { } field)
+            return new HeaderExtraction(field);
+        return null;
     }
 
     private static IReadOnlyList<ProfileReference> ParseProfiles(JsonArray? profiles)
@@ -157,6 +179,19 @@ public static class TestScriptParser
         return result;
     }
 
+    private static IReadOnlyList<OperationExpression> ParseOperationActions(JsonArray? actions)
+    {
+        if (actions is null) return [];
+        var result = new List<OperationExpression>();
+        foreach (var item in actions)
+        {
+            if (item is not JsonObject action) continue;
+            if (action["operation"] is JsonObject op)
+                result.Add(ParseOperation(op));
+        }
+        return result;
+    }
+
     private static OperationExpression ParseOperation(JsonObject op)
     {
         var typeCode = op["type"]?["code"]?.GetValue<string>() ?? "read";
@@ -186,33 +221,40 @@ public static class TestScriptParser
 
     private static AssertExpression ParseAssert(JsonObject a)
     {
-        var operatorStr = a["operator"]?.GetValue<string>();
+        var operatorVal = ParseOperator(a["operator"]?.GetValue<string>());
+        var criteria = BuildAssertCriteria(a, operatorVal);
 
         return new AssertExpression
         {
-            Response = a["response"]?.GetValue<string>(),
-            ResponseCode = a["responseCode"]?.GetValue<string>(),
-            ContentType = a["contentType"]?.GetValue<string>(),
-            Expression = a["expression"]?.GetValue<string>(),
-            Path = a["path"]?.GetValue<string>(),
-            Value = a["value"]?.GetValue<string>(),
+            Criteria = criteria,
             SourceId = a["sourceId"]?.GetValue<string>(),
-            CompareToSourceId = a["compareToSourceId"]?.GetValue<string>(),
-            CompareToSourceExpression = a["compareToSourceExpression"]?.GetValue<string>(),
-            CompareToSourcePath = a["compareToSourcePath"]?.GetValue<string>(),
-            ValidateProfileId = a["validateProfileId"]?.GetValue<string>(),
-            Resource = a["resource"]?.GetValue<string>(),
-            MinimumId = a["minimumId"]?.GetValue<string>(),
-            HeaderField = a["headerField"]?.GetValue<string>(),
-            RequestMethod = a["requestMethod"]?.GetValue<string>(),
-            RequestUrl = a["requestURL"]?.GetValue<string>(),
-            NavigationLinks = a["navigationLinks"]?.GetValue<bool>(),
-            Operator = ParseOperator(operatorStr),
             WarningOnly = a["warningOnly"]?.GetValue<bool>() ?? false,
             Label = a["label"]?.GetValue<string>(),
             Description = a["description"]?.GetValue<string>(),
             Direction = ParseDirection(a["direction"]?.GetValue<string>())
         };
+    }
+
+    private static AssertCriteria BuildAssertCriteria(JsonObject a, AssertOperator? op)
+    {
+        if (a["response"]?.GetValue<string>() is { } response)
+            return new ResponseStatusCriteria(response);
+        if (a["responseCode"]?.GetValue<string>() is { } code)
+            return new ResponseCodeCriteria(code);
+        if (a["contentType"]?.GetValue<string>() is { } ct)
+            return new ContentTypeCriteria(ct);
+        if (a["resource"]?.GetValue<string>() is { } resource)
+            return new ResourceTypeCriteria(resource);
+        if (a["headerField"]?.GetValue<string>() is { } field)
+            return new HeaderCriteria(field, a["value"]?.GetValue<string>(), op);
+        if (a["expression"]?.GetValue<string>() is { } expr)
+            return new FhirPathCriteria(expr);
+        if (a["requestMethod"]?.GetValue<string>() is { } method)
+            return new RequestMethodCriteria(method);
+        if (a["requestURL"]?.GetValue<string>() is { } url)
+            return new RequestUrlCriteria(url, op);
+
+        return new ResponseCodeCriteria("200");
     }
 
     private static IReadOnlyList<HeaderExpression> ParseHeaders(JsonArray? headers)

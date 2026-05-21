@@ -77,6 +77,7 @@ public static class TestReportResourceGenerator
     private static string MapOutcome(TestScriptOutcome outcome) => outcome switch
     {
         TestScriptOutcome.Pass => "pass",
+        TestScriptOutcome.Warning => "pass",
         TestScriptOutcome.Fail => "fail",
         TestScriptOutcome.Error => "error",
         TestScriptOutcome.Skip => "skip",

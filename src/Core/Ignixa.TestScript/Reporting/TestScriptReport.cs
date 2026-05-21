@@ -19,6 +19,9 @@ public sealed record TestScriptReport
                 return TestScriptOutcome.Error;
             if (TestResults.Any(t => t.Outcome == TestScriptOutcome.Fail))
                 return TestScriptOutcome.Fail;
+            if (SetupResult?.Outcome == TestScriptOutcome.Warning ||
+                TestResults.Any(t => t.Outcome == TestScriptOutcome.Warning))
+                return TestScriptOutcome.Warning;
             return TestScriptOutcome.Pass;
         }
     }

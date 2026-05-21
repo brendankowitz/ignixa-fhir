@@ -19,6 +19,8 @@ public sealed record TestScriptContext
     public ImmutableDictionary<string, FhirRequest> RequestHistory { get; init; } =
         ImmutableDictionary<string, FhirRequest>.Empty;
 
+    // Recorder is intentionally shared across all derived contexts — all phases of a single
+    // test execution write to the same recorder instance via with-expression copies.
     internal ITestScriptResultRecorder Recorder { get; init; } = new TestScriptResultRecorder();
 
     public TestScriptContext WithResponse(string? responseId, FhirResponse response)

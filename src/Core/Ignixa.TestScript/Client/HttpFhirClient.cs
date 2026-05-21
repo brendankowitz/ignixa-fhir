@@ -34,7 +34,7 @@ public sealed class HttpFhirClient(HttpClient httpClient) : IFhirClient
         if (!string.IsNullOrWhiteSpace(responseBody))
         {
             try { body = JsonNode.Parse(responseBody); }
-            catch { /* non-JSON response body is valid */ }
+            catch (System.Text.Json.JsonException) { }
         }
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

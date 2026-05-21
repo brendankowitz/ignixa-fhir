@@ -47,7 +47,7 @@ public class AssertionEvaluatorTests
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
-            new AssertExpression { Response = responseCode });
+            new AssertExpression { Criteria = new ResponseStatusCriteria(responseCode) });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
@@ -69,7 +69,7 @@ public class AssertionEvaluatorTests
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
-            new AssertExpression { ResponseCode = assertedCode });
+            new AssertExpression { Criteria = new ResponseCodeCriteria(assertedCode) });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
@@ -93,7 +93,7 @@ public class AssertionEvaluatorTests
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
-            new AssertExpression { Resource = expectedType });
+            new AssertExpression { Criteria = new ResourceTypeCriteria(expectedType) });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
@@ -116,9 +116,7 @@ public class AssertionEvaluatorTests
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
             new AssertExpression
             {
-                HeaderField = "Content-Type",
-                Value = "application/fhir+json",
-                Operator = AssertOperator.Equals
+                Criteria = new HeaderCriteria("Content-Type", "application/fhir+json", AssertOperator.Equals)
             });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
@@ -141,9 +139,7 @@ public class AssertionEvaluatorTests
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
             new AssertExpression
             {
-                HeaderField = "Content-Type",
-                Value = "application/fhir+json",
-                Operator = AssertOperator.Contains
+                Criteria = new HeaderCriteria("Content-Type", "application/fhir+json", AssertOperator.Contains)
             });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
@@ -164,7 +160,7 @@ public class AssertionEvaluatorTests
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
-            new AssertExpression { Expression = "Patient.id.exists()" });
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.id.exists()") });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
@@ -173,20 +169,43 @@ public class AssertionEvaluatorTests
     }
 
     [Fact]
-    public async Task GivenWarningOnlyAssertion_WhenFails_ThenOverallStillPasses()
+    public async Task GivenFhirPathCriteria_WhenEvaluating_ThenFailsWithDescriptiveMessage()
+    {
+        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new FhirResponse
+            {
+                StatusCode = 200,
+                Body = JsonNode.Parse("""{"resourceType": "Patient", "id": "1"}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.name.exists()") });
+
+        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var failedAction = report.TestResults[0].Actions[1];
+        failedAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        failedAction.Message.ShouldNotBeNull();
+        failedAction.Message.ShouldContain("not yet implemented");
+    }
+
+    [Fact]
+    public async Task GivenWarningOnlyAssertion_WhenFails_ThenOverallIsWarning()
     {
         _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
             .Returns(new FhirResponse { StatusCode = 200 });
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
-            new AssertExpression { Response = "okay" },
-            new AssertExpression { Expression = "Patient.id.exists()", WarningOnly = true });
+            new AssertExpression { Criteria = new ResponseStatusCriteria("okay") },
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.id.exists()"), WarningOnly = true });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
-        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Warning);
     }
 
     [Theory]
@@ -210,8 +229,115 @@ public class AssertionEvaluatorTests
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
             new AssertExpression
             {
-                HeaderField = "X-Custom",
-                Operator = op
+                Criteria = new HeaderCriteria("X-Custom", null, op)
+            });
+
+        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var outcome = expectedPass ? TestScriptOutcome.Pass : TestScriptOutcome.Fail;
+        report.OverallOutcome.ShouldBe(outcome);
+    }
+
+    [Theory]
+    [InlineData(AssertOperator.GreaterThan, "b", "a", true)]
+    [InlineData(AssertOperator.GreaterThan, "a", "b", false)]
+    [InlineData(AssertOperator.LessThan, "a", "b", true)]
+    [InlineData(AssertOperator.LessThan, "b", "a", false)]
+    public async Task GivenGreaterLessThanOperator_WhenEvaluating_ThenComparesCorrectly(
+        AssertOperator op, string actualValue, string comparedTo, bool expectedPass)
+    {
+        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new FhirResponse
+            {
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> { ["X-Custom"] = actualValue }
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+            new AssertExpression
+            {
+                Criteria = new HeaderCriteria("X-Custom", comparedTo, op)
+            });
+
+        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var outcome = expectedPass ? TestScriptOutcome.Pass : TestScriptOutcome.Fail;
+        report.OverallOutcome.ShouldBe(outcome);
+    }
+
+    [Theory]
+    [InlineData("GET", "GET", true)]
+    [InlineData("GET", "POST", false)]
+    public async Task GivenRequestMethodCriteria_WhenEvaluating_ThenMatchesMethod(
+        string actualMethod, string assertedMethod, bool expectedPass)
+    {
+        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new FhirResponse { StatusCode = 200 });
+
+        var opType = actualMethod == "POST" ? "create" : "read";
+        var definition = BuildDefinition(
+            new OperationExpression { Type = opType, Resource = "Patient", Params = "/1" },
+            new AssertExpression
+            {
+                Criteria = new RequestMethodCriteria(assertedMethod),
+                Direction = AssertDirection.Request
+            });
+
+        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var outcome = expectedPass ? TestScriptOutcome.Pass : TestScriptOutcome.Fail;
+        report.OverallOutcome.ShouldBe(outcome);
+    }
+
+    [Theory]
+    [InlineData("http://localhost/Patient/1", "http://localhost/Patient/1", true)]
+    [InlineData("http://localhost/Patient/2", "http://localhost/Patient/1", false)]
+    public async Task GivenRequestUrlCriteria_WhenEvaluating_ThenMatchesUrl(
+        string actualPath, string assertedUrl, bool expectedPass)
+    {
+        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new FhirResponse { StatusCode = 200 });
+
+        var actualParams = actualPath.Replace("http://localhost/Patient", "", StringComparison.Ordinal);
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = actualParams },
+            new AssertExpression
+            {
+                Criteria = new RequestUrlCriteria(assertedUrl, AssertOperator.Equals),
+                Direction = AssertDirection.Request
+            });
+
+        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var outcome = expectedPass ? TestScriptOutcome.Pass : TestScriptOutcome.Fail;
+        report.OverallOutcome.ShouldBe(outcome);
+    }
+
+    [Theory]
+    [InlineData("a,b,c", "b", AssertOperator.In, true)]
+    [InlineData("a,b,c", "d", AssertOperator.In, false)]
+    [InlineData("a,b,c", "b", AssertOperator.NotIn, false)]
+    [InlineData("a,b,c", "d", AssertOperator.NotIn, true)]
+    public async Task GivenInNotInOperator_WhenEvaluating_ThenChecksListMembership(
+        string list, string actual, AssertOperator op, bool expectedPass)
+    {
+        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new FhirResponse
+            {
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> { ["X-Custom"] = actual }
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+            new AssertExpression
+            {
+                Criteria = new HeaderCriteria("X-Custom", list, op)
             });
 
         var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);

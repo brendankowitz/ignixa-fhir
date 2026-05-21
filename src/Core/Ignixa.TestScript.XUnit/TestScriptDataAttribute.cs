@@ -26,6 +26,10 @@ public sealed class TestScriptDataAttribute : DataAttribute
         var directoryInfo = new DirectoryInfoWrapper(new DirectoryInfo(baseDirectory));
         var matchResult = matcher.Execute(directoryInfo);
 
+        if (!matchResult.HasMatches)
+            throw new InvalidOperationException(
+                $"No test script files matched glob pattern '{GlobPattern}' in '{baseDirectory}'.");
+
         foreach (var file in matchResult.Files)
         {
             var fullPath = Path.Combine(baseDirectory, file.Path);
