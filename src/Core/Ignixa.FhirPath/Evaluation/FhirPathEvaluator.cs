@@ -1007,10 +1007,17 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 {
                     return [CreateInteger(-i)];
                 }
-                if (value is long l && l >= int.MinValue && l <= int.MaxValue)
+
+                if (value is long l)
                 {
-                    return [CreateInteger(-(int)l)];
+                    if (l >= int.MinValue && l <= int.MaxValue)
+                    {
+                        return [CreateInteger(-(int)l)];
+                    }
+
+                    return [CreateDecimal(-(decimal)l)];
                 }
+
                 // Only negate numeric types. Per FHIRPath spec, unary minus on non-numeric
                 // (bool, string, dateTime, etc.) is undefined and yields an empty collection.
                 // Notably, bool is IConvertible (Convert.ToDecimal(true) = 1m), so an
@@ -1019,20 +1026,23 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 {
                     return [CreateDecimal(-dec)];
                 }
+
                 if (value is double dbl)
                 {
                     return [CreateDecimal(-(decimal)dbl)];
                 }
+
                 if (value is float flt)
                 {
                     return [CreateDecimal(-(decimal)flt)];
                 }
+
                 if (value is Types.Quantity qty)
                 {
-                    return [new PrimitiveElement(new Types.Quantity(-qty.Value, qty.Unit), "Quantity")];
+                    return [FunctionHelpers.CreateQuantity(new Types.Quantity(-qty.Value, qty.Unit))];
                 }
             }
-            catch
+            catch (OverflowException)
             {
             }
 

@@ -532,6 +532,46 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
+    public void GivenLargeLong_WhenUnaryMinus_ThenReturnsNegatedDecimal()
+    {
+        // Arrange
+        var expr = _parser.Parse("-2147483648L");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(-2147483648m, result.Value);
+        Assert.Equal("decimal", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenQuantity_WhenUnaryMinus_ThenQuantityHasChildren()
+    {
+        // Arrange
+        var expr = _parser.Parse("-(5 'mg')");
+        var valueExpr = _parser.Parse("(-(5 'mg')).value");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+        var valueResult = _evaluator.Evaluate(root, valueExpr).ToList();
+        var valueChildren = result.Children("value").ToList();
+        var unitChildren = result.Children("unit").ToList();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        Assert.False(result.HasPrimitiveValue);
+        Assert.Single(valueChildren);
+        Assert.Equal(-5m, valueChildren[0].Value);
+        Assert.Single(unitChildren);
+        Assert.Equal("mg", unitChildren[0].Value);
+        Assert.Single(valueResult);
+        Assert.Equal(-5m, valueResult[0].Value);
+    }
+
+    [Fact]
     public void GivenPositiveInteger_WhenUnaryPlus_ThenReturnsValue()
     {
         // Arrange
