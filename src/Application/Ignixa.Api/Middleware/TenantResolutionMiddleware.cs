@@ -60,8 +60,8 @@ public class TenantResolutionMiddleware : IDisposable
                 _logger.LogWarning(
                     "Rejected request to system partition {TenantId} for request {Method} {Path}",
                     tenantId,
-                    S(context.Request.Method),
-                    S(context.Request.Path.Value));
+                    SanitizeLog(context.Request.Method),
+                    SanitizeLog(context.Request.Path.Value));
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
@@ -88,8 +88,8 @@ public class TenantResolutionMiddleware : IDisposable
                 _logger.LogWarning(
                     "Tenant {TenantId} not found or inactive for request {Method} {Path}",
                     tenantId,
-                    S(context.Request.Method),
-                    S(context.Request.Path.Value));
+                    SanitizeLog(context.Request.Method),
+                    SanitizeLog(context.Request.Path.Value));
 
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
@@ -114,13 +114,13 @@ public class TenantResolutionMiddleware : IDisposable
                 "Resolved tenant {TenantId} ({DisplayName}) for request {Method} {Path}",
                 tenantId,
                 tenantConfig.DisplayName,
-                S(context.Request.Method),
-                S(context.Request.Path.Value));
+                SanitizeLog(context.Request.Method),
+                SanitizeLog(context.Request.Path.Value));
         }
         else if (IsResourceEndpoint(context))
         {
             // No tenantId in route - check if this is a resource endpoint requiring tenant-agnostic routing
-            _logger.LogTrace("No tenantId in route, attempting auto-detect for {Method} {Path}", S(context.Request.Method), S(context.Request.Path.Value));
+            _logger.LogTrace("No tenantId in route, attempting auto-detect for {Method} {Path}", SanitizeLog(context.Request.Method), SanitizeLog(context.Request.Path.Value));
 
             var defaultTenantId = await GetSingleTenantIdAsync(context.RequestAborted);
 
@@ -141,8 +141,8 @@ public class TenantResolutionMiddleware : IDisposable
                         "Auto-detected single tenant {TenantId} ({DisplayName}) for agnostic route {Method} {Path}",
                         defaultTenantId.Value,
                         tenantConfig.DisplayName,
-                        S(context.Request.Method),
-                        S(context.Request.Path.Value));
+                        SanitizeLog(context.Request.Method),
+                        SanitizeLog(context.Request.Path.Value));
                 }
             }
             else
@@ -150,8 +150,8 @@ public class TenantResolutionMiddleware : IDisposable
                 // Multiple tenants exist - agnostic route is ambiguous
                 _logger.LogWarning(
                     "Tenant-agnostic route {Method} {Path} used in multi-tenant scenario (requires explicit /tenant/{{id}}/ prefix)",
-                    S(context.Request.Method),
-                    S(context.Request.Path.Value));
+                    SanitizeLog(context.Request.Method),
+                    SanitizeLog(context.Request.Path.Value));
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
@@ -171,7 +171,7 @@ public class TenantResolutionMiddleware : IDisposable
         else
         {
             // No tenantId in route and not a resource endpoint - this is expected for /metadata, /health, etc.
-            _logger.LogTrace("No tenantId found in route for non-resource endpoint {Method} {Path}", S(context.Request.Method), S(context.Request.Path.Value));
+            _logger.LogTrace("No tenantId found in route for non-resource endpoint {Method} {Path}", SanitizeLog(context.Request.Method), SanitizeLog(context.Request.Path.Value));
         }
 
         await _next(context);
@@ -258,7 +258,7 @@ public class TenantResolutionMiddleware : IDisposable
         }
     }
 
-    private static string S(string? value) =>
+    private static string SanitizeLog(string? value) =>
         value is null ? string.Empty : value.Replace("\r", "", StringComparison.Ordinal)
                                             .Replace("\n", "", StringComparison.Ordinal);
 
