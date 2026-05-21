@@ -1,0 +1,66 @@
+{
+  "resourceType": "TestScript",
+  "name": "CreateReadDeleteTest",
+  "status": "active",
+  "description": "Creates a patient, reads it back, then deletes it",
+  "variable": [
+    {
+      "name": "createId",
+      "defaultValue": "test-123"
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "responseId": "create-response",
+          "description": "Create a new patient"
+        }
+      },
+      {
+        "assert": {
+          "response": "created",
+          "description": "Verify 201 Created"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "ReadCreatedPatient",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "resource": "Patient",
+            "params": "/${createId}",
+            "responseId": "read-response"
+          }
+        },
+        {
+          "assert": {
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "resource": "Patient"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "resource": "Patient",
+          "params": "/${createId}"
+        }
+      }
+    ]
+  }
+}
