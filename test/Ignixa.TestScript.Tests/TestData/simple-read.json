@@ -1,0 +1,54 @@
+{
+  "resourceType": "TestScript",
+  "id": "simple-read-test",
+  "name": "SimpleReadTest",
+  "status": "active",
+  "description": "A simple test that reads a Patient resource",
+  "fixture": [
+    {
+      "id": "patient-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "reference": "Patient/example"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "patientId",
+      "defaultValue": "example"
+    }
+  ],
+  "test": [
+    {
+      "name": "ReadPatient",
+      "description": "Read a patient by ID",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "resource": "Patient",
+            "params": "/${patientId}",
+            "responseId": "read-response",
+            "description": "Read Patient"
+          }
+        },
+        {
+          "assert": {
+            "response": "okay",
+            "description": "Confirm status is 200"
+          }
+        },
+        {
+          "assert": {
+            "resource": "Patient",
+            "description": "Confirm resource type is Patient"
+          }
+        }
+      ]
+    }
+  ]
+}
