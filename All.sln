@@ -187,6 +187,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.TestScript.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.TestScript.XUnit", "src\Core\Ignixa.TestScript.XUnit\Ignixa.TestScript.XUnit.csproj", "{38C19693-879C-4DFB-8144-24A7B5159291}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.TestScript.FhirFakes", "src\Core\Ignixa.TestScript.FhirFakes\Ignixa.TestScript.FhirFakes.csproj", "{98CC0615-47C4-4235-B674-0015401F5FB5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -857,6 +859,18 @@ Global
 		{38C19693-879C-4DFB-8144-24A7B5159291}.Release|x64.Build.0 = Release|Any CPU
 		{38C19693-879C-4DFB-8144-24A7B5159291}.Release|x86.ActiveCfg = Release|Any CPU
 		{38C19693-879C-4DFB-8144-24A7B5159291}.Release|x86.Build.0 = Release|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Debug|x64.Build.0 = Debug|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Debug|x86.Build.0 = Debug|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Release|x64.ActiveCfg = Release|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Release|x64.Build.0 = Release|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Release|x86.ActiveCfg = Release|Any CPU
+		{98CC0615-47C4-4235-B674-0015401F5FB5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -926,5 +940,6 @@ Global
 		{3D69C04D-1FCA-4F1A-AB07-AFB1C38E4F9D} = {0955C698-034D-424C-A981-095EB50A5673}
 		{03675D3F-DCC4-4D56-8B6E-6E9CE153C030} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{38C19693-879C-4DFB-8144-24A7B5159291} = {0955C698-034D-424C-A981-095EB50A5673}
+		{98CC0615-47C4-4235-B674-0015401F5FB5} = {0955C698-034D-424C-A981-095EB50A5673}
 	EndGlobalSection
 EndGlobal

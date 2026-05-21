@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>FhirFakes fixture provider for TestScript execution engine</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.TestScript\Ignixa.TestScript.csproj" />
+    <ProjectReference Include="..\Ignixa.FhirFakes\Ignixa.FhirFakes.csproj" />
+  </ItemGroup>
+
+</Project>
