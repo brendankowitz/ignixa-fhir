@@ -170,38 +170,226 @@ See web research results for full CRUD TestScript example with Patient resource.
 
 ## Proposed Architecture
 
-### High-Level Design
+### High-Level Design (Aligned with Parser/Expression/Evaluator Pattern)
+
+Following the established Ignixa patterns from `FhirPath`, `Search`, and `SqlOnFhir`, the TestScript engine uses a **three-phase architecture**:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                 TestScript Execution Engine              │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌──────────────┐   ┌──────────────┐   ┌────────────┐ │
-│  │   Parser     │ → │   Executor   │ → │  Reporter  │ │
-│  │ (Deserialize)│   │  (Orchestrate)│   │ (Outcomes) │ │
-│  └──────────────┘   └──────────────┘   └────────────┐ │
-│         ↓                   ↓                         │ │
-│  ┌──────────────┐   ┌──────────────┐                 │ │
-│  │   Fixture    │   │   Variable   │                 │ │
-│  │   Manager    │   │   Resolver   │                 │ │
-│  └──────────────┘   └──────────────┘                 │ │
-│         ↓                   ↓                         │ │
-│  ┌──────────────┐   ┌──────────────┐                 │ │
-│  │  Operation   │   │   Assertion  │                 │ │
-│  │   Handler    │   │   Validator  │                 │ │
-│  └──────────────┘   └──────────────┘                 │ │
-└─────────────────────────────────────────────────────────┘
-         ↓                   ↓
-┌─────────────────┐   ┌──────────────┐
-│ HttpClient      │   │ FhirPath     │
-│ (Ignixa.Api)    │   │ (Assertions) │
-└─────────────────┘   └──────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│           PHASE 1: PARSE (Text → Expression Tree)               │
+├─────────────────────────────────────────────────────────────────┤
+│  TestScriptParser                                               │
+│  └─> Deserializes JSON/XML → TestScriptDefinition (AST root)   │
+│      ├─> FixtureDefinition[]                                    │
+│      ├─> VariableDefinition[]                                   │
+│      ├─> SetupDefinition (ActionExpression[])                   │
+│      ├─> TestDefinition[] (ActionExpression[])                  │
+│      └─> TeardownDefinition (ActionExpression[])                │
+│                                                                  │
+│  ActionExpression (abstract base)                               │
+│  ├─> OperationExpression                                        │
+│  └─> AssertExpression                                           │
+└─────────────────────────────────────────────────────────────────┘
          ↓
-┌─────────────────┐   ┌──────────────┐
-│ FhirFakes       │   │ Validation   │
-│ (Test Data)     │   │ (Outcomes)   │
-└─────────────────┘   └──────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│         PHASE 2: EVALUATE (Expression Tree → Results)           │
+├─────────────────────────────────────────────────────────────────┤
+│  TestScriptEvaluator : ITestScriptActionVisitor                 │
+│  └─> Executes ActionExpression tree via visitor pattern         │
+│      ├─> VisitOperation(OperationExpression, context)           │
+│      │    └─> HttpClient, VariableResolver                      │
+│      └─> VisitAssert(AssertExpression, context)                 │
+│           └─> FhirPath, Validation, Comparisons                 │
+│                                                                  │
+│  ExecutionContext (immutable, threaded through visitor)         │
+│  ├─> CurrentResponse (HttpResponseMessage)                      │
+│  ├─> Variables (Dictionary<string, string>)                     │
+│  ├─> Fixtures (Dictionary<string, ResourceJsonNode>)            │
+│  └─> TestReport (accumulates outcomes)                          │
+└─────────────────────────────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│          PHASE 3: REPORT (Results → OperationOutcome)           │
+├─────────────────────────────────────────────────────────────────┤
+│  TestScriptReporter                                             │
+│  └─> Generates execution reports                                │
+│      ├─> FHIR OperationOutcome (standard)                       │
+│      ├─> JUnit XML (CI/CD integration)                          │
+│      ├─> Console output (developer experience)                  │
+│      └─> Markdown report (documentation)                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Architecture Alignment with Existing Patterns
+
+This architecture mirrors the **proven pattern** used across Ignixa:
+
+| Component | FhirPath | Search | SqlOnFhir | **TestScript** |
+|-----------|----------|--------|-----------|----------------|
+| **Parser** | `FhirPathParser` | `ExpressionParser` | `ViewDefinitionExpressionParser` | **`TestScriptParser`** |
+| **Expression Tree** | `Expression` subclasses | `Expression` subclasses | `SqlOnFhirExpression` | **`ActionExpression` subclasses** |
+| **Evaluator** | `FhirPathEvaluator` | `SearchQueryInterpreter` | `SqlOnFhirEvaluator` | **`TestScriptEvaluator`** |
+| **Visitor Interface** | `IFhirPathExpressionVisitor` | `IExpressionVisitor` | (implicit) | **`ITestScriptActionVisitor`** |
+| **Context** | `EvaluationContext` | `TContext` generic | `SqlOnFhirSchemaVisitor` | **`ExecutionContext`** |
+| **Output** | `IEnumerable<IElement>` | `TOutput` generic | `ViewDefinition` | **`TestScriptReport`** |
+
+**Key Benefits of This Pattern:**
+- ✅ **Separation of Concerns**: Parse (structure) → Evaluate (execution) → Report (output)
+- ✅ **Testability**: Expression trees can be unit tested without HTTP calls
+- ✅ **Composability**: Actions can be combined, transformed, optimized
+- ✅ **Extensibility**: New action types via new Expression subclasses + visitor methods
+- ✅ **Immutable Context**: Thread-safe, pure functional evaluation (like FhirPath)
+- ✅ **Consistent API**: Developers familiar with FhirPath/Search will recognize the pattern
+
+### Expression Tree Definition
+
+Following the Ignixa pattern, TestScript actions are modeled as an **expression tree** with a visitor interface:
+
+```csharp
+namespace Ignixa.TestScript.Expressions;
+
+/// <summary>
+/// Base class for all TestScript action expressions.
+/// Follows the same pattern as Ignixa.FhirPath.Expressions.Expression
+/// and Ignixa.Search.Expressions.Expression.
+/// </summary>
+public abstract class ActionExpression
+{
+    /// <summary>
+    /// Location information for debugging (line number in TestScript JSON/XML).
+    /// </summary>
+    public ISourcePositionInfo? Location { get; set; }
+
+    /// <summary>
+    /// Accepts a visitor for traversing the action expression tree.
+    /// Core method enabling the visitor pattern.
+    /// </summary>
+    public abstract TOutput AcceptVisitor<TContext, TOutput>(
+        ITestScriptActionVisitor<TContext, TOutput> visitor,
+        TContext context);
+}
+
+/// <summary>
+/// Represents an HTTP operation (create, read, update, delete, search, etc.).
+/// </summary>
+public class OperationExpression : ActionExpression
+{
+    public string Type { get; init; }              // "create", "read", "update", etc.
+    public string? Resource { get; init; }         // "Patient", "Observation", etc.
+    public string? Url { get; init; }              // "${base}/Patient/${patientId}"
+    public string? SourceId { get; init; }         // Fixture ID for request body
+    public string? TargetId { get; init; }         // Fixture ID for storing response
+    public List<HeaderExpression> RequestHeaders { get; init; } = [];
+    public string? Description { get; init; }
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        ITestScriptActionVisitor<TContext, TOutput> visitor,
+        TContext context)
+    {
+        return visitor.VisitOperation(this, context);
+    }
+}
+
+/// <summary>
+/// Represents a validation assertion on an operation result.
+/// </summary>
+public class AssertExpression : ActionExpression
+{
+    public string? Response { get; init; }         // "okay", "created", "noContent"
+    public string? ContentType { get; init; }      // "application/fhir+json"
+    public string? Expression { get; init; }       // FHIRPath expression
+    public string? CompareToSourceId { get; init; } // Fixture comparison
+    public string? Path { get; init; }             // FHIRPath extraction
+    public string? ValidateProfileId { get; init; } // Profile validation
+    public string? Description { get; init; }
+    public bool? WarningOnly { get; init; }        // Continue on failure
+
+    public override TOutput AcceptVisitor<TContext, TOutput>(
+        ITestScriptActionVisitor<TContext, TOutput> visitor,
+        TContext context)
+    {
+        return visitor.VisitAssert(this, context);
+    }
+}
+
+/// <summary>
+/// Visitor interface for TestScript action expressions.
+/// Follows the same pattern as IFhirPathExpressionVisitor and IExpressionVisitor.
+/// </summary>
+public interface ITestScriptActionVisitor<in TContext, out TOutput>
+{
+    TOutput VisitOperation(OperationExpression expression, TContext context);
+    TOutput VisitAssert(AssertExpression expression, TContext context);
+}
+```
+
+### Execution Context (Immutable)
+
+Like `FhirPath.EvaluationContext`, the execution context is **immutable** and threaded through visitor calls:
+
+```csharp
+/// <summary>
+/// Immutable context for TestScript execution.
+/// Follows the same pattern as FhirPath.EvaluationContext.
+/// </summary>
+public class ExecutionContext
+{
+    // Current HTTP response from last operation
+    public HttpResponseMessage? LastResponse { get; init; }
+    public ResourceJsonNode? LastResponseBody { get; init; }
+
+    // Variables captured during execution (e.g., ${patientId})
+    public ImmutableDictionary<string, string> Variables { get; init; }
+        = ImmutableDictionary<string, string>.Empty;
+
+    // Fixtures loaded from TestScript or FhirFakes
+    public ImmutableDictionary<string, ResourceJsonNode> Fixtures { get; init; }
+        = ImmutableDictionary<string, ResourceJsonNode>.Empty;
+
+    // Target FHIR server base URL
+    public string TargetBaseUrl { get; init; }
+
+    // HTTP client for operations
+    public HttpClient HttpClient { get; init; }
+
+    // Test report accumulator (mutable, but encapsulated)
+    public TestScriptReport Report { get; init; }
+
+    /// <summary>
+    /// Creates a new context with updated response.
+    /// Fluent API for immutable updates.
+    /// </summary>
+    public ExecutionContext WithResponse(HttpResponseMessage response, ResourceJsonNode? body)
+    {
+        return this with
+        {
+            LastResponse = response,
+            LastResponseBody = body
+        };
+    }
+
+    /// <summary>
+    /// Creates a new context with updated variable.
+    /// </summary>
+    public ExecutionContext WithVariable(string name, string value)
+    {
+        return this with
+        {
+            Variables = Variables.SetItem(name, value)
+        };
+    }
+
+    /// <summary>
+    /// Creates a new context with added fixture.
+    /// </summary>
+    public ExecutionContext WithFixture(string id, ResourceJsonNode fixture)
+    {
+        return this with
+        {
+            Fixtures = Fixtures.SetItem(id, fixture)
+        };
+    }
+}
 ```
 
 ### Core Components
@@ -219,31 +407,238 @@ See web research results for full CRUD TestScript example with Patient resource.
 - `OperationDefinition` - HTTP operations
 - `AssertDefinition` - Validation rules
 
-#### 2. TestScriptExecutor
-**Responsibility:** Orchestrate test execution (setup → test → teardown).
+#### 2. TestScriptEvaluator
+**Responsibility:** Execute TestScript expression tree via visitor pattern.
 
-**Execution Flow:**
+**Implementation Pattern** (like `FhirPathEvaluator`):
+
 ```csharp
-public async Task<TestScriptReport> ExecuteAsync(
-    TestScriptDefinition testScript,
-    string targetBaseUrl,
-    CancellationToken cancellationToken)
+namespace Ignixa.TestScript.Evaluation;
+
+/// <summary>
+/// Evaluates TestScript action expressions via the visitor pattern.
+/// Follows the same architecture as FhirPathEvaluator and SearchQueryInterpreter.
+/// </summary>
+public class TestScriptEvaluator : ITestScriptActionVisitor<ExecutionContext, ExecutionContext>
 {
-    var context = new ExecutionContext(targetBaseUrl);
+    private readonly IFhirPathEvaluator _fhirPathEvaluator;
+    private readonly IValidator _validator;
+    private readonly IFhirSchemaProvider _schemaProvider;
 
-    // 1. Setup phase (create test data)
-    await ExecutePhaseAsync(testScript.Setup, context, cancellationToken);
-
-    // 2. Test phase (run assertions)
-    foreach (var test in testScript.Tests)
+    public TestScriptEvaluator(
+        IFhirPathEvaluator fhirPathEvaluator,
+        IValidator validator,
+        IFhirSchemaProvider schemaProvider)
     {
-        await ExecuteTestAsync(test, context, cancellationToken);
+        _fhirPathEvaluator = fhirPathEvaluator;
+        _validator = validator;
+        _schemaProvider = schemaProvider;
     }
 
-    // 3. Teardown phase (cleanup)
-    await ExecutePhaseAsync(testScript.Teardown, context, cancellationToken);
+    /// <summary>
+    /// Main entry point: Execute a TestScript definition.
+    /// </summary>
+    public async Task<TestScriptReport> ExecuteAsync(
+        TestScriptDefinition testScript,
+        string targetBaseUrl,
+        CancellationToken cancellationToken)
+    {
+        var context = new ExecutionContext
+        {
+            TargetBaseUrl = targetBaseUrl,
+            HttpClient = new HttpClient(),
+            Report = new TestScriptReport()
+        };
 
-    return context.GenerateReport();
+        // Load fixtures into context
+        context = LoadFixtures(testScript, context);
+
+        // 1. Setup phase
+        context = await ExecutePhaseAsync(testScript.Setup, context, cancellationToken);
+
+        // 2. Test phase
+        foreach (var test in testScript.Tests)
+        {
+            context = await ExecuteTestAsync(test, context, cancellationToken);
+        }
+
+        // 3. Teardown phase
+        context = await ExecutePhaseAsync(testScript.Teardown, context, cancellationToken);
+
+        return context.Report;
+    }
+
+    private async Task<ExecutionContext> ExecutePhaseAsync(
+        IEnumerable<ActionExpression> actions,
+        ExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        foreach (var action in actions)
+        {
+            // Use visitor pattern to dispatch to correct handler
+            context = await action.AcceptVisitorAsync(this, context, cancellationToken);
+        }
+        return context;
+    }
+
+    /// <summary>
+    /// Visitor method: Execute an HTTP operation.
+    /// </summary>
+    public async Task<ExecutionContext> VisitOperationAsync(
+        OperationExpression operation,
+        ExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        // 1. Resolve variables in URL
+        var url = ResolveVariables(operation.Url, context);
+
+        // 2. Build HTTP request
+        var request = new HttpRequestMessage(
+            GetHttpMethod(operation.Type),
+            url);
+
+        // 3. Add headers
+        foreach (var header in operation.RequestHeaders)
+        {
+            request.Headers.Add(header.Field, header.Value);
+        }
+
+        // 4. Add body (for create/update)
+        if (operation.SourceId != null)
+        {
+            var fixture = context.Fixtures[operation.SourceId];
+            request.Content = new StringContent(
+                fixture.ToJson(),
+                Encoding.UTF8,
+                "application/fhir+json");
+        }
+
+        // 5. Execute request
+        var response = await context.HttpClient.SendAsync(request, cancellationToken);
+
+        // 6. Parse response
+        ResourceJsonNode? responseBody = null;
+        if (response.Content != null)
+        {
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            responseBody = JsonSourceNodeFactory.Parse(json);
+        }
+
+        // 7. Extract variables (e.g., patientId from Location header)
+        context = ExtractVariables(operation, response, responseBody, context);
+
+        // 8. Store response in context (immutable update)
+        return context.WithResponse(response, responseBody);
+    }
+
+    /// <summary>
+    /// Visitor method: Execute an assertion.
+    /// </summary>
+    public ExecutionContext VisitAssert(
+        AssertExpression assert,
+        ExecutionContext context)
+    {
+        var issues = new List<string>();
+
+        // 1. Response code assertion
+        if (assert.Response != null)
+        {
+            var expectedCode = MapResponseCode(assert.Response);
+            if ((int)context.LastResponse.StatusCode != expectedCode)
+            {
+                issues.Add($"Expected {expectedCode}, got {(int)context.LastResponse.StatusCode}");
+            }
+        }
+
+        // 2. Content-Type assertion
+        if (assert.ContentType != null)
+        {
+            var actualContentType = context.LastResponse.Content?.Headers.ContentType?.MediaType;
+            if (actualContentType != assert.ContentType)
+            {
+                issues.Add($"Expected Content-Type {assert.ContentType}, got {actualContentType}");
+            }
+        }
+
+        // 3. FHIRPath expression assertion
+        if (assert.Expression != null && context.LastResponseBody != null)
+        {
+            var element = context.LastResponseBody.ToElement(_schemaProvider);
+            var result = _fhirPathEvaluator.IsTrue(element, assert.Expression);
+            if (!result)
+            {
+                issues.Add($"FHIRPath assertion failed: {assert.Expression}");
+            }
+        }
+
+        // 4. Profile validation assertion
+        if (assert.ValidateProfileId != null && context.LastResponseBody != null)
+        {
+            var outcome = _validator.Validate(
+                context.LastResponseBody,
+                assert.ValidateProfileId);
+            if (outcome.HasErrors)
+            {
+                issues.AddRange(outcome.Errors.Select(e => e.Message));
+            }
+        }
+
+        // 5. Fixture comparison assertion
+        if (assert.CompareToSourceId != null && context.LastResponseBody != null)
+        {
+            var expectedFixture = context.Fixtures[assert.CompareToSourceId];
+            if (!AreResourcesEqual(context.LastResponseBody, expectedFixture))
+            {
+                issues.Add($"Response does not match fixture {assert.CompareToSourceId}");
+            }
+        }
+
+        // 6. Record assertion result
+        var assertionResult = new AssertionResult(
+            assert.Description ?? "Unnamed assertion",
+            issues.Count == 0,
+            issues,
+            assert.WarningOnly ?? false);
+
+        context.Report.AddAssertion(assertionResult);
+
+        return context;
+    }
+
+    private string ResolveVariables(string template, ExecutionContext context)
+    {
+        // Replace ${variableName} placeholders
+        foreach (var (key, value) in context.Variables)
+        {
+            template = template.Replace($"${{{key}}}", value);
+        }
+        return template;
+    }
+
+    private ExecutionContext ExtractVariables(
+        OperationExpression operation,
+        HttpResponseMessage response,
+        ResourceJsonNode? responseBody,
+        ExecutionContext context)
+    {
+        // Extract from Location header (common for create operations)
+        if (response.Headers.Location != null)
+        {
+            var locationPath = response.Headers.Location.ToString();
+            var parts = locationPath.Split('/');
+            if (parts.Length >= 2)
+            {
+                var resourceId = parts[^1];
+                context = context.WithVariable("lastCreatedId", resourceId);
+            }
+        }
+
+        // Extract from response body via FHIRPath (if defined in TestScript)
+        // This would be driven by variable definitions in the TestScript
+        // e.g., <variable name="patientId" path="Patient.id" sourceId="response"/>
+
+        return context;
+    }
 }
 ```
 
@@ -701,12 +1096,84 @@ Implementing a pure C# TestScript execution engine is **feasible and valuable**:
 - ⚠️ Must maintain version compatibility (R4/R4B/R5)
 - ⚠️ Complex variable/fixture resolution logic
 
+**Architecture Alignment:**
+- ✅ **Parser/Expression/Evaluator pattern** - Consistent with FhirPath, Search, SqlOnFhir
+- ✅ **Visitor pattern** - Extensible, testable, familiar to Ignixa developers
+- ✅ **Immutable context** - Thread-safe, functional evaluation style
+- ✅ **Expression tree** - Composable, optimizable, analyzable
+- ✅ **Separation of concerns** - Parse → Evaluate → Report (clean phases)
+
 **Recommendation:** **Proceed with phased implementation**, starting with Phase 1 (Parser) to validate feasibility and gather community feedback.
 
 **Next Steps:**
 1. Create ADR if decision to proceed is made
 2. Create feature branch: `feature/testscript-execution-engine`
-3. Implement Phase 1 (Parser & Domain Model)
-4. Gather feedback from Ignixa community
+3. Implement Phase 1 (Parser & Domain Model with Expression Tree)
+4. Implement Phase 2 (Evaluator with Visitor Pattern)
 5. Validate against 10+ official HL7 TestScript examples
-6. Proceed with Phases 2-3 if validation successful
+6. Gather feedback from Ignixa community
+7. Proceed with Phases 3-6 if validation successful
+
+---
+
+## Appendix: Pattern Comparison
+
+### Code Structure Comparison
+
+**FhirPath Pattern:**
+```
+Ignixa.FhirPath/
+├── Expressions/
+│   ├── Expression.cs (abstract base)
+│   ├── ConstantExpression.cs
+│   ├── FunctionCallExpression.cs
+│   └── ...
+├── Visitors/
+│   └── IFhirPathExpressionVisitor.cs
+├── Parser/
+│   └── FhirPathParser.cs
+├── Evaluation/
+│   ├── FhirPathEvaluator.cs
+│   └── EvaluationContext.cs
+```
+
+**Search Pattern:**
+```
+Ignixa.Search/
+├── Expressions/
+│   ├── Expression.cs (abstract base)
+│   ├── SearchParameterExpression.cs
+│   ├── BinaryExpression.cs
+│   └── ...
+├── Expressions/
+│   └── IExpressionVisitor.cs
+├── Expressions/Parsers/
+│   └── ExpressionParser.cs
+├── Interpreters/
+│   └── SearchQueryInterpreter.cs
+```
+
+**TestScript Pattern (Proposed):**
+```
+Ignixa.TestScript/
+├── Expressions/
+│   ├── ActionExpression.cs (abstract base)
+│   ├── OperationExpression.cs
+│   ├── AssertExpression.cs
+│   └── ...
+├── Visitors/
+│   └── ITestScriptActionVisitor.cs
+├── Parser/
+│   └── TestScriptParser.cs
+├── Evaluation/
+│   ├── TestScriptEvaluator.cs
+│   └── ExecutionContext.cs
+├── Reporting/
+│   └── TestScriptReporter.cs
+```
+
+**Consistency Benefits:**
+- Onboarding: Developers familiar with FhirPath/Search immediately understand TestScript architecture
+- Tooling: Common patterns enable shared utilities (expression tree visualization, optimization)
+- Testing: Unit tests follow same patterns across all libraries
+- Maintenance: Consistent structure reduces cognitive load when switching between libraries
