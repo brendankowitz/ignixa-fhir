@@ -1,4 +1,5 @@
-using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Model;
 
@@ -8,7 +9,8 @@ internal static class VariableExtractor
 {
     internal static TestScriptContext ExtractFromResponse(
         IReadOnlyList<VariableDefinition> variables,
-        TestScriptContext context)
+        TestScriptContext context,
+        IFhirSchemaProvider schema)
     {
         foreach (var variable in variables)
         {
@@ -20,35 +22,25 @@ internal static class VariableExtractor
 
             if (response is null) continue;
 
-            var value = ExtractValue(variable.Extraction, response);
+            var value = ExtractValue(variable.Extraction, response, schema);
             if (value is not null)
                 context = context.WithVariable(variable.Name, value);
         }
         return context;
     }
 
-    private static string? ExtractValue(VariableExtraction extraction, FhirResponse response) =>
+    private static string? ExtractValue(VariableExtraction extraction, TestResponse response, IFhirSchemaProvider schema) =>
         extraction switch
         {
             HeaderExtraction h => response.Headers.GetValueOrDefault(h.Field),
-            PathExtraction p => ExtractFromBody(response.Body, p.Path),
-            ExpressionExtraction e => ExtractFromBody(response.Body, e.Expression),
+            PathExtraction p => ExtractFromBody(response.Body, schema, p.Path),
+            ExpressionExtraction e => ExtractFromBody(response.Body, schema, e.Expression),
             _ => null
         };
 
-    private static string? ExtractFromBody(JsonNode? body, string path)
+    private static string? ExtractFromBody(Ignixa.Serialization.SourceNodes.ResourceJsonNode? body, IFhirSchemaProvider schema, string expression)
     {
         if (body is null) return null;
-
-        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        JsonNode? current = body;
-        foreach (var part in parts)
-        {
-            if (current is JsonObject obj)
-                current = obj[part];
-            else
-                return null;
-        }
-        return current?.GetValue<string>();
+        return body.ToElement(schema).Scalar(expression)?.ToString();
     }
 }

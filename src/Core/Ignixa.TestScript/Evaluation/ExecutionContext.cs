@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using System.Text.Json.Nodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Reporting;
 
@@ -7,23 +7,22 @@ namespace Ignixa.TestScript.Evaluation;
 
 public sealed record TestScriptContext
 {
-    public required IFhirClientRegistry ClientRegistry { get; init; }
-    public FhirResponse? LastResponse { get; init; }
-    public FhirRequest? LastRequest { get; init; }
+    public TestResponse? LastResponse { get; init; }
+    public TestRequest? LastRequest { get; init; }
     public ImmutableDictionary<string, string> Variables { get; init; } =
         ImmutableDictionary<string, string>.Empty;
-    public ImmutableDictionary<string, JsonNode> Fixtures { get; init; } =
-        ImmutableDictionary<string, JsonNode>.Empty;
-    public ImmutableDictionary<string, FhirResponse> ResponseHistory { get; init; } =
-        ImmutableDictionary<string, FhirResponse>.Empty;
-    public ImmutableDictionary<string, FhirRequest> RequestHistory { get; init; } =
-        ImmutableDictionary<string, FhirRequest>.Empty;
+    public ImmutableDictionary<string, ResourceJsonNode> Fixtures { get; init; } =
+        ImmutableDictionary<string, ResourceJsonNode>.Empty;
+    public ImmutableDictionary<string, TestResponse> ResponseHistory { get; init; } =
+        ImmutableDictionary<string, TestResponse>.Empty;
+    public ImmutableDictionary<string, TestRequest> RequestHistory { get; init; } =
+        ImmutableDictionary<string, TestRequest>.Empty;
 
     // Recorder is intentionally shared across all derived contexts — all phases of a single
     // test execution write to the same recorder instance via with-expression copies.
     internal ITestScriptResultRecorder Recorder { get; init; } = new TestScriptResultRecorder();
 
-    public TestScriptContext WithResponse(string? responseId, FhirResponse response)
+    public TestScriptContext WithResponse(string? responseId, TestResponse response)
     {
         var ctx = this with { LastResponse = response };
         if (responseId is not null)
@@ -31,7 +30,7 @@ public sealed record TestScriptContext
         return ctx;
     }
 
-    public TestScriptContext WithRequest(string? requestId, FhirRequest request)
+    public TestScriptContext WithRequest(string? requestId, TestRequest request)
     {
         var ctx = this with { LastRequest = request };
         if (requestId is not null)
@@ -42,6 +41,6 @@ public sealed record TestScriptContext
     public TestScriptContext WithVariable(string name, string value) =>
         this with { Variables = Variables.SetItem(name, value) };
 
-    public TestScriptContext WithFixture(string id, JsonNode resource) =>
+    public TestScriptContext WithFixture(string id, ResourceJsonNode resource) =>
         this with { Fixtures = Fixtures.SetItem(id, resource) };
 }

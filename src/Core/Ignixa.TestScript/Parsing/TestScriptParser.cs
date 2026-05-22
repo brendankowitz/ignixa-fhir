@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Expressions;
 using Ignixa.TestScript.Model;
 
@@ -94,7 +96,7 @@ public static class TestScriptParser
             result.Add(new FixtureDefinition
             {
                 Id = fix["id"]?.GetValue<string>() ?? string.Empty,
-                Resource = fix["resource"],
+                Resource = fix["resource"] is JsonNode resourceNode ? JsonSourceNodeFactory.Parse(resourceNode) : null,
                 Autocreate = fix["autocreate"]?.GetValue<bool>() ?? false,
                 Autodelete = fix["autodelete"]?.GetValue<bool>() ?? false
             });

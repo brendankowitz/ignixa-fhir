@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.Expressions;
@@ -13,17 +15,13 @@ namespace Ignixa.TestScript.Tests.Evaluation;
 
 public class TestScriptEvaluatorTests
 {
-    private readonly IFhirClient _mockClient;
-    private readonly IFhirClientRegistry _registry;
+    private readonly ITestRequestProvider _mockProvider;
     private readonly IFixtureProvider _fixtureProvider;
     private readonly IFhirSchemaProvider _schema;
 
     public TestScriptEvaluatorTests()
     {
-        _mockClient = Substitute.For<IFhirClient>();
-        _mockClient.BaseUrl.Returns("http://localhost");
-
-        _registry = new SingleClientRegistry(_mockClient);
+        _mockProvider = Substitute.For<ITestRequestProvider>();
         _fixtureProvider = new InlineFixtureProvider();
         _schema = Substitute.For<IFhirSchemaProvider>();
     }
@@ -31,11 +29,11 @@ public class TestScriptEvaluatorTests
     [Fact]
     public async Task GivenSimpleReadTest_WhenExecuting_ThenReturnsPassingReport()
     {
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new FhirResponse
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Body = JsonNode.Parse("""{"resourceType": "Patient", "id": "123"}""")
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "123"}""")
             });
 
         var definition = new TestScriptDefinition
@@ -62,7 +60,7 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
 
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
@@ -74,8 +72,8 @@ public class TestScriptEvaluatorTests
     [Fact]
     public async Task GivenOperationWithVariables_WhenExecuting_ThenSubstitutesVariables()
     {
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new FhirResponse { StatusCode = 200 });
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
 
         var definition = new TestScriptDefinition
         {
@@ -99,12 +97,12 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
 
         await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
-        await _mockClient.Received(1).SendAsync(
-            Arg.Is<FhirRequest>(r => r.Url == "http://localhost/Patient/abc"),
+        await _mockProvider.Received(1).ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Url == "/Patient/abc"),
             Arg.Any<CancellationToken>());
     }
 
@@ -116,7 +114,7 @@ public class TestScriptEvaluatorTests
             Metadata = new TestScriptMetadata { Name = "Empty" }
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
 
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
@@ -127,7 +125,7 @@ public class TestScriptEvaluatorTests
     [Fact]
     public async Task GivenSetupOperationFails_WhenExecuting_ThenTestsAreSkipped()
     {
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Network failure"));
 
         var definition = new TestScriptDefinition
@@ -150,7 +148,7 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.TestResults.ShouldBeEmpty();
@@ -161,7 +159,7 @@ public class TestScriptEvaluatorTests
     [Fact]
     public async Task GivenClientThrows_WhenExecuting_ThenReportsError()
     {
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Boom"));
 
         var definition = new TestScriptDefinition
@@ -180,7 +178,7 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Error);
@@ -192,7 +190,7 @@ public class TestScriptEvaluatorTests
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new OperationCanceledException());
 
         var definition = new TestScriptDefinition
@@ -211,7 +209,7 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
 
         await Should.ThrowAsync<OperationCanceledException>(
             () => evaluator.ExecuteAsync(definition, cts.Token));
@@ -226,7 +224,7 @@ public class TestScriptEvaluatorTests
                 Arg.Any<FixtureDefinition>(),
                 Arg.Any<FixtureResolutionContext>(),
                 Arg.Any<CancellationToken>())
-            .Returns((JsonNode?)null);
+            .Returns((ResourceJsonNode?)null);
 #pragma warning restore CA2012
 
         var definition = new TestScriptDefinition
@@ -238,7 +236,7 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.SetupResult.ShouldNotBeNull();
@@ -248,17 +246,17 @@ public class TestScriptEvaluatorTests
     [Fact]
     public async Task GivenVariableWithHeaderExtraction_WhenResponseHasHeader_ThenExtractsValue()
     {
-        var responses = new Queue<FhirResponse>(new[]
+        var responses = new Queue<TestResponse>(new[]
         {
-            new FhirResponse
+            new TestResponse
             {
                 StatusCode = 201,
                 Headers = new Dictionary<string, string> { ["Location"] = "Patient/created-123" }
             },
-            new FhirResponse { StatusCode = 200 }
+            new TestResponse { StatusCode = 200 }
         });
 
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .Returns(call => responses.Dequeue());
 
         var definition = new TestScriptDefinition
@@ -289,29 +287,29 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
-        await _mockClient.Received().SendAsync(
-            Arg.Is<FhirRequest>(r => r.Url == "http://localhost/Patient/Patient/created-123"),
+        await _mockProvider.Received().ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Url == "/Patient/Patient/created-123"),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task GivenVariableWithPathExtraction_WhenResponseHasBody_ThenExtractsValue()
     {
-        var responses = new Queue<FhirResponse>(new[]
+        var responses = new Queue<TestResponse>(new[]
         {
-            new FhirResponse
+            new TestResponse
             {
                 StatusCode = 201,
-                Body = JsonNode.Parse("""{"resourceType":"Patient","id":"abc-extracted"}""")
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"abc-extracted"}""")
             },
-            new FhirResponse { StatusCode = 200 }
+            new TestResponse { StatusCode = 200 }
         });
 
-        _mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .Returns(call => responses.Dequeue());
 
         var definition = new TestScriptDefinition
@@ -342,12 +340,12 @@ public class TestScriptEvaluatorTests
             ]
         };
 
-        var evaluator = new TestScriptEvaluator(_registry, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
-        await _mockClient.Received().SendAsync(
-            Arg.Is<FhirRequest>(r => r.Url == "http://localhost/Patient/abc-extracted"),
+        await _mockProvider.Received().ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Url == "/Patient/abc-extracted"),
             Arg.Any<CancellationToken>());
     }
 }

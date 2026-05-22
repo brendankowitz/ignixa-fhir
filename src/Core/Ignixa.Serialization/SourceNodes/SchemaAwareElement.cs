@@ -141,7 +141,7 @@ internal class SchemaAwareElement : IElement
             // BackboneElements have qualified Info.Name like "QuestionnaireResponse.item"
             // Primitive and complex types have simple names like "string", "HumanName"
             // If the name contains a dot, it's likely a BackboneElement - use it as-is
-            if (typeName.Contains('.', StringComparison.Ordinal))
+            if (typeName != null && typeName.Contains('.', StringComparison.Ordinal))
             {
                 return typeName;
             }
@@ -259,7 +259,7 @@ internal class SchemaAwareElement : IElement
                     // The parent InstanceType might already be the qualified name we need
                     // Extract last segment of parent's TypeName and compare with child name
                     var parentTypeName = cachedTypeDef.Info.Name;
-                    var lastSegment = parentTypeName.Contains('.', StringComparison.Ordinal)
+                    var lastSegment = parentTypeName != null && parentTypeName.Contains('.', StringComparison.Ordinal)
                         ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
                         : parentTypeName;
 

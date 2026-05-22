@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
-using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Evaluation;
-using NSubstitute;
 
 namespace Ignixa.TestScript.Tests.Evaluation;
 
@@ -15,7 +13,6 @@ public class VariableResolverTests
 
         return new TestScriptContext
         {
-            ClientRegistry = Substitute.For<IFhirClientRegistry>(),
             Variables = vars
         };
     }

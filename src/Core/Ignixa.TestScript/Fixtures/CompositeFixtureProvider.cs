@@ -1,11 +1,11 @@
-using System.Text.Json.Nodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Model;
 
 namespace Ignixa.TestScript.Fixtures;
 
 public sealed class CompositeFixtureProvider(IReadOnlyList<IFixtureProvider> providers) : IFixtureProvider
 {
-    public async ValueTask<JsonNode?> ResolveFixtureAsync(
+    public async ValueTask<ResourceJsonNode?> ResolveFixtureAsync(
         FixtureDefinition fixture,
         FixtureResolutionContext context,
         CancellationToken cancellationToken)

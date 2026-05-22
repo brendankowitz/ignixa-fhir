@@ -1,13 +1,12 @@
 using System.Text;
-using System.Text.Json.Nodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.TestScript.Client;
 
-public sealed class HttpFhirClient(HttpClient httpClient) : IFhirClient
+public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestRequestProvider
 {
-    public string BaseUrl => httpClient.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
-
-    public async Task<FhirResponse> SendAsync(FhirRequest request, CancellationToken cancellationToken)
+    public async Task<TestResponse> ExecuteAsync(TestRequest request, CancellationToken cancellationToken)
     {
         using var httpRequest = new HttpRequestMessage(request.Method, request.Url);
 
@@ -15,7 +14,7 @@ public sealed class HttpFhirClient(HttpClient httpClient) : IFhirClient
         {
             var contentType = request.Headers.GetValueOrDefault("Content-Type", "application/fhir+json");
             httpRequest.Content = new StringContent(
-                request.Body.ToJsonString(),
+                request.Body.SerializeToString(),
                 Encoding.UTF8,
                 contentType);
         }
@@ -30,10 +29,10 @@ public sealed class HttpFhirClient(HttpClient httpClient) : IFhirClient
         var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken);
 
         var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-        JsonNode? body = null;
+        ResourceJsonNode? body = null;
         if (!string.IsNullOrWhiteSpace(responseBody))
         {
-            try { body = JsonNode.Parse(responseBody); }
+            try { body = JsonSourceNodeFactory.Parse(responseBody); }
             catch (System.Text.Json.JsonException) { }
         }
 
@@ -43,7 +42,7 @@ public sealed class HttpFhirClient(HttpClient httpClient) : IFhirClient
             headers[header.Key] = string.Join(", ", header.Value);
         }
 
-        return new FhirResponse
+        return new TestResponse
         {
             StatusCode = (int)httpResponse.StatusCode,
             Body = body,

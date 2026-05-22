@@ -1,5 +1,6 @@
-using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Model;
 using NSubstitute;
@@ -16,7 +17,7 @@ public class CompositeFixtureProviderTests
     [Fact]
     public async Task GivenMultipleProviders_WhenFirstResolves_ThenReturnsFirstResult()
     {
-        var expected = JsonNode.Parse("""{"resourceType": "Patient"}""");
+        var expected = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient"}""");
         var provider1 = Substitute.For<IFixtureProvider>();
         provider1.ResolveFixtureAsync(Arg.Any<FixtureDefinition>(), Arg.Any<FixtureResolutionContext>(), Arg.Any<CancellationToken>())
             .Returns(expected);
@@ -28,7 +29,7 @@ public class CompositeFixtureProviderTests
         var result = await composite.ResolveFixtureAsync(fixture, _context, CancellationToken.None);
 
         result.ShouldNotBeNull();
-        result["resourceType"]?.GetValue<string>().ShouldBe("Patient");
+        result.ResourceType.ShouldBe("Patient");
         await provider2.DidNotReceive().ResolveFixtureAsync(Arg.Any<FixtureDefinition>(), Arg.Any<FixtureResolutionContext>(), Arg.Any<CancellationToken>());
     }
 
@@ -37,9 +38,9 @@ public class CompositeFixtureProviderTests
     {
         var provider1 = Substitute.For<IFixtureProvider>();
         provider1.ResolveFixtureAsync(Arg.Any<FixtureDefinition>(), Arg.Any<FixtureResolutionContext>(), Arg.Any<CancellationToken>())
-            .Returns((JsonNode?)null);
+            .Returns((ResourceJsonNode?)null);
 
-        var expected = JsonNode.Parse("""{"resourceType": "Observation"}""");
+        var expected = JsonSourceNodeFactory.Parse("""{"resourceType": "Observation"}""");
         var provider2 = Substitute.For<IFixtureProvider>();
         provider2.ResolveFixtureAsync(Arg.Any<FixtureDefinition>(), Arg.Any<FixtureResolutionContext>(), Arg.Any<CancellationToken>())
             .Returns(expected);
@@ -50,7 +51,7 @@ public class CompositeFixtureProviderTests
         var result = await composite.ResolveFixtureAsync(fixture, _context, CancellationToken.None);
 
         result.ShouldNotBeNull();
-        result["resourceType"]?.GetValue<string>().ShouldBe("Observation");
+        result.ResourceType.ShouldBe("Observation");
     }
 
     [Fact]
@@ -58,7 +59,7 @@ public class CompositeFixtureProviderTests
     {
         var provider1 = Substitute.For<IFixtureProvider>();
         provider1.ResolveFixtureAsync(Arg.Any<FixtureDefinition>(), Arg.Any<FixtureResolutionContext>(), Arg.Any<CancellationToken>())
-            .Returns((JsonNode?)null);
+            .Returns((ResourceJsonNode?)null);
 
         var composite = new CompositeFixtureProvider([provider1]);
         var fixture = new FixtureDefinition { Id = "test" };

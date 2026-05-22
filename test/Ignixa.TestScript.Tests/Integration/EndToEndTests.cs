@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.Fixtures;
@@ -20,18 +22,16 @@ public class EndToEndTests
         var parseResult = TestScriptParser.Parse(json);
         parseResult.IsSuccess.ShouldBeTrue();
 
-        var mockClient = Substitute.For<IFhirClient>();
-        mockClient.BaseUrl.Returns("http://test-server");
-        mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new FhirResponse
+        var mockProvider = Substitute.For<ITestRequestProvider>();
+        mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Body = JsonNode.Parse("""{"resourceType": "Patient", "id": "example"}""")
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "example"}""")
             });
 
-        var registry = new SingleClientRegistry(mockClient);
         var schema = Substitute.For<IFhirSchemaProvider>();
-        var evaluator = new TestScriptEvaluator(registry, new InlineFixtureProvider(), schema);
+        var evaluator = new TestScriptEvaluator(mockProvider, new InlineFixtureProvider(), schema);
 
         var report = await evaluator.ExecuteAsync(parseResult.Value!, CancellationToken.None);
 
@@ -46,18 +46,16 @@ public class EndToEndTests
             Path.Combine(AppContext.BaseDirectory, "TestData", "simple-read.json"));
         var parseResult = TestScriptParser.Parse(json);
 
-        var mockClient = Substitute.For<IFhirClient>();
-        mockClient.BaseUrl.Returns("http://test-server");
-        mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new FhirResponse
+        var mockProvider = Substitute.For<ITestRequestProvider>();
+        mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Body = JsonNode.Parse("""{"resourceType": "Patient", "id": "example"}""")
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "example"}""")
             });
 
-        var registry = new SingleClientRegistry(mockClient);
         var schema = Substitute.For<IFhirSchemaProvider>();
-        var evaluator = new TestScriptEvaluator(registry, new InlineFixtureProvider(), schema);
+        var evaluator = new TestScriptEvaluator(mockProvider, new InlineFixtureProvider(), schema);
         var report = await evaluator.ExecuteAsync(parseResult.Value!, CancellationToken.None);
 
         var testReport = TestReportResourceGenerator.Generate(report);
@@ -76,18 +74,16 @@ public class EndToEndTests
         var parseResult = TestScriptParser.Parse(json);
         parseResult.IsSuccess.ShouldBeTrue();
 
-        var mockClient = Substitute.For<IFhirClient>();
-        mockClient.BaseUrl.Returns("http://test-server");
-        mockClient.SendAsync(Arg.Any<FhirRequest>(), Arg.Any<CancellationToken>())
+        var mockProvider = Substitute.For<ITestRequestProvider>();
+        mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .Returns(
-                new FhirResponse { StatusCode = 201, Body = JsonNode.Parse("""{"resourceType": "Patient", "id": "test-123"}""") },
-                new FhirResponse { StatusCode = 200, Body = JsonNode.Parse("""{"resourceType": "Patient", "id": "test-123"}""") },
-                new FhirResponse { StatusCode = 204 }
+                new TestResponse { StatusCode = 201, Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "test-123"}""") },
+                new TestResponse { StatusCode = 200, Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "test-123"}""") },
+                new TestResponse { StatusCode = 204 }
             );
 
-        var registry = new SingleClientRegistry(mockClient);
         var schema = Substitute.For<IFhirSchemaProvider>();
-        var evaluator = new TestScriptEvaluator(registry, new InlineFixtureProvider(), schema);
+        var evaluator = new TestScriptEvaluator(mockProvider, new InlineFixtureProvider(), schema);
 
         var report = await evaluator.ExecuteAsync(parseResult.Value!, CancellationToken.None);
 

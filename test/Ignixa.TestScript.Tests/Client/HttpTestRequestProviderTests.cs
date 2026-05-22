@@ -1,11 +1,11 @@
 using System.Net;
 using System.Text;
-using System.Text.Json.Nodes;
+using Ignixa.Serialization;
 using Ignixa.TestScript.Client;
 
 namespace Ignixa.TestScript.Tests.Client;
 
-public class HttpFhirClientTests
+public class HttpTestRequestProviderTests
 {
     [Fact]
     public async Task GivenJsonResponse_WhenSending_ThenBodyIsParsed()
@@ -23,14 +23,14 @@ public class HttpFhirClientTests
             BaseAddress = new Uri("http://test/")
         };
 
-        var client = new HttpFhirClient(httpClient);
-        var response = await client.SendAsync(
-            new FhirRequest { Method = HttpMethod.Get, Url = "http://test/Patient/abc" },
+        var provider = new HttpTestRequestProvider(httpClient);
+        var response = await provider.ExecuteAsync(
+            new TestRequest { Method = HttpMethod.Get, Url = "/Patient/abc" },
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(200);
         response.Body.ShouldNotBeNull();
-        response.Body["id"]!.GetValue<string>().ShouldBe("abc");
+        response.Body.Id.ShouldBe("abc");
     }
 
     [Fact]
@@ -46,9 +46,9 @@ public class HttpFhirClientTests
             BaseAddress = new Uri("http://test/")
         };
 
-        var client = new HttpFhirClient(httpClient);
-        var response = await client.SendAsync(
-            new FhirRequest { Method = HttpMethod.Get, Url = "http://test/something" },
+        var provider = new HttpTestRequestProvider(httpClient);
+        var response = await provider.ExecuteAsync(
+            new TestRequest { Method = HttpMethod.Get, Url = "/something" },
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(200);
@@ -72,9 +72,9 @@ public class HttpFhirClientTests
             BaseAddress = new Uri("http://test/")
         };
 
-        var client = new HttpFhirClient(httpClient);
-        var response = await client.SendAsync(
-            new FhirRequest { Method = HttpMethod.Post, Url = "http://test/Patient", Body = JsonNode.Parse("{}") },
+        var provider = new HttpTestRequestProvider(httpClient);
+        var response = await provider.ExecuteAsync(
+            new TestRequest { Method = HttpMethod.Post, Url = "/Patient", Body = JsonSourceNodeFactory.Parse("{}") },
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(201);
@@ -100,13 +100,13 @@ public class HttpFhirClientTests
             BaseAddress = new Uri("http://test/")
         };
 
-        var client = new HttpFhirClient(httpClient);
-        await client.SendAsync(
-            new FhirRequest
+        var provider = new HttpTestRequestProvider(httpClient);
+        await provider.ExecuteAsync(
+            new TestRequest
             {
                 Method = HttpMethod.Post,
-                Url = "http://test/Patient",
-                Body = JsonNode.Parse("""{"resourceType":"Patient"}""")
+                Url = "/Patient",
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient"}""")
             },
             CancellationToken.None);
 

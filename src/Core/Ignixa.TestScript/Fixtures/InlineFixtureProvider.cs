@@ -1,15 +1,15 @@
-using System.Text.Json.Nodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Model;
 
 namespace Ignixa.TestScript.Fixtures;
 
 public sealed class InlineFixtureProvider : IFixtureProvider
 {
-    public ValueTask<JsonNode?> ResolveFixtureAsync(
+    public ValueTask<ResourceJsonNode?> ResolveFixtureAsync(
         FixtureDefinition fixture,
         FixtureResolutionContext context,
         CancellationToken cancellationToken)
     {
-        return ValueTask.FromResult(fixture.Resource?.DeepClone());
+        return ValueTask.FromResult(fixture.Resource);
     }
 }

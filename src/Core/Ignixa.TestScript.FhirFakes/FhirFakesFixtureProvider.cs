@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Model;
 
@@ -8,31 +8,32 @@ public sealed class FhirFakesFixtureProvider : IFixtureProvider
 {
     private const string FhirFakesExtensionUrl = "http://ignixa.io/testscript/fhirfakes";
 
-    public ValueTask<JsonNode?> ResolveFixtureAsync(
+    public ValueTask<ResourceJsonNode?> ResolveFixtureAsync(
         FixtureDefinition fixture,
         FixtureResolutionContext context,
         CancellationToken cancellationToken)
     {
-        var resourceType = GetFhirFakesResourceType(fixture);
+        var resourceType = GetFhirFakesResourceType(fixture) ?? context.ResourceType;
         if (resourceType is null)
-            return ValueTask.FromResult<JsonNode?>(null);
+            return ValueTask.FromResult<ResourceJsonNode?>(null);
 
         var faker = new Ignixa.FhirFakes.SchemaBasedFhirResourceFaker(context.Schema);
         var resource = faker.Generate(resourceType);
 
-        return ValueTask.FromResult<JsonNode?>(resource.MutableNode.DeepClone());
+        return ValueTask.FromResult<ResourceJsonNode?>(resource);
     }
 
     private static string? GetFhirFakesResourceType(FixtureDefinition fixture)
     {
-        if (fixture.Resource is not JsonObject obj) return null;
+        var node = fixture.Resource?.MutableNode;
+        if (node is null) return null;
 
-        var extensions = obj["extension"]?.AsArray();
+        var extensions = node["extension"]?.AsArray();
         if (extensions is null) return null;
 
         foreach (var ext in extensions)
         {
-            if (ext is not JsonObject extObj) continue;
+            if (ext is not System.Text.Json.Nodes.JsonObject extObj) continue;
             if (extObj["url"]?.GetValue<string>() == FhirFakesExtensionUrl)
                 return extObj["valueCode"]?.GetValue<string>();
         }

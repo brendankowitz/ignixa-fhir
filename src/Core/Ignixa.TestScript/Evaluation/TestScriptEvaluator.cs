@@ -1,6 +1,7 @@
 using System.Diagnostics;
-using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Expressions;
 using Ignixa.TestScript.Fixtures;
@@ -11,11 +12,13 @@ using Ignixa.TestScript.Validation;
 namespace Ignixa.TestScript.Evaluation;
 
 public sealed class TestScriptEvaluator(
-    IFhirClientRegistry clientRegistry,
+    ITestRequestProvider provider,
     IFixtureProvider fixtureProvider,
     IFhirSchemaProvider schemaProvider,
     IFhirResourceValidator? validator = null) : ITestScriptActionVisitor
 {
+    private readonly ITestRequestProvider _provider = provider;
+
     internal IFhirResourceValidator Validator { get; } = validator ?? new NoOpValidator();
 
     public async Task<TestScriptReport> ExecuteAsync(
@@ -27,7 +30,6 @@ public sealed class TestScriptEvaluator(
 
         var context = new TestScriptContext
         {
-            ClientRegistry = clientRegistry,
             Recorder = recorder
         };
 
@@ -42,21 +44,32 @@ public sealed class TestScriptEvaluator(
         {
             recorder.BeginPhase(TestPhaseType.Setup);
 
-            var fixtureCtx = new FixtureResolutionContext { Schema = schemaProvider };
             foreach (var fixture in definition.Fixtures)
             {
+                var fixtureCtx = new FixtureResolutionContext
+                {
+                    Schema = schemaProvider,
+                    ResourceType = fixture.Resource?.ResourceType
+                };
                 var resource = await fixtureProvider.ResolveFixtureAsync(fixture, fixtureCtx, cancellationToken);
                 if (resource is not null)
+                {
                     context = context.WithFixture(fixture.Id, resource);
+
+                    if (fixture.Autocreate)
+                        context = await AutocreateFixtureAsync(fixture, resource, context, cancellationToken);
+                }
                 else
+                {
                     recorder.RecordOperationResult($"fixture:{fixture.Id}", $"Resolve fixture '{fixture.Id}'",
                         new OperationOutcome(false, ErrorMessage: $"No provider resolved fixture '{fixture.Id}'"));
+                }
             }
 
             foreach (var action in definition.Setup)
             {
                 context = await action.AcceptAsync(this, context, cancellationToken);
-                context = VariableExtractor.ExtractFromResponse(definition.Variables, context);
+                context = VariableExtractor.ExtractFromResponse(definition.Variables, context, schemaProvider);
             }
 
             recorder.EndPhase();
@@ -74,13 +87,20 @@ public sealed class TestScriptEvaluator(
             }
         }
 
-        if (definition.Teardown.Count > 0)
+        if (definition.Teardown.Count > 0 || definition.Fixtures.Any(f => f.Autodelete))
         {
             recorder.BeginPhase(TestPhaseType.Teardown);
+
+            foreach (var fixture in definition.Fixtures)
+            {
+                if (fixture.Autodelete)
+                    context = await AutodeleteFixtureAsync(fixture, context, cancellationToken);
+            }
+
             foreach (var action in definition.Teardown)
             {
                 context = await action.AcceptAsync(this, context, cancellationToken);
-                context = VariableExtractor.ExtractFromResponse(definition.Variables, context);
+                context = VariableExtractor.ExtractFromResponse(definition.Variables, context, schemaProvider);
             }
             recorder.EndPhase();
         }
@@ -98,7 +118,7 @@ public sealed class TestScriptEvaluator(
         {
             context = await action.AcceptAsync(this, context, cancellationToken);
             if (action is OperationExpression)
-                context = VariableExtractor.ExtractFromResponse(variables, context);
+                context = VariableExtractor.ExtractFromResponse(variables, context, schemaProvider);
         }
 
         return context;
@@ -112,11 +132,14 @@ public sealed class TestScriptEvaluator(
         var sw = Stopwatch.StartNew();
         try
         {
-            var client = context.ClientRegistry.GetDestination(expression.Destination);
-            var request = BuildRequest(expression, context, client);
+            if (expression.Destination is not null and > 1)
+                throw new NotSupportedException(
+                    $"Multi-server destinations are not supported. Destination '{expression.Destination}' was requested but only a single provider is configured.");
+
+            var request = BuildRequest(expression, context);
 
             context = context.WithRequest(expression.RequestId, request);
-            var response = await client.SendAsync(request, cancellationToken);
+            var response = await _provider.ExecuteAsync(request, cancellationToken);
             context = context.WithResponse(expression.ResponseId, response);
 
             sw.Stop();
@@ -149,14 +172,72 @@ public sealed class TestScriptEvaluator(
         return ValueTask.FromResult(context);
     }
 
-    private static FhirRequest BuildRequest(OperationExpression op, TestScriptContext context, IFhirClient client)
+    private async Task<TestScriptContext> AutocreateFixtureAsync(
+        FixtureDefinition fixture, ResourceJsonNode resource,
+        TestScriptContext context, CancellationToken cancellationToken)
+    {
+        var url = $"/{resource.ResourceType}";
+        var request = new TestRequest { Method = HttpMethod.Post, Url = url, Body = resource };
+        context = context.WithRequest(null, request);
+        try
+        {
+            var response = await _provider.ExecuteAsync(request, cancellationToken);
+            context = context.WithResponse(null, response);
+            if (response.Body is not null)
+                context = context.WithFixture(fixture.Id, response.Body);
+            context.Recorder.RecordOperationResult(
+                $"fixture:{fixture.Id}",
+                $"Autocreate fixture '{fixture.Id}'",
+                new OperationOutcome(true, response.StatusCode));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            context.Recorder.RecordOperationResult(
+                $"fixture:{fixture.Id}",
+                $"Autocreate fixture '{fixture.Id}'",
+                new OperationOutcome(false, ErrorMessage: ex.Message));
+        }
+        return context;
+    }
+
+    private async Task<TestScriptContext> AutodeleteFixtureAsync(
+        FixtureDefinition fixture, TestScriptContext context, CancellationToken cancellationToken)
+    {
+        if (!context.Fixtures.TryGetValue(fixture.Id, out var resource)) return context;
+        if (string.IsNullOrEmpty(resource.Id)) return context;
+
+        var url = $"/{resource.ResourceType}/{resource.Id}";
+        var request = new TestRequest { Method = HttpMethod.Delete, Url = url };
+        context = context.WithRequest(null, request);
+        try
+        {
+            var response = await _provider.ExecuteAsync(request, cancellationToken);
+            context = context.WithResponse(null, response);
+            context.Recorder.RecordOperationResult(
+                $"fixture:{fixture.Id}",
+                $"Autodelete fixture '{fixture.Id}'",
+                new OperationOutcome(true, response.StatusCode));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            context.Recorder.RecordOperationResult(
+                $"fixture:{fixture.Id}",
+                $"Autodelete fixture '{fixture.Id}'",
+                new OperationOutcome(false, ErrorMessage: ex.Message));
+        }
+        return context;
+    }
+
+    private static TestRequest BuildRequest(OperationExpression op, TestScriptContext context)
     {
         var method = op.Method ?? DeriveMethod(op.Type);
-        var url = BuildUrl(op, context, client);
+        var url = BuildUrl(op, context);
 
-        JsonNode? body = null;
+        ResourceJsonNode? body = null;
         if (op.SourceId is not null && context.Fixtures.TryGetValue(op.SourceId, out var fixture))
-            body = fixture.DeepClone();
+            body = JsonSourceNodeFactory.Parse(fixture.MutableNode.DeepClone());
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (op.Accept is not null) headers["Accept"] = op.Accept;
@@ -164,19 +245,18 @@ public sealed class TestScriptEvaluator(
         foreach (var h in op.Headers)
             headers[VariableResolver.Resolve(h.Field, context)] = VariableResolver.Resolve(h.Value, context);
 
-        return new FhirRequest { Method = method, Url = url, Body = body, Headers = headers };
+        return new TestRequest { Method = method, Url = url, Body = body, Headers = headers };
     }
 
-    private static string BuildUrl(OperationExpression op, TestScriptContext context, IFhirClient client)
+    private static string BuildUrl(OperationExpression op, TestScriptContext context)
     {
         if (op.Url is not null)
             return VariableResolver.Resolve(op.Url, context);
 
-        var baseUrl = client.BaseUrl;
         var resource = op.Resource ?? string.Empty;
         var parameters = VariableResolver.ResolveIfNotNull(op.Params, context) ?? string.Empty;
 
-        return $"{baseUrl}/{resource}{parameters}";
+        return $"/{resource}{parameters}";
     }
 
     private static HttpMethod DeriveMethod(string operationType) => operationType switch
@@ -244,7 +324,7 @@ public sealed class TestScriptEvaluator(
         if (response?.Body is null)
             return (false, "No response body available to assert against");
 
-        var actual = response.Body["resourceType"]?.GetValue<string>();
+        var actual = response.Body.ResourceType;
         var passed = actual == c.ResourceType;
         return (passed, passed ? null : $"Expected resource type '{c.ResourceType}' but got '{actual}'");
     }
