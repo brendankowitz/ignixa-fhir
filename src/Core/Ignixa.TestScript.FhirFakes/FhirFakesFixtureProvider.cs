@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Model;
@@ -13,7 +14,7 @@ public sealed class FhirFakesFixtureProvider : IFixtureProvider
         FixtureResolutionContext context,
         CancellationToken cancellationToken)
     {
-        var resourceType = GetFhirFakesResourceType(fixture) ?? context.ResourceType;
+        var resourceType = GetFhirFakesResourceType(fixture);
         if (resourceType is null)
             return ValueTask.FromResult<ResourceJsonNode?>(null);
 
@@ -33,7 +34,7 @@ public sealed class FhirFakesFixtureProvider : IFixtureProvider
 
         foreach (var ext in extensions)
         {
-            if (ext is not System.Text.Json.Nodes.JsonObject extObj) continue;
+            if (ext is not JsonObject extObj) continue;
             if (extObj["url"]?.GetValue<string>() == FhirFakesExtensionUrl)
                 return extObj["valueCode"]?.GetValue<string>();
         }

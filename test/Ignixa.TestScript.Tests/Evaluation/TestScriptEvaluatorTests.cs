@@ -102,7 +102,7 @@ public class TestScriptEvaluatorTests
         await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         await _mockProvider.Received(1).ExecuteAsync(
-            Arg.Is<TestRequest>(r => r.Url == "/Patient/abc"),
+            Arg.Is<TestRequest>(r => r.Url == "Patient/abc"),
             Arg.Any<CancellationToken>());
     }
 
@@ -182,6 +182,59 @@ public class TestScriptEvaluatorTests
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Error);
+    }
+
+    [Fact]
+    public async Task GivenOperationWithDestinationGreaterThanOne_WhenExecuting_ThenReportsError()
+    {
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "DestinationTest" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "MultiDestination",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1", Destination = 2 }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Error);
+    }
+
+    [Fact]
+    public async Task GivenOperationWithDestinationEqualToOne_WhenExecuting_ThenProceedsNormally()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "DestinationOneTest" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "SingleDestination",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1", Destination = 1 }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
     }
 
     [Fact]
@@ -292,7 +345,7 @@ public class TestScriptEvaluatorTests
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
         await _mockProvider.Received().ExecuteAsync(
-            Arg.Is<TestRequest>(r => r.Url == "/Patient/Patient/created-123"),
+            Arg.Is<TestRequest>(r => r.Url == "Patient/Patient/created-123"),
             Arg.Any<CancellationToken>());
     }
 
@@ -345,7 +398,7 @@ public class TestScriptEvaluatorTests
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
         await _mockProvider.Received().ExecuteAsync(
-            Arg.Is<TestRequest>(r => r.Url == "/Patient/abc-extracted"),
+            Arg.Is<TestRequest>(r => r.Url == "Patient/abc-extracted"),
             Arg.Any<CancellationToken>());
     }
 }

@@ -176,7 +176,7 @@ public sealed class TestScriptEvaluator(
         FixtureDefinition fixture, ResourceJsonNode resource,
         TestScriptContext context, CancellationToken cancellationToken)
     {
-        var url = $"/{resource.ResourceType}";
+        var url = $"{resource.ResourceType}";
         var request = new TestRequest { Method = HttpMethod.Post, Url = url, Body = resource };
         context = context.WithRequest(null, request);
         try
@@ -185,10 +185,13 @@ public sealed class TestScriptEvaluator(
             context = context.WithResponse(null, response);
             if (response.Body is not null)
                 context = context.WithFixture(fixture.Id, response.Body);
+            var success = response.StatusCode is >= 200 and < 300;
             context.Recorder.RecordOperationResult(
                 $"fixture:{fixture.Id}",
                 $"Autocreate fixture '{fixture.Id}'",
-                new OperationOutcome(true, response.StatusCode));
+                success
+                    ? new OperationOutcome(true, response.StatusCode)
+                    : new OperationOutcome(false, response.StatusCode, ErrorMessage: $"Autocreate returned HTTP {response.StatusCode}"));
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -207,17 +210,20 @@ public sealed class TestScriptEvaluator(
         if (!context.Fixtures.TryGetValue(fixture.Id, out var resource)) return context;
         if (string.IsNullOrEmpty(resource.Id)) return context;
 
-        var url = $"/{resource.ResourceType}/{resource.Id}";
+        var url = $"{resource.ResourceType}/{resource.Id}";
         var request = new TestRequest { Method = HttpMethod.Delete, Url = url };
         context = context.WithRequest(null, request);
         try
         {
             var response = await _provider.ExecuteAsync(request, cancellationToken);
             context = context.WithResponse(null, response);
+            var success = response.StatusCode is >= 200 and < 300;
             context.Recorder.RecordOperationResult(
                 $"fixture:{fixture.Id}",
                 $"Autodelete fixture '{fixture.Id}'",
-                new OperationOutcome(true, response.StatusCode));
+                success
+                    ? new OperationOutcome(true, response.StatusCode)
+                    : new OperationOutcome(false, response.StatusCode, ErrorMessage: $"Autodelete returned HTTP {response.StatusCode}"));
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -256,7 +262,7 @@ public sealed class TestScriptEvaluator(
         var resource = op.Resource ?? string.Empty;
         var parameters = VariableResolver.ResolveIfNotNull(op.Params, context) ?? string.Empty;
 
-        return $"/{resource}{parameters}";
+        return $"{resource}{parameters}";
     }
 
     private static HttpMethod DeriveMethod(string operationType) => operationType switch

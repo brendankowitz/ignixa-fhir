@@ -293,15 +293,15 @@ public class AssertionEvaluatorTests
     }
 
     [Theory]
-    [InlineData("/Patient/1", "/Patient/1", true)]
-    [InlineData("/Patient/2", "/Patient/1", false)]
+    [InlineData("Patient/1", "Patient/1", true)]
+    [InlineData("Patient/2", "Patient/1", false)]
     public async Task GivenRequestUrlCriteria_WhenEvaluating_ThenMatchesUrl(
         string actualPath, string assertedUrl, bool expectedPass)
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .Returns(new TestResponse { StatusCode = 200 });
 
-        var actualParams = actualPath.Replace("/Patient", "", StringComparison.Ordinal);
+        var actualParams = actualPath.Replace("Patient", "", StringComparison.Ordinal);
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = actualParams },
             new AssertExpression

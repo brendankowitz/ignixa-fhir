@@ -19,9 +19,11 @@ public class ConformanceTests
     [TestScriptData("testscripts/**/*.json")]
     public async Task ExecuteTestScript(string testScriptPath)
     {
-        var definition = TestScriptParser.ParseFile(testScriptPath);
+        var result = TestScriptParser.ParseFile(testScriptPath);
+        if (!result.IsSuccess)
+            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Message)));
         var evaluator = CreateEvaluator();
-        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+        var report = await evaluator.ExecuteAsync(result.Value!, CancellationToken.None);
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
     }
 }
