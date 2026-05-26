@@ -89,4 +89,64 @@ public class StructureDefinitionTypeAdapterTests
         var result = new StructureDefinitionTypeAdapter().Adapt("{\"resourceType\":\"Patient\",\"id\":\"x\"}", "4.0.1");
         result.ShouldBeNull();
     }
+
+    // ===== Constraints, choice types, fixed/pattern, reference targets =====
+
+    [Fact]
+    public void GivenObservationRoot_WhenAdapted_ThenCarriesEle1Constraint()
+    {
+        var type = (ITypeExtended)new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
+        type.Constraints.ShouldContain(c => c.Key == "ele-1");
+    }
+
+    [Fact]
+    public void GivenObservationRoot_WhenAdapted_ThenPreservesConstraintSeverity()
+    {
+        var type = (ITypeExtended)new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
+        type.Constraints.Single(c => c.Key == "ele-1").Severity.ShouldBe("error");
+        type.Constraints.Single(c => c.Key == "obs-3").Severity.ShouldBe("warning");
+    }
+
+    [Fact]
+    public void GivenObservationValueChoice_WhenAdapted_ThenExposesMultipleTypes()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
+        var choice = (ITypeExtended)type.Children.Single(c => c.Info.Name == "value[x]");
+
+        var codes = choice.Types.Select(t => t.Code).ToList();
+        codes.ShouldContain("Quantity");
+        codes.ShouldContain("CodeableConcept");
+        codes.ShouldContain("string");
+        choice.Info.IsChoiceElement.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenObservationStatusFixedCode_WhenAdapted_ThenExposesFixedValue()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
+        var status = (ITypeExtended)type.Children.Single(c => c.Info.Name == "status");
+
+        status.FixedValue.ShouldBe("final");
+        status.IsRequired.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenObservationCodePatternCodeableConcept_WhenAdapted_ThenExposesPatternValue()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
+        var code = (ITypeExtended)type.Children.Single(c => c.Info.Name == "code");
+
+        code.PatternValue.ShouldNotBeNull();
+        code.PatternValue!.ToString()!.ShouldContain("loinc.org");
+    }
+
+    [Fact]
+    public void GivenObservationSubjectReference_WhenAdapted_ThenExposesTargetProfiles()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
+        var subject = (ITypeExtended)type.Children.Single(c => c.Info.Name == "subject");
+
+        subject.ReferenceTargets.ShouldContain("Patient");
+        subject.ReferenceTargets.ShouldContain("Group");
+    }
 }

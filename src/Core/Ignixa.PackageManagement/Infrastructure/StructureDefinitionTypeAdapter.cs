@@ -199,9 +199,32 @@ public sealed class StructureDefinitionTypeAdapter
             var rawCode = ReadString(t, "code") ?? string.Empty;
             // The FHIRPath system-type extension overrides code with a friendly FHIR type name.
             var resolvedCode = ResolveFhirPathSystemTypeOverride(t) ?? rawCode;
-            var profile = ReadFirstStringInArray(t, "profile");
-            var targetProfile = ReadFirstStringInArray(t, "targetProfile");
-            list.Add(new TypeReferenceDefinition(resolvedCode, profile, targetProfile));
+            var profiles = ReadAllStringsInArray(t, "profile");
+            var targetProfiles = ReadAllStringsInArray(t, "targetProfile");
+
+            // ITypeReference holds a single profile/targetProfile string. Emit one entry per
+            // (profile, targetProfile) cross product. For Reference elements with multiple
+            // targets and no profile constraints, this yields one entry per target.
+            if (targetProfiles.Count == 0 && profiles.Count == 0)
+            {
+                list.Add(new TypeReferenceDefinition(resolvedCode));
+                continue;
+            }
+
+            if (targetProfiles.Count == 0)
+            {
+                foreach (var profile in profiles)
+                {
+                    list.Add(new TypeReferenceDefinition(resolvedCode, profile));
+                }
+                continue;
+            }
+
+            foreach (var targetProfile in targetProfiles)
+            {
+                var profile = profiles.Count > 0 ? profiles[0] : null;
+                list.Add(new TypeReferenceDefinition(resolvedCode, profile, targetProfile));
+            }
         }
         return list;
     }
@@ -386,6 +409,27 @@ public sealed class StructureDefinitionTypeAdapter
         }
         var first = arr[0];
         return first.ValueKind == JsonValueKind.String ? first.GetString() : null;
+    }
+
+    private static IReadOnlyList<string> ReadAllStringsInArray(JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var arr) || arr.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+        var list = new List<string>(arr.GetArrayLength());
+        foreach (var item in arr.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                var s = item.GetString();
+                if (!string.IsNullOrEmpty(s))
+                {
+                    list.Add(s!);
+                }
+            }
+        }
+        return list;
     }
 
     private readonly record struct ElementSnapshot(string Path, int Order, JsonElement Element);
