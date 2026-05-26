@@ -59,6 +59,51 @@ public sealed class ValidationSchema
         _universalChecks.Concat(_specChecks).Concat(_profileChecks).ToList();
 
     /// <summary>
+    /// Composes multiple <see cref="ValidationSchema"/> instances into a single schema.
+    /// Universal, spec, and profile check lists are concatenated in input order, preserving
+    /// the tier-aware execution semantics of <see cref="Validate"/>.
+    /// <para>
+    /// The first schema in <paramref name="schemas"/> donates its <c>CanonicalUrl</c> and
+    /// <c>ResourceType</c> to the composed result; this matches the convention of treating
+    /// the resource's base StructureDefinition as the primary schema with profiles layered
+    /// on top.
+    /// </para>
+    /// </summary>
+    /// <param name="schemas">Schemas to compose. Must not be empty.</param>
+    /// <returns>A new schema whose check lists are the union of the inputs.</returns>
+    public static ValidationSchema Compose(IReadOnlyList<ValidationSchema> schemas)
+    {
+        ArgumentNullException.ThrowIfNull(schemas);
+        if (schemas.Count == 0)
+        {
+            throw new ArgumentException("Cannot compose an empty list of schemas.", nameof(schemas));
+        }
+
+        if (schemas.Count == 1)
+        {
+            return schemas[0];
+        }
+
+        var primary = schemas[0];
+        var universal = new List<IValidationCheck>();
+        var spec = new List<IValidationCheck>();
+        var profile = new List<IValidationCheck>();
+        foreach (var s in schemas)
+        {
+            universal.AddRange(s._universalChecks);
+            spec.AddRange(s._specChecks);
+            profile.AddRange(s._profileChecks);
+        }
+
+        return new ValidationSchema(
+            canonicalUrl: primary.CanonicalUrl,
+            resourceType: primary.ResourceType,
+            universalChecks: universal,
+            specChecks: spec,
+            profileChecks: profile);
+    }
+
+    /// <summary>
     /// Validates an element using depth-appropriate checks.
     /// Depth.Minimal: Run universal checks only.
     /// Depth.Spec: Run universal + spec checks.

@@ -1,0 +1,162 @@
+// <copyright file="ProfileAwareValidationSchemaResolverTests.cs" company="Microsoft Corporation">
+//     Copyright (c) Microsoft Corporation. All rights reserved.
+//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// </copyright>
+
+using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
+using NSubstitute;
+using Shouldly;
+using Xunit;
+
+namespace Ignixa.Validation.Tests.Schema;
+
+/// <summary>
+/// Tests for <see cref="ProfileAwareValidationSchemaResolver"/>: walks
+/// <c>Resource.meta.profile</c>, resolves each URL via the inner resolver, and composes
+/// the resulting schemas into a single schema whose checks are the union.
+/// </summary>
+public class ProfileAwareValidationSchemaResolverTests
+{
+    private static IElement ParseElement(string json)
+    {
+        var node = JsonNode.Parse(json);
+        node.ShouldNotBeNull();
+        return JsonNodeSourceNode.Create(node!).ToElement(TestHelpers.TestSchemaProvider.GetR4Schema());
+    }
+
+    private static ValidationSchema MakeEmptySchema(string canonicalUrl, string resourceType)
+        => new(canonicalUrl, resourceType,
+            universalChecks: Array.Empty<IValidationCheck>(),
+            specChecks: Array.Empty<IValidationCheck>(),
+            profileChecks: Array.Empty<IValidationCheck>());
+
+    private static ValidationSchema MakeSchemaWithProfileCheck(string canonicalUrl, string resourceType, IValidationCheck check)
+        => new(canonicalUrl, resourceType,
+            universalChecks: Array.Empty<IValidationCheck>(),
+            specChecks: Array.Empty<IValidationCheck>(),
+            profileChecks: new[] { check });
+
+    [Fact]
+    public void GivenResourceWithoutMetaProfile_WhenResolving_ThenReturnsOnlyBaseSchema()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var baseSchema = MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient");
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient").Returns(baseSchema);
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("{\"resourceType\":\"Patient\",\"id\":\"x\"}");
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldNotBeNull();
+        resolved!.ResourceType.ShouldBe("Patient");
+        inner.Received(1).GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+    }
+
+    [Fact]
+    public void GivenResourceWithMetaProfile_WhenResolving_ThenComposesBaseAndProfileChecks()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var baseCheck = Substitute.For<IValidationCheck>();
+        var profileCheck = Substitute.For<IValidationCheck>();
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")
+            .Returns(MakeSchemaWithProfileCheck("http://hl7.org/fhir/StructureDefinition/Patient", "Patient", baseCheck));
+        inner.GetSchema("http://example.org/StructureDefinition/MyPatient")
+            .Returns(MakeSchemaWithProfileCheck("http://example.org/StructureDefinition/MyPatient", "Patient", profileCheck));
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("""
+            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/StructureDefinition/MyPatient"]}}
+            """);
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldNotBeNull();
+        resolved!.Checks.Count.ShouldBe(2);
+        resolved.Checks.ShouldContain(baseCheck);
+        resolved.Checks.ShouldContain(profileCheck);
+    }
+
+    [Fact]
+    public void GivenMetaProfileWithVersionSuffix_WhenResolving_ThenStripsVersionForLookup()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")
+            .Returns(MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient"));
+        var profileSchema = MakeEmptySchema("http://example.org/StructureDefinition/MyPatient", "Patient");
+        inner.GetSchema("http://example.org/StructureDefinition/MyPatient")
+            .Returns(profileSchema);
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("""
+            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/StructureDefinition/MyPatient|2.1.0"]}}
+            """);
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldNotBeNull();
+        // The inner resolver must have been queried with the unversioned canonical.
+        inner.Received(1).GetSchema("http://example.org/StructureDefinition/MyPatient");
+    }
+
+    [Fact]
+    public void GivenMetaProfileWithUnresolvableProfile_WhenResolving_ThenSkipsProfileAndReturnsBase()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var baseSchema = MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient");
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient").Returns(baseSchema);
+        inner.GetSchema("http://example.org/StructureDefinition/MissingProfile").Returns((ValidationSchema?)null);
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("""
+            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/StructureDefinition/MissingProfile"]}}
+            """);
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldNotBeNull();
+        resolved!.ResourceType.ShouldBe("Patient");
+        // Profile that didn't resolve must not produce a null reference / crash.
+    }
+
+    [Fact]
+    public void GivenResourceWithoutResourceType_WhenResolving_ThenReturnsNull()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("{\"id\":\"x\"}");
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenMultipleProfiles_WhenResolving_ThenAllProfileChecksMerged()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var c1 = Substitute.For<IValidationCheck>();
+        var c2 = Substitute.For<IValidationCheck>();
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")
+            .Returns(MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient"));
+        inner.GetSchema("http://example.org/p1")
+            .Returns(MakeSchemaWithProfileCheck("http://example.org/p1", "Patient", c1));
+        inner.GetSchema("http://example.org/p2")
+            .Returns(MakeSchemaWithProfileCheck("http://example.org/p2", "Patient", c2));
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("""
+            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/p1","http://example.org/p2"]}}
+            """);
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldNotBeNull();
+        resolved!.Checks.ShouldContain(c1);
+        resolved.Checks.ShouldContain(c2);
+    }
+}
