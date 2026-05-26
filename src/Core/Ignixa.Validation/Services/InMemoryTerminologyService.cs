@@ -29,6 +29,76 @@ public partial class InMemoryTerminologyService : ITerminologyService
         // _valueSets dictionary is populated lazily on-demand in ValidateCodeAsync
         // This avoids upfront memory cost and allows efficient caching
     }
+
+    /// <summary>
+    /// Initializes the service with a primary ValueSet provider plus additional sources
+    /// (e.g. package-loaded IG ValueSets). On lookup the additional sources are queried
+    /// in order before falling back to the primary provider, so IG-defined ValueSets
+    /// override base-spec ones with the same canonical.
+    /// </summary>
+    /// <param name="primary">Base-spec ValueSet provider (e.g. <c>R4ValueSetProvider</c>).</param>
+    /// <param name="additional">Additional sources, queried first.</param>
+    public InMemoryTerminologyService(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
+    {
+        ArgumentNullException.ThrowIfNull(primary);
+        ArgumentNullException.ThrowIfNull(additional);
+        _valueSetProvider = new LayeredValueSetProvider(primary, additional);
+    }
+
+    /// <summary>
+    /// IValueSetProvider decorator that queries additional providers (in declared order)
+    /// before falling back to the primary. Returns null only when no provider in the
+    /// chain knows the ValueSet.
+    /// </summary>
+    private sealed class LayeredValueSetProvider : IValueSetProvider
+    {
+        private readonly IValueSetProvider _primary;
+        private readonly IReadOnlyList<IValueSetProvider> _additional;
+
+        public LayeredValueSetProvider(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
+        {
+            _primary = primary;
+            _additional = additional.ToArray();
+        }
+
+        public IReadOnlyList<FhirCode>? GetCodes(string valueSetUrl)
+        {
+            foreach (var src in _additional)
+            {
+                var codes = src.GetCodes(valueSetUrl);
+                if (codes != null)
+                {
+                    return codes;
+                }
+            }
+            return _primary.GetCodes(valueSetUrl);
+        }
+
+        public bool IsKnownValueSet(string valueSetUrl)
+        {
+            foreach (var src in _additional)
+            {
+                if (src.IsKnownValueSet(valueSetUrl))
+                {
+                    return true;
+                }
+            }
+            return _primary.IsKnownValueSet(valueSetUrl);
+        }
+
+        public bool? IsValidCode(string valueSetUrl, string code)
+        {
+            foreach (var src in _additional)
+            {
+                var result = src.IsValidCode(valueSetUrl, code);
+                if (result.HasValue)
+                {
+                    return result;
+                }
+            }
+            return _primary.IsValidCode(valueSetUrl, code);
+        }
+    }
     /// Returns ERROR for known ValueSets with invalid codes.
     /// </summary>
     /// <param name="system">The code system URL.</param>
