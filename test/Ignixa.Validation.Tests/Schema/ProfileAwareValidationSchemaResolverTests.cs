@@ -159,4 +159,34 @@ public class ProfileAwareValidationSchemaResolverTests
         resolved!.Checks.ShouldContain(c1);
         resolved.Checks.ShouldContain(c2);
     }
+
+    // ===== IValidationSchemaResolver interface contract (drop-in replacement) =====
+
+    [Fact]
+    public void GivenResolverUsedAsIValidationSchemaResolver_WhenCallingGetSchema_ThenDelegatesToInner()
+    {
+        // Production DI registers this class behind the IValidationSchemaResolver interface.
+        // Legacy callers that only know about GetSchema(canonicalUrl) must keep working.
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var expectedSchema = MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient");
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient").Returns(expectedSchema);
+
+        IValidationSchemaResolver wrapper = new ProfileAwareValidationSchemaResolver(inner);
+
+        var result = wrapper.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+
+        result.ShouldBe(expectedSchema);
+        inner.Received(1).GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
+    }
+
+    [Fact]
+    public void GivenResolverUsedAsIValidationSchemaResolver_WhenInnerReturnsNull_ThenWrapperReturnsNull()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        inner.GetSchema(Arg.Any<string>()).Returns((ValidationSchema?)null);
+
+        IValidationSchemaResolver wrapper = new ProfileAwareValidationSchemaResolver(inner);
+
+        wrapper.GetSchema("http://example.org/missing").ShouldBeNull();
+    }
 }
