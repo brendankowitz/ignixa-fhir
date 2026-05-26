@@ -105,6 +105,74 @@ public static class TestFhirPackageLoader
     }
 
     /// <summary>
+    /// Loads a package and all its transitive declared dependencies as a flat ordered list.
+    /// The root package is first; dependencies follow in breadth-first discovery order.
+    /// </summary>
+    /// <param name="rootPackageId">Root package id (e.g. <c>hl7.fhir.au.core</c>).</param>
+    /// <param name="rootVersion">Root package version.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <remarks>
+    /// Closure semantics:
+    /// <list type="bullet">
+    ///   <item>Deduplicates by package id (later occurrences ignored; first-discovered version wins).</item>
+    ///   <item>Skips <c>hl7.fhir.r4.core</c> - the base R4 spec is provided by the in-process
+    ///         <c>R4CoreSchemaProvider</c> and is not distributed as a downloadable tarball.</item>
+    ///   <item>Tolerates individual dependency download failures: if a transitive package is unavailable
+    ///         the loader skips it and continues, since the rest of the closure may still be useful.</item>
+    /// </list>
+    /// The returned list is suitable for direct hand-off to
+    /// <c>PackageValidatorFactory.BuildR4(params TestFhirPackage[])</c>.
+    /// </remarks>
+    public static async Task<IReadOnlyList<TestFhirPackage>> LoadWithDependenciesAsync(
+        string rootPackageId,
+        string rootVersion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(rootPackageId);
+        ArgumentException.ThrowIfNullOrEmpty(rootVersion);
+
+        var ordered = new List<TestFhirPackage>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "hl7.fhir.r4.core" };
+        var queue = new Queue<(string id, string version)>();
+        queue.Enqueue((rootPackageId, rootVersion));
+
+        while (queue.Count > 0)
+        {
+            var (id, version) = queue.Dequeue();
+            if (!seen.Add(id))
+            {
+                continue;
+            }
+
+            TestFhirPackage pkg;
+            try
+            {
+                pkg = await LoadAsync(id, version, cancellationToken);
+            }
+            catch (Exception)
+            {
+                // Best-effort: a missing transitive dep shouldn't fail the whole closure.
+                continue;
+            }
+
+            ordered.Add(pkg);
+
+            if (pkg.Manifest.Dependencies is { Count: > 0 } deps)
+            {
+                foreach (var dep in deps)
+                {
+                    if (!seen.Contains(dep.Key))
+                    {
+                        queue.Enqueue((dep.Key, dep.Value));
+                    }
+                }
+            }
+        }
+
+        return ordered;
+    }
+
+    /// <summary>
     /// Resolves the on-disk cache directory used for downloaded packages.
     /// </summary>
     public static string GetCacheDirectory()

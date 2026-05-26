@@ -22,6 +22,15 @@ public class StructureDefinitionSchemaBuilder
     private readonly FhirPathParser _parser;
 
     /// <summary>
+    /// Per-call cycle guard for the recursive nested-type extraction. Tracks type names
+    /// currently being built so that a self-reference (Element->Element, or
+    /// BackboneElement->BackboneElement via contentReference) does not recurse forever.
+    /// AsyncLocal so concurrent BuildSchema invocations on different threads each get
+    /// their own visited set without locking.
+    /// </summary>
+    private static readonly System.Threading.AsyncLocal<HashSet<string>?> _activeTypeNames = new();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaBuilder"/> class.
     /// </summary>
     /// <param name="compiler">Shared FhirPath compiler for parsing constraint expressions. If null, a new instance will be created.</param>
@@ -197,8 +206,31 @@ public class StructureDefinitionSchemaBuilder
         }
 
         // Extract nested complex type checks (BackboneElement, complex datatypes)
-        var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService);
-        specChecks.AddRange(nestedTypeChecks);
+        // Push the current type onto the cycle guard so any recursive Build via
+        // ExtractNestedTypeChecks short-circuits if it tries to re-enter this type.
+        var visiting = _activeTypeNames.Value ?? new HashSet<string>(StringComparer.Ordinal);
+        var ownsVisiting = _activeTypeNames.Value == null;
+        if (ownsVisiting)
+        {
+            _activeTypeNames.Value = visiting;
+        }
+        var addedToVisiting = visiting.Add(typeDefinition.Info.Name);
+        try
+        {
+            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService);
+            specChecks.AddRange(nestedTypeChecks);
+        }
+        finally
+        {
+            if (addedToVisiting)
+            {
+                visiting.Remove(typeDefinition.Info.Name);
+            }
+            if (ownsVisiting)
+            {
+                _activeTypeNames.Value = null;
+            }
+        }
 
         // Extract unknown property check (only first-level elements)
         var allPropertyNames = elements
@@ -415,6 +447,15 @@ public class StructureDefinitionSchemaBuilder
             {
                 // Nested type not found - may be older FHIR version or unsupported type
                 // Skip silently to avoid breaking existing validations
+                continue;
+            }
+
+            // Cycle guard: if this nested type is already on the active-build stack
+            // (e.g. Element->Element via contentReference, or a profile that recurses
+            // through a layered schema provider), skip to avoid infinite recursion.
+            var visiting = _activeTypeNames.Value;
+            if (visiting != null && visiting.Contains(nestedTypeName))
+            {
                 continue;
             }
 
