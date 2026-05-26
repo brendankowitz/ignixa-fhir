@@ -28,18 +28,28 @@ public class PackageResourceProvider : IPackageResourceProvider
     }
 
     /// <summary>
-    /// Converts a package resource JSON to an IType.
-    /// TODO: Implement modern IType-based conversion to replace legacy approach.
+    /// Converts a package resource JSON to an IType using
+    /// <see cref="StructureDefinitionTypeAdapter"/>.
     /// </summary>
     /// <param name="resourceJson">The FHIR StructureDefinition resource as JSON string.</param>
     /// <param name="fhirVersion">The FHIR version (e.g., "4.0.1", "4.3.0", "5.0.0").</param>
     /// <returns>The type definition if parsing succeeds, null otherwise.</returns>
     public IType? ToTypeDefinition(string resourceJson, string fhirVersion)
     {
-        // TODO: Implement modern IType conversion
-        // For now, this returns null until the modern type system is fully integrated
-        _logger.LogWarning("ToTypeDefinition not yet implemented - returning null");
-        return null;
+        if (string.IsNullOrEmpty(resourceJson) || string.IsNullOrEmpty(fhirVersion))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new StructureDefinitionTypeAdapter().Adapt(resourceJson, fhirVersion);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to adapt StructureDefinition (fhirVersion={FhirVersion}) - returning null", fhirVersion);
+            return null;
+        }
     }
 
 }
