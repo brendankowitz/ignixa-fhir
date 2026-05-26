@@ -150,6 +150,23 @@ public partial class PackageExtractor : IPackageExtractor
             var description = root.TryGetProperty("description", out var d) ? d.GetString() : null;
             var license = root.TryGetProperty("license", out var l) ? l.GetString() : null;
 
+            Dictionary<string, string>? dependencies = null;
+            if (root.TryGetProperty("dependencies", out var deps) && deps.ValueKind == JsonValueKind.Object)
+            {
+                dependencies = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var prop in deps.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var depVer = prop.Value.GetString();
+                        if (!string.IsNullOrEmpty(depVer))
+                        {
+                            dependencies[prop.Name] = depVer!;
+                        }
+                    }
+                }
+            }
+
             return new PackageManifest
             {
                 Name = name!,
@@ -157,7 +174,8 @@ public partial class PackageExtractor : IPackageExtractor
                 FhirVersion = fhirVersion!,
                 Title = title,
                 Description = description,
-                License = license
+                License = license,
+                Dependencies = dependencies,
             };
         }
         catch (Exception ex)
