@@ -1,0 +1,92 @@
+// <copyright file="StructureDefinitionTypeAdapterTests.cs" company="Microsoft Corporation">
+//     Copyright (c) Microsoft Corporation. All rights reserved.
+//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// </copyright>
+
+using Ignixa.Abstractions;
+using Ignixa.PackageManagement.Infrastructure;
+using Shouldly;
+using Xunit;
+
+namespace Ignixa.PackageManagement.Tests;
+
+/// <summary>
+/// MVP tests for <see cref="StructureDefinitionTypeAdapter"/> against a hand-written
+/// base-spec Patient snapshot. Covers tree-building, direct children, collection vs scalar,
+/// and required terminology binding extraction.
+/// </summary>
+public class StructureDefinitionTypeAdapterTests
+{
+    private static readonly string[] ExpectedPatientChildren = { "id", "active", "name", "gender", "birthDate" };
+
+    private static string LoadFixture(string name)
+        => File.ReadAllText(Path.Combine("TestData", "StructureDefinitions", name));
+
+    [Fact]
+    public void GivenPatientSnapshot_WhenAdapted_ThenRootTypeNameIsPatient()
+    {
+        var json = LoadFixture("PatientMinimal.json");
+        var adapter = new StructureDefinitionTypeAdapter();
+
+        var type = adapter.Adapt(json, fhirVersion: "4.0.1");
+
+        type.ShouldNotBeNull();
+        type!.Info.Name.ShouldBe("Patient");
+        type.Info.IsResource.ShouldBeTrue();
+        type.IsCollection.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenPatientSnapshot_WhenAdapted_ThenExposesDirectChildrenInDeclaredOrder()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+
+        type.Children.Select(c => c.Info.Name).ShouldBe(ExpectedPatientChildren);
+    }
+
+    [Fact]
+    public void GivenPatientNameElement_WhenAdapted_ThenIsCollection()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+        var name = type.Children.Single(c => c.Info.Name == "name");
+
+        name.IsCollection.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenPatientIdElement_WhenAdapted_ThenIsScalar()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+        var id = type.Children.Single(c => c.Info.Name == "id");
+
+        id.IsCollection.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenPatientGenderBinding_WhenAdapted_ThenExposesRequiredBinding()
+    {
+        var type = (ITypeExtended)new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+        var gender = (ITypeExtended)type.Children.Single(c => c.Info.Name == "gender");
+
+        gender.Binding.ShouldNotBeNull();
+        gender.Binding!.Strength.ShouldBe("required");
+        gender.Binding.ValueSet.ShouldStartWith("http://hl7.org/fhir/ValueSet/administrative-gender");
+    }
+
+    [Fact]
+    public void GivenPatientGenderType_WhenAdapted_ThenTypeIsCode()
+    {
+        var type = (ITypeExtended)new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+        var gender = (ITypeExtended)type.Children.Single(c => c.Info.Name == "gender");
+
+        gender.Types.ShouldNotBeEmpty();
+        gender.Types[0].Code.ShouldBe("code");
+    }
+
+    [Fact]
+    public void GivenNonStructureDefinitionJson_WhenAdapted_ThenReturnsNull()
+    {
+        var result = new StructureDefinitionTypeAdapter().Adapt("{\"resourceType\":\"Patient\",\"id\":\"x\"}", "4.0.1");
+        result.ShouldBeNull();
+    }
+}

@@ -24,5 +24,11 @@
     <ProjectReference Include="../../src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="TestData\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
 
