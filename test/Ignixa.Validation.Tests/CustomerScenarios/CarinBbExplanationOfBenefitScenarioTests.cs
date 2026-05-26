@@ -136,25 +136,26 @@ public class CarinBbExplanationOfBenefitScenarioTests
     }
 
     [Fact]
-    public void GivenCarinBbEob_WhenMetaProfileDeclaresCarinBb_ThenIgnixaCannotResolveProfileToday()
+    public async Task GivenCarinBbEob_WhenValidatingWithProfileLoaded_ThenResolvesProfileSchema()
     {
-        // The fixture declares the CARIN-BB profile in meta.profile. To match the legacy server's
-        // OperationOutcome, the validator would need to load the CARIN-BB IG and resolve this URL.
+        // Flipped from "cannot resolve profile today" - profile loading is now wired through
+        // PackageResourceProvider + ProfileLayeredSchemaProvider.
+        var resolver = await TestHelpers.Packages.CarinBbValidatorFactory.BuildAsync(CancellationToken.None);
+
         var json = JsonNode.Parse(LoadSanitizedInput())!;
-        var profileUrl = (string?)json["meta"]?["profile"]?[0];
-        profileUrl.ShouldNotBeNull();
-        profileUrl.ShouldStartWith("http://hl7.org/fhir/us/carin-bb/StructureDefinition/");
+        var source = JsonNodeSourceNode.Create(json);
+        var element = source.ToElement(_schema);
 
-        // Strip the |version suffix (canonical URL convention) before resolving.
-        var pipeIndex = profileUrl.IndexOf('|', StringComparison.Ordinal);
-        var canonicalUrl = pipeIndex >= 0 ? profileUrl[..pipeIndex] : profileUrl;
+        var composed = resolver.ResolveForElement(element);
 
-        var profileSchema = _resolver.GetSchema(canonicalUrl);
-        profileSchema.ShouldBeNull(
-            "Ignixa currently only resolves http://hl7.org/fhir/StructureDefinition/* (base spec). "
-            + "Loading the CARIN-BB IG (or any external IG) requires extending IFhirSchemaProvider / "
-            + "StructureDefinitionSchemaResolver to source profile StructureDefinitions, ValueSets "
-            + "and CodeSystems from IG packages.");
+        composed.ShouldNotBeNull();
+        composed!.ResourceType.ShouldBe("ExplanationOfBenefit");
+        // With CARIN-BB profile composed in, the schema should carry strictly more checks
+        // than the base R4 schema alone.
+        var baseSchema = _resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit")!;
+        composed.Checks.Count.ShouldBeGreaterThan(baseSchema.Checks.Count,
+            $"Composed schema (base + CARIN-BB profile) should add checks beyond the base R4 EOB schema. " +
+            $"Composed: {composed.Checks.Count}, Base: {baseSchema.Checks.Count}");
     }
 
     [Fact]
@@ -182,33 +183,6 @@ public class CarinBbExplanationOfBenefitScenarioTests
 
             (isCarinBbInvariant || isCarinBbValueSet).ShouldBeTrue(
                 $"Expected CARIN-BB origin for error; got systems=[{string.Join(",", systems)}], text='{detailsText}'");
-        }
-    }
-
-    [Fact]
-    public void GivenCarinBbEob_WhenValidatingAtFullDepth_ThenIgnixaCannotMatchFirelyErrorCount()
-    {
-        // Parity check: with only the base R4 spec loaded we should NOT produce the
-        // CARIN-BB-specific errors (slicing on adjudication amount type, careTeam role
-        // implies Practitioner reference, etc.). This test pins the current behavior so a
-        // regression that silently starts matching parity (or stops catching base errors)
-        // is surfaced.
-        var result = Validate(ValidationDepth.Full);
-
-        // None of the legacy CARIN-BB constraint keys should appear in our issues today.
-        var carinBbConstraintKeys = new[]
-        {
-            "EOB-inst-careTeam-practitioner",
-            "adjudication-has-amount-type-slice",
-            "EOB-institutional-item-or-header-adjudication",
-        };
-
-        foreach (var key in carinBbConstraintKeys)
-        {
-            result.Issues.ShouldNotContain(
-                i => i.Code.Contains(key, StringComparison.Ordinal)
-                    || i.Message.Contains(key, StringComparison.Ordinal),
-                customMessage: $"CARIN-BB constraint '{key}' surfaced unexpectedly - did profile loading land?");
         }
     }
 }

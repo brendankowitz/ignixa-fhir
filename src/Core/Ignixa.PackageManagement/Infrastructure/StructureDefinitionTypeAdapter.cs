@@ -316,10 +316,13 @@ public sealed class StructureDefinitionTypeAdapter
 
     private static object? ExtractScalarOrJson(JsonElement value) => value.ValueKind switch
     {
-        JsonValueKind.String => value.GetString(),
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
-        JsonValueKind.Number => value.TryGetInt64(out var i) ? i : value.GetDouble(),
+        // For primitives, return JSON-encoded string form so consumers that JsonNode.Parse()
+        // the result (e.g. Validation.Checks.PatternCheck) get valid JSON. A bare C# string
+        // like "final" parses as invalid JSON; "\"final\"" parses correctly.
+        JsonValueKind.String => System.Text.Json.JsonSerializer.Serialize(value.GetString()),
+        JsonValueKind.True => "true",
+        JsonValueKind.False => "false",
+        JsonValueKind.Number => value.GetRawText(),
         _ => value.GetRawText(),
     };
 

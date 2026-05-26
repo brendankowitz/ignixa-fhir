@@ -126,7 +126,8 @@ public class StructureDefinitionTypeAdapterTests
         var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("ObservationMinimal.json"), "4.0.1")!;
         var status = (ITypeExtended)type.Children.Single(c => c.Info.Name == "status");
 
-        status.FixedValue.ShouldBe("final");
+        // FixedValue is stored as JSON-encoded form (so consumers can JsonNode.Parse it).
+        status.FixedValue.ShouldBe("\"final\"");
         status.IsRequired.ShouldBeTrue();
     }
 
