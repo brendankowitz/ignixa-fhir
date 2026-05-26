@@ -56,6 +56,36 @@ public static class TestFhirPackageLoader
         => LoadAsync("hl7.fhir.us.core", "6.1.0", cancellationToken);
 
     /// <summary>
+    /// Loads the AU Core 1.0.0 IG package (<c>hl7.fhir.au.core</c>). Note that AU Core
+    /// declares transitive dependencies on AU Base, HL7 Terminology, and the UV Extensions
+    /// pack. Validation of AU Core resources typically requires all of those layered in;
+    /// see <c>AuCoreValidatorFactory</c> for the canonical wiring.
+    /// </summary>
+    public static Task<TestFhirPackage> LoadAuCoreAsync(CancellationToken cancellationToken = default)
+        => LoadAsync("hl7.fhir.au.core", "1.0.0", cancellationToken);
+
+    /// <summary>
+    /// Loads AU Base 5.0.0 (<c>hl7.fhir.au.base</c>), the foundation AU profiles that AU Core extends.
+    /// </summary>
+    public static Task<TestFhirPackage> LoadAuBaseAsync(CancellationToken cancellationToken = default)
+        => LoadAsync("hl7.fhir.au.base", "5.0.0", cancellationToken);
+
+    /// <summary>
+    /// Loads the HL7 Terminology R4 package (<c>hl7.terminology.r4</c>, 6.2.0). Provides
+    /// the canonical ValueSets and CodeSystems that international IGs (AU Core, US Core,
+    /// CARIN-BB, etc.) all depend on.
+    /// </summary>
+    public static Task<TestFhirPackage> LoadHl7TerminologyR4Async(CancellationToken cancellationToken = default)
+        => LoadAsync("hl7.terminology.r4", "6.2.0", cancellationToken);
+
+    /// <summary>
+    /// Loads the FHIR UV Extensions R4 package (<c>hl7.fhir.uv.extensions.r4</c>, 5.1.0).
+    /// Provides common extension definitions referenced by jurisdiction IGs.
+    /// </summary>
+    public static Task<TestFhirPackage> LoadUvExtensionsR4Async(CancellationToken cancellationToken = default)
+        => LoadAsync("hl7.fhir.uv.extensions.r4", "5.1.0", cancellationToken);
+
+    /// <summary>
     /// Loads an arbitrary FHIR IG package by id and version. Results are memoized
     /// per (packageId, version) for the lifetime of the test process.
     /// </summary>
