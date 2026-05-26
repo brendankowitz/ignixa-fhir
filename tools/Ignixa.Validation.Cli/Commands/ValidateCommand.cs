@@ -2,10 +2,13 @@ using System.CommandLine;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.PackageManagement.Infrastructure;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.Validation.Cli.Commands;
 
@@ -22,11 +25,23 @@ internal static class ValidateCommand
         var jsonOption = new Option<string?>("--json") { Description = "JSON string to validate" };
         var outOption = new Option<string?>("--out") { Description = "Output file for validation results (OperationOutcome JSON)" };
         var consoleOption = new Option<bool>("--console") { Description = "Display formatted validation results in console", DefaultValueFactory = _ => false };
+        var depthOption = new Option<string>("--depth")
+        {
+            Description = "Validation depth: minimal | spec | full | compatibility (default: spec)",
+            DefaultValueFactory = _ => "spec",
+        };
+        var packageOption = new Option<string[]>("--package")
+        {
+            Description = "FHIR IG package to layer for profile validation, in form 'id@version' (repeatable). Example: --package hl7.fhir.us.core@6.1.0",
+            AllowMultipleArgumentsPerToken = true,
+        };
 
         command.Options.Add(inputOption);
         command.Options.Add(jsonOption);
         command.Options.Add(outOption);
         command.Options.Add(consoleOption);
+        command.Options.Add(depthOption);
+        command.Options.Add(packageOption);
 
         command.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -34,7 +49,9 @@ internal static class ValidateCommand
             var json = parseResult.GetValue(jsonOption);
             var output = parseResult.GetValue(outOption);
             var console = parseResult.GetValue(consoleOption);
-            await HandleValidateCommand(schemaProvider, fhirVersion, input, json, output, console);
+            var depth = parseResult.GetValue(depthOption) ?? "spec";
+            var packages = parseResult.GetValue(packageOption) ?? Array.Empty<string>();
+            await HandleValidateCommand(schemaProvider, fhirVersion, input, json, output, console, depth, packages, cancellationToken);
         });
 
         return command;
@@ -46,7 +63,10 @@ internal static class ValidateCommand
         string? inputFile,
         string? jsonString,
         string? outputFile,
-        bool consoleOutput)
+        bool consoleOutput,
+        string depthName,
+        string[] packageSpecs,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -82,7 +102,7 @@ internal static class ValidateCommand
                     Environment.ExitCode = 1;
                     return;
                 }
-                jsonContent = await File.ReadAllTextAsync(inputFile);
+                jsonContent = await File.ReadAllTextAsync(inputFile, cancellationToken);
             }
             else
             {
@@ -119,11 +139,69 @@ internal static class ValidateCommand
                 return;
             }
 
-            // Get validation schema
-            var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
-            var innerResolver = new StructureDefinitionSchemaResolver(schemaProvider);
-            var schemaResolver = new CachedValidationSchemaResolver(innerResolver);
-            var schema = schemaResolver.GetSchema(canonicalUrl);
+            // Parse depth (case-insensitive)
+            if (!Enum.TryParse<ValidationDepth>(depthName, ignoreCase: true, out var depth))
+            {
+                Console.WriteLine($"✗ Error: Unknown --depth value '{depthName}'. Use minimal, spec, full, or compatibility.");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            // Build the schema chain. When --package was supplied, layer each package's
+            // StructureDefinitions and ValueSets on top of the base spec, and use the
+            // profile-aware resolver so meta.profile composes the right checks.
+            ISchema effectiveSchema = schemaProvider;
+            ITerminologyService terminology = new InMemoryTerminologyService(schemaProvider.ValueSetProvider);
+            if (packageSpecs.Length > 0)
+            {
+                Console.WriteLine($"→ Loading {packageSpecs.Length} IG package(s)...");
+                var packageResources = new List<Ignixa.PackageManagement.Models.ExtractedResource>();
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                var cacheDir = Path.Combine(Path.GetTempPath(), "ignixa-validator-package-cache");
+                Directory.CreateDirectory(cacheDir);
+                var cache = new PackageCacheManager(cacheDir, NullLogger<PackageCacheManager>.Instance);
+                var pkgLoader = new NpmPackageLoader(httpClient, cache, options: null, NullLogger<NpmPackageLoader>.Instance);
+                var extractor = new PackageExtractor(NullLogger<PackageExtractor>.Instance);
+
+                foreach (var spec in packageSpecs)
+                {
+                    var (pkgId, pkgVer) = SplitPackageSpec(spec);
+                    if (pkgId is null || pkgVer is null)
+                    {
+                        Console.WriteLine($"✗ Error: Invalid --package value '{spec}'. Expected 'id@version'.");
+                        Environment.ExitCode = 1;
+                        return;
+                    }
+                    try
+                    {
+                        Console.WriteLine($"  • {pkgId}@{pkgVer}");
+                        await using var stream = await pkgLoader.DownloadPackageAsync(pkgId, pkgVer, cancellationToken);
+                        var extracted = await extractor.ExtractAsync(stream, cancellationToken);
+                        packageResources.AddRange(extracted.Resources);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"✗ Error loading package '{spec}': {ex.Message}");
+                        Environment.ExitCode = 1;
+                        return;
+                    }
+                }
+
+                effectiveSchema = new ProfileLayeredSchemaProvider(schemaProvider, packageResources);
+                var packageVs = new PackageValueSetSource(packageResources);
+                terminology = new InMemoryTerminologyService(
+                    primary: schemaProvider.ValueSetProvider,
+                    additional: new[] { (IValueSetProvider)packageVs });
+            }
+
+            // Resolve validation schema. Always use the profile-aware resolver so meta.profile
+            // is honored regardless of whether --package was passed.
+            var innerResolver = new StructureDefinitionSchemaResolver(effectiveSchema, terminologyService: terminology);
+            var cachedResolver = new CachedValidationSchemaResolver(innerResolver);
+            var profileAwareResolver = new ProfileAwareValidationSchemaResolver(cachedResolver);
+
+            var element = sourceNode.ToElement(effectiveSchema);
+            var schema = profileAwareResolver.ResolveForElement(element);
 
             if (schema == null)
             {
@@ -133,9 +211,8 @@ internal static class ValidateCommand
             }
 
             // Perform validation
-            var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+            var settings = new ValidationSettings { Depth = depth };
             var state = new ValidationState();
-            var element = sourceNode.ToElement(schemaProvider);
             var validationResult = schema.Validate(element, settings, state);
 
             // Output results
@@ -158,6 +235,16 @@ internal static class ValidateCommand
             Console.WriteLine($"✗ Error: {ex.Message}");
             Environment.ExitCode = 1;
         }
+    }
+
+    private static (string? Id, string? Version) SplitPackageSpec(string spec)
+    {
+        var atIndex = spec.LastIndexOf('@');
+        if (atIndex <= 0 || atIndex == spec.Length - 1)
+        {
+            return (null, null);
+        }
+        return (spec[..atIndex], spec[(atIndex + 1)..]);
     }
 
     private static void DisplayConsoleOutput(ValidationResult result, string resourceType, string fhirVersion)

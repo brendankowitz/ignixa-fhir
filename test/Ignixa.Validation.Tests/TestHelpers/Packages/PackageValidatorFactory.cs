@@ -28,7 +28,9 @@ internal static class PackageValidatorFactory
         ArgumentNullException.ThrowIfNull(packages);
 
         var baseSchema = new R4CoreSchemaProvider();
-        var packageSchema = new ProfileLayeredSchemaProvider(baseSchema, packages);
+        var packageSchema = new ProfileLayeredSchemaProvider(
+            baseSchema,
+            packages.SelectMany(p => p.Resources));
 
         var packageVs = new PackageValueSetSource(packages.SelectMany(p => p.Resources));
         var terminology = new InMemoryTerminologyService(
