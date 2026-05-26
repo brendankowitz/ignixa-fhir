@@ -25,9 +25,10 @@ namespace Ignixa.Validation.Checks;
 /// </remarks>
 public class FhirPathInvariantCheck : IValidationCheck
 {
-    private readonly ConstraintDefinition _constraint;
+    private readonly IConstraint _constraint;
     private readonly ISchema _schema;
     private readonly FhirPathParser _parser;
+    private readonly IReadOnlyList<string> _appliesTo;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
     private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
 
@@ -37,19 +38,35 @@ public class FhirPathInvariantCheck : IValidationCheck
     public string ConstraintKey => _constraint.Key;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="FhirPathInvariantCheck"/> class.
+    /// Gets the resource/datatype names this constraint applies to.
+    /// Empty collection means "applies to all" (the default for constraints sourced
+    /// from <see cref="IConstraint"/> implementations that don't expose scope metadata).
     /// </summary>
-    /// <param name="constraint">The constraint definition to evaluate.</param>
-    /// <param name="schema">Schema provider for type information.</param>
-    /// <param name="parser">FhirPath compiler for parsing expressions (shared across checks).</param>
+    public IReadOnlyList<string> AppliesTo => _appliesTo;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FhirPathInvariantCheck"/> class
+    /// from any <see cref="IConstraint"/>. This is the canonical ctor used by
+    /// <c>StructureDefinitionSchemaBuilder</c>.
+    /// </summary>
+    /// <param name="constraint">The constraint to evaluate.</param>
+    /// <param name="schema">Schema provider for FHIRPath type information.</param>
+    /// <param name="parser">Shared FhirPath parser instance.</param>
+    /// <param name="appliesTo">
+    /// Resource/datatype names this constraint applies to. Empty/null = applies to all.
+    /// When non-empty, <see cref="Validate"/> short-circuits to Success for elements
+    /// whose <c>InstanceType</c> is not in the list.
+    /// </param>
     public FhirPathInvariantCheck(
-        ConstraintDefinition constraint,
+        IConstraint constraint,
         ISchema schema,
-        FhirPathParser parser)
+        FhirPathParser parser,
+        IReadOnlyList<string>? appliesTo = null)
     {
         _constraint = constraint ?? throw new ArgumentNullException(nameof(constraint));
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        _appliesTo = appliesTo ?? Array.Empty<string>();
 
         // Lazy compilation - parse FHIRPath expression only when first needed
         _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
@@ -70,6 +87,40 @@ public class FhirPathInvariantCheck : IValidationCheck
     }
 
     /// <summary>
+    /// Backwards-compatible ctor preserving the historical
+    /// <see cref="ConstraintDefinition"/> (Specification record) entry point used by
+    /// existing tests and direct consumers. Delegates to the <see cref="IConstraint"/>
+    /// ctor, honoring the <c>AppliesTo</c> scope carried on the record.
+    /// </summary>
+    /// <param name="constraint">The constraint definition to evaluate.</param>
+    /// <param name="schema">Schema provider for type information.</param>
+    /// <param name="parser">FhirPath compiler for parsing expressions (shared across checks).</param>
+    public FhirPathInvariantCheck(
+        ConstraintDefinition constraint,
+        ISchema schema,
+        FhirPathParser parser)
+        : this(
+            ConvertSpecificationConstraint(constraint),
+            schema,
+            parser,
+            constraint?.AppliesTo)
+    {
+    }
+
+    private static IConstraint ConvertSpecificationConstraint(ConstraintDefinition c)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        return new Ignixa.Abstractions.ConstraintDefinition
+        {
+            Key = c.Key,
+            Expression = c.Expression,
+            Human = c.Human,
+            Severity = c.Severity == ConstraintSeverity.Warning ? "warning" : "error",
+            Xpath = c.Xpath,
+        };
+    }
+
+    /// <summary>
     /// Validates a FHIR element against this constraint's FHIRPath expression.
     /// </summary>
     /// <param name="element">The element to validate.</param>
@@ -84,6 +135,16 @@ public class FhirPathInvariantCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
+        // Scope filter: skip when AppliesTo is set and the element's resource type is out of scope.
+        if (_appliesTo.Count > 0)
+        {
+            var instanceType = element.InstanceType;
+            if (!string.IsNullOrEmpty(instanceType) && !_appliesTo.Contains(instanceType))
+            {
+                return ValidationResult.Success();
+            }
+        }
+
         try
         {
             // Evaluate the FHIRPath expression
@@ -95,20 +156,19 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             if (!isValid)
             {
-                // Map ConstraintSeverity to IssueSeverity
-                var severity = _constraint.Severity == ConstraintSeverity.Warning
-                    ? IssueSeverity.Warning
-                    : IssueSeverity.Error;
+                // IConstraint.Severity is a string ("error" / "warning"); map to IssueSeverity.
+                var isWarning = string.Equals(_constraint.Severity, "warning", StringComparison.OrdinalIgnoreCase);
+                var severity = isWarning ? IssueSeverity.Warning : IssueSeverity.Error;
 
                 // Create validation issue with constraint key and human description
                 var issue = ValidationIssue.InvariantFailure(
                     _constraint.Key,
-                    _constraint.Human,
+                    _constraint.Human ?? string.Empty,
                     element.Location ?? string.Empty,
                     severity);
 
                 // Warnings don't fail validation (isValid = true), but errors do
-                if (_constraint.Severity == ConstraintSeverity.Warning)
+                if (isWarning)
                 {
                     return new ValidationResult(isValid: true, issues: new[] { issue });
                 }

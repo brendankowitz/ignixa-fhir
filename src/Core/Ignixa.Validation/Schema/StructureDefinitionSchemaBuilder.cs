@@ -256,6 +256,32 @@ public class StructureDefinitionSchemaBuilder
     /// <param name="schema">The schema for FHIRPath evaluation.</param>
     /// <param name="parser">The FhirPath compiler for parsing constraint expressions.</param>
     /// <returns>A collection of FhirPathInvariantCheck instances.</returns>
+    /// <summary>
+    /// Well-known FHIR constraint keys to their AppliesTo scope. Used as a fallback when
+    /// the constraint source (e.g. codegen <see cref="Ignixa.Abstractions.ConstraintDefinition"/>)
+    /// doesn't carry scope metadata. Without this, ext-1 fires on every element that has
+    /// an Extension child, dom-* fires on every nested resource, etc.
+    /// Keys follow FHIR R4 invariant naming: ele-*, dom-*, ext-*, vs-*, etc.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> WellKnownConstraintScopes =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["ext-1"] = new[] { "Extension" },
+        };
+
+    private static IReadOnlyList<string>? ResolveAppliesTo(IConstraint constraint)
+    {
+        // Source carries scope explicitly (the Specification.ConstraintDefinition path).
+        // Cast through object because IConstraint and Specification.ConstraintDefinition
+        // are not in the same hierarchy.
+        if ((object)constraint is Specification.ConstraintDefinition specConstraint)
+        {
+            return specConstraint.AppliesTo;
+        }
+
+        return WellKnownConstraintScopes.TryGetValue(constraint.Key, out var scope) ? scope : null;
+    }
+
     private static IEnumerable<IValidationCheck> ExtractInvariantChecks(
         IReadOnlyList<IType> elements,
         IType typeDefinition,
@@ -266,11 +292,16 @@ public class StructureDefinitionSchemaBuilder
 
         // Deduplicate constraints by key to avoid duplicate checks
         // Multiple elements may reference the same constraint (e.g., ele-1 on every element)
-        var seenConstraints = new HashSet<string>();
+        var seenConstraints = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var element in elements)
+        // Walk the root type AND each child element. Codegen typically duplicates root-level
+        // invariants (ele-1, dom-*) onto every child, but adapter-produced types may keep them
+        // only on the root - so we must inspect both to find them all.
+        var elementsToScan = new List<IType>(elements.Count + 1) { typeDefinition };
+        elementsToScan.AddRange(elements);
+
+        foreach (var element in elementsToScan)
         {
-            // Check if this element has extended metadata with constraints
             if (element is not ITypeExtended extendedMetadata)
             {
                 continue;
@@ -284,37 +315,23 @@ public class StructureDefinitionSchemaBuilder
 
             foreach (var constraint in constraints)
             {
-                // Skip constraints we've already seen
-                // FHIRPath invariants are evaluated at the resource root, not per-element
                 if (seenConstraints.Contains(constraint.Key))
                 {
                     continue;
                 }
 
-                // Cast to concrete ConstraintDefinition to access AppliesTo property
-                // The IConstraint interface doesn't have AppliesTo yet, but the concrete implementation does
-                // Note: We cast through object because IConstraint (Abstractions) and ConstraintDefinition (Specification)
-                // are not directly related in the type hierarchy, but the runtime type from codegen is ConstraintDefinition
-                var constraintObj = (object)constraint;
-                if (constraintObj is Specification.ConstraintDefinition constraintDef)
+                var appliesTo = ResolveAppliesTo(constraint);
+
+                // Pre-filter: when AppliesTo is explicitly set and excludes this type, skip
+                // entirely without consuming the dedup slot, so a later element can still
+                // surface the same constraint key if its scope matches.
+                if (appliesTo is { Count: > 0 } && !appliesTo.Contains(typeDefinition.Info.Name))
                 {
-                    // ✅ Filter constraints by AppliesTo scope
-                    // Only include constraints that either:
-                    // - Apply to all resources/types (AppliesTo is empty), OR
-                    // - Explicitly apply to this resource type
-                    // This prevents constraints like ext-1 (Extension-only) from being applied to MedicationRequest
-                    if (constraintDef.AppliesTo.Count > 0 && !constraintDef.AppliesTo.Contains(typeDefinition.Info.Name))
-                    {
-                        continue; // Constraint doesn't apply to this resource type
-                    }
-
-                    seenConstraints.Add(constraint.Key);
-
-                    // Create FhirPathInvariantCheck for this constraint
-                    // Compiler is passed in from builder instance (shared across all checks)
-                    var check = new FhirPathInvariantCheck(constraintDef, schema, parser);
-                    checks.Add(check);
+                    continue;
                 }
+
+                seenConstraints.Add(constraint.Key);
+                checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo));
             }
         }
 
