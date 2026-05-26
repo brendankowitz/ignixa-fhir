@@ -1,4 +1,4 @@
-// <copyright file="CarinBbValidatorFactory.cs" company="Microsoft Corporation">
+// <copyright file="UsCoreValidatorFactory.cs" company="Microsoft Corporation">
 //     Copyright (c) Microsoft Corporation. All rights reserved.
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
@@ -8,22 +8,22 @@ using Ignixa.Validation.Schema;
 namespace Ignixa.Validation.Tests.TestHelpers.Packages;
 
 /// <summary>
-/// Builds a fully-wired validator chain for the CARIN BlueButton scenario:
-/// base R4 schema + CARIN-BB profile StructureDefinitions + CARIN-BB ValueSets.
+/// Builds a fully-wired validator chain for US Core scenarios:
+/// base R4 schema + US Core profile StructureDefinitions + US Core ValueSets.
 /// Returns a <see cref="ProfileAwareValidationSchemaResolver"/> ready to call
-/// <c>ResolveForElement(...)</c> on the customer's EOB instance.
+/// <c>ResolveForElement(...)</c> on a resource that declares
+/// <c>meta.profile</c> = a us-core-* canonical.
 /// </summary>
-internal static class CarinBbValidatorFactory
+internal static class UsCoreValidatorFactory
 {
     /// <summary>
-    /// Builds the resolver and underlying schema provider for CARIN BlueButton 2.1.0
+    /// Builds the resolver and underlying schema provider for US Core 6.1.0
     /// layered on top of the base R4 spec.
     /// </summary>
     public static async Task<ProfileAwareValidationSchemaResolver> BuildAsync(
         CancellationToken cancellationToken = default)
     {
-        var pkg = await TestFhirPackageLoader.LoadCarinBlueButtonAsync(cancellationToken);
+        var pkg = await TestFhirPackageLoader.LoadUsCoreAsync(cancellationToken);
         return PackageValidatorFactory.BuildR4(pkg);
     }
 }
-

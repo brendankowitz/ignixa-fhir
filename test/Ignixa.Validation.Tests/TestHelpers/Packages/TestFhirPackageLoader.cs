@@ -48,6 +48,14 @@ public static class TestFhirPackageLoader
         => LoadAsync("hl7.fhir.us.carin-bb", "2.1.0", cancellationToken);
 
     /// <summary>
+    /// Loads the US Core 6.1.0 IG package (<c>hl7.fhir.us.core</c>) - a stable,
+    /// widely-deployed version against R4. Bump as needed by passing a different
+    /// version to <see cref="LoadAsync"/>.
+    /// </summary>
+    public static Task<TestFhirPackage> LoadUsCoreAsync(CancellationToken cancellationToken = default)
+        => LoadAsync("hl7.fhir.us.core", "6.1.0", cancellationToken);
+
+    /// <summary>
     /// Loads an arbitrary FHIR IG package by id and version. Results are memoized
     /// per (packageId, version) for the lifetime of the test process.
     /// </summary>

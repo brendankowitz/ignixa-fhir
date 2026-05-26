@@ -132,7 +132,17 @@ public sealed class StructureDefinitionTypeAdapter
 
         // Build children: any subsequent element whose path begins with "{path}." up to the
         // next sibling of the current node.
+        //
+        // Slicing note: a profile may emit multiple ElementDefinitions sharing the same path
+        // (the slice header + one entry per slice, distinguished by sliceName). The slice
+        // header carries the aggregate cardinality for the element (e.g. extension is 0..*);
+        // individual slice members carry per-slice constraints (e.g. extension:race is 0..1).
+        // Without slicing-aware validation, emitting one child per slice would attach
+        // contradictory cardinality checks. Dedupe by path so the first occurrence (the slice
+        // header, since snapshot order places it first) is the single visible child.
+        // Slicing-aware checks are a separate plan (see SlicingMetadata on CoreType).
         var children = new List<IType>();
+        var seenChildPaths = new HashSet<string>(StringComparer.Ordinal);
         var i = startIndex + 1;
         while (i < elements.Count)
         {
@@ -148,6 +158,14 @@ public sealed class StructureDefinitionTypeAdapter
             {
                 // Indirect descendant - will be picked up when we recurse on its parent.
                 i++;
+                continue;
+            }
+
+            if (!seenChildPaths.Add(candidate))
+            {
+                // Duplicate path - this is a slice member of an already-emitted slice header.
+                // Skip the entire slice subtree.
+                i = AdvancePastSubtree(elements, i);
                 continue;
             }
 
