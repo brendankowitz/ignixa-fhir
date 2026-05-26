@@ -25,8 +25,15 @@ namespace Ignixa.Validation.Schema;
 /// because a referenced profile package isn't loaded; this is consistent with how
 /// the legacy MS FHIR Server treated missing profiles (warnings, not errors).
 /// </para>
+/// <para>
+/// Also implements <see cref="IValidationSchemaResolver"/> by delegating
+/// <see cref="GetSchema"/> to the wrapped inner resolver, so existing consumers
+/// that resolve schemas by canonical URL keep working - they just lose the
+/// profile-composition behaviour. Consumers that have access to the resource
+/// element should prefer <see cref="ResolveForElement"/>.
+/// </para>
 /// </summary>
-public sealed class ProfileAwareValidationSchemaResolver
+public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaResolver
 {
     private readonly IValidationSchemaResolver _inner;
 
@@ -34,6 +41,13 @@ public sealed class ProfileAwareValidationSchemaResolver
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     }
+
+    /// <summary>
+    /// Delegates to the wrapped inner resolver. Provided so this class is a drop-in
+    /// replacement for <see cref="IValidationSchemaResolver"/> in DI; callers that
+    /// also need <c>meta.profile</c> composition should call <see cref="ResolveForElement"/>.
+    /// </summary>
+    public ValidationSchema? GetSchema(string canonicalUrl) => _inner.GetSchema(canonicalUrl);
 
     /// <summary>
     /// Resolves the validation schema for an element by walking its

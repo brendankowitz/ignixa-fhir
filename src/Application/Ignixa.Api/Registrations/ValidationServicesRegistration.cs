@@ -60,6 +60,11 @@ public static class ValidationServicesRegistration
     private static void RegisterValidationSchemaResolverFactory(ContainerBuilder builder)
     {
         // Multi-tenant factory: Func<FhirVersion, int, IValidationSchemaResolver>
+        // The returned resolver is a ProfileAwareValidationSchemaResolver so that
+        // consumers with access to the resource element can call ResolveForElement()
+        // for meta.profile composition, while legacy callers that look up by canonical
+        // URL via IValidationSchemaResolver.GetSchema() still work (delegated to the
+        // inner cached resolver).
         builder.Register<Func<FhirVersion, int, IValidationSchemaResolver>>(c =>
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
@@ -70,7 +75,8 @@ public static class ValidationServicesRegistration
             {
                 var schemaProvider = versionContext.GetSchemaProvider(version, tenantId);
                 var resolver = new StructureDefinitionSchemaResolver(schemaProvider, schemaBuilder, terminologyService);
-                return new CachedValidationSchemaResolver(resolver);
+                var cached = new CachedValidationSchemaResolver(resolver);
+                return new ProfileAwareValidationSchemaResolver(cached);
             };
         }).SingleInstance();
 

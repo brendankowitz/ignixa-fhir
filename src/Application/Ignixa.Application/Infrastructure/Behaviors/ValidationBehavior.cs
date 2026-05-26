@@ -11,6 +11,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -87,15 +88,26 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
 
             // Get version-specific schema resolver from factory
             var schemaResolver = _schemaResolverFactory(fhirVersionEnum);
+
+            // Build element first - need it both for ProfileAware resolution and for validation
+            var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
+            var element = request.JsonNode.ToElement(schemaProvider);
+
+            // Prefer element-aware resolution (composes meta.profile checks). The DI factory
+            // returns a ProfileAwareValidationSchemaResolver wrapping the inner cached
+            // resolver, but consumers see only IValidationSchemaResolver - downcast to
+            // pick up the richer API. Falls back to canonical-URL lookup if downcast fails
+            // (e.g. test doubles that don't use the production wrapping).
+            ValidationSchema? schema = null;
             var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{request.ResourceType}";
-            var schema = schemaResolver.GetSchema(canonicalUrl);
+            if (schemaResolver is ProfileAwareValidationSchemaResolver profileAware)
+            {
+                schema = profileAware.ResolveForElement(element);
+            }
+            schema ??= schemaResolver.GetSchema(canonicalUrl);
 
             if (schema != null)
             {
-                // Get schema provider for element conversion
-                var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
-                var element = request.JsonNode.ToElement(schemaProvider);
-
                 var settings = new ValidationSettings
                 {
                     Depth = validationDepth,

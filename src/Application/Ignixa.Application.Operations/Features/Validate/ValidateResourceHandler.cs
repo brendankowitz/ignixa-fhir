@@ -161,7 +161,22 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
             var tenantId = currentTenantConfig?.TenantId ?? 1;
 
             var schemaResolver = _schemaResolverFactory(fhirVersionEnum, tenantId);
-            var schema = schemaResolver.GetSchema(canonicalUrl);
+
+            // Element-aware resolution composes meta.profile checks automatically when
+            // no explicit profile was requested. The DI factory returns a
+            // ProfileAwareValidationSchemaResolver so we can downcast; falls back to
+            // canonical-URL lookup otherwise.
+            var element = sourceNode.ToElement(fhirSchemaProvider);
+            ValidationSchema? schema;
+            if (string.IsNullOrEmpty(request.Profile)
+                && schemaResolver is Ignixa.Validation.Schema.ProfileAwareValidationSchemaResolver profileAware)
+            {
+                schema = profileAware.ResolveForElement(element);
+            }
+            else
+            {
+                schema = schemaResolver.GetSchema(canonicalUrl);
+            }
 
             if (schema is null)
             {
@@ -180,7 +195,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                         TerminologyService = _terminologyService
                     };
                     var state = new ValidationState();
-                    var validationResult = schema.Validate(sourceNode.ToElement(fhirSchemaProvider), settings, state);
+                    var validationResult = schema.Validate(element, settings, state);
 
                 if (!validationResult.IsValid)
                 {
