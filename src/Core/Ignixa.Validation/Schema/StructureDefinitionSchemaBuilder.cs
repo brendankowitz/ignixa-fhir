@@ -9,6 +9,7 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Validation.Schema;
 
@@ -20,6 +21,7 @@ namespace Ignixa.Validation.Schema;
 public class StructureDefinitionSchemaBuilder
 {
     private readonly FhirPathParser _parser;
+    private readonly ILogger<StructureDefinitionSchemaBuilder>? _logger;
 
     /// <summary>
     /// Per-call cycle guard for the recursive nested-type extraction. Tracks type names
@@ -34,9 +36,13 @@ public class StructureDefinitionSchemaBuilder
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaBuilder"/> class.
     /// </summary>
     /// <param name="compiler">Shared FhirPath compiler for parsing constraint expressions. If null, a new instance will be created.</param>
-    public StructureDefinitionSchemaBuilder(FhirPathParser? compiler = null)
+    /// <param name="logger">Optional logger for diagnostics during schema building.</param>
+    public StructureDefinitionSchemaBuilder(
+        FhirPathParser? compiler = null,
+        ILogger<StructureDefinitionSchemaBuilder>? logger = null)
     {
         _parser = compiler ?? new FhirPathParser();
+        _logger = logger;
     }
 
     /// <summary>
@@ -93,7 +99,9 @@ public class StructureDefinitionSchemaBuilder
                 if (e is ITypeExtended extended)
                 {
                     int min = extended.Min;
-                    int? max = extended.Max == "*" ? null : int.Parse(extended.Max);
+                    int? max = extended.Max == "*" ? null
+                        : int.TryParse(extended.Max, out var parsedMax) ? parsedMax
+                        : (int?)null;
                     return new CardinalityCheck(e.Info.Name, min, max);
                 }
 
@@ -217,7 +225,7 @@ public class StructureDefinitionSchemaBuilder
         var addedToVisiting = visiting.Add(typeDefinition.Info.Name);
         try
         {
-            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService);
+            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService, _logger);
             specChecks.AddRange(nestedTypeChecks);
         }
         finally
@@ -383,7 +391,8 @@ public class StructureDefinitionSchemaBuilder
         IReadOnlyList<IType> elements,
         IType typeDefinition,
         ISchema schema,
-        ITerminologyService? terminologyService)
+        ITerminologyService? terminologyService,
+        ILogger? logger = null)
     {
         var checks = new List<IValidationCheck>();
 
@@ -445,8 +454,7 @@ public class StructureDefinitionSchemaBuilder
             var nestedTypeDefinition = schema.GetTypeDefinition(nestedTypeName);
             if (nestedTypeDefinition == null)
             {
-                // Nested type not found - may be older FHIR version or unsupported type
-                // Skip silently to avoid breaking existing validations
+                logger?.LogDebug("Nested type '{NestedTypeName}' not found in schema - subtree will not be validated", nestedTypeName);
                 continue;
             }
 
@@ -456,6 +464,7 @@ public class StructureDefinitionSchemaBuilder
             var visiting = _activeTypeNames.Value;
             if (visiting != null && visiting.Contains(nestedTypeName))
             {
+                logger?.LogDebug("Cycle detected building type '{NestedTypeName}' - skipping to prevent infinite recursion", nestedTypeName);
                 continue;
             }
 

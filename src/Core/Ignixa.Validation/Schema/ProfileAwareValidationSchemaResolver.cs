@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Schema;
@@ -89,6 +90,17 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
             {
                 schemas.Add(profileSchema);
             }
+            else
+            {
+                // Emit a warning so callers know validation was partial, not full-profile.
+                var warnSchema = new ValidationSchema(
+                    canonicalUrl: canonical,
+                    resourceType: baseSchema.ResourceType,
+                    universalChecks: Array.Empty<IValidationCheck>(),
+                    specChecks: [new UnresolvableProfileCheck(profileUrl)],
+                    profileChecks: Array.Empty<IValidationCheck>());
+                schemas.Add(warnSchema);
+            }
         }
 
         return ValidationSchema.Compose(schemas);
@@ -128,5 +140,25 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
     {
         var pipe = canonicalUrl.IndexOf('|', StringComparison.Ordinal);
         return pipe >= 0 ? canonicalUrl[..pipe] : canonicalUrl;
+    }
+
+    private sealed class UnresolvableProfileCheck : IValidationCheck
+    {
+        private readonly string _profileUrl;
+
+        internal UnresolvableProfileCheck(string profileUrl)
+        {
+            _profileUrl = profileUrl;
+        }
+
+        public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
+        {
+            var issue = new ValidationIssue(
+                IssueSeverity.Warning,
+                "unresolvable-profile",
+                element.Location ?? string.Empty,
+                $"Profile '{_profileUrl}' declared in meta.profile could not be resolved. Validation was performed against the base resource definition only.");
+            return new ValidationResult(isValid: true, issues: [issue]);
+        }
     }
 }

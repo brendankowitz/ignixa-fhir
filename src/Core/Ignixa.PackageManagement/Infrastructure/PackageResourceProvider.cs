@@ -45,7 +45,11 @@ public class PackageResourceProvider : IPackageResourceProvider
         {
             return new StructureDefinitionTypeAdapter().Adapt(resourceJson, fhirVersion);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
         {
             _logger.LogWarning(ex, "Failed to adapt StructureDefinition (fhirVersion={FhirVersion}) - returning null", fhirVersion);
             return null;

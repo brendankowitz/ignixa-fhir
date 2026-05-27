@@ -10,6 +10,7 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
+using Microsoft.Extensions.Logging;
 using ConstraintDefinition = Ignixa.Specification.ConstraintDefinition;
 
 namespace Ignixa.Validation.Checks;
@@ -29,6 +30,7 @@ public class FhirPathInvariantCheck : IValidationCheck
     private readonly ISchema _schema;
     private readonly FhirPathParser _parser;
     private readonly IReadOnlyList<string> _appliesTo;
+    private readonly ILogger? _logger;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
     private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
 
@@ -61,12 +63,14 @@ public class FhirPathInvariantCheck : IValidationCheck
         IConstraint constraint,
         ISchema schema,
         FhirPathParser parser,
-        IReadOnlyList<string>? appliesTo = null)
+        IReadOnlyList<string>? appliesTo = null,
+        ILogger? logger = null)
     {
         _constraint = constraint ?? throw new ArgumentNullException(nameof(constraint));
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
         _appliesTo = appliesTo ?? Array.Empty<string>();
+        _logger = logger;
 
         // Lazy compilation - parse FHIRPath expression only when first needed
         _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
@@ -78,9 +82,7 @@ public class FhirPathInvariantCheck : IValidationCheck
             }
             catch (Exception ex)
             {
-                // If expression parsing fails, log and return empty expression
-                // This allows validation to continue even if some constraints have invalid expressions
-                System.Diagnostics.Debug.WriteLine($"Failed to parse FHIRPath expression for constraint {_constraint.Key}: {ex.Message}");
+                _logger?.LogError(ex, "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will be skipped", _constraint.Key);
                 return new FhirPath.Expressions.EmptyExpression();
             }
         });
@@ -178,10 +180,12 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             return ValidationResult.Success();
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            // If evaluation fails, treat as validation error
-            // This ensures malformed data doesn't cause crashes
             var issue = new ValidationIssue(
                 IssueSeverity.Error,
                 _constraint.Key,
