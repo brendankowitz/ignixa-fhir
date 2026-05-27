@@ -54,11 +54,17 @@ public class LoadPackageHandler(
 
         try
         {
-            var importResult = await _provider.LoadPackageAsync(
-                request.TenantId,
-                request.PackageId,
-                request.Version,
-                cancellationToken);
+            var importResult = request.IncludeDependencies
+                ? await _provider.LoadPackageWithDependenciesAsync(
+                    request.TenantId,
+                    request.PackageId,
+                    request.Version,
+                    cancellationToken)
+                : await _provider.LoadPackageAsync(
+                    request.TenantId,
+                    request.PackageId,
+                    request.Version,
+                    cancellationToken);
 
             var result = new LoadPackageResult
             {
@@ -67,7 +73,8 @@ public class LoadPackageHandler(
                 TotalResources = importResult.TotalResources,
                 ImportedResources = importResult.ImportedResources,
                 DurationMilliseconds = (long)importResult.Duration.TotalMilliseconds,
-                ResourcesByType = importResult.ResourcesByType
+                ResourcesByType = importResult.ResourcesByType,
+                LoadedPackages = importResult.LoadedPackages,
             };
 
             _logger.LogInformation(

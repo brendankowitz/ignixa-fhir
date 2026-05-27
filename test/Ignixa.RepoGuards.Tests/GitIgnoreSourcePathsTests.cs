@@ -26,6 +26,8 @@ public class GitIgnoreSourcePathsTests
         new object[] { "test/Ignixa.Validation.Tests/TestHelpers/Packages/TestFhirPackage.cs" },
         new object[] { "test/Ignixa.Validation.Tests/TestHelpers/Packages/TestFhirPackageLoader.cs" },
         new object[] { "test/Ignixa.Validation.Tests/TestHelpers/Packages/CarinBbValidatorFactory.cs" },
+        new object[] { "test/Ignixa.Application.Tests/Features/Packages/ImplementationGuideProviderTransitiveTests.cs" },
+        new object[] { "test/Ignixa.Application.Tests/Features/Packages/ImplementationGuideProviderTransitiveIntegrationTests.cs" },
     };
 
     [Theory]

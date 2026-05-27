@@ -71,7 +71,7 @@ public static class AdminPackageEndpoints
                 return Results.BadRequest("Version is required");
 
             // Execute command via Medino
-            var command = new LoadPackageCommand(tenantId, request.PackageId, request.Version);
+            var command = new LoadPackageCommand(tenantId, request.PackageId, request.Version, request.IncludeDependencies);
             var result = await mediator.SendAsync(command, cancellationToken);
 
             logger.LogInformation(
@@ -229,6 +229,14 @@ public static class AdminPackageEndpoints
         /// Package version (e.g., "5.0.1").
         /// </summary>
         public required string Version { get; init; }
+
+        /// <summary>
+        /// When true, also loads every package declared in the root package's
+        /// <c>dependencies</c> (transitively). Each member of the closure is loaded
+        /// idempotently and <c>hl7.fhir.r4.core</c> is skipped (provided in-process).
+        /// Defaults to false to preserve historical single-package semantics.
+        /// </summary>
+        public bool IncludeDependencies { get; init; }
     }
 
     /// <summary>

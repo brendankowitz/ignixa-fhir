@@ -123,6 +123,141 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
     }
 
     /// <summary>
+    /// Loads a package and its full declared dependency closure into a tenant's database.
+    /// Re-uses the existing single-package download/extract/import pipeline for each
+    /// member of the closure so per-package idempotency, logging, and repository
+    /// semantics are preserved.
+    /// </summary>
+    public async Task<PackageImportResult> LoadPackageWithDependenciesAsync(
+        string tenantId,
+        string packageId,
+        string version,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            throw new ArgumentException("Tenant ID cannot be null or empty", nameof(tenantId));
+        if (string.IsNullOrWhiteSpace(packageId))
+            throw new ArgumentException("Package ID cannot be null or empty", nameof(packageId));
+        if (string.IsNullOrWhiteSpace(version))
+            throw new ArgumentException("Version cannot be null or empty", nameof(version));
+
+        _logger.LogInformation(
+            "Loading package {PackageId}@{Version} with dependencies into tenant {TenantId}",
+            packageId, version, tenantId);
+
+        // BFS the closure. Skip r4.core (in-process) and dedup by package id so a diamond
+        // dependency graph doesn't double-load anything.
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "hl7.fhir.r4.core" };
+        var queue = new Queue<(string Id, string Version)>();
+        queue.Enqueue((packageId, version));
+
+        var aggregatedResourcesByType = new Dictionary<string, int>(StringComparer.Ordinal);
+        var loadedSpecs = new List<string>();
+        int aggregatedTotal = 0;
+        int aggregatedImported = 0;
+        int aggregatedUpdated = 0;
+        var aggregatedDuration = TimeSpan.Zero;
+
+        while (queue.Count > 0)
+        {
+            var (id, ver) = queue.Dequeue();
+            if (!visited.Add(id))
+            {
+                continue;
+            }
+
+            PackageImportResult perPackageResult;
+            try
+            {
+                perPackageResult = await LoadPackageAsync(tenantId, id, ver, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Tolerate transitive failures - the rest of the closure may still be useful.
+                _logger.LogWarning(
+                    ex,
+                    "Failed to load transitive dependency {PackageId}@{Version} of {RootPackageId}@{RootVersion} - skipping",
+                    id, ver, packageId, version);
+                loadedSpecs.Add($"{id}@{ver} (skipped: {ex.GetType().Name})");
+                continue;
+            }
+
+            // Enqueue declared deps. Re-download just the manifest portion would be more
+            // efficient but adds a second code path; LoadPackageAsync re-downloads internally
+            // and is cached on disk via PackageCacheManager, so the second pass is cheap.
+            await EnqueueDependenciesAsync(id, ver, queue, visited, cancellationToken);
+
+            // Mark whether the import was a no-op (already loaded) for caller visibility.
+            var alreadyLoaded = perPackageResult.ImportedResources == 0 && perPackageResult.TotalResources == 0;
+            loadedSpecs.Add(alreadyLoaded ? $"{id}@{ver} (already loaded)" : $"{id}@{ver}");
+
+            aggregatedTotal += perPackageResult.TotalResources;
+            aggregatedImported += perPackageResult.ImportedResources;
+            aggregatedUpdated += perPackageResult.UpdatedResources;
+            aggregatedDuration += perPackageResult.Duration;
+            foreach (var kv in perPackageResult.ResourcesByType)
+            {
+                aggregatedResourcesByType.TryGetValue(kv.Key, out var existing);
+                aggregatedResourcesByType[kv.Key] = existing + kv.Value;
+            }
+        }
+
+        _logger.LogInformation(
+            "Closure load complete for {PackageId}@{Version} into tenant {TenantId}. " +
+            "Visited {Count} package(s), imported {Imported} resource(s) total in {Duration}ms",
+            packageId, version, tenantId, loadedSpecs.Count, aggregatedImported, aggregatedDuration.TotalMilliseconds);
+
+        return new PackageImportResult
+        {
+            PackageId = packageId,
+            PackageVersion = version,
+            TotalResources = aggregatedTotal,
+            ImportedResources = aggregatedImported,
+            UpdatedResources = aggregatedUpdated,
+            Duration = aggregatedDuration,
+            ResourcesByType = aggregatedResourcesByType,
+            LoadedPackages = loadedSpecs,
+        };
+    }
+
+    /// <summary>
+    /// Downloads + extracts <paramref name="packageId"/>@<paramref name="version"/> just
+    /// for its manifest, and enqueues every dependency not already visited.
+    /// </summary>
+    private async Task EnqueueDependenciesAsync(
+        string packageId,
+        string version,
+        Queue<(string Id, string Version)> queue,
+        HashSet<string> visited,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var stream = await _packageLoader.DownloadPackageAsync(packageId, version, cancellationToken);
+            var extraction = await _packageExtractor.ExtractAsync(stream, cancellationToken);
+            if (extraction.Manifest.Dependencies is { Count: > 0 } deps)
+            {
+                foreach (var dep in deps)
+                {
+                    if (!visited.Contains(dep.Key))
+                    {
+                        queue.Enqueue((dep.Key, dep.Value));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Manifest re-read failure shouldn't fail the whole closure; the package
+            // itself was already imported successfully by LoadPackageAsync above.
+            _logger.LogWarning(
+                ex,
+                "Failed to enumerate dependencies for {PackageId}@{Version} - skipping its transitive deps",
+                packageId, version);
+        }
+    }
+
+    /// <summary>
     /// Lists all currently loaded packages for a specific tenant.
     /// </summary>
     /// <param name="tenantId">Tenant ID for database selection (currently unused - Phase 1 limitation)</param>
