@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Formats.Tar;
 using System.Text.Json;
 using Ignixa.PackageManagement.Abstractions;
@@ -175,7 +176,7 @@ public partial class PackageExtractor : IPackageExtractor
                 Title = title,
                 Description = description,
                 License = license,
-                Dependencies = dependencies,
+                Dependencies = (IReadOnlyDictionary<string, string>?)dependencies ?? FrozenDictionary<string, string>.Empty,
             };
         }
         catch (Exception ex)

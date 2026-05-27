@@ -45,5 +45,5 @@ public record PackageManifest
     /// each (id, version) and the dependencies of the resulting manifests, until the
     /// closure stabilises.
     /// </remarks>
-    public IReadOnlyDictionary<string, string>? Dependencies { get; init; }
+    public IReadOnlyDictionary<string, string> Dependencies { get; init; } = System.Collections.Frozen.FrozenDictionary<string, string>.Empty;
 }

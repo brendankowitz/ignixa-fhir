@@ -63,7 +63,7 @@ public class ImplementationGuideProviderTransitiveTests
                     Name = id,
                     Version = version,
                     FhirVersion = "4.0.1",
-                    Dependencies = deps,
+                    Dependencies = deps ?? System.Collections.Frozen.FrozenDictionary<string, string>.Empty,
                 },
                 Resources = Array.Empty<ExtractedResource>(),
             }));
@@ -183,7 +183,9 @@ public class ImplementationGuideProviderTransitiveTests
         result.LoadedPackages.ShouldNotBeNull();
         result.LoadedPackages!.ShouldContain(s => s.StartsWith("root@", StringComparison.Ordinal));
         result.LoadedPackages.ShouldContain(s => s.StartsWith("good@", StringComparison.Ordinal));
-        result.LoadedPackages.ShouldContain(s => s.StartsWith("broken@", StringComparison.Ordinal) && s.Contains("skipped", StringComparison.Ordinal));
+        result.LoadedPackages.ShouldNotContain(s => s.StartsWith("broken@", StringComparison.Ordinal));
+        result.SkippedPackages.ShouldNotBeNull();
+        result.SkippedPackages!.ShouldContain(s => s.StartsWith("broken@", StringComparison.Ordinal) && s.Contains("skipped", StringComparison.Ordinal));
     }
 
     [Fact]

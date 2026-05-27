@@ -53,7 +53,6 @@ internal sealed class AdaptedType : ITypeExtended
         ContentReference = contentReference;
     }
 
-    // IType
     public TypeInfo Info { get; }
     public bool IsCollection { get; }
     public bool IsRequired { get; }
@@ -61,7 +60,6 @@ internal sealed class AdaptedType : ITypeExtended
     public int Order { get; }
     public IReadOnlyList<IType> Children => _children;
 
-    // ITypeExtended
     public int Min { get; }
     public string Max { get; }
     public IReadOnlyList<IConstraint> Constraints { get; }
@@ -72,21 +70,4 @@ internal sealed class AdaptedType : ITypeExtended
     public string? DefaultTypeName { get; }
     public IReadOnlyList<string> ReferenceTargets { get; }
     public string? ContentReference { get; }
-}
-
-/// <summary>
-/// Concrete <see cref="IBinding"/> emitted by the adapter.
-/// </summary>
-internal sealed class AdaptedBinding : IBinding
-{
-    public AdaptedBinding(string strength, string? valueSet, string? description)
-    {
-        Strength = strength ?? throw new ArgumentNullException(nameof(strength));
-        ValueSet = valueSet;
-        Description = description;
-    }
-
-    public string Strength { get; }
-    public string? ValueSet { get; }
-    public string? Description { get; }
 }

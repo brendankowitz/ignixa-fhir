@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Models;
@@ -32,7 +33,7 @@ public sealed class PackageValueSetSource : IValueSetProvider
 {
     private readonly Dictionary<string, ExtractedResource> _valueSets;
     private readonly Dictionary<string, ExtractedResource> _codeSystems;
-    private readonly Dictionary<string, IReadOnlyList<FhirCode>> _expansionCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, IReadOnlyList<FhirCode>> _expansionCache = new(StringComparer.Ordinal);
 
     public PackageValueSetSource(IEnumerable<ExtractedResource> resources)
     {

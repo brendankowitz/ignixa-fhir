@@ -65,13 +65,20 @@ public class LayeredTerminologyServiceTests
     }
 
     [Fact]
-    public void GivenLayeredService_WhenConstructedWithEmptyAdditional_ThenBehavesAsBaseProvider()
+    public async Task GivenLayeredService_WhenConstructedWithEmptyAdditional_ThenBehavesAsBaseProvider()
     {
         var service = new InMemoryTerminologyService(
             primary: new R4CoreSchemaProvider().ValueSetProvider,
             additional: Array.Empty<IValueSetProvider>());
 
-        // Sanity: constructor accepts empty additional list without throwing.
-        service.ShouldNotBeNull();
+        var result = await service.ValidateCodeAsync(
+            system: "http://hl7.org/fhir/administrative-gender",
+            code: "male",
+            display: null,
+            valueSetUrl: "http://hl7.org/fhir/ValueSet/administrative-gender",
+            cancellationToken: CancellationToken.None);
+
+        result.IsValid.ShouldBeTrue("empty-additional constructor should fall back to primary provider");
+        result.Severity.ShouldNotBe(IssueSeverity.Warning, "known VS with valid code should not produce a warning");
     }
 }

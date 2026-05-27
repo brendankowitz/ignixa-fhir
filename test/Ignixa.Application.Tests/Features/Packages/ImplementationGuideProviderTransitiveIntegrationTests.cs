@@ -67,6 +67,7 @@ public class ImplementationGuideProviderTransitiveIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresNetwork")]
     public async Task GivenAuCoreRoot_WhenLoadingWithDependenciesViaProvider_ThenAllDeclaredDepsImported()
     {
         var provider = BuildProviderWithRealNetwork(out var importer, out _);
@@ -102,6 +103,7 @@ public class ImplementationGuideProviderTransitiveIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresNetwork")]
     public async Task GivenCarinBbRoot_WhenLoadingWithDependenciesViaProvider_ThenClosureIsSelfContained()
     {
         var provider = BuildProviderWithRealNetwork(out _, out _);
