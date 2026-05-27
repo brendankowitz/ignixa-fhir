@@ -237,7 +237,7 @@ internal static class ValidateCommand
         }
     }
 
-    private static (string? Id, string? Version) SplitPackageSpec(string spec)
+    internal static (string? Id, string? Version) SplitPackageSpec(string spec)
     {
         var atIndex = spec.LastIndexOf('@');
         if (atIndex <= 0 || atIndex == spec.Length - 1)

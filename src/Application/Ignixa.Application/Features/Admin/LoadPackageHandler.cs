@@ -75,13 +75,20 @@ public class LoadPackageHandler(
                 DurationMilliseconds = (long)importResult.Duration.TotalMilliseconds,
                 ResourcesByType = importResult.ResourcesByType,
                 LoadedPackages = importResult.LoadedPackages,
+                SkippedPackages = importResult.SkippedPackages,
             };
 
             _logger.LogInformation(
-                "Package {PackageId}@{Version} loaded successfully. " +
-                "Resources: {Count}, Duration: {Duration}ms",
-                result.PackageId, result.PackageVersion, result.ImportedResources,
-                result.DurationMilliseconds);
+                "Package {PackageId}@{Version} loaded successfully. Resources: {Count}, Duration: {Duration}ms",
+                result.PackageId, result.PackageVersion, result.ImportedResources, result.DurationMilliseconds);
+
+            if (importResult.SkippedPackages is { Count: > 0 } skipped)
+            {
+                _logger.LogWarning(
+                    "Package {PackageId}@{Version} loaded with {SkippedCount} skipped dependencies: {Skipped}",
+                    result.PackageId, result.PackageVersion, skipped.Count,
+                    string.Join(", ", skipped));
+            }
 
             var activationResult = await _activationPipeline.ActivateAsync(
                 request.PackageId,

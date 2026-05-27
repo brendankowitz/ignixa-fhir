@@ -56,4 +56,11 @@ public record LoadPackageResult
     /// short-circuited the import.
     /// </summary>
     public IReadOnlyList<string>? LoadedPackages { get; init; }
+
+    /// <summary>
+    /// Packages skipped due to load errors during dependency closure walk.
+    /// Each entry is "<c>id@version (reason)</c>". Null for single-package loads.
+    /// Non-null non-empty list indicates a partial load.
+    /// </summary>
+    public IReadOnlyList<string>? SkippedPackages { get; init; }
 }

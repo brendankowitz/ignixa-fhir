@@ -604,9 +604,13 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 );
             }
         }
-        catch
+        catch (InvalidOperationException)
         {
-            return null; // Ignore extraction errors
+            return null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 }

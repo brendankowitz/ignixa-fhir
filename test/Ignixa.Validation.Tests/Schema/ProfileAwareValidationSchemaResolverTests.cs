@@ -6,6 +6,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using NSubstitute;
@@ -216,5 +217,36 @@ public class ProfileAwareValidationSchemaResolverTests
         IValidationSchemaResolver wrapper = new ProfileAwareValidationSchemaResolver(inner);
 
         wrapper.GetSchema("http://example.org/missing").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenResourceWithUnresolvableProfile_WhenResolveForElement_ThenComposedSchemaContainsWarningCheck()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var baseSchema = new ValidationSchema(
+            "http://hl7.org/fhir/StructureDefinition/Patient",
+            "Patient",
+            universalChecks: [],
+            specChecks: [],
+            profileChecks: []);
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient").Returns(baseSchema);
+        inner.GetSchema(Arg.Is<string>(s => s.Contains("us-core"))).Returns((ValidationSchema?)null);
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+
+        var json = """{"resourceType":"Patient","id":"p1","meta":{"profile":["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]}}""";
+        var element = ParseElement(json);
+
+        var schema = resolver.ResolveForElement(element);
+
+        schema.ShouldNotBeNull();
+
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+        var result = schema!.Validate(element, settings, state);
+
+        result.Issues.ShouldContain(
+            i => i.Severity == IssueSeverity.Warning && i.Message!.Contains("us-core-patient"),
+            "Expected a warning issue for the unresolvable profile");
     }
 }

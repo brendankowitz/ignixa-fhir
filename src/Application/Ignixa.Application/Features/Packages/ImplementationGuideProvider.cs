@@ -156,12 +156,16 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
 
         // BFS the closure. Skip r4.core (in-process) and dedup by package id so a diamond
         // dependency graph doesn't double-load anything.
-        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "hl7.fhir.r4.core" };
+        var visitedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["hl7.fhir.r4.core"] = "*"
+        };
         var queue = new Queue<(string Id, string Version)>();
         queue.Enqueue((packageId, version));
 
         var aggregatedResourcesByType = new Dictionary<string, int>(StringComparer.Ordinal);
         var loadedSpecs = new List<string>();
+        var skippedSpecs = new List<string>();
         int aggregatedTotal = 0;
         int aggregatedImported = 0;
         int aggregatedUpdated = 0;
@@ -170,10 +174,18 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
         while (queue.Count > 0)
         {
             var (id, ver) = queue.Dequeue();
-            if (!visited.Add(id))
+            if (visitedVersions.TryGetValue(id, out var existingVer))
             {
+                if (existingVer != "*" && !string.Equals(existingVer, ver, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "Version conflict for {PackageId}: already loading @{ExistingVersion}, skipping @{RequestedVersion}",
+                        id, existingVer, ver);
+                    loadedSpecs.Add($"{id}@{ver} (version conflict: @{existingVer} already queued)");
+                }
                 continue;
             }
+            visitedVersions[id] = ver;
 
             PackageImportResult perPackageResult;
             PackageManifest? manifest;
@@ -181,14 +193,17 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             {
                 (perPackageResult, manifest) = await LoadPackageInternalAsync(tenantId, id, ver, cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                // Tolerate transitive failures - the rest of the closure may still be useful.
                 _logger.LogWarning(
                     ex,
                     "Failed to load transitive dependency {PackageId}@{Version} of {RootPackageId}@{RootVersion} - skipping",
                     id, ver, packageId, version);
-                loadedSpecs.Add($"{id}@{ver} (skipped: {ex.GetType().Name})");
+                skippedSpecs.Add($"{id}@{ver} (skipped: {ex.GetType().Name}: {ex.Message})");
                 continue;
             }
 
@@ -216,7 +231,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             {
                 foreach (var dep in deps)
                 {
-                    if (!visited.Contains(dep.Key))
+                    if (!visitedVersions.ContainsKey(dep.Key))
                     {
                         queue.Enqueue((dep.Key, dep.Value));
                     }
@@ -255,6 +270,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             Duration = aggregatedDuration,
             ResourcesByType = aggregatedResourcesByType,
             LoadedPackages = loadedSpecs,
+            SkippedPackages = skippedSpecs.Count > 0 ? skippedSpecs : null,
         };
     }
 
