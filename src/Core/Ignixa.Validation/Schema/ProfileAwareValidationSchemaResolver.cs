@@ -72,9 +72,18 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
         }
 
         var schemas = new List<ValidationSchema> { baseSchema };
+        var seenCanonicals = new HashSet<string>(StringComparer.Ordinal);
         foreach (var profileUrl in ExtractProfileUrls(element))
         {
             var canonical = StripVersionSuffix(profileUrl);
+            // meta.profile may contain duplicate URLs (the FHIR spec doesn't forbid it).
+            // Composing the same schema twice would double every profile-derived check;
+            // dedup at the canonical-URL level (after version-suffix stripping) so a
+            // resource declaring "...|2.1.0" and "...|2.2.0" still resolves once.
+            if (!seenCanonicals.Add(canonical))
+            {
+                continue;
+            }
             var profileSchema = _inner.GetSchema(canonical);
             if (profileSchema != null)
             {

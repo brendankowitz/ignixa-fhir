@@ -160,6 +160,34 @@ public class ProfileAwareValidationSchemaResolverTests
         resolved.Checks.ShouldContain(c2);
     }
 
+    [Fact]
+    public void GivenDuplicateProfilesInMetaProfile_WhenResolving_ThenProfileSchemaComposedOnce()
+    {
+        // FHIR doesn't forbid duplicate URLs in meta.profile. Without dedup the same
+        // profile schema would compose twice, producing every profile-derived check
+        // twice and pretending we ran extra validation.
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        var profileCheck = Substitute.For<IValidationCheck>();
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")
+            .Returns(MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient"));
+        inner.GetSchema("http://example.org/profile")
+            .Returns(MakeSchemaWithProfileCheck("http://example.org/profile", "Patient", profileCheck));
+
+        var resolver = new ProfileAwareValidationSchemaResolver(inner);
+        var element = ParseElement("""
+            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/profile","http://example.org/profile|2.0.0"]}}
+            """);
+
+        var resolved = resolver.ResolveForElement(element);
+
+        resolved.ShouldNotBeNull();
+        // Inner resolver should have been queried for the profile exactly once,
+        // even though meta.profile listed it twice (with and without version suffix).
+        inner.Received(1).GetSchema("http://example.org/profile");
+        // Composed schema should contain the profile's check exactly once.
+        resolved!.Checks.Count(c => ReferenceEquals(c, profileCheck)).ShouldBe(1);
+    }
+
     // ===== IValidationSchemaResolver interface contract (drop-in replacement) =====
 
     [Fact]

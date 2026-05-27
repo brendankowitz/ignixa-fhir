@@ -43,12 +43,24 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
     /// <summary>
     /// Loads a package from the NPM registry and imports to a tenant's database.
     /// </summary>
-    /// <param name="tenantId">Tenant ID for database selection (currently unused - Phase 1 limitation)</param>
-    /// <param name="packageId">Package ID (e.g., "hl7.fhir.us.core")</param>
-    /// <param name="version">Package version (e.g., "5.0.1")</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Import result with statistics</returns>
     public async Task<PackageImportResult> LoadPackageAsync(
+        string tenantId,
+        string packageId,
+        string version,
+        CancellationToken cancellationToken)
+    {
+        var (result, _) = await LoadPackageInternalAsync(tenantId, packageId, version, cancellationToken);
+        return result;
+    }
+
+    /// <summary>
+    /// Internal load path that also returns the extracted <see cref="PackageManifest"/>.
+    /// Callers that need the manifest (e.g. transitive dep walkers) avoid a second
+    /// download/extract round-trip; <see cref="LoadPackageAsync"/> discards it.
+    /// Returns a null manifest when the package was already loaded (idempotent
+    /// short-circuit) - callers needing the manifest in that case must re-fetch.
+    /// </summary>
+    private async Task<(PackageImportResult Result, PackageManifest? Manifest)> LoadPackageInternalAsync(
         string tenantId,
         string packageId,
         string version,
@@ -68,7 +80,6 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
         try
         {
             // Step 0: Check if package already loaded (idempotent operation)
-            // Convert tenantId string to int for repository query
             var tenantIdInt = int.Parse(tenantId);
             var alreadyLoaded = await _packageRepository.PackageVersionExistsAsync(
                 packageId, version, tenantIdInt, cancellationToken);
@@ -79,8 +90,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                     "Package {PackageId}@{Version} already loaded for tenant {TenantId}, skipping import (idempotent)",
                     packageId, version, tenantId);
 
-                // Return success with zero imports - idempotent behavior
-                return new PackageImportResult
+                var emptyResult = new PackageImportResult
                 {
                     PackageId = packageId,
                     PackageVersion = version,
@@ -89,6 +99,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                     Duration = TimeSpan.Zero,
                     ResourcesByType = new Dictionary<string, int>()
                 };
+                return (emptyResult, Manifest: null);
             }
 
             // Step 1: Download package
@@ -102,15 +113,13 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
 
             // Step 3: Import to database
             _logger.LogDebug("Step 3/3: Importing resources to database for {PackageId}@{Version}", packageId, version);
-            // NOTE: Phase 1 limitation - package repository is global for all tenants
-            // Phase 2: Will extend IFhirRepository with tenant-scoped PackageResources property
             var result = await _packageImporter.ImportAsync(extraction, _packageRepository, cancellationToken);
 
             _logger.LogInformation(
                 "Package {PackageId}@{Version} loaded successfully into tenant {TenantId}. Imported {Count} resources in {Duration}ms",
                 packageId, version, tenantId, result.ImportedResources, result.Duration.TotalMilliseconds);
 
-            return result;
+            return (result, extraction.Manifest);
         }
         catch (Exception ex)
         {
@@ -167,9 +176,10 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             }
 
             PackageImportResult perPackageResult;
+            PackageManifest? manifest;
             try
             {
-                perPackageResult = await LoadPackageAsync(tenantId, id, ver, cancellationToken);
+                (perPackageResult, manifest) = await LoadPackageInternalAsync(tenantId, id, ver, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -182,12 +192,40 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                 continue;
             }
 
-            // Enqueue declared deps. Re-download just the manifest portion would be more
-            // efficient but adds a second code path; LoadPackageAsync re-downloads internally
-            // and is cached on disk via PackageCacheManager, so the second pass is cheap.
-            await EnqueueDependenciesAsync(id, ver, queue, visited, cancellationToken);
+            // Was the import a no-op (already loaded)? If so we don't have a manifest in hand
+            // but we still need to walk that package's dependencies. Best-effort re-fetch via
+            // PackageCacheManager - the local tarball is typically already on disk.
+            if (manifest == null)
+            {
+                try
+                {
+                    using var stream = await _packageLoader.DownloadPackageAsync(id, ver, cancellationToken);
+                    var refetched = await _packageExtractor.ExtractAsync(stream, cancellationToken);
+                    manifest = refetched.Manifest;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to re-read manifest of already-loaded package {PackageId}@{Version} - skipping its transitive deps",
+                        id, ver);
+                }
+            }
+
+            if (manifest?.Dependencies is { Count: > 0 } deps)
+            {
+                foreach (var dep in deps)
+                {
+                    if (!visited.Contains(dep.Key))
+                    {
+                        queue.Enqueue((dep.Key, dep.Value));
+                    }
+                }
+            }
 
             // Mark whether the import was a no-op (already loaded) for caller visibility.
+            // perPackageResult is the empty result from the idempotent short-circuit when
+            // ImportedResources == 0 && TotalResources == 0 was returned by LoadPackageInternalAsync.
             var alreadyLoaded = perPackageResult.ImportedResources == 0 && perPackageResult.TotalResources == 0;
             loadedSpecs.Add(alreadyLoaded ? $"{id}@{ver} (already loaded)" : $"{id}@{ver}");
 
@@ -218,43 +256,6 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             ResourcesByType = aggregatedResourcesByType,
             LoadedPackages = loadedSpecs,
         };
-    }
-
-    /// <summary>
-    /// Downloads + extracts <paramref name="packageId"/>@<paramref name="version"/> just
-    /// for its manifest, and enqueues every dependency not already visited.
-    /// </summary>
-    private async Task EnqueueDependenciesAsync(
-        string packageId,
-        string version,
-        Queue<(string Id, string Version)> queue,
-        HashSet<string> visited,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var stream = await _packageLoader.DownloadPackageAsync(packageId, version, cancellationToken);
-            var extraction = await _packageExtractor.ExtractAsync(stream, cancellationToken);
-            if (extraction.Manifest.Dependencies is { Count: > 0 } deps)
-            {
-                foreach (var dep in deps)
-                {
-                    if (!visited.Contains(dep.Key))
-                    {
-                        queue.Enqueue((dep.Key, dep.Value));
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            // Manifest re-read failure shouldn't fail the whole closure; the package
-            // itself was already imported successfully by LoadPackageAsync above.
-            _logger.LogWarning(
-                ex,
-                "Failed to enumerate dependencies for {PackageId}@{Version} - skipping its transitive deps",
-                packageId, version);
-        }
     }
 
     /// <summary>
