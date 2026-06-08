@@ -1,0 +1,114 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/client-id-handling",
+  "description": "Conformance tests for server behaviour when the client supplies an id on POST, and when the id in the URL mismatches the id in the body on PUT.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-with-client-id",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "client-supplied-id-fhir262",
+        "gender": "male"
+      }
+    },
+    {
+      "id": "patient-body-id-mismatch",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-body-id",
+        "gender": "female"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "serverAssignedId",
+      "sourceId": "client-id-create-response",
+      "path": "id",
+      "description": "The id the server actually assigned after ignoring the client-supplied id"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "server ignores client-supplied id and assigns its own",
+      "description": "POST a Patient that contains id='client-supplied-id-fhir262'. The server must return 201 and assign a different id (FHIR R4 §2.1.0.2: the server is the authority on logical ids on POST).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "create" },
+            "resource": "Patient",
+            "sourceId": "patient-with-client-id",
+            "responseId": "client-id-create-response",
+            "description": "POST Patient with a client-supplied id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 201 Created",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response body must be a Patient",
+            "resource": "Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must NOT echo the client-supplied id back as the assigned id",
+            "expression": "Patient.id",
+            "value": "client-supplied-id-fhir262",
+            "operator": "notEquals"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must have assigned a non-empty id",
+            "expression": "Patient.id.exists()"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update with id mismatch returns 400",
+      "description": "PUT /Patient/fhir262-url-id with a body that has id='fhir262-body-id'. The server must reject this with 400 Bad Request because the logical id in the URL and the body disagree (FHIR R4 §2.1.0.6).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "update" },
+            "url": "Patient/fhir262-url-id",
+            "sourceId": "patient-body-id-mismatch",
+            "responseId": "mismatch-update-response",
+            "description": "PUT to /Patient/fhir262-url-id with body id='fhir262-body-id' — ids deliberately disagree"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request when URL id and body id disagree",
+            "response": "bad"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${serverAssignedId}",
+          "description": "Teardown: delete the patient created in the client-id test (if the server did assign an id)"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ignixa.ConformanceMatrix.Cli</RootNamespace>
+    <AssemblyName>ignixa-matrix</AssemblyName>
+    <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310,CA1711,CA1716,CA1849,CA1859</NoWarn>
+  </PropertyGroup>
+
+  <!-- NuGet Package & Tool Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ignixa-matrix</ToolCommandName>
+    <PackageId>Ignixa.ConformanceMatrix.Cli</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Description>CLI tool for running FHIR TestScript conformance suites against a server and producing a conformance matrix report.</Description>
+    <PackageTags>$(PackageTags);fhir;cli;tool;testscript;conformance</PackageTags>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.TestScript\Ignixa.TestScript.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.TestScript.FhirFakes\Ignixa.TestScript.FhirFakes.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
+</Project>
