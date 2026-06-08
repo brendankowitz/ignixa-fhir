@@ -1,7 +1,7 @@
 {
   "resourceType": "TestScript",
   "name": "Search/joins",
-  "description": "AND/OR join conformance tests ported from fhir262 joins-and-or block. Covers AND across params, AND on repeated date-range params, AND on the name param, OR via comma, OR with per-value prefixes, and a mixed AND-of-OR query against four isolated Patient fixtures (identifier system http://fhir262/test). NOTE: AllergyIntolerance and reference (managingOrganization) tests from the original fhir262 suite are intentionally omitted because they require dynamic body construction with runtime variable injection, which this engine does not yet support.",
+  "description": "AND/OR join conformance tests. Covers AND across params, AND on repeated date-range params, AND on the name param, OR via comma (including modifier+comma and name param OR), OR with per-value prefixes, and mixed AND-of-OR queries. AllergyIntolerance array AND/OR is in Search/array-joins.json. Reference (managingOrganization) tests are deferred — they require dynamic patient reference injection at fixture creation time.",
   "status": "active",
   "fixture": [
     {
@@ -140,6 +140,32 @@
         { "assert": { "description": "Must NOT include pa (Alex but Doe)", "expression": "entry.where(resource.id = '${paId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
         { "assert": { "description": "Must NOT include pb (Bob but Doe)", "expression": "entry.where(resource.id = '${pbId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
         { "assert": { "description": "Must NOT include pc (Smith but Carol only)", "expression": "entry.where(resource.id = '${pcId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "OR on array-complex: name=Doe,Smith",
+      "description": "name param is array-complex (matches given AND family). name=Doe,Smith ORs: any token in any HumanName part matches Doe OR Smith. All four patients match: pab (Smith), pa (Doe), pb (Doe), pc (Smith).",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?name=Doe,Smith", "responseId": "or-name-response", "description": "Search name=Doe OR Smith" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pab (Smith)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },
+        { "assert": { "description": "Must include pa (Doe)", "expression": "entry.where(resource.id = '${paId}').exists()" } },
+        { "assert": { "description": "Must include pb (Doe)", "expression": "entry.where(resource.id = '${pbId}').exists()" } },
+        { "assert": { "description": "Must include pc (Smith)", "expression": "entry.where(resource.id = '${pcId}').exists()" } }
+      ]
+    },
+    {
+      "name": "OR with modifier: given:exact=Alex,Carol",
+      "description": "Modifier applies to each comma-separated value. given:exact=Alex,Carol requires a case-sensitive full-match on any given name token: Alex OR Carol. Matches pab (Alex), pa (Alex), pc (Carol); excludes pb (Bob only).",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given:exact=Alex,Carol", "responseId": "or-modifier-response", "description": "Search given:exact=Alex OR Carol" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pab (has Alex)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },
+        { "assert": { "description": "Must include pa (Alex)", "expression": "entry.where(resource.id = '${paId}').exists()" } },
+        { "assert": { "description": "Must include pc (Carol)", "expression": "entry.where(resource.id = '${pcId}').exists()" } },
+        { "assert": { "description": "Must NOT include pb (Bob only, exact match fails for Alex and Carol)", "expression": "entry.where(resource.id = '${pbId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
       ]
     }
   ],
