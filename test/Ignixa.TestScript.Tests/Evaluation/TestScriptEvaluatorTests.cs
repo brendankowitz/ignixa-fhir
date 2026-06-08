@@ -654,4 +654,88 @@ public class TestScriptEvaluatorTests
             Arg.Is<TestRequest>(r => r.Url == "Patient/server-assigned-99"),
             Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task GivenSearchOperation_WhenMethodIsPost_ThenUrlIsResourceSlashSearch()
+    {
+        TestRequest? capturedRequest = null;
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                capturedRequest = call.Arg<TestRequest>();
+                return new TestResponse { StatusCode = 200 };
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "PostSearch" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PostSearchUrl",
+                    Actions =
+                    [
+                        new OperationExpression
+                        {
+                            Type = "search",
+                            Resource = "Patient",
+                            Params = "?_has:Observation:subject:code=8867-4",
+                            Method = HttpMethod.Post,
+                            ResponseId = "post-search-response"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        capturedRequest.ShouldNotBeNull();
+        capturedRequest.Url.ShouldBe("Patient/_search");
+        capturedRequest.Method.ShouldBe(HttpMethod.Post);
+    }
+
+    [Fact]
+    public async Task GivenSearchOperation_WhenMethodIsPost_ThenParamsAreFormEncoded()
+    {
+        TestRequest? capturedRequest = null;
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                capturedRequest = call.Arg<TestRequest>();
+                return new TestResponse { StatusCode = 200 };
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "PostSearchFormBody" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PostSearchBody",
+                    Actions =
+                    [
+                        new OperationExpression
+                        {
+                            Type = "search",
+                            Resource = "Patient",
+                            Params = "?_has:Observation:subject:code=8867-4",
+                            Method = HttpMethod.Post,
+                            ResponseId = "post-search-response"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        capturedRequest.ShouldNotBeNull();
+        capturedRequest.FormBody.ShouldBe("_has:Observation:subject:code=8867-4");
+        capturedRequest.Body.ShouldBeNull();
+    }
 }

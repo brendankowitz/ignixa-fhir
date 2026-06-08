@@ -142,15 +142,38 @@
     },
     {
       "name": "GET/POST search equivalence for _has",
-      "description": "fhir-candle dual GET/POST pattern: the same search must return identical results via GET /Patient?params and POST /Patient/_search with a form-encoded body. The POST _search half requires engine support for application/x-www-form-urlencoded request bodies — the current engine only sends FHIR resource bodies via sourceId, so the POST variant is documented but skipped. The GET half re-runs the _has heart rate search and asserts fhir262-chain-pa appears, matching the earlier GET result.",
+      "description": "The same _has search via GET and POST _search must return identical results. Tests that servers correctly handle application/x-www-form-urlencoded _search bodies.",
       "extension": [
-        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
-        { "url": "http://ignixa.io/testscript/skip", "valueBoolean": true }
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }
       ],
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_has:Observation:subject:code=8867-4", "responseId": "has-get-again", "description": "GET /Patient?_has:Observation:subject:code=8867-4 (GET half of GET/POST equivalence)" } },
-        { "assert": { "description": "GET search must return HTTP 200", "response": "okay" } },
-        { "assert": { "description": "GET result must include fhir262-chain-pa", "expression": "entry.where(resource.id = 'fhir262-chain-pa').exists()" } }
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?_has:Observation:subject:code=8867-4",
+            "responseId": "get-has-response",
+            "description": "GET Patient?_has:Observation:subject:code=8867-4"
+          }
+        },
+        { "assert": { "description": "GET: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "GET: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "GET: must include fhir262-chain-pa", "expression": "entry.where(resource.id = 'fhir262-chain-pa').exists()" } },
+        { "assert": { "description": "GET: must NOT include fhir262-chain-pb", "expression": "entry.where(resource.id = 'fhir262-chain-pb').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?_has:Observation:subject:code=8867-4",
+            "method": "POST",
+            "responseId": "post-has-response",
+            "description": "POST Patient/_search with same params as form body"
+          }
+        },
+        { "assert": { "description": "POST: HTTP 200", "response": "okay", "sourceId": "post-has-response" } },
+        { "assert": { "description": "POST: returns a Bundle", "resource": "Bundle", "sourceId": "post-has-response" } },
+        { "assert": { "description": "POST: must include fhir262-chain-pa", "expression": "entry.where(resource.id = 'fhir262-chain-pa').exists()", "sourceId": "post-has-response" } },
+        { "assert": { "description": "POST: must NOT include fhir262-chain-pb", "expression": "entry.where(resource.id = 'fhir262-chain-pb').exists()", "value": "false", "operator": "equals", "warningOnly": true, "sourceId": "post-has-response" } }
       ]
     }
   ],

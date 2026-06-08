@@ -10,7 +10,11 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
     {
         using var httpRequest = new HttpRequestMessage(request.Method, request.Url);
 
-        if (request.Body is not null)
+        if (request.FormBody is not null)
+        {
+            httpRequest.Content = new StringContent(request.FormBody, Encoding.UTF8, "application/x-www-form-urlencoded");
+        }
+        else if (request.Body is not null)
         {
             var contentType = request.Headers.GetValueOrDefault("Content-Type", "application/fhir+json");
             httpRequest.Content = new StringContent(

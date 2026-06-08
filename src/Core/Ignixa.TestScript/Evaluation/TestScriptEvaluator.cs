@@ -278,7 +278,15 @@ public sealed class TestScriptEvaluator(
         var url = BuildUrl(op, context);
 
         ResourceJsonNode? body = null;
-        if (op.SourceId is not null)
+        string? formBody = null;
+
+        var isFormSearch = op.Type == "search" && method == HttpMethod.Post;
+        if (isFormSearch)
+        {
+            var rawParams = VariableResolver.ResolveIfNotNull(op.Params, context);
+            formBody = rawParams?.TrimStart('?');
+        }
+        else if (op.SourceId is not null)
         {
             if (context.Fixtures.TryGetValue(op.SourceId, out var fixture))
                 body = JsonSourceNodeFactory.Parse(fixture.MutableNode.DeepClone());
@@ -294,7 +302,7 @@ public sealed class TestScriptEvaluator(
         foreach (var h in op.Headers)
             headers[VariableResolver.Resolve(h.Field, context)] = VariableResolver.Resolve(h.Value, context);
 
-        return new TestRequest { Method = method, Url = url, Body = body, Headers = headers };
+        return new TestRequest { Method = method, Url = url, Body = body, FormBody = formBody, Headers = headers };
     }
 
     private static string BuildUrl(OperationExpression op, TestScriptContext context)
@@ -303,8 +311,11 @@ public sealed class TestScriptEvaluator(
             return VariableResolver.Resolve(op.Url, context);
 
         var resource = op.Resource ?? string.Empty;
-        var parameters = VariableResolver.ResolveIfNotNull(op.Params, context) ?? string.Empty;
 
+        if (op.Type == "search" && op.Method == HttpMethod.Post)
+            return $"{resource}/_search";
+
+        var parameters = VariableResolver.ResolveIfNotNull(op.Params, context) ?? string.Empty;
         return $"{resource}{parameters}";
     }
 
