@@ -58,7 +58,7 @@ public sealed class TestScriptEvaluator(
                     context = context.WithFixture(fixture.Id, resource);
 
                     if (fixture.Autocreate)
-                        context = await AutocreateFixtureAsync(fixture, resource, context, cancellationToken);
+                        context = await AutocreateFixtureAsync(fixture, resource, definition.Variables, context, cancellationToken);
                 }
                 else
                 {
@@ -175,6 +175,7 @@ public sealed class TestScriptEvaluator(
 
     private async Task<TestScriptContext> AutocreateFixtureAsync(
         FixtureDefinition fixture, ResourceJsonNode resource,
+        IReadOnlyList<VariableDefinition> variables,
         TestScriptContext context, CancellationToken cancellationToken)
     {
         var url = $"{resource.ResourceType}";
@@ -186,6 +187,8 @@ public sealed class TestScriptEvaluator(
             context = context.WithResponse(null, response);
             if (response.Body is not null)
                 context = context.WithFixture(fixture.Id, response.Body);
+            context = context.WithResponse(fixture.Id, response);
+            context = VariableExtractor.ExtractFromResponse(variables, context, schemaProvider);
             var success = response.StatusCode is >= 200 and < 300;
             context.Recorder.RecordOperationResult(
                 $"fixture:{fixture.Id}",
@@ -243,8 +246,15 @@ public sealed class TestScriptEvaluator(
         var url = BuildUrl(op, context);
 
         ResourceJsonNode? body = null;
-        if (op.SourceId is not null && context.Fixtures.TryGetValue(op.SourceId, out var fixture))
-            body = JsonSourceNodeFactory.Parse(fixture.MutableNode.DeepClone());
+        if (op.SourceId is not null)
+        {
+            if (context.Fixtures.TryGetValue(op.SourceId, out var fixture))
+                body = JsonSourceNodeFactory.Parse(fixture.MutableNode.DeepClone());
+            else if (context.ResponseHistory.TryGetValue(op.SourceId, out var prevResponse))
+                body = prevResponse.Body is not null
+                    ? JsonSourceNodeFactory.Parse(prevResponse.Body.MutableNode.DeepClone())
+                    : null;
+        }
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (op.Accept is not null) headers["Accept"] = op.Accept;

@@ -401,4 +401,68 @@ public class TestScriptEvaluatorTests
             Arg.Is<TestRequest>(r => r.Url == "Patient/abc-extracted"),
             Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task GivenAutocreateFixture_WhenVariableDefinedWithFixtureSourceId_ThenCapturesServerId()
+    {
+        var fixtureResource = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient"}""");
+        var fixtureProvider = Substitute.For<IFixtureProvider>();
+#pragma warning disable CA2012
+        fixtureProvider.ResolveFixtureAsync(
+                Arg.Any<FixtureDefinition>(),
+                Arg.Any<FixtureResolutionContext>(),
+                Arg.Any<CancellationToken>())
+            .Returns(fixtureResource);
+#pragma warning restore CA2012
+
+        var responses = new Queue<TestResponse>(new[]
+        {
+            new TestResponse
+            {
+                StatusCode = 201,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"server-assigned-99"}""")
+            },
+            new TestResponse { StatusCode = 200 }
+        });
+
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call => responses.Dequeue());
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "AutocreateExtract" },
+            Fixtures =
+            [
+                new FixtureDefinition { Id = "patient-fixture", Autocreate = true }
+            ],
+            Variables =
+            [
+                new VariableDefinition
+                {
+                    Name = "createdId",
+                    SourceId = "patient-fixture",
+                    Extraction = new PathExtraction("id")
+                }
+            ],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "ReadCreated",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/${createdId}" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+        await _mockProvider.Received().ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Url == "Patient/server-assigned-99"),
+            Arg.Any<CancellationToken>());
+    }
 }
