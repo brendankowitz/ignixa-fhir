@@ -226,6 +226,55 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenTestWithParametrizeExtension_WhenParsing_ThenPopulatesParameters()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Parametrized",
+              "status":"active",
+              "test":[{
+                "name":"date prefix ge",
+                "extension":[{
+                  "url":"http://ignixa.io/testscript/parametrize",
+                  "extension":[
+                    {"url":"variable","valueString":"searchDate"},
+                    {"url":"values","valueString":"2028,2028-06,2028-06-15,2028-06-15T12:00:00Z"}
+                  ]
+                }],
+                "action":[{"operation":{"type":{"code":"search"},"resource":"Observation","params":"?date=ge${searchDate}"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var test = result.Value!.Tests[0];
+        test.Parameters.Count.ShouldBe(1);
+        test.Parameters[0].VariableName.ShouldBe("searchDate");
+        test.Parameters[0].Values.ShouldBe(["2028", "2028-06", "2028-06-15", "2028-06-15T12:00:00Z"]);
+    }
+
+    [Fact]
+    public void GivenTestWithoutParametrizeExtension_WhenParsing_ThenParametersIsEmpty()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Plain",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].Parameters.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void GivenVariableWithExpression_WhenParsing_ThenCreatesExpressionExtraction()
     {
         var json = """

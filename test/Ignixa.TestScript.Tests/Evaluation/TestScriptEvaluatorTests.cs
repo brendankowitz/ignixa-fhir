@@ -107,6 +107,103 @@ public class TestScriptEvaluatorTests
     }
 
     [Fact]
+    public async Task GivenParametrizedTest_WhenExecuting_ThenEmitsOneResultPerValueWithSubstitution()
+    {
+        var requestedUrls = new List<string>();
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                requestedUrls.Add(call.Arg<TestRequest>().Url);
+                return new TestResponse { StatusCode = 200 };
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "Parametrized" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Observation date ge",
+                    Parameters =
+                    [
+                        new ParametrizeDefinition("searchDate", ["2028", "2028-06", "2028-06-15"])
+                    ],
+                    Actions =
+                    [
+                        new OperationExpression
+                        {
+                            Type = "search",
+                            Resource = "Observation",
+                            Params = "?date=ge${searchDate}"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults.Count.ShouldBe(3);
+        report.TestResults.Select(r => r.Name).ShouldBe(
+        [
+            "Observation date ge [2028]",
+            "Observation date ge [2028-06]",
+            "Observation date ge [2028-06-15]"
+        ]);
+
+        requestedUrls.ShouldBe(
+        [
+            "Observation?date=ge2028",
+            "Observation?date=ge2028-06",
+            "Observation?date=ge2028-06-15"
+        ]);
+    }
+
+    [Fact]
+    public async Task GivenParametrizedTest_WhenExecuting_ThenInjectedVariableDoesNotLeakAcrossIterations()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "NoLeak" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Parametrized",
+                    Parameters = [new ParametrizeDefinition("searchDate", ["a", "b"])],
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Observation", Params = "?d=${searchDate}" }
+                    ]
+                },
+                new TestPhaseDefinition
+                {
+                    Name = "PlainAfter",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Observation", Params = "?d=${searchDate}" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults.Count.ShouldBe(3);
+        report.TestResults[2].Name.ShouldBe("PlainAfter");
+
+        // searchDate was injected only for the parametrized iterations; the later plain test must
+        // not see it, so resolving ${searchDate} fails and the operation records an Error.
+        report.TestResults[2].Outcome.ShouldBe(TestScriptOutcome.Error);
+    }
+
+    [Fact]
     public async Task GivenEmptyTestScript_WhenExecuting_ThenReturnsPassWithNoTests()
     {
         var definition = new TestScriptDefinition

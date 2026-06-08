@@ -82,9 +82,26 @@ public sealed class TestScriptEvaluator(
         {
             foreach (var test in definition.Tests)
             {
-                recorder.BeginPhase(TestPhaseType.Test, test.Name, test.Description);
-                context = await ExecuteActionsAsync(test.Actions, definition.Variables, context, cancellationToken);
-                recorder.EndPhase();
+                if (test.Parameters.Count == 0)
+                {
+                    recorder.BeginPhase(TestPhaseType.Test, test.Name, test.Description);
+                    context = await ExecuteActionsAsync(test.Actions, definition.Variables, context, cancellationToken);
+                    recorder.EndPhase();
+                }
+                else
+                {
+                    // Only the first parametrize extension is honoured (single parametrize per test).
+                    // Each iteration runs against a derived context so the injected value and any
+                    // per-iteration response history do not leak into sibling iterations or later tests.
+                    var param = test.Parameters[0];
+                    foreach (var value in param.Values)
+                    {
+                        var iterationContext = context.WithVariable(param.VariableName, value);
+                        recorder.BeginPhase(TestPhaseType.Test, $"{test.Name} [{value}]", test.Description);
+                        await ExecuteActionsAsync(test.Actions, definition.Variables, iterationContext, cancellationToken);
+                        recorder.EndPhase();
+                    }
+                }
             }
         }
 

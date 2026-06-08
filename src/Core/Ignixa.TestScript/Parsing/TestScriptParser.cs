@@ -159,8 +159,41 @@ public static class TestScriptParser
             {
                 Name = test["name"]?.GetValue<string>() ?? "Unnamed",
                 Description = test["description"]?.GetValue<string>(),
-                Actions = ParseActions(test["action"]?.AsArray())
+                Actions = ParseActions(test["action"]?.AsArray()),
+                Parameters = ParseParametrize(test["extension"]?.AsArray())
             });
+        }
+        return result;
+    }
+
+    private const string ParametrizeUrl = "http://ignixa.io/testscript/parametrize";
+
+    private static IReadOnlyList<ParametrizeDefinition> ParseParametrize(JsonArray? extensions)
+    {
+        if (extensions is null) return [];
+        var result = new List<ParametrizeDefinition>();
+        foreach (var ext in extensions)
+        {
+            if (ext is not JsonObject obj) continue;
+            if (obj["url"]?.GetValue<string>() != ParametrizeUrl) continue;
+
+            var nested = obj["extension"]?.AsArray();
+            if (nested is null) continue;
+
+            string? variable = null;
+            string? values = null;
+            foreach (var n in nested)
+            {
+                if (n is not JsonObject nObj) continue;
+                var url = nObj["url"]?.GetValue<string>();
+                if (url == "variable") variable = nObj["valueString"]?.GetValue<string>();
+                else if (url == "values") values = nObj["valueString"]?.GetValue<string>();
+            }
+
+            if (variable is not null && values is not null)
+                result.Add(new ParametrizeDefinition(
+                    variable,
+                    values.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
         }
         return result;
     }
