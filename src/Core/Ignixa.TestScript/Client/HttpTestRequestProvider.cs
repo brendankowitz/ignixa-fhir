@@ -34,10 +34,11 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
 
         var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
         ResourceJsonNode? body = null;
+        string? bodyParseError = null;
         if (!string.IsNullOrWhiteSpace(responseBody))
         {
             try { body = JsonSourceNodeFactory.Parse(responseBody); }
-            catch (System.Text.Json.JsonException) { }
+            catch (System.Text.Json.JsonException ex) { bodyParseError = ex.Message; }
         }
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -50,6 +51,7 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
         {
             StatusCode = (int)httpResponse.StatusCode,
             Body = body,
+            BodyParseError = bodyParseError,
             Headers = headers
         };
     }

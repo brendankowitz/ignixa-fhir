@@ -52,7 +52,7 @@ public static class TestScriptParser
         var variables = ParseVariables(obj["variable"]?.AsArray());
         var profiles = ParseProfiles(obj["profile"]?.AsArray());
         var setup = ParseOperationActions(obj["setup"]?["action"]?.AsArray());
-        var tests = ParseTests(obj["test"]?.AsArray());
+        var tests = ParseTests(obj["test"]?.AsArray(), errors);
         var teardown = ParseOperationActions(obj["teardown"]?["action"]?.AsArray());
 
         var definition = new TestScriptDefinition
@@ -148,20 +148,26 @@ public static class TestScriptParser
         return result;
     }
 
-    private static IReadOnlyList<TestPhaseDefinition> ParseTests(JsonArray? tests)
+    private static IReadOnlyList<TestPhaseDefinition> ParseTests(JsonArray? tests, List<ParseError> errors)
     {
         if (tests is null) return [];
         var result = new List<TestPhaseDefinition>();
         foreach (var item in tests)
         {
             if (item is not JsonObject test) continue;
+            var extensions = test["extension"]?.AsArray();
+            var parameters = ParseParametrize(extensions);
+            var name = test["name"]?.GetValue<string>() ?? "Unnamed";
+            if (parameters.Count > 1)
+                errors.Add(new ParseError(ParseSeverity.Warning,
+                    $"Test '{name}' has {parameters.Count} parametrize extensions; only the first will be used."));
             result.Add(new TestPhaseDefinition
             {
-                Name = test["name"]?.GetValue<string>() ?? "Unnamed",
+                Name = name,
                 Description = test["description"]?.GetValue<string>(),
-                Actions = ParseActions(test["action"]?.AsArray()),
-                Parameters = ParseParametrize(test["extension"]?.AsArray()),
-                FhirVersions = ParseFhirVersions(test["extension"]?.AsArray())
+                Actions = ParseActions(test["action"]?.AsArray(), errors),
+                Parameters = parameters,
+                FhirVersions = ParseFhirVersions(extensions)
             });
         }
         return result;
@@ -214,7 +220,7 @@ public static class TestScriptParser
         return result;
     }
 
-    private static IReadOnlyList<ActionExpression> ParseActions(JsonArray? actions)
+    private static IReadOnlyList<ActionExpression> ParseActions(JsonArray? actions, List<ParseError> errors)
     {
         if (actions is null) return [];
         var result = new List<ActionExpression>();
@@ -225,7 +231,7 @@ public static class TestScriptParser
             if (action["operation"] is JsonObject op)
                 result.Add(ParseOperation(op));
             else if (action["assert"] is JsonObject assert)
-                result.Add(ParseAssert(assert));
+                result.Add(ParseAssert(assert, errors));
         }
         return result;
     }
@@ -270,10 +276,10 @@ public static class TestScriptParser
         };
     }
 
-    private static AssertExpression ParseAssert(JsonObject a)
+    private static AssertExpression ParseAssert(JsonObject a, List<ParseError> errors)
     {
         var operatorVal = ParseOperator(a["operator"]?.GetValue<string>());
-        var criteria = BuildAssertCriteria(a, operatorVal);
+        var criteria = BuildAssertCriteria(a, operatorVal, errors);
 
         return new AssertExpression
         {
@@ -286,7 +292,7 @@ public static class TestScriptParser
         };
     }
 
-    private static AssertCriteria BuildAssertCriteria(JsonObject a, AssertOperator? op)
+    private static AssertCriteria BuildAssertCriteria(JsonObject a, AssertOperator? op, List<ParseError> errors)
     {
         if (a["response"]?.GetValue<string>() is { } response)
             return new ResponseStatusCriteria(response);
@@ -310,6 +316,8 @@ public static class TestScriptParser
         if (a["requestURL"]?.GetValue<string>() is { } url)
             return new RequestUrlCriteria(url, op);
 
+        errors.Add(new ParseError(ParseSeverity.Warning,
+            "Assert action has no recognisable criteria field (response, responseCode, contentType, resource, headerField, expression, requestMethod, requestURL); assertion will always check for HTTP 200"));
         return new ResponseCodeCriteria("200");
     }
 

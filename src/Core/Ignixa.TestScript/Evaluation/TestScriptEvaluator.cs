@@ -53,18 +53,27 @@ public sealed class TestScriptEvaluator(
                     Schema = schemaProvider,
                     ResourceType = fixture.Resource?.ResourceType
                 };
-                var resource = await fixtureProvider.ResolveFixtureAsync(fixture, fixtureCtx, cancellationToken);
-                if (resource is not null)
+                try
                 {
-                    context = context.WithFixture(fixture.Id, resource);
+                    var resource = await fixtureProvider.ResolveFixtureAsync(fixture, fixtureCtx, cancellationToken);
+                    if (resource is not null)
+                    {
+                        context = context.WithFixture(fixture.Id, resource);
 
-                    if (fixture.Autocreate)
-                        context = await AutocreateFixtureAsync(fixture, resource, definition.Variables, context, cancellationToken);
+                        if (fixture.Autocreate)
+                            context = await AutocreateFixtureAsync(fixture, resource, definition.Variables, context, cancellationToken);
+                    }
+                    else
+                    {
+                        recorder.RecordOperationResult($"fixture:{fixture.Id}", $"Resolve fixture '{fixture.Id}'",
+                            new OperationOutcome(false, ErrorMessage: $"No provider resolved fixture '{fixture.Id}'"));
+                    }
                 }
-                else
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
                 {
                     recorder.RecordOperationResult($"fixture:{fixture.Id}", $"Resolve fixture '{fixture.Id}'",
-                        new OperationOutcome(false, ErrorMessage: $"No provider resolved fixture '{fixture.Id}'"));
+                        new OperationOutcome(false, ErrorMessage: ex.Message));
                 }
             }
 
@@ -199,9 +208,21 @@ public sealed class TestScriptEvaluator(
         TestScriptContext context,
         CancellationToken cancellationToken)
     {
-        var (passed, message) = EvaluateAssertionWithMessage(expression, context);
-        context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
-            new AssertionOutcome(passed, expression.WarningOnly, passed ? null : message));
+        try
+        {
+            var (passed, message) = EvaluateAssertionWithMessage(expression, context);
+            context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
+                new AssertionOutcome(passed, expression.WarningOnly, passed ? null : message));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
+                new AssertionOutcome(false, false, ex.Message));
+        }
         return ValueTask.FromResult(context);
     }
 
@@ -243,8 +264,20 @@ public sealed class TestScriptEvaluator(
     private async Task<TestScriptContext> AutodeleteFixtureAsync(
         FixtureDefinition fixture, TestScriptContext context, CancellationToken cancellationToken)
     {
-        if (!context.Fixtures.TryGetValue(fixture.Id, out var resource)) return context;
-        if (string.IsNullOrEmpty(resource.Id)) return context;
+        if (!context.Fixtures.TryGetValue(fixture.Id, out var resource))
+        {
+            context.Recorder.RecordOperationResult(
+                $"fixture:{fixture.Id}", $"Autodelete fixture '{fixture.Id}'",
+                new OperationOutcome(false, ErrorMessage: $"Fixture '{fixture.Id}' was not in context; resource may not have been created"));
+            return context;
+        }
+        if (string.IsNullOrEmpty(resource.Id))
+        {
+            context.Recorder.RecordOperationResult(
+                $"fixture:{fixture.Id}", $"Autodelete fixture '{fixture.Id}'",
+                new OperationOutcome(false, ErrorMessage: $"Fixture '{fixture.Id}' has no server-assigned id; resource may leak on the server"));
+            return context;
+        }
 
         var url = $"{resource.ResourceType}/{resource.Id}";
         var request = new TestRequest { Method = HttpMethod.Delete, Url = url };
@@ -367,17 +400,28 @@ public sealed class TestScriptEvaluator(
             return request?.Body;
         }
 
-        var response = assertion.SourceId is not null
+        return ResolveAssertionResponse(assertion, context)?.Body;
+    }
+
+    private static TestResponse? ResolveAssertionResponse(AssertExpression assertion, TestScriptContext context)
+    {
+        if (assertion.Direction == AssertDirection.Request) return null;
+        return assertion.SourceId is not null
             ? context.ResponseHistory.GetValueOrDefault(assertion.SourceId)
             : context.LastResponse;
-        return response?.Body;
     }
 
     private (bool, string?) EvaluateFhirPath(FhirPathCriteria c, AssertExpression assertion, TestScriptContext context)
     {
         var body = ResolveAssertionBody(assertion, context);
         if (body is null)
-            return (false, "No response body available to assert against with FHIRPath");
+        {
+            var parseError = ResolveAssertionResponse(assertion, context)?.BodyParseError;
+            var reason = parseError is not null
+                ? $"Response body was not valid JSON: {parseError}"
+                : "No response body available to assert against with FHIRPath";
+            return (false, reason);
+        }
 
         var resolvedExpr = VariableResolver.Resolve(c.Expression, context);
         var result = body.ToElement(schemaProvider).IsTrue(resolvedExpr);
@@ -388,7 +432,13 @@ public sealed class TestScriptEvaluator(
     {
         var body = ResolveAssertionBody(assertion, context);
         if (body is null)
-            return (false, "No response body available to assert against with FHIRPath");
+        {
+            var parseError = ResolveAssertionResponse(assertion, context)?.BodyParseError;
+            var reason = parseError is not null
+                ? $"Response body was not valid JSON: {parseError}"
+                : "No response body available to assert against with FHIRPath";
+            return (false, reason);
+        }
 
         var resolvedExpr = VariableResolver.Resolve(c.Expression, context);
         var resolvedValue = VariableResolver.Resolve(c.Value ?? string.Empty, context);

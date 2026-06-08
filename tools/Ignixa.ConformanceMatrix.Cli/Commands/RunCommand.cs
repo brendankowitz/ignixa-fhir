@@ -91,13 +91,32 @@ internal static class RunCommand
                 continue;
             }
 
-            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, fhirVersion: fhirVersion);
-            var mapped = ReportMapper.Map(report, relFile);
-            allResults.AddRange(mapped);
+            try
+            {
+                var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, fhirVersion: fhirVersion);
+                var mapped = ReportMapper.Map(report, relFile);
+                allResults.AddRange(mapped);
 
-            var pass = mapped.Count(r => r.Status == "pass");
-            var fail = mapped.Count(r => r.Status != "pass" && r.Status != "skipped");
-            Console.WriteLine($"    {pass} passed, {fail} failed");
+                var pass = mapped.Count(r => r.Status == "pass");
+                var fail = mapped.Count(r => r.Status != "pass" && r.Status != "skipped");
+                Console.WriteLine($"    {pass} passed, {fail} failed");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"  ERROR evaluating {relFile}: {ex.Message}");
+                allResults.Add(new ImplReportResult
+                {
+                    Id = relFile,
+                    File = relFile,
+                    Status = "error",
+                    DurationMs = 0,
+                    Error = new CellError { Assertion = "Evaluator error", Received = ex.Message }
+                });
+            }
         }
 
         var duration = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
