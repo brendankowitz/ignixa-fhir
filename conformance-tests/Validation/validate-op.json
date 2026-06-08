@@ -1,0 +1,148 @@
+{
+  "resourceType": "TestScript",
+  "name": "Validation/validate-op",
+  "description": "$validate operation conformance tests ported from fhir262 validation/$validation-op. Covers type-level and system-level $validate with valid and invalid Patient resources, Parameters-wrapped and direct bodies, and an empty Parameters edge case. Assertions inspect the returned OperationOutcome for error/fatal issues rather than HTTP status, because servers differ on whether invalid input yields 200+OperationOutcome or 422.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "params-valid-patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "resource", "resource": { "resourceType": "Patient", "id": "example" } }
+        ]
+      }
+    },
+    {
+      "id": "params-invalid-patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "resource", "resource": { "resourceType": "Patient", "name": "John" } }
+        ]
+      }
+    },
+    {
+      "id": "direct-valid-patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": { "resourceType": "Patient", "id": "example" }
+    },
+    {
+      "id": "params-empty",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": { "resourceType": "Parameters", "parameter": [] }
+    }
+  ],
+  "test": [
+    {
+      "name": "type-level $validate: valid patient in Parameters wrapper is accepted",
+      "description": "POST /Patient/$validate with a Parameters-wrapped valid Patient must return an OperationOutcome with no error/fatal issues.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "params-valid-patient",
+            "responseId": "validate-type-valid-response",
+            "description": "POST to Patient/$validate with valid patient in Parameters"
+          }
+        },
+        { "assert": { "description": "Operation should return a 2xx success status (warningOnly: some servers use 422 for validation failures)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Valid resource: OperationOutcome must have no error or fatal issues", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()" } }
+      ]
+    },
+    {
+      "name": "type-level $validate: invalid patient in Parameters wrapper is rejected",
+      "description": "POST /Patient/$validate with a Parameters-wrapped invalid Patient (name as a plain string) must return an OperationOutcome reporting at least one error/fatal issue.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "params-invalid-patient",
+            "responseId": "validate-type-invalid-response",
+            "description": "POST to Patient/$validate with invalid patient (name: 'John') in Parameters"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Invalid resource: OperationOutcome must contain at least one error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()" } },
+        { "assert": { "description": "An issue should reference Patient.name (warningOnly: issue expression format varies across servers)", "expression": "OperationOutcome.issue.where(expression = 'Patient.name').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "system-level $validate: valid patient accepted",
+      "description": "POST /$validate (no resource type prefix) with a Parameters-wrapped valid Patient must return an OperationOutcome with no error/fatal issues.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "url": "$validate",
+            "sourceId": "params-valid-patient",
+            "responseId": "validate-system-valid-response",
+            "description": "POST to $validate (system-level) with valid patient in Parameters"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Valid resource: OperationOutcome must have no error or fatal issues", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()" } }
+      ]
+    },
+    {
+      "name": "system-level $validate: invalid patient rejected",
+      "description": "POST /$validate (no resource type prefix) with a Parameters-wrapped invalid Patient must return an OperationOutcome reporting at least one error/fatal issue.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "url": "$validate",
+            "sourceId": "params-invalid-patient",
+            "responseId": "validate-system-invalid-response",
+            "description": "POST to $validate (system-level) with invalid patient in Parameters"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Invalid resource: OperationOutcome must contain at least one error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()" } }
+      ]
+    },
+    {
+      "name": "type-level $validate: direct resource body (no Parameters wrapper)",
+      "description": "POST /Patient/$validate with a direct Patient body (not wrapped in Parameters) must return an OperationOutcome with no error/fatal issues.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "direct-valid-patient",
+            "responseId": "validate-direct-valid-response",
+            "description": "POST to Patient/$validate with a direct Patient body"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Valid resource: OperationOutcome must have no error or fatal issues", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()" } }
+      ]
+    },
+    {
+      "name": "type-level $validate: empty Parameters is invalid",
+      "description": "POST /Patient/$validate with an empty Parameters (no resource parameter) is an edge case. Both the OperationOutcome shape and the rejection behavior are warningOnly because server behavior varies.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "params-empty",
+            "responseId": "validate-empty-response",
+            "description": "POST to Patient/$validate with empty Parameters"
+          }
+        },
+        { "assert": { "description": "Response body should be an OperationOutcome (warningOnly: behavior varies)", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Empty input should be invalid: OperationOutcome should contain an error or fatal issue (warningOnly: behavior varies)", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } }
+      ]
+    }
+  ]
+}
