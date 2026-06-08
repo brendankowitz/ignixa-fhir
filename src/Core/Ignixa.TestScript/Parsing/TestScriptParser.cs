@@ -250,7 +250,12 @@ public static class TestScriptParser
         if (a["headerField"]?.GetValue<string>() is { } field)
             return new HeaderCriteria(field, a["value"]?.GetValue<string>(), op);
         if (a["expression"]?.GetValue<string>() is { } expr)
-            return new FhirPathCriteria(expr);
+        {
+            var value = a["value"]?.GetValue<string>();
+            return value is not null
+                ? new FhirPathValueCriteria(expr, value, op ?? AssertOperator.Equals)
+                : new FhirPathCriteria(expr);
+        }
         if (a["requestMethod"]?.GetValue<string>() is { } method)
             return new RequestMethodCriteria(method);
         if (a["requestURL"]?.GetValue<string>() is { } url)

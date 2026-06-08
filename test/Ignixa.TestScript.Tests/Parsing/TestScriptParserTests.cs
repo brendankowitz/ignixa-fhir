@@ -123,6 +123,67 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenAssertWithExpressionAndValue_WhenParsing_ThenCreatesFhirPathValueCriteria()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"ExprVal",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id","value":"abc","operator":"equals"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var assertion = result.Value!.Tests[0].Actions[0].ShouldBeOfType<AssertExpression>();
+        var criteria = assertion.Criteria.ShouldBeOfType<FhirPathValueCriteria>();
+        criteria.Expression.ShouldBe("Patient.id");
+        criteria.Value.ShouldBe("abc");
+        criteria.Operator.ShouldBe(AssertOperator.Equals);
+    }
+
+    [Fact]
+    public void GivenAssertWithExpressionOnly_WhenParsing_ThenCreatesFhirPathCriteria()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"ExprOnly",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var assertion = result.Value!.Tests[0].Actions[0].ShouldBeOfType<AssertExpression>();
+        assertion.Criteria.ShouldBeOfType<FhirPathCriteria>().Expression.ShouldBe("Patient.id.exists()");
+    }
+
+    [Fact]
+    public void GivenOperationWithCustomType_WhenParsing_ThenPreservesTypeCode()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"CustomOp",
+              "status":"active",
+              "test":[{"name":"t","action":[{"operation":{"type":{"code":"validate"},"url":"Patient/$validate"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var operation = result.Value!.Tests[0].Actions[0].ShouldBeOfType<OperationExpression>();
+        operation.Type.ShouldBe("validate");
+        operation.Url.ShouldBe("Patient/$validate");
+    }
+
+    [Fact]
     public void GivenAssertWithHeaderField_WhenParsing_ThenCreatesHeaderCriteria()
     {
         var json = """

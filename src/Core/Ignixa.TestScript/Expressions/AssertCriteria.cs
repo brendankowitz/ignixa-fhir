@@ -14,6 +14,8 @@ public sealed record HeaderCriteria(string Field, string? Value = null, AssertOp
 
 public sealed record FhirPathCriteria(string Expression) : AssertCriteria;
 
+public sealed record FhirPathValueCriteria(string Expression, string? Value, AssertOperator Operator) : AssertCriteria;
+
 public sealed record RequestMethodCriteria(string Method) : AssertCriteria;
 
 public sealed record RequestUrlCriteria(string Url, AssertOperator? Operator = null) : AssertCriteria;

@@ -8,6 +8,7 @@ using Ignixa.TestScript.Expressions;
 using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Model;
 using Ignixa.TestScript.Reporting;
+using Ignixa.Specification.Extensions;
 using NSubstitute;
 
 namespace Ignixa.TestScript.Tests.Evaluation;
@@ -17,12 +18,14 @@ public class AssertionEvaluatorTests
     private readonly ITestRequestProvider _mockProvider;
     private readonly IFixtureProvider _fixtureProvider;
     private readonly IFhirSchemaProvider _schema;
+    private readonly IFhirSchemaProvider _r4Schema;
 
     public AssertionEvaluatorTests()
     {
         _mockProvider = Substitute.For<ITestRequestProvider>();
         _fixtureProvider = new InlineFixtureProvider();
         _schema = Substitute.For<IFhirSchemaProvider>();
+        _r4Schema = FhirVersion.R4.GetSchemaProvider();
     }
 
     [Theory]
@@ -148,7 +151,7 @@ public class AssertionEvaluatorTests
     }
 
     [Fact]
-    public async Task GivenExpressionAssertion_WhenNotImplemented_ThenFails()
+    public async Task GivenFhirPathCriteria_WhenExpressionIsTrue_ThenPasses()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .Returns(new TestResponse
@@ -161,10 +164,10 @@ public class AssertionEvaluatorTests
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
             new AssertExpression { Criteria = new FhirPathCriteria("Patient.id.exists()") });
 
-        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
-        report.OverallOutcome.ShouldBe(TestScriptOutcome.Fail);
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
     }
 
     [Fact]
@@ -181,27 +184,32 @@ public class AssertionEvaluatorTests
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
             new AssertExpression { Criteria = new FhirPathCriteria("Patient.name.exists()") });
 
-        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         var failedAction = report.TestResults[0].Actions[1];
         failedAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
         failedAction.Message.ShouldNotBeNull();
-        failedAction.Message.ShouldContain("not yet implemented");
+        failedAction.Message.ShouldNotContain("not yet implemented");
+        failedAction.Message.ShouldContain("did not evaluate to true");
     }
 
     [Fact]
     public async Task GivenWarningOnlyAssertion_WhenFails_ThenOverallIsWarning()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new TestResponse { StatusCode = 200 });
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "1"}""")
+            });
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
             new AssertExpression { Criteria = new ResponseStatusCriteria("okay") },
-            new AssertExpression { Criteria = new FhirPathCriteria("Patient.id.exists()"), WarningOnly = true });
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.name.exists()"), WarningOnly = true });
 
-        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Warning);
@@ -344,6 +352,208 @@ public class AssertionEvaluatorTests
 
         var outcome = expectedPass ? TestScriptOutcome.Pass : TestScriptOutcome.Fail;
         report.OverallOutcome.ShouldBe(outcome);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathCriteria_WhenExpressionEvaluatesToTrue_ThenPasses()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "1", "active": true}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.active = true") });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathCriteria_WhenExpressionEvaluatesToFalse_ThenFails()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "1", "active": false}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.active = true") });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Fail);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathCriteria_WhenNoResponseBody_ThenFails()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+            new AssertExpression { Criteria = new FhirPathCriteria("Patient.id.exists()") });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var failedAction = report.TestResults[0].Actions[1];
+        failedAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        failedAction.Message.ShouldNotBeNull();
+        failedAction.Message.ShouldContain("No response body");
+    }
+
+    [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenValueMatches_ThenPasses()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "abc"}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/abc" },
+            new AssertExpression
+            {
+                Criteria = new FhirPathValueCriteria("Patient.id", "abc", AssertOperator.Equals)
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenValueDoesNotMatch_ThenFails()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "abc"}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/abc" },
+            new AssertExpression
+            {
+                Criteria = new FhirPathValueCriteria("Patient.id", "xyz", AssertOperator.Equals)
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Fail);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenContainsOperator_ThenEvaluatesCorrectly()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "patient-12345"}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/patient-12345" },
+            new AssertExpression
+            {
+                Criteria = new FhirPathValueCriteria("Patient.id", "12345", AssertOperator.Contains)
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenVariableInExpression_ThenResolvesVariable()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "abc"}""")
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "AssertionTest" },
+            Variables =
+            [
+                new VariableDefinition { Name = "expectedId", DefaultValue = "abc" }
+            ],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Test",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/abc" },
+                        new AssertExpression
+                        {
+                            Criteria = new FhirPathValueCriteria("Patient.id", "${expectedId}", AssertOperator.Equals)
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenCustomOperation_WhenTypeIsUnknown_ThenDefaultsToPost()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "some-custom-op", Url = "Patient/1/$custom" });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        await _mockProvider.Received(1).ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Method == HttpMethod.Post),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenValidateOperation_WhenExecuted_ThenBuildsCorrectUrl()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "validate", Url = "Patient/$validate" });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        await _mockProvider.Received(1).ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Method == HttpMethod.Post && r.Url == "Patient/$validate"),
+            Arg.Any<CancellationToken>());
     }
 
     private static TestScriptDefinition BuildDefinition(params ActionExpression[] actions)

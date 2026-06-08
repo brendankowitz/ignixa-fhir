@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
@@ -268,15 +269,14 @@ public sealed class TestScriptEvaluator(
     private static HttpMethod DeriveMethod(string operationType) => operationType switch
     {
         "create" => HttpMethod.Post,
-        "read" or "vread" or "search" or "history" => HttpMethod.Get,
-        "update" => HttpMethod.Put,
+        "read" or "vread" or "search" or "history" or "capabilities" or "conforms" => HttpMethod.Get,
+        "update" or "updateCreate" => HttpMethod.Put,
         "patch" => HttpMethod.Patch,
         "delete" => HttpMethod.Delete,
-        _ => throw new InvalidOperationException(
-            $"Unknown operation type: '{operationType}'. Expected: create, read, vread, update, patch, delete, search, history")
+        _ => HttpMethod.Post
     };
 
-    private static (bool Passed, string? Message) EvaluateAssertionWithMessage(
+    private (bool Passed, string? Message) EvaluateAssertionWithMessage(
         AssertExpression assertion, TestScriptContext context)
     {
         return assertion.Criteria switch
@@ -286,11 +286,55 @@ public sealed class TestScriptEvaluator(
             ContentTypeCriteria c => EvaluateContentType(c, context),
             ResourceTypeCriteria c => EvaluateResourceType(c, context),
             HeaderCriteria c => EvaluateHeader(c, context),
-            FhirPathCriteria c => (false, $"FHIRPath expression assertions are not yet implemented: '{c.Expression}'"),
+            FhirPathCriteria c => EvaluateFhirPath(c, assertion, context),
+            FhirPathValueCriteria c => EvaluateFhirPathValue(c, assertion, context),
             RequestMethodCriteria c => EvaluateRequestMethod(c, assertion, context),
             RequestUrlCriteria c => EvaluateRequestUrl(c, assertion, context),
             _ => throw new InvalidOperationException($"Unhandled assertion criteria type: {assertion.Criteria.GetType().Name}")
         };
+    }
+
+    private static ResourceJsonNode? ResolveAssertionBody(AssertExpression assertion, TestScriptContext context)
+    {
+        if (assertion.Direction == AssertDirection.Request)
+        {
+            var request = assertion.SourceId is not null
+                ? context.RequestHistory.GetValueOrDefault(assertion.SourceId)
+                : context.LastRequest;
+            return request?.Body;
+        }
+
+        var response = assertion.SourceId is not null
+            ? context.ResponseHistory.GetValueOrDefault(assertion.SourceId)
+            : context.LastResponse;
+        return response?.Body;
+    }
+
+    private (bool, string?) EvaluateFhirPath(FhirPathCriteria c, AssertExpression assertion, TestScriptContext context)
+    {
+        var body = ResolveAssertionBody(assertion, context);
+        if (body is null)
+            return (false, "No response body available to assert against with FHIRPath");
+
+        var resolvedExpr = VariableResolver.Resolve(c.Expression, context);
+        var result = body.ToElement(schemaProvider).IsTrue(resolvedExpr);
+        return (result, result ? null : $"FHIRPath expression '{resolvedExpr}' did not evaluate to true");
+    }
+
+    private (bool, string?) EvaluateFhirPathValue(FhirPathValueCriteria c, AssertExpression assertion, TestScriptContext context)
+    {
+        var body = ResolveAssertionBody(assertion, context);
+        if (body is null)
+            return (false, "No response body available to assert against with FHIRPath");
+
+        var resolvedExpr = VariableResolver.Resolve(c.Expression, context);
+        var resolvedValue = VariableResolver.Resolve(c.Value ?? string.Empty, context);
+        var actual = body.ToElement(schemaProvider).Scalar(resolvedExpr)?.ToString();
+
+        var passed = EvaluateWithOperator(actual, resolvedValue, c.Operator);
+        return (passed, passed
+            ? null
+            : $"FHIRPath expression '{resolvedExpr}' value '{actual}' did not match expected '{resolvedValue}' with operator {c.Operator}");
     }
 
     private static (bool, string?) EvaluateResponseStatus(ResponseStatusCriteria c, TestScriptContext context)
