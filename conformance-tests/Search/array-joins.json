@@ -99,6 +99,7 @@
     {
       "name": "AND on array-simple: category=medication&category=biologic requires both",
       "description": "Repeating a token array param ANDs the constraints. category=medication&category=biologic must match only resources that have BOTH tokens in the array. Only aMB has both; aM (medication only), aB (biologic only), and aF (food) must not match.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "AllergyIntolerance", "params": "?category=medication&category=biologic", "responseId": "and-category-response", "description": "Search category=medication AND category=biologic" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
@@ -112,6 +113,7 @@
     {
       "name": "OR on array-simple: category=medication,biologic",
       "description": "Comma-separated values within one token param are ORed. category=medication,biologic matches resources with medication OR biologic in the category array. Matches aMB, aM, and aB; excludes aF (food only).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "AllergyIntolerance", "params": "?category=medication,biologic", "responseId": "or-category-response", "description": "Search category=medication OR biologic" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
