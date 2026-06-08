@@ -8,4 +8,5 @@ public sealed record TestPhaseDefinition
     public string? Description { get; init; }
     public IReadOnlyList<ActionExpression> Actions { get; init; } = [];
     public IReadOnlyList<ParametrizeDefinition> Parameters { get; init; } = [];
+    public IReadOnlyList<string> FhirVersions { get; init; } = [];
 }

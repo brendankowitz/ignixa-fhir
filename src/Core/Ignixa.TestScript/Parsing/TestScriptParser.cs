@@ -160,13 +160,29 @@ public static class TestScriptParser
                 Name = test["name"]?.GetValue<string>() ?? "Unnamed",
                 Description = test["description"]?.GetValue<string>(),
                 Actions = ParseActions(test["action"]?.AsArray()),
-                Parameters = ParseParametrize(test["extension"]?.AsArray())
+                Parameters = ParseParametrize(test["extension"]?.AsArray()),
+                FhirVersions = ParseFhirVersions(test["extension"]?.AsArray())
             });
         }
         return result;
     }
 
     private const string ParametrizeUrl = "http://ignixa.io/testscript/parametrize";
+    private const string FhirVersionsUrl = "http://ignixa.io/testscript/fhirVersions";
+
+    private static IReadOnlyList<string> ParseFhirVersions(JsonArray? extensions)
+    {
+        if (extensions is null) return [];
+        foreach (var ext in extensions)
+        {
+            if (ext is not JsonObject obj) continue;
+            if (obj["url"]?.GetValue<string>() != FhirVersionsUrl) continue;
+
+            if (obj["valueString"]?.GetValue<string>() is { } versions)
+                return versions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+        return [];
+    }
 
     private static IReadOnlyList<ParametrizeDefinition> ParseParametrize(JsonArray? extensions)
     {

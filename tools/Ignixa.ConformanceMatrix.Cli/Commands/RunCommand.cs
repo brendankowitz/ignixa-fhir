@@ -20,11 +20,16 @@ internal static class RunCommand
         var testsOption = new Option<string>("--tests") { Description = "Folder containing TestScript .json files", Required = true };
         var implOption = new Option<string>("--impl") { Description = "Implementation name (column label in the matrix)", Required = true };
         var outOption = new Option<string>("--out") { Description = "Output path for the per-impl report JSON", Required = true };
+        var fhirVersionOption = new Option<string?>("--fhir-version")
+        {
+            Description = "FHIR version to test against (e.g. '4.0', '4.3', '5.0'). Sets fhirVersion on Content-Type/Accept headers and skips tests not tagged for this version. Omit to run all tests against any server."
+        };
 
         command.Options.Add(serverOption);
         command.Options.Add(testsOption);
         command.Options.Add(implOption);
         command.Options.Add(outOption);
+        command.Options.Add(fhirVersionOption);
 
         command.SetAction((parseResult, cancellationToken) =>
         {
@@ -32,13 +37,14 @@ internal static class RunCommand
             var tests = parseResult.GetValue(testsOption)!;
             var impl = parseResult.GetValue(implOption)!;
             var outPath = parseResult.GetValue(outOption)!;
-            return RunAsync(server, tests, impl, outPath, cancellationToken);
+            var fhirVersion = parseResult.GetValue(fhirVersionOption);
+            return RunAsync(server, tests, impl, outPath, fhirVersion, cancellationToken);
         });
 
         return command;
     }
 
-    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, CancellationToken cancellationToken)
+    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, CancellationToken cancellationToken)
     {
         var startedAt = DateTimeOffset.UtcNow;
 
@@ -48,6 +54,13 @@ internal static class RunCommand
 
         var schema = new R4CoreSchemaProvider();
         using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
+        if (fhirVersion is not null)
+        {
+            var mediaType = $"application/fhir+json; fhirVersion={fhirVersion}";
+            httpClient.DefaultRequestHeaders.Accept.Clear();
+            httpClient.DefaultRequestHeaders.Accept.Add(
+                System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse(mediaType));
+        }
         var provider = new HttpTestRequestProvider(httpClient);
         var fixtureProvider = new CompositeFixtureProvider(
         [
@@ -78,7 +91,7 @@ internal static class RunCommand
                 continue;
             }
 
-            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken);
+            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, fhirVersion: fhirVersion);
             var mapped = ReportMapper.Map(report, relFile);
             allResults.AddRange(mapped);
 

@@ -204,6 +204,98 @@ public class TestScriptEvaluatorTests
     }
 
     [Fact]
+    public async Task GivenTestTaggedForR4_WhenExecutingAgainstR5_ThenTestIsSkipped()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "VersionGated" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "R4Only",
+                    FhirVersions = ["4.0"],
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Patient", Params = "?identifier:of-type=x" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None, fhirVersion: "5.0");
+
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+        await _mockProvider.DidNotReceive().ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenTestTaggedForR4_WhenExecutingWithNoVersion_ThenTestRuns()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "VersionGatedNoVersion" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "R4Only",
+                    FhirVersions = ["4.0"],
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Patient", Params = "?identifier:of-type=x" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None, fhirVersion: null);
+
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldNotBe(TestScriptOutcome.Skip);
+        await _mockProvider.Received(1).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenTestWithNoVersionTag_WhenExecutingAgainstR5_ThenTestRuns()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "VersionAgnostic" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "AnyVersion",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Patient", Params = "?name=smith" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None, fhirVersion: "5.0");
+
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldNotBe(TestScriptOutcome.Skip);
+        await _mockProvider.Received(1).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GivenEmptyTestScript_WhenExecuting_ThenReturnsPassWithNoTests()
     {
         var definition = new TestScriptDefinition

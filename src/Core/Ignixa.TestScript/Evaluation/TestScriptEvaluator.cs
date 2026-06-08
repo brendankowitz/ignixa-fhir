@@ -24,7 +24,8 @@ public sealed class TestScriptEvaluator(
 
     public async Task<TestScriptReport> ExecuteAsync(
         TestScriptDefinition definition,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? fhirVersion = null)
     {
         var startTime = DateTimeOffset.UtcNow;
         var recorder = new TestScriptResultRecorder();
@@ -82,6 +83,13 @@ public sealed class TestScriptEvaluator(
         {
             foreach (var test in definition.Tests)
             {
+                if (!IsVersionCompatible(test.FhirVersions, fhirVersion))
+                {
+                    recorder.RecordSkippedTest(test.Name, test.Description,
+                        $"Test targets FHIR version(s) [{string.Join(", ", test.FhirVersions)}] but execution requested '{fhirVersion}'");
+                    continue;
+                }
+
                 if (test.Parameters.Count == 0)
                 {
                     recorder.BeginPhase(TestPhaseType.Test, test.Name, test.Description);
@@ -124,6 +132,13 @@ public sealed class TestScriptEvaluator(
         }
 
         return recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow);
+    }
+
+    private static bool IsVersionCompatible(IReadOnlyList<string> fhirVersions, string? fhirVersion)
+    {
+        if (fhirVersions.Count == 0) return true;
+        if (fhirVersion is null) return true;
+        return fhirVersions.Contains(fhirVersion, StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<TestScriptContext> ExecuteActionsAsync(

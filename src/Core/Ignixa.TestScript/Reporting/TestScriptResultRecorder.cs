@@ -76,6 +76,21 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
         }
     }
 
+    public void RecordSkippedTest(string name, string? description, string reason)
+    {
+        if (_currentActions.Count > 0)
+            throw new InvalidOperationException(
+                $"RecordSkippedTest called while phase '{_currentPhaseType}' has {_currentActions.Count} uncommitted actions. Call EndPhase first.");
+        if (_isBuilt)
+            throw new InvalidOperationException("Cannot record results after Build() has been called.");
+
+        _testResults.Add(new TestCaseResult(
+            name,
+            description,
+            [new ActionResult(null, description, TestScriptOutcome.Skip, reason)],
+            TestScriptOutcome.Skip));
+    }
+
     public TestScriptReport Build(string testScriptName, DateTimeOffset startTime, DateTimeOffset endTime)
     {
         _isBuilt = true;

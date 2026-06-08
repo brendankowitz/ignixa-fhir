@@ -375,6 +375,7 @@
     {
       "name": "of-type: identifier:of-type matches full system|code|value",
       "description": "GET /Patient?identifier:of-type=v2-0203|MR|12345 must match only the identifier with type-code MR and value 12345.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MR|12345", "responseId": "oftype-mr-response", "description": "Search identifier:of-type MR|12345" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
@@ -387,6 +388,7 @@
     {
       "name": "of-type: different type code does not match",
       "description": "GET /Patient?identifier:of-type=v2-0203|MRT|12345 must match only the MRT-typed identifier, not MR.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MRT|12345", "responseId": "oftype-mrt-response", "description": "Search identifier:of-type MRT|12345" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
@@ -399,6 +401,7 @@
     {
       "name": "of-type: different value does not match",
       "description": "GET /Patient?identifier:of-type=v2-0203|MR|99999 must match only the MR-typed identifier with value 99999.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MR|99999", "responseId": "oftype-mrx-response", "description": "Search identifier:of-type MR|99999" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },

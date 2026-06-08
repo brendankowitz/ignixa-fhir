@@ -275,6 +275,46 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenTestWithFhirVersionsExtension_WhenParsed_ThenVersionsPopulated()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Versioned",
+              "status":"active",
+              "test":[{
+                "name":"of-type r4 only",
+                "extension":[{"url":"http://ignixa.io/testscript/fhirVersions","valueString":"4.0,4.3"}],
+                "action":[{"operation":{"type":{"code":"search"},"resource":"Patient","params":"?identifier:of-type=x"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].FhirVersions.ShouldBe(["4.0", "4.3"]);
+    }
+
+    [Fact]
+    public void GivenTestWithoutFhirVersionsExtension_WhenParsed_ThenVersionsEmpty()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Unversioned",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].FhirVersions.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void GivenVariableWithExpression_WhenParsing_ThenCreatesExpressionExtraction()
     {
         var json = """
