@@ -244,6 +244,115 @@ public class ChoiceElementCheckTests
 
     #endregion
 
+    #region Primitive Value Rules
+
+    private static ValidationResult ValidateChoice(string json, string[] allowedTypes)
+    {
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(json));
+        var check = new ChoiceElementCheck("value", allowedTypes);
+        return check.Validate(
+            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
+            new ValidationSettings(),
+            new ValidationState());
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("\"true\"")]
+    public void GivenChoiceBooleanWithNonBooleanValue_WhenValidating_ThenReturnsError(string value)
+    {
+        var result = ValidateChoice(
+            $@"{{ ""valueBoolean"": {value} }}",
+            new[] { "boolean", "string", "integer" });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void GivenChoiceBooleanWithBooleanValue_WhenValidating_ThenReturnsSuccess(string value)
+    {
+        var result = ValidateChoice(
+            $@"{{ ""valueBoolean"": {value} }}",
+            new[] { "boolean", "string" });
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("3.1")]            // fractional
+    [InlineData("2147483648")]    // > int32 max
+    [InlineData("true")]          // wrong JSON kind
+    public void GivenChoiceIntegerWithInvalidValue_WhenValidating_ThenReturnsError(string value)
+    {
+        var result = ValidateChoice(
+            $@"{{ ""valueInteger"": {value} }}",
+            new[] { "integer", "boolean" });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
+    }
+
+    [Fact]
+    public void GivenChoiceIntegerWithValidValue_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidateChoice(@"{ ""valueInteger"": 42 }", new[] { "integer" });
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void GivenChoiceUnsignedIntWithNegativeValue_WhenValidating_ThenReturnsError()
+    {
+        var result = ValidateChoice(@"{ ""valueUnsignedInt"": -1 }", new[] { "unsignedInt" });
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
+    }
+
+    [Theory]
+    [InlineData("\"2000-13\"")]       // invalid month
+    [InlineData("\"2000-00\"")]       // invalid month
+    [InlineData("\"201\"")]           // too few year digits
+    [InlineData("\"\"")]              // empty
+    public void GivenChoiceDateTimeWithMalformedValue_WhenValidating_ThenReturnsError(string value)
+    {
+        var result = ValidateChoice(
+            $@"{{ ""valueDateTime"": {value} }}",
+            new[] { "dateTime", "string" });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
+    }
+
+    [Theory]
+    [InlineData("\"2024\"")]
+    [InlineData("\"2024-01\"")]
+    [InlineData("\"2024-01-15\"")]
+    [InlineData("\"2024-01-15T10:00:00Z\"")]
+    public void GivenChoiceDateTimeWithValidValue_WhenValidating_ThenReturnsSuccess(string value)
+    {
+        var result = ValidateChoice(
+            $@"{{ ""valueDateTime"": {value} }}",
+            new[] { "dateTime", "string" });
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void GivenChoiceComplexType_WhenValidating_ThenSkipsPrimitiveRules()
+    {
+        // A complex variant (Quantity) is not subject to primitive value rules here.
+        var result = ValidateChoice(
+            @"{ ""valueQuantity"": { ""value"": 120, ""unit"": ""mmHg"" } }",
+            new[] { "Quantity", "boolean" });
+
+        Assert.True(result.IsValid);
+    }
+
+    #endregion
+
     #region Real-World FHIR Scenarios
 
     [Fact]
