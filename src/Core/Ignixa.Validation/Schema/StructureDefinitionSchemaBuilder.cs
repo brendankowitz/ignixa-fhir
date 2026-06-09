@@ -95,6 +95,15 @@ public class StructureDefinitionSchemaBuilder
             .Where(e => GetTypeName(e) != "xhtml") // Skip xhtml elements - they don't have .value children
             .Select(e =>
             {
+                // Choice elements are named "value[x]" in the schema, but instances carry
+                // concrete names (valueQuantity, valueString, ...). CardinalityCheck counts
+                // via IElement.Children, which only performs polymorphic [x] expansion when
+                // the requested name has no [x] suffix. Strip it so the check matches the
+                // concrete children instead of a literal "value[x]" that never exists.
+                var elementName = e.Info.IsChoiceElement && e.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+                    ? e.Info.Name[..^3]
+                    : e.Info.Name;
+
                 // Try to get explicit cardinality from extended metadata
                 if (e is ITypeExtended extended)
                 {
@@ -102,12 +111,12 @@ public class StructureDefinitionSchemaBuilder
                     int? max = extended.Max == "*" ? null
                         : int.TryParse(extended.Max, out var parsedMax) ? parsedMax
                         : (int?)null;
-                    return new CardinalityCheck(e.Info.Name, min, max);
+                    return new CardinalityCheck(elementName, min, max);
                 }
 
                 // Fallback to inferred cardinality
                 return new CardinalityCheck(
-                    e.Info.Name,
+                    elementName,
                     min: e.IsRequired ? 1 : 0,
                     max: e.IsCollection ? (int?)null : 1);
             });

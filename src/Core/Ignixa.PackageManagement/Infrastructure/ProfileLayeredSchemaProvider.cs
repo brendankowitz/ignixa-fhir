@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.PackageManagement.Infrastructure;
@@ -33,15 +34,23 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
     /// </summary>
     /// <param name="baseProvider">Base FHIR schema provider (R4/R4B/R5/STU3 core).</param>
     /// <param name="packageResources">Conformance resources extracted from one or more IG packages.</param>
+    /// <param name="logger">
+    /// Optional logger. When a package <c>StructureDefinition</c> cannot be adapted (malformed
+    /// JSON, differential-only definition with no snapshot, or missing id), the profile is dropped
+    /// from the index and a warning is logged so the silent downgrade to base-only validation is
+    /// observable. Defaults to <see cref="NullLogger{T}"/>.
+    /// </param>
     public ProfileLayeredSchemaProvider(
         IFhirSchemaProvider baseProvider,
-        IEnumerable<ExtractedResource> packageResources)
+        IEnumerable<ExtractedResource> packageResources,
+        ILogger<ProfileLayeredSchemaProvider>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(baseProvider);
         ArgumentNullException.ThrowIfNull(packageResources);
 
         _base = baseProvider;
         _profileTypes = new Dictionary<string, IType>(StringComparer.Ordinal);
+        var log = logger ?? NullLogger<ProfileLayeredSchemaProvider>.Instance;
 
         var provider = new PackageResourceProvider(NullLogger<PackageResourceProvider>.Instance);
         foreach (var res in packageResources)
@@ -51,9 +60,16 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
                 continue;
             }
             var type = provider.ToTypeDefinition(res.ResourceJson, baseProvider.FullVersion);
-            if (type != null)
+            if (type != null && !string.IsNullOrEmpty(res.ResourceId))
             {
                 _profileTypes[res.ResourceId] = type;
+            }
+            else
+            {
+                log.LogWarning(
+                    "Profile StructureDefinition (id='{ProfileId}', canonical='{Canonical}') could not be adapted and will not be available for profile validation. Resources declaring this profile validate against the base resource definition only.",
+                    res.ResourceId,
+                    res.Canonical);
             }
         }
     }

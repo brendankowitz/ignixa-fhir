@@ -181,7 +181,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                     _logger.LogWarning(
                         "Version conflict for {PackageId}: already loading @{ExistingVersion}, skipping @{RequestedVersion}",
                         id, existingVer, ver);
-                    loadedSpecs.Add($"{id}@{ver} (version conflict: @{existingVer} already queued)");
+                    skippedSpecs.Add($"{id}@{ver} (version conflict: @{existingVer} already queued)");
                 }
                 continue;
             }

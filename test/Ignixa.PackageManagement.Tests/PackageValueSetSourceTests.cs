@@ -144,4 +144,103 @@ public class PackageValueSetSourceTests
         source.IsValidCode("http://example.org/ValueSet/demo", "missing").ShouldBe(false);
         source.IsValidCode("http://example.org/ValueSet/unknown", "x").ShouldBeNull();
     }
+
+    private const string IntensionalFilterValueSet = """
+        {
+          "resourceType": "ValueSet",
+          "id": "filter-vs",
+          "url": "http://example.org/ValueSet/filter",
+          "compose": {
+            "include": [
+              {
+                "system": "http://snomed.info/sct",
+                "filter": [ { "property": "concept", "op": "is-a", "value": "123" } ]
+              }
+            ]
+          }
+        }
+        """;
+
+    private const string ValueSetChainValueSet = """
+        {
+          "resourceType": "ValueSet",
+          "id": "chain-vs",
+          "url": "http://example.org/ValueSet/chain",
+          "compose": {
+            "include": [ { "valueSet": [ "http://example.org/ValueSet/other" ] } ]
+          }
+        }
+        """;
+
+    private const string ValueSetWithExclude = """
+        {
+          "resourceType": "ValueSet",
+          "id": "exclude-vs",
+          "url": "http://example.org/ValueSet/exclude",
+          "compose": {
+            "include": [
+              {
+                "system": "http://example.org/CodeSystem/demo",
+                "concept": [ { "code": "alpha" }, { "code": "beta" } ]
+              }
+            ],
+            "exclude": [
+              { "system": "http://example.org/CodeSystem/demo", "concept": [ { "code": "beta" } ] }
+            ]
+          }
+        }
+        """;
+
+    [Fact]
+    public void GivenIntensionalFilterValueSet_WhenExpanding_ThenReturnsNullSoBindingDegradesToWarning()
+    {
+        // A filter-based (intensional) include cannot be enumerated. Returning null (rather than
+        // an empty set) lets a required binding degrade to a warning instead of rejecting every
+        // otherwise-valid code.
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/filter", "filter-vs", null, IntensionalFilterValueSet),
+        });
+
+        source.GetCodes("http://example.org/ValueSet/filter").ShouldBeNull();
+        source.IsValidCode("http://example.org/ValueSet/filter", "anything").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenValueSetChainInclude_WhenExpanding_ThenReturnsNull()
+    {
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/chain", "chain-vs", null, ValueSetChainValueSet),
+        });
+
+        source.GetCodes("http://example.org/ValueSet/chain").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenValueSetReferencingMissingCodeSystem_WhenExpanding_ThenReturnsNull()
+    {
+        // CodeSystem is not supplied alongside the ValueSet, so the whole-CodeSystem inclusion
+        // cannot be enumerated.
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/demo-ref", "demo-vs-ref", null, DemoValueSetReferencingCodeSystem),
+        });
+
+        source.GetCodes("http://example.org/ValueSet/demo-ref").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenValueSetWithExclude_WhenExpanding_ThenReturnsNull()
+    {
+        // compose.exclude makes an include-only expansion an over-approximation; membership
+        // cannot be soundly decided, so the ValueSet is reported as unexpandable.
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/exclude", "exclude-vs", null, ValueSetWithExclude),
+            MakeCodeSystem("http://example.org/CodeSystem/demo", "demo-cs", null, DemoCodeSystem),
+        });
+
+        source.GetCodes("http://example.org/ValueSet/exclude").ShouldBeNull();
+    }
 }

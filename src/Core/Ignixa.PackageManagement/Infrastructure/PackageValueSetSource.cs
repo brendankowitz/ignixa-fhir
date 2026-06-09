@@ -107,11 +107,24 @@ public sealed class PackageValueSetSource : IValueSetProvider
         {
             using var doc = JsonDocument.Parse(valueSet.ResourceJson);
             var root = doc.RootElement;
-            if (!root.TryGetProperty("compose", out var compose) ||
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("compose", out var compose) ||
+                compose.ValueKind != JsonValueKind.Object ||
                 !compose.TryGetProperty("include", out var includes) ||
                 includes.ValueKind != JsonValueKind.Array)
             {
-                return Array.Empty<FhirCode>();
+                // No expandable compose.include (e.g. a pre-expanded expansion.contains-only
+                // ValueSet). We cannot enumerate the exact member set, so report "unable to
+                // expand" (null) rather than an empty set — an empty set would cause a required
+                // binding to reject every otherwise-valid code (false positives).
+                return null;
+            }
+
+            // compose.exclude makes an include-only expansion an over-approximation; we cannot
+            // soundly decide membership, so treat the whole ValueSet as unexpandable.
+            if (compose.TryGetProperty("exclude", out _))
+            {
+                return null;
             }
 
             var codes = new List<FhirCode>();
@@ -123,7 +136,7 @@ public sealed class PackageValueSetSource : IValueSetProvider
 
                 if (include.TryGetProperty("concept", out var conceptArr) && conceptArr.ValueKind == JsonValueKind.Array)
                 {
-                    // Inline concepts
+                    // Inline concepts: directly enumerable.
                     foreach (var concept in conceptArr.EnumerateArray())
                     {
                         var code = concept.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
@@ -136,21 +149,32 @@ public sealed class PackageValueSetSource : IValueSetProvider
                     continue;
                 }
 
-                if (!string.IsNullOrEmpty(system) &&
-                    !include.TryGetProperty("filter", out _) &&
-                    !include.TryGetProperty("valueSet", out _))
+                // No inline concepts: this include enumerates codes by reference. Intensional
+                // filters and nested ValueSet chains cannot be enumerated here, and a
+                // whole-CodeSystem inclusion requires the referenced CodeSystem to be present in
+                // the package. Any of these means we cannot produce the exact member set, so
+                // return null (binding degrades to a warning) instead of partially expanding and
+                // rejecting valid codes that come from the unexpandable include.
+                if (string.IsNullOrEmpty(system) ||
+                    include.TryGetProperty("filter", out _) ||
+                    include.TryGetProperty("valueSet", out _))
                 {
-                    // Whole-CodeSystem inclusion
-                    var fromCodeSystem = ExpandCodeSystem(system!);
-                    if (fromCodeSystem != null)
-                    {
-                        codes.AddRange(fromCodeSystem);
-                    }
+                    return null;
                 }
-                // Unsupported shapes (filter, valueSet chain, exclude) are silently skipped.
+
+                var fromCodeSystem = ExpandCodeSystem(system!);
+                if (fromCodeSystem == null || fromCodeSystem.Count == 0)
+                {
+                    // CodeSystem not in package, or present but not enumerable (e.g. content
+                    // other than "complete") — cannot assert the full set of valid codes.
+                    return null;
+                }
+                codes.AddRange(fromCodeSystem);
             }
 
-            return codes;
+            // If nothing enumerable was found, treat as unable-to-expand rather than an empty
+            // (reject-everything) set.
+            return codes.Count > 0 ? codes : null;
         }
         catch (JsonException)
         {

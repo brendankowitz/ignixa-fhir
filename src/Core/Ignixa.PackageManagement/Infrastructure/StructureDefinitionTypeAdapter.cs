@@ -39,12 +39,18 @@ public sealed class StructureDefinitionTypeAdapter
         using var doc = JsonDocument.Parse(structureDefinitionJson);
         var root = doc.RootElement;
 
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
         if (!TryGetString(root, "resourceType", out var resourceType) || resourceType != "StructureDefinition")
         {
             return null;
         }
 
         if (!root.TryGetProperty("snapshot", out var snapshot) ||
+            snapshot.ValueKind != JsonValueKind.Object ||
             !snapshot.TryGetProperty("element", out var elementsArray) ||
             elementsArray.ValueKind != JsonValueKind.Array)
         {
@@ -421,16 +427,6 @@ public sealed class StructureDefinitionTypeAdapter
         => parent.TryGetProperty(property, out var v)
             ? v.ValueKind == JsonValueKind.True ? true : v.ValueKind == JsonValueKind.False ? false : (bool?)null
             : null;
-
-    private static string? ReadFirstStringInArray(JsonElement parent, string property)
-    {
-        if (!parent.TryGetProperty(property, out var arr) || arr.ValueKind != JsonValueKind.Array || arr.GetArrayLength() == 0)
-        {
-            return null;
-        }
-        var first = arr[0];
-        return first.ValueKind == JsonValueKind.String ? first.GetString() : null;
-    }
 
     private static IReadOnlyList<string> ReadAllStringsInArray(JsonElement parent, string property)
     {
