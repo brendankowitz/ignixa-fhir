@@ -543,9 +543,14 @@ public class StructureDefinitionSchemaBuilder
                 return true;
             }
 
-            return int.TryParse(extended.Max, out var parsedMax) && parsedMax > 1;
+            if (int.TryParse(extended.Max, out var parsedMax))
+            {
+                return parsedMax > 1;
+            }
         }
 
+        // Fall back to IsCollection when Max is absent/unparseable, to avoid a false
+        // "scalar" verdict from incomplete extended metadata.
         return element.IsCollection;
     }
 

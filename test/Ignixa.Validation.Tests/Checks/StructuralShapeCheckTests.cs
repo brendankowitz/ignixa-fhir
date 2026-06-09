@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Tests.TestHelpers;
 using Shouldly;
@@ -194,6 +195,62 @@ public class StructuralShapeCheckTests
         // carrying an extension) is legal FHIR and must pass.
         var result = Validate(
             """{"resourceType":"Patient","name":[{"given":["John",null],"_given":[null,{"extension":[{"url":"http://example.org","valueString":"nickname"}]}]}]}""");
+
+        result.IsValid.ShouldBeTrue(
+            $"Expected valid. Issues: {string.Join(", ", result.Issues.Select(i => $"{i.Path}: {i.Message}"))}");
+    }
+
+    // -------------------------------------------------------------------------
+    // ele-1 backbone vs datatype: StructuralShapeCheck must NOT raise ele-1 for an
+    // empty inline BackboneElement (its required children are enforced elsewhere),
+    // while an empty complex datatype MUST raise ele-1.
+    // -------------------------------------------------------------------------
+
+    private static ValidationResult RunStructuralShapeCheck(string resourceJson, string elementName, bool isBackbone)
+    {
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(resourceJson)!);
+        var check = new StructuralShapeCheck(elementName, isPrimitive: false, isCollection: true, isBackbone: isBackbone, primitiveType: string.Empty);
+        return check.Validate(
+            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
+            new ValidationSettings { Depth = ValidationDepth.Spec },
+            new ValidationState());
+    }
+
+    [Fact]
+    public void GivenEmptyBackboneElement_WhenStructuralShapeChecking_ThenDoesNotRaiseEle1()
+    {
+        // Patient.contact is an inline BackboneElement; an empty {} entry must not trip ele-1 here.
+        var result = RunStructuralShapeCheck(
+            """{"resourceType":"Patient","contact":[{}]}""",
+            "contact",
+            isBackbone: true);
+
+        result.Issues.ShouldNotContain(
+            i => i.Code == "ele-1",
+            $"Empty backbone must not raise ele-1 from StructuralShapeCheck. Issues: {string.Join(", ", result.Issues.Select(i => $"{i.Path}: {i.Code}"))}");
+    }
+
+    [Fact]
+    public void GivenEmptyDatatypeElement_WhenStructuralShapeChecking_ThenRaisesEle1()
+    {
+        // A complex datatype object with no content MUST raise ele-1 (contrast with the backbone case).
+        var result = RunStructuralShapeCheck(
+            """{"resourceType":"Patient","name":[{}]}""",
+            "name",
+            isBackbone: false);
+
+        result.Issues.ShouldContain(
+            i => i.Code == "ele-1",
+            $"Empty datatype must raise ele-1. Issues: {string.Join(", ", result.Issues.Select(i => $"{i.Path}: {i.Code}"))}");
+    }
+
+    [Fact]
+    public void GivenEmptyContainedArray_WhenValidating_ThenValid()
+    {
+        // contained:[] is tolerated (an empty contained array carries no resources), in contrast to
+        // a required-element empty array like name:[] which is rejected.
+        var result = Validate(
+            """{"resourceType":"Patient","contained":[]}""");
 
         result.IsValid.ShouldBeTrue(
             $"Expected valid. Issues: {string.Join(", ", result.Issues.Select(i => $"{i.Path}: {i.Message}"))}");

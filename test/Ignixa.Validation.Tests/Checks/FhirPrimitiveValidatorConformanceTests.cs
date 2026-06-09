@@ -31,6 +31,35 @@ public class FhirPrimitiveValidatorConformanceTests
             new ValidationState());
     }
 
+    private static ValidationResult ValidateNode(JsonObject json, string[] allowedTypes)
+    {
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        return new ChoiceElementCheck("value", allowedTypes).Validate(
+            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
+            new ValidationSettings(),
+            new ValidationState());
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(2147483647)]
+    public void GivenProgrammaticIntegerValue_WhenValidating_ThenAcceptsWholeValue(int value)
+    {
+        // Built programmatically (CLR int-backed JsonValue), not parsed from text. Guards
+        // against TryGetValue<long> failing on non-JsonElement-backed nodes (e.g. faker- or
+        // code-constructed resources), which previously misreported a valid integer as fractional.
+        var result = ValidateNode(new JsonObject { ["valueInteger"] = value }, new[] { "integer" });
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void GivenProgrammaticPositiveIntValue_WhenValidating_ThenAcceptsWholeValue()
+    {
+        var result = ValidateNode(new JsonObject { ["valuePositiveInt"] = 2 }, new[] { "positiveInt" });
+        Assert.True(result.IsValid);
+    }
+
     // -------------------------------------------------------------------------
     // valueDateTime — ACCEPTS
     // -------------------------------------------------------------------------
@@ -178,5 +207,152 @@ public class FhirPrimitiveValidatorConformanceTests
     {
         var result = ValidatePrimitive("valueInstant", jsonValue, ["instant"]);
         Assert.False(result.IsValid, $"Expected invalid instant for {jsonValue} but validation passed");
+    }
+
+    // -------------------------------------------------------------------------
+    // Integer-family boundary accepts/rejects (32-bit edges, unsignedInt/positiveInt floor).
+    // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("valueUnsignedInt", "0", "unsignedInt")]
+    [InlineData("valuePositiveInt", "1", "positiveInt")]
+    [InlineData("valueInteger", "2147483647", "integer")]
+    [InlineData("valueInteger", "-2147483648", "integer")]
+    public void GivenIntegerFamilyBoundaryValue_WhenValidating_ThenReturnsSuccess(string property, string jsonValue, string type)
+    {
+        var result = ValidatePrimitive(property, jsonValue, [type]);
+        Assert.True(result.IsValid, $"Expected valid {type} for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    [Fact]
+    public void GivenIntegerBelowInt32Min_WhenValidating_ThenReturnsError()
+    {
+        var result = ValidatePrimitive("valueInteger", "-2147483649", ["integer"]);
+        Assert.False(result.IsValid, "Expected invalid integer below Int32.MinValue but validation passed");
+    }
+
+    // -------------------------------------------------------------------------
+    // integer64 and decimal (kind/whole-number rules).
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void GivenInteger64AtInt64Max_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidatePrimitive("valueInteger64", "9223372036854775807", ["integer64"]);
+        Assert.True(result.IsValid, $"Expected valid integer64 but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    [Fact]
+    public void GivenInteger64WithFraction_WhenValidating_ThenReturnsError()
+    {
+        var result = ValidatePrimitive("valueInteger64", "3.1", ["integer64"]);
+        Assert.False(result.IsValid, "Expected invalid integer64 (fractional) but validation passed");
+    }
+
+    [Fact]
+    public void GivenDecimalWithFraction_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidatePrimitive("valueDecimal", "3.14", ["decimal"]);
+        Assert.True(result.IsValid, $"Expected valid decimal but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    [Theory]
+    [InlineData("\"3.14\"")] // string, not a JSON number
+    [InlineData("true")]     // boolean, not a JSON number
+    public void GivenDecimalWithNonNumberValue_WhenValidating_ThenReturnsError(string jsonValue)
+    {
+        var result = ValidatePrimitive("valueDecimal", jsonValue, ["decimal"]);
+        Assert.False(result.IsValid, $"Expected invalid decimal for {jsonValue} but validation passed");
+    }
+
+    // -------------------------------------------------------------------------
+    // time fractional-second upper bound (9 digits) — locks {1,9} for time.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void GivenTimeWithNineFractionalDigits_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidatePrimitive("valueTime", "\"12:00:00.000000000\"", ["time"]);
+        Assert.True(result.IsValid, $"Expected valid time but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    // -------------------------------------------------------------------------
+    // Choice primitive carrying BOTH a value AND a "_value" shadow (extensions/id).
+    // Regression guard: Meta<JsonNode>() returns the shadow object for these; the
+    // validator must inspect the VALUE node, not reject the shadow as type-1.
+    // -------------------------------------------------------------------------
+
+    private static ValidationResult ValidatePrimitiveWithShadow(string property, string valueJson, string shadowJson, string[] allowedTypes)
+    {
+        var json = JsonNode.Parse($@"{{ ""resourceType"": ""Observation"", ""{property}"": {valueJson}, ""_{property}"": {shadowJson} }}");
+        var sourceNode = JsonNodeSourceNode.Create(json!);
+        var check = new ChoiceElementCheck("value", allowedTypes);
+        return check.Validate(
+            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
+            new ValidationSettings(),
+            new ValidationState());
+    }
+
+    [Fact]
+    public void GivenDateTimeValueWithExtensionShadow_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidatePrimitiveWithShadow(
+            "valueDateTime",
+            "\"2024-01-15\"",
+            @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
+            ["dateTime", "string", "boolean"]);
+
+        Assert.True(result.IsValid, $"Expected valid dateTime+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    [Fact]
+    public void GivenBooleanValueWithExtensionShadow_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidatePrimitiveWithShadow(
+            "valueBoolean",
+            "true",
+            @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
+            ["boolean", "string"]);
+
+        Assert.True(result.IsValid, $"Expected valid boolean+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    [Fact]
+    public void GivenStringValueWithIdShadow_WhenValidating_ThenReturnsSuccess()
+    {
+        var result = ValidatePrimitiveWithShadow(
+            "valueString",
+            "\"x\"",
+            @"{ ""id"": ""1"" }",
+            ["string", "boolean"]);
+
+        Assert.True(result.IsValid, $"Expected valid string+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+    }
+
+    [Fact]
+    public void GivenMalformedBooleanValueWithShadow_WhenValidating_ThenReturnsError()
+    {
+        // The shadow must not mask a malformed value: 0 is still not a JSON boolean.
+        var result = ValidatePrimitiveWithShadow(
+            "valueBoolean",
+            "0",
+            @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
+            ["boolean", "string", "integer"]);
+
+        Assert.False(result.IsValid, "Expected invalid boolean (0) even with shadow but validation passed");
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
+    }
+
+    [Fact]
+    public void GivenMalformedDateTimeValueWithShadow_WhenValidating_ThenReturnsError()
+    {
+        var result = ValidatePrimitiveWithShadow(
+            "valueDateTime",
+            "\"2000-13\"",
+            @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
+            ["dateTime", "string"]);
+
+        Assert.False(result.IsValid, "Expected invalid dateTime (2000-13) even with shadow but validation passed");
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
     }
 }

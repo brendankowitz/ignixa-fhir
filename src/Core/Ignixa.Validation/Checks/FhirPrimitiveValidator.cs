@@ -3,10 +3,12 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Validation.Checks;
 
@@ -80,6 +82,18 @@ public static class FhirPrimitiveValidator
         {
             // No raw JSON available (e.g. synthetic element); fall back to permissive.
             return true;
+        }
+
+        // When a primitive carries BOTH a value and a "_value" shadow (extensions/id),
+        // Meta<JsonNode>() returns the SHADOW object, not the value. Inspecting the shadow's
+        // kind would spuriously reject a valid resource (object where a string/number/bool is
+        // expected). Re-bind to the actual primitive VALUE node so we validate the value's
+        // real JSON kind and rules (this still rejects a malformed value such as 0 for boolean).
+        if (element.HasPrimitiveValue
+            && node.GetValueKind() is JsonValueKind.Object
+            && element.Meta<JsonPrimitiveValueNode>() is { Value: var valueNode })
+        {
+            node = valueNode;
         }
 
         var kind = node.GetValueKind();
@@ -174,7 +188,8 @@ public static class FhirPrimitiveValidator
         }
 
         // Parse just the leading yyyy-MM-dd; DateOnly rejects impossible dates like Feb 31.
-        if (!DateOnly.TryParseExact(text[..10], "yyyy-MM-dd", out _))
+        // InvariantCulture/None so a non-Gregorian default culture can't mis-parse a FHIR date.
+        if (!DateOnly.TryParseExact(text[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
         {
             reason = $"value '{text}' contains an invalid calendar date";
             return false;
@@ -192,10 +207,22 @@ public static class FhirPrimitiveValidator
             return false;
         }
 
-        // An integral JSON number parses as long; 3.1 does not.
-        if (!node.AsValue().TryGetValue<long>(out var value))
+        // Read the numeric token from its canonical JSON text so the result is independent of
+        // the JsonValue's CLR backing. TryGetValue<long> only widens for JsonElement-backed
+        // (parsed) nodes, so a programmatically-built JsonValue<int> would otherwise be misread
+        // as having a fractional part.
+        var raw = node.ToJsonString();
+        if (raw.Contains('.', StringComparison.Ordinal)
+            || raw.Contains('e', StringComparison.Ordinal)
+            || raw.Contains('E', StringComparison.Ordinal))
         {
-            reason = $"expected a whole number for FHIR type '{fhirType}', but the value has a fractional part";
+            reason = $"expected a whole number for FHIR type '{fhirType}', but the value has a fractional or exponent part";
+            return false;
+        }
+
+        if (!long.TryParse(raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value))
+        {
+            reason = $"value '{raw}' is not a valid integer for FHIR type '{fhirType}'";
             return false;
         }
 
