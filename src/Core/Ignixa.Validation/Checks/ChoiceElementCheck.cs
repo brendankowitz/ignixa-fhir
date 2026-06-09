@@ -118,14 +118,17 @@ public class ChoiceElementCheck : IValidationCheck
         if (FhirPrimitiveValidator.IsPrimitiveType(variantFhirType)
             && !FhirPrimitiveValidator.TryValidate(actualChild, variantFhirType, out var primitiveReason))
         {
-            var variantLocation = string.IsNullOrEmpty(actualChild.Location)
-                ? actualChild.Name
-                : actualChild.Location;
+            // FHIR OperationOutcome expressions reference a choice element via the base name and
+            // .ofType(), e.g. "Parameters.parameter[0].value.ofType(boolean)" rather than the
+            // concrete "valueBoolean" key.
+            var variantExpression = string.IsNullOrEmpty(element.Location)
+                ? $"{_baseElementName}.ofType({variantFhirType})"
+                : $"{element.Location}.{_baseElementName}.ofType({variantFhirType})";
             return ValidationResult.Failure(
                 new ValidationIssue(
                     IssueSeverity.Error,
                     "type-1",
-                    variantLocation,
+                    variantExpression,
                     $"Invalid value for '{actualChild.Name}': {primitiveReason}"));
         }
 

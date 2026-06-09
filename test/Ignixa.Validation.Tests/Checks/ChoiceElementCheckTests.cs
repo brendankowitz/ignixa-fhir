@@ -340,6 +340,36 @@ public class ChoiceElementCheckTests
         Assert.True(result.IsValid);
     }
 
+    [Theory]
+    [InlineData("valueString")]
+    [InlineData("valueCode")]
+    [InlineData("valueUri")]
+    [InlineData("valueId")]
+    public void GivenChoiceStringPrimitiveWithEmptyValue_WhenValidating_ThenReturnsError(string variant)
+    {
+        var result = ValidateChoice(
+            $@"{{ ""{variant}"": """" }}",
+            new[] { "string", "code", "uri", "id" });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "type-1");
+    }
+
+    [Fact]
+    public void GivenInvalidChoicePrimitive_WhenValidating_ThenIssueExpressionUsesOfType()
+    {
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(
+            @"{ ""resourceType"": ""Observation"", ""valueBoolean"": 0 }"));
+        var check = new ChoiceElementCheck("value", new[] { "boolean", "string" });
+        var result = check.Validate(
+            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
+            new ValidationSettings(),
+            new ValidationState());
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Path.EndsWith("value.ofType(boolean)", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void GivenChoiceComplexType_WhenValidating_ThenSkipsPrimitiveRules()
     {

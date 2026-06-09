@@ -123,7 +123,17 @@ public static class FhirPrimitiveValidator
                     return false;
                 }
 
-                return ValidateStringFormat(node.GetValue<string>(), fhirType, out reason);
+                var text = node.GetValue<string>();
+
+                // Every FHIR string-family primitive requires at least one character;
+                // the empty string violates the base 'string' regex (and code/uri/id/...).
+                if (text.Length == 0)
+                {
+                    reason = $"value must not be empty for FHIR type '{fhirType}'";
+                    return false;
+                }
+
+                return ValidateStringFormat(text, fhirType, out reason);
         }
     }
 
