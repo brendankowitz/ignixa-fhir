@@ -125,10 +125,7 @@ public class TestScriptEvaluatorTests
                 new TestPhaseDefinition
                 {
                     Name = "Observation date ge",
-                    Parameters =
-                    [
-                        new ParametrizeDefinition("searchDate", ["2028", "2028-06", "2028-06-15"])
-                    ],
+                    Parameters = new ParametrizeDefinition("searchDate", ["2028", "2028-06", "2028-06-15"]),
                     Actions =
                     [
                         new OperationExpression
@@ -175,7 +172,7 @@ public class TestScriptEvaluatorTests
                 new TestPhaseDefinition
                 {
                     Name = "Parametrized",
-                    Parameters = [new ParametrizeDefinition("searchDate", ["a", "b"])],
+                    Parameters = new ParametrizeDefinition("searchDate", ["a", "b"]),
                     Actions =
                     [
                         new OperationExpression { Type = "search", Resource = "Observation", Params = "?d=${searchDate}" }
@@ -696,6 +693,106 @@ public class TestScriptEvaluatorTests
         capturedRequest.Url.ShouldBe("Patient/_search");
         capturedRequest.Method.ShouldBe(HttpMethod.Post);
     }
+
+    [Fact]
+    public async Task GivenAssertWithBodyParseError_WhenEvaluatingFhirPath_ThenFailsWithParseErrorMessage()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200, Body = null, BodyParseError = "Unexpected token at position 0" });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "ParseErrorTest" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "FhirPathOnBadJson",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient" },
+                        new AssertExpression { Criteria = new FhirPathCriteria("Patient.id.exists()") }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var assertAction = report.TestResults[0].Actions[1];
+        assertAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        assertAction.Message.ShouldNotBeNullOrEmpty();
+        assertAction.Message!.ShouldContain("Unexpected token at position 0");
+    }
+
+    [Fact]
+    public async Task GivenAutodeleteFixtureWithNoId_WhenTearingDown_ThenRecordsError()
+    {
+        var fixtureProvider = Substitute.For<IFixtureProvider>();
+#pragma warning disable CA2012
+        fixtureProvider.ResolveFixtureAsync(
+                Arg.Any<FixtureDefinition>(),
+                Arg.Any<FixtureResolutionContext>(),
+                Arg.Any<CancellationToken>())
+            .Returns(JsonSourceNodeFactory.Parse("""{"resourceType":"Patient"}"""));
+#pragma warning restore CA2012
+
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 201,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient"}""")
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "AutodeleteNoId" },
+            Fixtures = [new FixtureDefinition { Id = "no-id-fixture", Autocreate = true, Autodelete = true }]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TeardownResult.ShouldNotBeNull();
+        report.TeardownResult!.Actions.ShouldContain(a =>
+            a.Outcome == TestScriptOutcome.Error &&
+            a.Message != null &&
+            a.Message.Contains("no server-assigned id"));
+    }
+
+    [Fact]
+    public async Task GivenAssertWithUnknownCriteriaType_WhenEvaluating_ThenRecordsFailureNotCrash()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "UnknownCriteria" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "BadAssert",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient" },
+                        new AssertExpression { Criteria = new UnknownCriteria() }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var assertAction = report.TestResults[0].Actions[1];
+        assertAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        assertAction.Message.ShouldNotBeNullOrEmpty();
+    }
+
+    private sealed record UnknownCriteria : AssertCriteria;
 
     [Fact]
     public async Task GivenSearchOperation_WhenMethodIsPost_ThenParamsAreFormEncoded()

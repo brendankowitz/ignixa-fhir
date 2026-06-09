@@ -251,9 +251,9 @@ public class TestScriptParserTests
 
         result.IsSuccess.ShouldBeTrue();
         var test = result.Value!.Tests[0];
-        test.Parameters.Count.ShouldBe(1);
-        test.Parameters[0].VariableName.ShouldBe("searchDate");
-        test.Parameters[0].Values.ShouldBe(["2028", "2028-06", "2028-06-15", "2028-06-15T12:00:00Z"]);
+        test.Parameters.ShouldNotBeNull();
+        test.Parameters!.VariableName.ShouldBe("searchDate");
+        test.Parameters!.Values.ShouldBe(["2028", "2028-06", "2028-06-15", "2028-06-15T12:00:00Z"]);
     }
 
     [Fact]
@@ -271,7 +271,7 @@ public class TestScriptParserTests
         var result = TestScriptParser.Parse(json);
 
         result.IsSuccess.ShouldBeTrue();
-        result.Value!.Tests[0].Parameters.ShouldBeEmpty();
+        result.Value!.Tests[0].Parameters.ShouldBeNull();
     }
 
     [Fact]
@@ -331,5 +331,66 @@ public class TestScriptParserTests
         result.IsSuccess.ShouldBeTrue();
         var variable = result.Value!.Variables[0];
         variable.Extraction.ShouldBeOfType<ExpressionExtraction>().Expression.ShouldBe("Patient.id");
+    }
+
+    [Fact]
+    public void GivenAssertWithNoRecognisedCriteriaField_WhenParsing_ThenIsSuccessWithWarning()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BadAssert",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"label":"unknown"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.HasWarnings.ShouldBeTrue();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Warning && e.Message.Contains("no recognisable criteria"));
+    }
+
+    [Fact]
+    public void GivenTestWithMultipleParametrizeExtensions_WhenParsing_ThenUsesFirstAndWarns()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"MultiParam",
+              "status":"active",
+              "test":[{
+                "name":"multi",
+                "extension":[
+                  {
+                    "url":"http://ignixa.io/testscript/parametrize",
+                    "extension":[
+                      {"url":"variable","valueString":"x"},
+                      {"url":"values","valueString":"a,b"}
+                    ]
+                  },
+                  {
+                    "url":"http://ignixa.io/testscript/parametrize",
+                    "extension":[
+                      {"url":"variable","valueString":"y"},
+                      {"url":"values","valueString":"1,2"}
+                    ]
+                  }
+                ],
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.HasWarnings.ShouldBeTrue();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Warning && e.Message.Contains("parametrize"));
+        result.Value!.Tests[0].Parameters.ShouldNotBeNull();
+        result.Value!.Tests[0].Parameters!.VariableName.ShouldBe("x");
     }
 }

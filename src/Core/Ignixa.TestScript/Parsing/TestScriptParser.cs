@@ -156,17 +156,13 @@ public static class TestScriptParser
         {
             if (item is not JsonObject test) continue;
             var extensions = test["extension"]?.AsArray();
-            var parameters = ParseParametrize(extensions);
             var name = test["name"]?.GetValue<string>() ?? "Unnamed";
-            if (parameters.Count > 1)
-                errors.Add(new ParseError(ParseSeverity.Warning,
-                    $"Test '{name}' has {parameters.Count} parametrize extensions; only the first will be used."));
             result.Add(new TestPhaseDefinition
             {
                 Name = name,
                 Description = test["description"]?.GetValue<string>(),
                 Actions = ParseActions(test["action"]?.AsArray(), errors),
-                Parameters = parameters,
+                Parameters = ParseParametrize(extensions, name, errors),
                 FhirVersions = ParseFhirVersions(extensions)
             });
         }
@@ -190,10 +186,10 @@ public static class TestScriptParser
         return [];
     }
 
-    private static IReadOnlyList<ParametrizeDefinition> ParseParametrize(JsonArray? extensions)
+    private static ParametrizeDefinition? ParseParametrize(JsonArray? extensions, string testName, List<ParseError> errors)
     {
-        if (extensions is null) return [];
-        var result = new List<ParametrizeDefinition>();
+        if (extensions is null) return null;
+        var found = new List<ParametrizeDefinition>();
         foreach (var ext in extensions)
         {
             if (ext is not JsonObject obj) continue;
@@ -213,11 +209,16 @@ public static class TestScriptParser
             }
 
             if (variable is not null && values is not null)
-                result.Add(new ParametrizeDefinition(
+                found.Add(new ParametrizeDefinition(
                     variable,
                     values.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
         }
-        return result;
+
+        if (found.Count > 1)
+            errors.Add(new ParseError(ParseSeverity.Warning,
+                $"Test '{testName}' has {found.Count} parametrize extensions; only the first will be used."));
+
+        return found.Count > 0 ? found[0] : null;
     }
 
     private static IReadOnlyList<ActionExpression> ParseActions(JsonArray? actions, List<ParseError> errors)

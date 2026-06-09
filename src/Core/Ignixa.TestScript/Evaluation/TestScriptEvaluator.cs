@@ -99,7 +99,7 @@ public sealed class TestScriptEvaluator(
                     continue;
                 }
 
-                if (test.Parameters.Count == 0)
+                if (test.Parameters is null)
                 {
                     recorder.BeginPhase(TestPhaseType.Test, test.Name, test.Description);
                     context = await ExecuteActionsAsync(test.Actions, definition.Variables, context, cancellationToken);
@@ -107,10 +107,7 @@ public sealed class TestScriptEvaluator(
                 }
                 else
                 {
-                    // Only the first parametrize extension is honoured (single parametrize per test).
-                    // Each iteration runs against a derived context so the injected value and any
-                    // per-iteration response history do not leak into sibling iterations or later tests.
-                    var param = test.Parameters[0];
+                    var param = test.Parameters;
                     foreach (var value in param.Values)
                     {
                         var iterationContext = context.WithVariable(param.VariableName, value);
