@@ -42,15 +42,15 @@ public static class FhirPrimitiveValidator
         RegexOptions.Compiled);
 
     private static readonly Regex DateTimeRegex = new(
-        @"^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1])(T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00)))?)?)?$",
+        @"^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1])(T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00)))?)?)?$",
         RegexOptions.Compiled);
 
     private static readonly Regex TimeRegex = new(
-        @"^([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?$",
+        @"^([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?$",
         RegexOptions.Compiled);
 
     private static readonly Regex InstantRegex = new(
-        @"^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))$",
+        @"^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -149,13 +149,38 @@ public static class FhirPrimitiveValidator
             _ => null,
         };
 
-        if (pattern is null || pattern.IsMatch(text))
+        if (pattern is not null && !pattern.IsMatch(text))
+        {
+            reason = $"value '{text}' is not a valid FHIR {fhirType}";
+            return false;
+        }
+
+        if (fhirType is "date" or "dateTime" or "instant" && !IsCalendarDateValid(text, out reason))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsCalendarDateValid(string text, out string? reason)
+    {
+        reason = null;
+
+        // Values shorter than 10 chars are year-only or year-month — no day to validate.
+        if (text.Length < 10 || text[7] != '-')
         {
             return true;
         }
 
-        reason = $"value '{text}' is not a valid FHIR {fhirType}";
-        return false;
+        // Parse just the leading yyyy-MM-dd; DateOnly rejects impossible dates like Feb 31.
+        if (!DateOnly.TryParseExact(text[..10], "yyyy-MM-dd", out _))
+        {
+            reason = $"value '{text}' contains an invalid calendar date";
+            return false;
+        }
+
+        return true;
     }
 
     private static bool ValidateInteger(JsonNode node, JsonValueKind kind, string fhirType, out string? reason)
