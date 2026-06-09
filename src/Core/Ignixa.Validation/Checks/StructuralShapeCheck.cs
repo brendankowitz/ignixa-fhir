@@ -67,7 +67,7 @@ public sealed class StructuralShapeCheck : IValidationCheck
         var basePath = string.IsNullOrEmpty(element.Location) ? _elementName : $"{element.Location}.{_elementName}";
 
         var issues = new List<ValidationIssue>();
-        parent.TryGetPropertyValue("_" + _elementName, out var shadowNode);
+        var hasShadow = parent.TryGetPropertyValue("_" + _elementName, out var shadowNode);
 
         var hasValue = parent.TryGetPropertyValue(_elementName, out var valueNode);
         if (hasValue)
@@ -78,9 +78,17 @@ public sealed class StructuralShapeCheck : IValidationCheck
         // A primitive-extension shadow ("_x") that is itself null carries neither a value nor
         // extension content, which is invalid. Reported against the value path ("x"), matching
         // the FHIR convention of surfacing the logical element rather than the shadow key.
-        if (_isPrimitive && !hasValue && parent.ContainsKey("_" + _elementName) && shadowNode is null)
+        if (_isPrimitive && !hasValue && hasShadow && shadowNode is null)
         {
             issues.Add(NullValue(basePath));
+        }
+
+        // Validate the primitive-extension shadow's own shape (complex-vs-primitive, scalar-vs-array,
+        // Element key restrictions, and the empty-value/ele-1 pairing). The shadow null case above is
+        // handled separately, so skip a present-but-null shadow here.
+        if (hasShadow && shadowNode is not null)
+        {
+            ValidateShadow(shadowNode, valueNode, basePath, issues);
         }
 
         return issues.Count > 0 ? ValidationResult.Failure(issues) : ValidationResult.Success();
@@ -244,6 +252,128 @@ public sealed class StructuralShapeCheck : IValidationCheck
 
         return false;
     }
+
+    /// <summary>
+    /// Validates the primitive-extension shadow ("_x") shape against FHIR JSON representation rules.
+    /// A shadow is only legal on a primitive element, must mirror the value's cardinality (object for a
+    /// scalar, array aligned 1:1 for a collection), may carry only id/extension content, and a null
+    /// primitive slot paired with an id-only shadow slot violates the empty-value (ele-1) rule.
+    /// </summary>
+    private void ValidateShadow(JsonNode shadowNode, JsonNode? valueNode, string basePath, List<ValidationIssue> issues)
+    {
+        // A shadow on a complex element is never valid: id/extension on a complex datatype live on the
+        // element itself, not a "_x" sibling.
+        if (!_isPrimitive)
+        {
+            issues.Add(ShadowOnComplex(basePath));
+            return;
+        }
+
+        var kind = shadowNode.GetValueKind();
+
+        if (_isCollection)
+        {
+            // A repeated primitive's shadow must be a JSON array aligned with the value array.
+            if (kind != JsonValueKind.Array)
+            {
+                issues.Add(ShadowNotArray(basePath));
+                return;
+            }
+
+            ValidateShadowArray((JsonArray)shadowNode, valueNode as JsonArray, basePath, issues);
+            return;
+        }
+
+        // A scalar primitive's shadow must be a JSON object (Element), not a primitive or an array.
+        if (kind != JsonValueKind.Object)
+        {
+            issues.Add(ShadowNotObject(basePath));
+            return;
+        }
+
+        ValidateShadowElementAt((JsonObject)shadowNode, basePath, requireContent: false, issues);
+    }
+
+    private void ValidateShadowArray(JsonArray shadowArray, JsonArray? valueArray, string basePath, List<ValidationIssue> issues)
+    {
+        for (var i = 0; i < shadowArray.Count; i++)
+        {
+            var slot = shadowArray[i];
+            if (slot is null)
+            {
+                continue;
+            }
+
+            if (slot.GetValueKind() != JsonValueKind.Object)
+            {
+                issues.Add(ShadowSlotNotObject($"{basePath}[{i}]"));
+                continue;
+            }
+
+            // Empty-value (ele-1): when the paired primitive slot is null, the shadow slot must supply
+            // extension content. An id-only (or empty) shadow slot leaves the element with neither a
+            // value nor children.
+            var valueSlot = valueArray is not null && i < valueArray.Count ? valueArray[i] : null;
+            var requireContent = valueSlot is null;
+            ValidateShadowElementAt((JsonObject)slot, $"{basePath}[{i}]", requireContent, issues);
+        }
+    }
+
+    private void ValidateShadowElementAt(JsonObject element, string path, bool requireContent, List<ValidationIssue> issues)
+    {
+        var hasExtension = false;
+        foreach (var (key, _) in element)
+        {
+            if (string.Equals(key, "id", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (string.Equals(key, "extension", StringComparison.Ordinal))
+            {
+                hasExtension = true;
+                continue;
+            }
+
+            // An Element carrying a primitive value or any property other than id/extension is invalid.
+            issues.Add(ShadowUnknownKey(path, key));
+        }
+
+        if (requireContent && !hasExtension)
+        {
+            issues.Add(Ele1Empty(path));
+        }
+    }
+
+    private ValidationIssue ShadowOnComplex(string path) =>
+        ValidationIssue.InvariantFailure(
+            "structure-1",
+            $"Complex element '{_elementName}' must not have a primitive-extension shadow ('_{_elementName}')",
+            path);
+
+    private ValidationIssue ShadowNotObject(string path) =>
+        ValidationIssue.InvariantFailure(
+            "structure-1",
+            $"Primitive-extension shadow '_{_elementName}' for a scalar element must be a JSON object (Element)",
+            path);
+
+    private ValidationIssue ShadowNotArray(string path) =>
+        ValidationIssue.InvariantFailure(
+            "structure-1",
+            $"Primitive-extension shadow '_{_elementName}' for a repeated element must be a JSON array",
+            path);
+
+    private ValidationIssue ShadowSlotNotObject(string path) =>
+        ValidationIssue.InvariantFailure(
+            "structure-1",
+            $"Each primitive-extension shadow slot for '{_elementName}' must be a JSON object (Element) or null",
+            path);
+
+    private ValidationIssue ShadowUnknownKey(string path, string key) =>
+        ValidationIssue.InvariantFailure(
+            "structure-1",
+            $"Primitive-extension Element for '{_elementName}' may contain only 'id' and 'extension', not '{key}'",
+            path);
 
     private ValidationIssue NullValue(string path) =>
         ValidationIssue.InvariantFailure(
