@@ -88,9 +88,13 @@ public sealed class DebounceInvalidationStrategy : IDisposable
             tenantId,
             _debounceDelay.TotalMilliseconds);
 
+        // Capture the token before handing it to the timer: the callback may fire after
+        // another thread has disposed the CTS, and CancellationTokenSource.Token throws
+        // ObjectDisposedException inside an async-void timer callback (kills the process).
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = cts.Token;
         var timer = new Timer(
-            async _ => await ExecuteInvalidation(tenantId, invalidateAction, cts.Token),
+            async _ => await ExecuteInvalidation(tenantId, invalidateAction, token),
             state: null,
             dueTime: _debounceDelay,
             period: Timeout.InfiniteTimeSpan); // One-shot timer
@@ -128,10 +132,12 @@ public sealed class DebounceInvalidationStrategy : IDisposable
 
         existing.CancellationTokenSource?.Dispose();
 
-        // Create new timer with reset window
+        // Create new timer with reset window; capture the token for the same
+        // disposed-CTS race described in CreateNewDebounceState.
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = cts.Token;
         var timer = new Timer(
-            async _ => await ExecuteInvalidation(tenantId, invalidateAction, cts.Token),
+            async _ => await ExecuteInvalidation(tenantId, invalidateAction, token),
             state: null,
             dueTime: _debounceDelay,
             period: Timeout.InfiniteTimeSpan);
