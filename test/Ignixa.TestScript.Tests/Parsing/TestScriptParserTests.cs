@@ -334,23 +334,24 @@ public class TestScriptParserTests
     }
 
     [Fact]
-    public void GivenAssertWithNoRecognisedCriteriaField_WhenParsing_ThenIsSuccessWithWarning()
+    public void GivenAssertWithNoSupportedCriteriaField_WhenParsing_ThenReturnsError()
     {
         var json = """
             {
               "resourceType":"TestScript",
               "name":"BadAssert",
               "status":"active",
-              "test":[{"name":"t","action":[{"assert":{"label":"unknown"}}]}]
+              "test":[{"name":"t","action":[{"assert":{"validateProfileId":"my-profile"}}]}]
             }
             """;
 
         var result = TestScriptParser.Parse(json);
 
-        result.IsSuccess.ShouldBeTrue();
-        result.HasWarnings.ShouldBeTrue();
+        result.IsSuccess.ShouldBeFalse();
         result.Errors.ShouldContain(e =>
-            e.Severity == ParseSeverity.Warning && e.Message.Contains("no recognisable criteria"));
+            e.Severity == ParseSeverity.Error
+            && e.Message.Contains("no supported criteria field")
+            && e.Message.Contains("validateProfileId"));
     }
 
     [Fact]
@@ -435,5 +436,242 @@ public class TestScriptParserTests
         result.HasWarnings.ShouldBeTrue();
         result.Errors.ShouldContain(e =>
             e.Severity == ParseSeverity.Warning && e.Message.Contains("GEET"));
+    }
+
+    [Theory]
+    [InlineData("\"name\": 123", "name")]
+    [InlineData("\"name\": \"ok\", \"status\": true", "status")]
+    public void GivenWrongTypedScalarField_WhenParsing_ThenReturnsErrorWithoutThrow(string field, string fieldName)
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              __FIELD__
+            }
+            """.Replace("__FIELD__", field, StringComparison.Ordinal);
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error && e.Path != null && e.Path.Contains(fieldName));
+    }
+
+    [Fact]
+    public void GivenWrongTypedAutocreateField_WhenParsing_ThenReturnsErrorWithoutThrow()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BadAutocreate",
+              "status":"active",
+              "fixture":[{"id":"f1","autocreate":"true"}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error
+            && e.Message.Contains("autocreate")
+            && e.Message.Contains("boolean"));
+    }
+
+    [Fact]
+    public void GivenWrongTypedAssertValueField_WhenParsing_ThenReturnsErrorWithoutThrow()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BadAssertValue",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id","value":123}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error && e.Message.Contains("value"));
+    }
+
+    [Fact]
+    public void GivenMisspelledActionKey_WhenParsing_ThenReturnsErrorMentioningActionIndex()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Typo",
+              "status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient"}},
+                {"asert":{"response":"okay"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error
+            && e.Path != null
+            && e.Path.Contains("action[1]")
+            && e.Message.Contains("asert"));
+    }
+
+    [Fact]
+    public void GivenActionThatIsNotAnObject_WhenParsing_ThenReturnsError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"NotObject",
+              "status":"active",
+              "test":[{"name":"t","action":["i am a string"]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error && e.Path != null && e.Path.Contains("action[0]"));
+    }
+
+    [Theory]
+    [InlineData("notEqual")]
+    [InlineData("lessThanOrEquals")]
+    public void GivenUnknownAssertOperator_WhenParsing_ThenReturnsError(string op)
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BadOp",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id","value":"x","operator":"__OP__"}}]}]
+            }
+            """.Replace("__OP__", op, StringComparison.Ordinal);
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error && e.Message.Contains(op));
+    }
+
+    [Fact]
+    public void GivenEvalAssertOperator_WhenParsing_ThenReturnsNotSupportedError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"EvalOp",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id","value":"x","operator":"eval"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error
+            && e.Message.Contains("eval")
+            && e.Message.Contains("not supported"));
+    }
+
+    [Fact]
+    public void GivenSetupAssert_WhenParsing_ThenParsesAsAssertExpression()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"SetupAssert",
+              "status":"active",
+              "setup":{"action":[
+                {"operation":{"type":{"code":"create"},"resource":"Patient"}},
+                {"assert":{"response":"created"}}
+              ]}
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Setup.Count.ShouldBe(2);
+        result.Value.Setup[0].ShouldBeOfType<OperationExpression>();
+        var assertion = result.Value.Setup[1].ShouldBeOfType<AssertExpression>();
+        assertion.Criteria.ShouldBeOfType<ResponseStatusCriteria>().Status.ShouldBe("created");
+    }
+
+    [Fact]
+    public void GivenTeardownAssert_WhenParsing_ThenReturnsError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"TeardownAssert",
+              "status":"active",
+              "teardown":{"action":[
+                {"assert":{"response":"okay"}}
+              ]}
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error
+            && e.Path != null
+            && e.Path.Contains("teardown.action[0]")
+            && e.Message.Contains("only contain operations"));
+    }
+
+    [Fact]
+    public void GivenFixtureWithMissingId_WhenParsing_ThenReturnsError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"NoFixtureId",
+              "status":"active",
+              "fixture":[{"autocreate":true}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error
+            && e.Path != null
+            && e.Path.Contains("fixture[0]")
+            && e.Message.Contains("id"));
+    }
+
+    [Fact]
+    public void GivenVariableWithMissingName_WhenParsing_ThenReturnsError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"NoVarName",
+              "status":"active",
+              "variable":[{"defaultValue":"x"}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error
+            && e.Path != null
+            && e.Path.Contains("variable[0]")
+            && e.Message.Contains("name"));
     }
 }

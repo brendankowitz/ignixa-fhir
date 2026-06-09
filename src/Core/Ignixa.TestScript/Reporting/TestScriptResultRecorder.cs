@@ -10,21 +10,23 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
     private TestPhaseType _currentPhaseType;
     private string? _currentPhaseName;
     private string? _currentPhaseDescription;
+    private bool _inPhase;
     private readonly List<ActionResult> _currentActions = [];
 
     public TestScriptOutcome? SetupOutcome => _setupResult?.Outcome;
 
     public void BeginPhase(TestPhaseType phase, string? name = null, string? description = null)
     {
-        if (_currentActions.Count > 0)
+        if (_inPhase)
             throw new InvalidOperationException(
-                $"BeginPhase called while phase '{_currentPhaseType}' has {_currentActions.Count} uncommitted actions. Call EndPhase first.");
+                $"BeginPhase called while phase '{_currentPhaseType}' is still open. Call EndPhase first.");
         if (_isBuilt)
             throw new InvalidOperationException("Cannot record results after Build() has been called.");
 
         _currentPhaseType = phase;
         _currentPhaseName = name;
         _currentPhaseDescription = description;
+        _inPhase = true;
         _currentActions.Clear();
     }
 
@@ -42,7 +44,9 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
             throw new InvalidOperationException("Cannot record results after Build() has been called.");
 
         TestScriptOutcome resultOutcome;
-        if (outcome.Passed)
+        if (outcome.IsError)
+            resultOutcome = TestScriptOutcome.Error;
+        else if (outcome.Passed)
             resultOutcome = TestScriptOutcome.Pass;
         else if (outcome.WarningOnly)
             resultOutcome = TestScriptOutcome.Warning;
@@ -54,9 +58,15 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
 
     public void EndPhase()
     {
+        if (_isBuilt)
+            throw new InvalidOperationException("Cannot record results after Build() has been called.");
+        if (!_inPhase)
+            throw new InvalidOperationException("EndPhase called without a matching BeginPhase.");
+
         var actions = _currentActions.ToList();
         var phaseOutcome = DeterminePhaseOutcome(actions);
         _currentActions.Clear();
+        _inPhase = false;
 
         switch (_currentPhaseType)
         {
@@ -78,9 +88,9 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
 
     public void RecordSkippedTest(string name, string? description, string reason)
     {
-        if (_currentActions.Count > 0)
+        if (_inPhase)
             throw new InvalidOperationException(
-                $"RecordSkippedTest called while phase '{_currentPhaseType}' has {_currentActions.Count} uncommitted actions. Call EndPhase first.");
+                $"RecordSkippedTest called while phase '{_currentPhaseType}' is still open. Call EndPhase first.");
         if (_isBuilt)
             throw new InvalidOperationException("Cannot record results after Build() has been called.");
 
@@ -93,6 +103,10 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
 
     public TestScriptReport Build(string testScriptName, DateTimeOffset startTime, DateTimeOffset endTime)
     {
+        if (_inPhase)
+            throw new InvalidOperationException(
+                $"Build called while phase '{_currentPhaseType}' is still open. Call EndPhase first.");
+
         _isBuilt = true;
         return new()
         {
@@ -100,7 +114,7 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
             StartTime = startTime,
             EndTime = endTime,
             SetupResult = _setupResult,
-            TestResults = _testResults,
+            TestResults = _testResults.ToList(),
             TeardownResult = _teardownResult
         };
     }

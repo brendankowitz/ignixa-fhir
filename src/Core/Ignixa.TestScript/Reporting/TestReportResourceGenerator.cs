@@ -11,7 +11,7 @@ public static class TestReportResourceGenerator
             ["resourceType"] = "TestReport",
             ["name"] = report.TestScriptName,
             ["status"] = "completed",
-            ["result"] = MapOutcome(report.OverallOutcome),
+            ["result"] = MapReportResult(report.OverallOutcome),
             ["issued"] = report.EndTime.ToString("o")
         };
 
@@ -66,7 +66,7 @@ public static class TestReportResourceGenerator
     {
         var obj = new JsonObject
         {
-            ["result"] = MapOutcome(action.Outcome)
+            ["result"] = MapActionResult(action.Outcome)
         };
         if (action.Label is not null) obj["id"] = action.Label;
         if (action.Message is not null) obj["message"] = action.Message;
@@ -74,13 +74,27 @@ public static class TestReportResourceGenerator
         return obj;
     }
 
-    private static string MapOutcome(TestScriptOutcome outcome) => outcome switch
+    // Action-level results bind to the FHIR action-result valueset (pass | skip | fail | warning | error).
+    private static string MapActionResult(TestScriptOutcome outcome) => outcome switch
     {
         TestScriptOutcome.Pass => "pass",
-        TestScriptOutcome.Warning => "pass",
+        TestScriptOutcome.Warning => "warning",
         TestScriptOutcome.Fail => "fail",
         TestScriptOutcome.Error => "error",
         TestScriptOutcome.Skip => "skip",
         _ => "error"
+    };
+
+    // TestReport.result binds to the narrower report-result-codes valueset (pass | fail | pending).
+    // Warning is a passing run so it maps to pass; Error/Fail map to fail; Skip maps to pending
+    // (the run never reached a definitive pass/fail).
+    private static string MapReportResult(TestScriptOutcome outcome) => outcome switch
+    {
+        TestScriptOutcome.Pass => "pass",
+        TestScriptOutcome.Warning => "pass",
+        TestScriptOutcome.Fail => "fail",
+        TestScriptOutcome.Error => "fail",
+        TestScriptOutcome.Skip => "pending",
+        _ => "fail"
     };
 }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Reporting;
@@ -18,15 +19,17 @@ public sealed record TestScriptContext
     public ImmutableDictionary<string, TestRequest> RequestHistory { get; init; } =
         ImmutableDictionary<string, TestRequest>.Empty;
 
-    // Recorder is intentionally shared across all derived contexts — all phases of a single
-    // test execution write to the same recorder instance via with-expression copies.
+    // Recorder is intentionally shared by reference across all derived contexts — every
+    // with-expression copy keeps the same recorder instance, so all phases of a single test
+    // execution write to one recorder. Mutating it from any derived context is observable everywhere.
     internal ITestScriptResultRecorder Recorder { get; init; } = new TestScriptResultRecorder();
 
     public TestScriptContext WithResponse(string? responseId, TestResponse response)
     {
-        var ctx = this with { LastResponse = response };
+        var stored = DeepCloneResponse(response);
+        var ctx = this with { LastResponse = stored };
         if (responseId is not null)
-            ctx = ctx with { ResponseHistory = ResponseHistory.SetItem(responseId, response) };
+            ctx = ctx with { ResponseHistory = ResponseHistory.SetItem(responseId, stored) };
         return ctx;
     }
 
@@ -42,5 +45,13 @@ public sealed record TestScriptContext
         this with { Variables = Variables.SetItem(name, value) };
 
     public TestScriptContext WithFixture(string id, ResourceJsonNode resource) =>
-        this with { Fixtures = Fixtures.SetItem(id, resource) };
+        this with { Fixtures = Fixtures.SetItem(id, DeepCloneResource(resource)) };
+
+    private static ResourceJsonNode DeepCloneResource(ResourceJsonNode resource) =>
+        JsonSourceNodeFactory.Parse(resource.MutableNode.DeepClone());
+
+    private static TestResponse DeepCloneResponse(TestResponse response) =>
+        response.Body is null
+            ? response
+            : response with { Body = DeepCloneResource(response.Body) };
 }

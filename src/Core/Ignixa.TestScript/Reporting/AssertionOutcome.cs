@@ -3,4 +3,5 @@ namespace Ignixa.TestScript.Reporting;
 public sealed record AssertionOutcome(
     bool Passed,
     bool WarningOnly,
-    string? Message = null);
+    string? Message = null,
+    bool IsError = false);

@@ -19,6 +19,11 @@ public sealed record ParseResult<T> where T : class
         return new() { Errors = errors };
     }
 
-    public static ParseResult<T> WithWarnings(T value, IReadOnlyList<ParseError> warnings) =>
-        new() { Value = value, Errors = warnings };
+    public static ParseResult<T> WithWarnings(T value, IReadOnlyList<ParseError> warnings)
+    {
+        if (warnings.Any(e => e.Severity == ParseSeverity.Error))
+            throw new ArgumentException(
+                "WithWarnings cannot carry Error-severity entries; use Failure instead.", nameof(warnings));
+        return new() { Value = value, Errors = warnings };
+    }
 }

@@ -63,11 +63,6 @@
       }
     }
   ],
-  "variable": [
-    { "name": "btx1Url", "sourceId": "tx-response", "expression": "entry[0].response.location", "description": "Location of the first created Patient" },
-    { "name": "btx2Url", "sourceId": "tx-response", "expression": "entry[1].response.location", "description": "Location of the second created Patient" },
-    { "name": "btx3Url", "sourceId": "tx-response", "expression": "entry[2].response.location", "description": "Location of the third created Patient" }
-  ],
   "test": [
     {
       "name": "Transaction creates resources",

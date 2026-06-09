@@ -12,6 +12,12 @@ public sealed record OperationExpression : ActionExpression
     public string? Accept { get; init; }
     public string? ContentType { get; init; }
     public string? SourceId { get; init; }
+
+    /// <summary>
+    /// Parsed from the TestScript but not yet implemented by the evaluator. The fixture/response
+    /// targeted by a write operation is currently inferred from <see cref="SourceId"/> and the
+    /// response history rather than this property.
+    /// </summary>
     public string? TargetId { get; init; }
     public string? ResponseId { get; init; }
     public string? RequestId { get; init; }

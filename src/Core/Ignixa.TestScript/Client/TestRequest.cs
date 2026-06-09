@@ -9,6 +9,6 @@ public sealed record TestRequest
     public required string Url { get; init; }
     public ResourceJsonNode? Body { get; init; }
     public string? FormBody { get; init; }
-    public IReadOnlyDictionary<string, string> Headers { get; init; } =
+    public ImmutableDictionary<string, string> Headers { get; init; } =
         ImmutableDictionary<string, string>.Empty;
 }

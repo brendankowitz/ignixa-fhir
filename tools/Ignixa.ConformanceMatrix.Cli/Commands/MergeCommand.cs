@@ -44,38 +44,87 @@ internal static class MergeCommand
         string resultsDir, string outDir, string commit, string commitMessage, string branch, string repoUrl,
         CancellationToken cancellationToken)
     {
-        var reports = new List<ImplReport>();
-        foreach (var file in Directory.EnumerateFiles(resultsDir, "*.json", SearchOption.TopDirectoryOnly)
-                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        try
         {
-            var json = await File.ReadAllTextAsync(file, cancellationToken);
-            var report = JsonSerializer.Deserialize<ImplReport>(json);
-            if (report is not null)
-                reports.Add(report);
-        }
+            if (!Directory.Exists(resultsDir))
+            {
+                Console.Error.WriteLine($"error: --results directory not found: {resultsDir}");
+                return 1;
+            }
 
-        if (reports.Count == 0)
+            var reports = new List<ImplReport>();
+            var badFiles = new List<string>();
+
+            foreach (var file in Directory.EnumerateFiles(resultsDir, "*.json", SearchOption.TopDirectoryOnly)
+                         .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var json = await File.ReadAllTextAsync(file, cancellationToken);
+                    var report = JsonSerializer.Deserialize<ImplReport>(json);
+                    if (report is not null)
+                        reports.Add(report);
+                    else
+                    {
+                        Console.Error.WriteLine($"error: {file} deserialized to null (empty or non-object JSON)");
+                        badFiles.Add(file);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"error: failed to read {file}: {ex.GetType().Name}: {ex.Message}");
+                    badFiles.Add(file);
+                }
+            }
+
+            if (badFiles.Count > 0)
+            {
+                Console.Error.WriteLine($"{badFiles.Count} file(s) could not be loaded; aborting merge.");
+                return 1;
+            }
+
+            if (reports.Count == 0)
+            {
+                Console.Error.WriteLine($"No reports found in {resultsDir}");
+                return 1;
+            }
+
+            var (run, index) = MatrixBuilder.MergeReports(reports, commit, commitMessage, branch, repoUrl);
+
+            var runsDir = Path.Combine(outDir, "runs");
+            Directory.CreateDirectory(runsDir);
+
+            var runPath = Path.Combine(runsDir, $"{run.Meta.Id}.json");
+            await File.WriteAllTextAsync(runPath, JsonSerializer.Serialize(run, WriteOptions), cancellationToken);
+
+            var indexPath = Path.Combine(runsDir, "index.json");
+            var entries = await LoadIndexAsync(indexPath, cancellationToken);
+
+            var existingPos = entries.FindIndex(e => e.Id == index.Id);
+            if (existingPos >= 0)
+                entries[existingPos] = index;
+            else
+                entries.Add(index);
+
+            await File.WriteAllTextAsync(indexPath, JsonSerializer.Serialize(entries, WriteOptions), cancellationToken);
+
+            Console.WriteLine($"Merged {reports.Count} report(s) -> {runPath}");
+            Console.WriteLine($"Index updated -> {indexPath} ({entries.Count} run(s))");
+            return 0;
+        }
+        catch (OperationCanceledException)
         {
-            Console.Error.WriteLine($"No reports found in {resultsDir}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: {ex.GetType().Name}: {ex.Message}");
             return 1;
         }
-
-        var (run, index) = MatrixBuilder.MergeReports(reports, commit, commitMessage, branch, repoUrl);
-
-        var runsDir = Path.Combine(outDir, "runs");
-        Directory.CreateDirectory(runsDir);
-
-        var runPath = Path.Combine(runsDir, $"{run.Meta.Id}.json");
-        await File.WriteAllTextAsync(runPath, JsonSerializer.Serialize(run, WriteOptions), cancellationToken);
-
-        var indexPath = Path.Combine(runsDir, "index.json");
-        var entries = await LoadIndexAsync(indexPath, cancellationToken);
-        entries.Add(index);
-        await File.WriteAllTextAsync(indexPath, JsonSerializer.Serialize(entries, WriteOptions), cancellationToken);
-
-        Console.WriteLine($"Merged {reports.Count} report(s) -> {runPath}");
-        Console.WriteLine($"Index updated -> {indexPath} ({entries.Count} run(s))");
-        return 0;
     }
 
     private static async Task<List<IndexEntry>> LoadIndexAsync(string indexPath, CancellationToken cancellationToken)
@@ -83,10 +132,27 @@ internal static class MergeCommand
         if (!File.Exists(indexPath))
             return [];
 
-        var json = await File.ReadAllTextAsync(indexPath, cancellationToken);
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(indexPath, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to read index file {indexPath}: {ex.Message}", ex);
+        }
+
         if (string.IsNullOrWhiteSpace(json))
             return [];
 
-        return JsonSerializer.Deserialize<List<IndexEntry>>(json) ?? [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<IndexEntry>>(json)
+                ?? throw new InvalidOperationException($"index.json at {indexPath} deserialized to null");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException($"index.json at {indexPath} contains invalid JSON: {ex.Message}", ex);
+        }
     }
 }

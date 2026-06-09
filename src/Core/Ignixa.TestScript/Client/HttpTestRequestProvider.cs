@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -41,7 +42,7 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
             catch (System.Text.Json.JsonException ex) { bodyParseError = ex.Message; }
         }
 
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var headers = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var header in httpResponse.Headers.Concat(httpResponse.Content.Headers))
         {
             headers[header.Key] = string.Join(", ", header.Value);
@@ -52,7 +53,7 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
             StatusCode = (int)httpResponse.StatusCode,
             Body = body,
             BodyParseError = bodyParseError,
-            Headers = headers
+            Headers = headers.ToImmutable()
         };
     }
 }

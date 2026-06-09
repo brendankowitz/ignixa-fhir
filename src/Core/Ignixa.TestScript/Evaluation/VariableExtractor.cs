@@ -1,8 +1,10 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Model;
+using Ignixa.TestScript.Reporting;
 
 namespace Ignixa.TestScript.Evaluation;
 
@@ -23,9 +25,19 @@ internal static class VariableExtractor
 
             if (response is null) continue;
 
-            var value = ExtractValue(variable.Extraction, response, schema);
-            if (value is not null)
-                context = context.WithVariable(variable.Name, value);
+            try
+            {
+                var value = ExtractValue(variable.Extraction, response, schema);
+                if (value is not null)
+                    context = context.WithVariable(variable.Name, value);
+            }
+            catch (VariableExtractionException ex)
+            {
+                context.Recorder.RecordOperationResult(
+                    $"variable:{variable.Name}",
+                    $"Extract variable '{variable.Name}'",
+                    new OperationOutcome(false, ErrorMessage: ex.Message));
+            }
         }
         return context;
     }
@@ -36,7 +48,8 @@ internal static class VariableExtractor
             HeaderExtraction h => response.Headers.GetValueOrDefault(h.Field),
             PathExtraction p => ExtractFromBodyByPath(response.Body?.MutableNode, p.Path),
             ExpressionExtraction e => ExtractFromBodyByExpression(response.Body, schema, e.Expression),
-            _ => null
+            _ => throw new InvalidOperationException(
+                $"Unhandled variable extraction type: {extraction.GetType().Name}")
         };
 
     private static string? ExtractFromBodyByPath(JsonNode? body, string path)
@@ -52,10 +65,16 @@ internal static class VariableExtractor
             else
                 return null;
         }
-        return current?.GetValue<string>();
+
+        return current switch
+        {
+            null => null,
+            JsonValue value => value.TryGetValue<string>(out var s) ? s : value.ToJsonString(),
+            _ => current.ToJsonString()
+        };
     }
 
-    private static string? ExtractFromBodyByExpression(Ignixa.Serialization.SourceNodes.ResourceJsonNode? body, IFhirSchemaProvider schema, string expression)
+    private static string? ExtractFromBodyByExpression(ResourceJsonNode? body, IFhirSchemaProvider schema, string expression)
     {
         if (body is null) return null;
         try
@@ -63,9 +82,10 @@ internal static class VariableExtractor
             return body.ToElement(schema).Scalar(expression)?.ToString();
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception)
+        catch (Exception ex) when (ex is FormatException or InvalidOperationException or NotSupportedException or ArgumentException)
         {
-            return null;
+            throw new VariableExtractionException(
+                $"FHIRPath extraction expression '{expression}' failed: {ex.Message}", ex);
         }
     }
 }

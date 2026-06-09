@@ -149,7 +149,7 @@
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${p1Id},${p2Id},${p3Id},${p4Id},${p5Id}&_count=2", "responseId": "count-response", "description": "Search _count=2 scoped to p1..p5" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
-        { "assert": { "description": "Entry count must be at most 2", "expression": "entry.count()", "value": "2", "operator": "lessThanOrEquals", "warningOnly": true } }
+        { "assert": { "description": "Entry count must be at most 2", "expression": "entry.count() <= 2", "warningOnly": true } }
       ]
     }
   ],

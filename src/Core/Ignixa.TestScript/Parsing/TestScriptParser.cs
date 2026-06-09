@@ -28,32 +28,32 @@ public static class TestScriptParser
 
         var errors = new List<ParseError>();
 
-        var name = obj["name"]?.GetValue<string>();
-        if (string.IsNullOrEmpty(name))
-            errors.Add(new ParseError(ParseSeverity.Error, "Required field 'name' is missing"));
+        var name = JsonFieldReader.GetString(obj, "name", "$", errors);
+        if (string.IsNullOrEmpty(name) && !errors.Any(e => e.Path == "$.name"))
+            errors.Add(new ParseError(ParseSeverity.Error, "Required field 'name' is missing", "$.name"));
 
         if (errors.Any(e => e.Severity == ParseSeverity.Error))
             return ParseResult<TestScriptDefinition>.Failure([.. errors]);
 
-        var status = obj["status"]?.GetValue<string>();
-        if (string.IsNullOrEmpty(status))
-            errors.Add(new ParseError(ParseSeverity.Warning, "Recommended field 'status' is missing"));
+        var status = JsonFieldReader.GetString(obj, "status", "$", errors);
+        if (string.IsNullOrEmpty(status) && !errors.Any(e => e.Path == "$.status"))
+            errors.Add(new ParseError(ParseSeverity.Warning, "Recommended field 'status' is missing", "$.status"));
 
         var metadata = new TestScriptMetadata
         {
             Name = name!,
-            Description = obj["description"]?.GetValue<string>(),
-            Url = obj["url"]?.GetValue<string>(),
+            Description = JsonFieldReader.GetString(obj, "description", "$", errors),
+            Url = JsonFieldReader.GetString(obj, "url", "$", errors),
             Status = status,
-            Version = obj["version"]?.GetValue<string>()
+            Version = JsonFieldReader.GetString(obj, "version", "$", errors)
         };
 
-        var fixtures = ParseFixtures(obj["fixture"]?.AsArray());
-        var variables = ParseVariables(obj["variable"]?.AsArray());
-        var profiles = ParseProfiles(obj["profile"]?.AsArray());
-        var setup = ParseOperationActions(obj["setup"]?["action"]?.AsArray(), errors);
+        var fixtures = ParseFixtures(obj["fixture"]?.AsArray(), errors);
+        var variables = ParseVariables(obj["variable"]?.AsArray(), errors);
+        var profiles = ParseProfiles(obj["profile"]?.AsArray(), errors);
+        var setup = ParseSetupActions(obj["setup"]?["action"]?.AsArray(), errors);
         var tests = ParseTests(obj["test"]?.AsArray(), errors);
-        var teardown = ParseOperationActions(obj["teardown"]?["action"]?.AsArray(), errors);
+        var teardown = ParseTeardownActions(obj["teardown"]?["action"]?.AsArray(), errors);
 
         var definition = new TestScriptDefinition
         {
@@ -65,6 +65,9 @@ public static class TestScriptParser
             Tests = tests,
             Teardown = teardown
         };
+
+        if (errors.Any(e => e.Severity == ParseSeverity.Error))
+            return ParseResult<TestScriptDefinition>.Failure([.. errors]);
 
         return errors.Count > 0
             ? ParseResult<TestScriptDefinition>.WithWarnings(definition, errors)
@@ -86,63 +89,101 @@ public static class TestScriptParser
         return Parse(json);
     }
 
-    private static IReadOnlyList<FixtureDefinition> ParseFixtures(JsonArray? fixtures)
+    private static IReadOnlyList<FixtureDefinition> ParseFixtures(JsonArray? fixtures, List<ParseError> errors)
     {
         if (fixtures is null) return [];
         var result = new List<FixtureDefinition>();
-        foreach (var item in fixtures)
+        for (var i = 0; i < fixtures.Count; i++)
         {
-            if (item is not JsonObject fix) continue;
+            var path = $"fixture[{i}]";
+            if (fixtures[i] is not JsonObject fix)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Fixture entry is not an object", path));
+                continue;
+            }
+
+            var id = JsonFieldReader.GetString(fix, "id", path, errors);
+            if (string.IsNullOrEmpty(id))
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Fixture is missing required field 'id'", $"{path}.id"));
+                continue;
+            }
+
             result.Add(new FixtureDefinition
             {
-                Id = fix["id"]?.GetValue<string>() ?? string.Empty,
+                Id = id,
                 Resource = fix["resource"] is JsonNode resourceNode ? JsonSourceNodeFactory.Parse(resourceNode) : null,
-                Autocreate = fix["autocreate"]?.GetValue<bool>() ?? false,
-                Autodelete = fix["autodelete"]?.GetValue<bool>() ?? false
+                Autocreate = JsonFieldReader.GetBool(fix, "autocreate", path, errors) ?? false,
+                Autodelete = JsonFieldReader.GetBool(fix, "autodelete", path, errors) ?? false
             });
         }
         return result;
     }
 
-    private static IReadOnlyList<VariableDefinition> ParseVariables(JsonArray? variables)
+    private static IReadOnlyList<VariableDefinition> ParseVariables(JsonArray? variables, List<ParseError> errors)
     {
         if (variables is null) return [];
         var result = new List<VariableDefinition>();
-        foreach (var item in variables)
+        for (var i = 0; i < variables.Count; i++)
         {
-            if (item is not JsonObject v) continue;
+            var path = $"variable[{i}]";
+            if (variables[i] is not JsonObject v)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Variable entry is not an object", path));
+                continue;
+            }
+
+            var name = JsonFieldReader.GetString(v, "name", path, errors);
+            if (string.IsNullOrEmpty(name))
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Variable is missing required field 'name'", $"{path}.name"));
+                continue;
+            }
+
             result.Add(new VariableDefinition
             {
-                Name = v["name"]?.GetValue<string>() ?? string.Empty,
-                DefaultValue = v["defaultValue"]?.GetValue<string>(),
-                SourceId = v["sourceId"]?.GetValue<string>(),
-                Description = v["description"]?.GetValue<string>(),
-                Extraction = BuildVariableExtraction(v)
+                Name = name,
+                DefaultValue = JsonFieldReader.GetString(v, "defaultValue", path, errors),
+                SourceId = JsonFieldReader.GetString(v, "sourceId", path, errors),
+                Description = JsonFieldReader.GetString(v, "description", path, errors),
+                Extraction = BuildVariableExtraction(v, path, errors)
             });
         }
         return result;
     }
 
-    private static VariableExtraction? BuildVariableExtraction(JsonObject v)
+    private static VariableExtraction? BuildVariableExtraction(JsonObject v, string path, List<ParseError> errors)
     {
-        if (v["expression"]?.GetValue<string>() is { } expr)
+        if (JsonFieldReader.GetString(v, "expression", path, errors) is { } expr)
             return new ExpressionExtraction(expr);
-        if (v["path"]?.GetValue<string>() is { } path)
-            return new PathExtraction(path);
-        if (v["headerField"]?.GetValue<string>() is { } field)
+        if (JsonFieldReader.GetString(v, "path", path, errors) is { } pathValue)
+            return new PathExtraction(pathValue);
+        if (JsonFieldReader.GetString(v, "headerField", path, errors) is { } field)
             return new HeaderExtraction(field);
         return null;
     }
 
-    private static IReadOnlyList<ProfileReference> ParseProfiles(JsonArray? profiles)
+    private static IReadOnlyList<ProfileReference> ParseProfiles(JsonArray? profiles, List<ParseError> errors)
     {
         if (profiles is null) return [];
         var result = new List<ProfileReference>();
-        foreach (var item in profiles)
+        for (var i = 0; i < profiles.Count; i++)
         {
-            if (item is not JsonObject p) continue;
-            var id = p["id"]?.GetValue<string>() ?? string.Empty;
-            var reference = p["reference"]?.GetValue<string>() ?? string.Empty;
+            var path = $"profile[{i}]";
+            if (profiles[i] is not JsonObject p)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Profile entry is not an object", path));
+                continue;
+            }
+
+            var id = JsonFieldReader.GetString(p, "id", path, errors);
+            if (string.IsNullOrEmpty(id))
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Profile is missing required field 'id'", $"{path}.id"));
+                continue;
+            }
+
+            var reference = JsonFieldReader.GetString(p, "reference", path, errors) ?? string.Empty;
             result.Add(new ProfileReference { Id = id, Canonical = reference });
         }
         return result;
@@ -152,16 +193,22 @@ public static class TestScriptParser
     {
         if (tests is null) return [];
         var result = new List<TestPhaseDefinition>();
-        foreach (var item in tests)
+        for (var i = 0; i < tests.Count; i++)
         {
-            if (item is not JsonObject test) continue;
+            var path = $"test[{i}]";
+            if (tests[i] is not JsonObject test)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Test entry is not an object", path));
+                continue;
+            }
+
             var extensions = test["extension"]?.AsArray();
-            var name = test["name"]?.GetValue<string>() ?? "Unnamed";
+            var name = JsonFieldReader.GetString(test, "name", path, errors) ?? "Unnamed";
             result.Add(new TestPhaseDefinition
             {
                 Name = name,
-                Description = test["description"]?.GetValue<string>(),
-                Actions = ParseActions(test["action"]?.AsArray(), errors),
+                Description = JsonFieldReader.GetString(test, "description", path, errors),
+                Actions = ParseActions(test["action"]?.AsArray(), path, errors),
                 Parameters = ParseParametrize(extensions, name, errors),
                 FhirVersions = ParseFhirVersions(extensions)
             });
@@ -224,140 +271,249 @@ public static class TestScriptParser
     private static readonly HashSet<string> KnownHttpMethods =
         new(StringComparer.OrdinalIgnoreCase) { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS" };
 
-    private static IReadOnlyList<ActionExpression> ParseActions(JsonArray? actions, List<ParseError> errors)
+    private static IReadOnlyList<ActionExpression> ParseActions(JsonArray? actions, string testPath, List<ParseError> errors)
     {
         if (actions is null) return [];
         var result = new List<ActionExpression>();
-        foreach (var item in actions)
+        for (var i = 0; i < actions.Count; i++)
         {
-            if (item is not JsonObject action) continue;
-
-            if (action["operation"] is JsonObject op)
-                result.Add(ParseOperation(op, errors));
-            else if (action["assert"] is JsonObject assert)
-                result.Add(ParseAssert(assert, errors));
+            if (ParseAction(actions[i], $"{testPath}.action[{i}]", errors) is { } action)
+                result.Add(action);
         }
         return result;
     }
 
-    private static IReadOnlyList<OperationExpression> ParseOperationActions(JsonArray? actions, List<ParseError> errors)
+    private static IReadOnlyList<ActionExpression> ParseSetupActions(JsonArray? actions, List<ParseError> errors)
+    {
+        if (actions is null) return [];
+        var result = new List<ActionExpression>();
+        for (var i = 0; i < actions.Count; i++)
+        {
+            if (ParseAction(actions[i], $"setup.action[{i}]", errors) is { } action)
+                result.Add(action);
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<OperationExpression> ParseTeardownActions(JsonArray? actions, List<ParseError> errors)
     {
         if (actions is null) return [];
         var result = new List<OperationExpression>();
-        foreach (var item in actions)
+        for (var i = 0; i < actions.Count; i++)
         {
-            if (item is not JsonObject action) continue;
+            var path = $"teardown.action[{i}]";
+            if (actions[i] is not JsonObject action)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Teardown action is not an object", path));
+                continue;
+            }
+
             if (action["operation"] is JsonObject op)
-                result.Add(ParseOperation(op, errors));
+            {
+                result.Add(ParseOperation(op, $"{path}.operation", errors));
+            }
+            else if (action["assert"] is JsonObject)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    "Teardown actions may only contain operations, not asserts (per FHIR TestScript spec)", path));
+            }
+            else
+            {
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    "Teardown action has neither 'operation' nor a valid key", path));
+            }
         }
         return result;
     }
 
-    private static OperationExpression ParseOperation(JsonObject op, List<ParseError> errors)
+    private static ActionExpression? ParseAction(JsonNode? item, string path, List<ParseError> errors)
+    {
+        if (item is not JsonObject action)
+        {
+            errors.Add(new ParseError(ParseSeverity.Error, "Action is not an object", path));
+            return null;
+        }
+
+        if (action["operation"] is JsonObject op)
+            return ParseOperation(op, $"{path}.operation", errors);
+
+        if (action["assert"] is JsonObject assert)
+            return ParseAssert(assert, $"{path}.assert", errors);
+
+        errors.Add(new ParseError(ParseSeverity.Error,
+            $"Action has neither 'operation' nor 'assert' key (found keys: {DescribeKeys(action)})", path));
+        return null;
+    }
+
+    private static string DescribeKeys(JsonObject obj)
+    {
+        var keys = obj.Select(kvp => kvp.Key).ToList();
+        return keys.Count == 0 ? "none" : string.Join(", ", keys);
+    }
+
+    private static OperationExpression ParseOperation(JsonObject op, string path, List<ParseError> errors)
     {
         var typeCode = op["type"]?["code"]?.GetValue<string>() ?? "read";
-        var methodStr = op["method"]?.GetValue<string>();
+        var methodStr = JsonFieldReader.GetString(op, "method", path, errors);
 
         if (methodStr is not null && !KnownHttpMethods.Contains(methodStr))
             errors.Add(new ParseError(ParseSeverity.Warning,
-                $"Unknown HTTP method '{methodStr}'; expected one of GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS."));
+                $"Unknown HTTP method '{methodStr}'; expected one of GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS.", $"{path}.method"));
 
         return new OperationExpression
         {
             Type = typeCode,
-            Resource = op["resource"]?.GetValue<string>(),
-            Url = op["url"]?.GetValue<string>(),
-            Params = op["params"]?.GetValue<string>(),
+            Resource = JsonFieldReader.GetString(op, "resource", path, errors),
+            Url = JsonFieldReader.GetString(op, "url", path, errors),
+            Params = JsonFieldReader.GetString(op, "params", path, errors),
             Method = methodStr is not null ? new HttpMethod(methodStr) : null,
-            Accept = op["accept"]?.GetValue<string>(),
-            ContentType = op["contentType"]?.GetValue<string>(),
-            SourceId = op["sourceId"]?.GetValue<string>(),
-            TargetId = op["targetId"]?.GetValue<string>(),
-            ResponseId = op["responseId"]?.GetValue<string>(),
-            RequestId = op["requestId"]?.GetValue<string>(),
-            Label = op["label"]?.GetValue<string>(),
-            Description = op["description"]?.GetValue<string>(),
+            Accept = JsonFieldReader.GetString(op, "accept", path, errors),
+            ContentType = JsonFieldReader.GetString(op, "contentType", path, errors),
+            SourceId = JsonFieldReader.GetString(op, "sourceId", path, errors),
+            TargetId = JsonFieldReader.GetString(op, "targetId", path, errors),
+            ResponseId = JsonFieldReader.GetString(op, "responseId", path, errors),
+            RequestId = JsonFieldReader.GetString(op, "requestId", path, errors),
+            Label = JsonFieldReader.GetString(op, "label", path, errors),
+            Description = JsonFieldReader.GetString(op, "description", path, errors),
             Destination = op["destination"] is JsonValue dv && dv.TryGetValue<int>(out var dest) ? dest : null,
             Origin = op["origin"] is JsonValue ov && ov.TryGetValue<int>(out var orig) ? orig : null,
-            EncodeRequestUrl = op["encodeRequestUrl"]?.GetValue<bool>() ?? true,
-            Headers = ParseHeaders(op["requestHeader"]?.AsArray())
+            EncodeRequestUrl = JsonFieldReader.GetBool(op, "encodeRequestUrl", path, errors) ?? true,
+            Headers = ParseHeaders(op["requestHeader"]?.AsArray(), path, errors)
         };
     }
 
-    private static AssertExpression ParseAssert(JsonObject a, List<ParseError> errors)
+    private static AssertExpression ParseAssert(JsonObject a, string path, List<ParseError> errors)
     {
-        var operatorVal = ParseOperator(a["operator"]?.GetValue<string>());
-        var criteria = BuildAssertCriteria(a, operatorVal, errors);
+        var operatorVal = ParseOperator(JsonFieldReader.GetString(a, "operator", path, errors), path, errors);
+        var criteria = BuildAssertCriteria(a, operatorVal, path, errors);
 
         return new AssertExpression
         {
             Criteria = criteria,
-            SourceId = a["sourceId"]?.GetValue<string>(),
-            WarningOnly = a["warningOnly"]?.GetValue<bool>() ?? false,
-            Label = a["label"]?.GetValue<string>(),
-            Description = a["description"]?.GetValue<string>(),
-            Direction = ParseDirection(a["direction"]?.GetValue<string>())
+            SourceId = JsonFieldReader.GetString(a, "sourceId", path, errors),
+            WarningOnly = JsonFieldReader.GetBool(a, "warningOnly", path, errors) ?? false,
+            Label = JsonFieldReader.GetString(a, "label", path, errors),
+            Description = JsonFieldReader.GetString(a, "description", path, errors),
+            Direction = ParseDirection(JsonFieldReader.GetString(a, "direction", path, errors))
         };
     }
 
-    private static AssertCriteria BuildAssertCriteria(JsonObject a, AssertOperator? op, List<ParseError> errors)
+    private static readonly string[] KnownCriteriaFields =
+    [
+        "response", "responseCode", "contentType", "resource",
+        "headerField", "expression", "requestMethod", "requestURL"
+    ];
+
+    private static AssertCriteria BuildAssertCriteria(JsonObject a, AssertOperator? op, string path, List<ParseError> errors)
     {
-        if (a["response"]?.GetValue<string>() is { } response)
+        if (JsonFieldReader.GetString(a, "response", path, errors) is { } response)
             return new ResponseStatusCriteria(response);
-        if (a["responseCode"]?.GetValue<string>() is { } code)
+        if (JsonFieldReader.GetString(a, "responseCode", path, errors) is { } code)
             return new ResponseCodeCriteria(code);
-        if (a["contentType"]?.GetValue<string>() is { } ct)
+        if (JsonFieldReader.GetString(a, "contentType", path, errors) is { } ct)
             return new ContentTypeCriteria(ct);
-        if (a["resource"]?.GetValue<string>() is { } resource)
+        if (JsonFieldReader.GetString(a, "resource", path, errors) is { } resource)
             return new ResourceTypeCriteria(resource);
-        if (a["headerField"]?.GetValue<string>() is { } field)
-            return new HeaderCriteria(field, a["value"]?.GetValue<string>(), op);
-        if (a["expression"]?.GetValue<string>() is { } expr)
+        if (JsonFieldReader.GetString(a, "headerField", path, errors) is { } field)
+            return new HeaderCriteria(field, JsonFieldReader.GetString(a, "value", path, errors), op);
+        if (JsonFieldReader.GetString(a, "expression", path, errors) is { } expr)
         {
-            var value = a["value"]?.GetValue<string>();
+            var value = JsonFieldReader.GetString(a, "value", path, errors);
             return value is not null
                 ? new FhirPathValueCriteria(expr, value, op ?? AssertOperator.Equals)
                 : new FhirPathCriteria(expr);
         }
-        if (a["requestMethod"]?.GetValue<string>() is { } method)
+        if (JsonFieldReader.GetString(a, "requestMethod", path, errors) is { } method)
             return new RequestMethodCriteria(method);
-        if (a["requestURL"]?.GetValue<string>() is { } url)
+        if (JsonFieldReader.GetString(a, "requestURL", path, errors) is { } url)
             return new RequestUrlCriteria(url, op);
 
-        errors.Add(new ParseError(ParseSeverity.Warning,
-            "Assert action has no recognisable criteria field (response, responseCode, contentType, resource, headerField, expression, requestMethod, requestURL); assertion will always check for HTTP 200"));
+        var presentFields = a
+            .Where(kvp => !IsAssertMetadataField(kvp.Key))
+            .Select(kvp => kvp.Key)
+            .ToList();
+        var fieldList = presentFields.Count > 0 ? string.Join(", ", presentFields) : "none";
+
+        errors.Add(new ParseError(ParseSeverity.Error,
+            $"Assert action has no supported criteria field (one of {string.Join(", ", KnownCriteriaFields)}); " +
+            $"unsupported field(s) present: {fieldList}", path));
+
         return new ResponseCodeCriteria("200");
     }
 
-    private static IReadOnlyList<HeaderExpression> ParseHeaders(JsonArray? headers)
+    private static bool IsAssertMetadataField(string key) => key is
+        "operator" or "sourceId" or "warningOnly" or "label" or "description" or "direction" or "value";
+
+    private static IReadOnlyList<HeaderExpression> ParseHeaders(JsonArray? headers, string opPath, List<ParseError> errors)
     {
         if (headers is null) return [];
         var result = new List<HeaderExpression>();
-        foreach (var item in headers)
+        for (var i = 0; i < headers.Count; i++)
         {
-            if (item is not JsonObject h) continue;
-            var field = h["field"]?.GetValue<string>();
-            var value = h["value"]?.GetValue<string>();
+            var path = $"{opPath}.requestHeader[{i}]";
+            if (headers[i] is not JsonObject h)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error, "Request header entry is not an object", path));
+                continue;
+            }
+
+            var field = JsonFieldReader.GetString(h, "field", path, errors);
+            var value = JsonFieldReader.GetString(h, "value", path, errors);
             if (field is not null && value is not null)
                 result.Add(new HeaderExpression { Field = field, Value = value });
+            else
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    "Request header must have both 'field' and 'value'", path));
         }
         return result;
     }
 
-    private static AssertOperator? ParseOperator(string? op) => op switch
+    private static readonly HashSet<string> KnownAssertOperators =
+        new(StringComparer.Ordinal)
+        {
+            "equals", "notEquals", "in", "notIn", "greaterThan", "lessThan",
+            "empty", "notEmpty", "contains", "notContains", "eval"
+        };
+
+    private static AssertOperator? ParseOperator(string? op, string path, List<ParseError> errors)
     {
-        "equals" => AssertOperator.Equals,
-        "notEquals" => AssertOperator.NotEquals,
-        "in" => AssertOperator.In,
-        "notIn" => AssertOperator.NotIn,
-        "contains" => AssertOperator.Contains,
-        "notContains" => AssertOperator.NotContains,
-        "greaterThan" => AssertOperator.GreaterThan,
-        "lessThan" => AssertOperator.LessThan,
-        "empty" => AssertOperator.Empty,
-        "notEmpty" => AssertOperator.NotEmpty,
-        _ => null
-    };
+        switch (op)
+        {
+            case null:
+                return null;
+            case "equals":
+                return AssertOperator.Equals;
+            case "notEquals":
+                return AssertOperator.NotEquals;
+            case "in":
+                return AssertOperator.In;
+            case "notIn":
+                return AssertOperator.NotIn;
+            case "contains":
+                return AssertOperator.Contains;
+            case "notContains":
+                return AssertOperator.NotContains;
+            case "greaterThan":
+                return AssertOperator.GreaterThan;
+            case "lessThan":
+                return AssertOperator.LessThan;
+            case "empty":
+                return AssertOperator.Empty;
+            case "notEmpty":
+                return AssertOperator.NotEmpty;
+            case "eval":
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    "Assert operator 'eval' is not supported", $"{path}.operator"));
+                return null;
+            default:
+                var suffix = KnownAssertOperators.Contains(op)
+                    ? string.Empty
+                    : $" (expected one of {string.Join(", ", KnownAssertOperators)})";
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    $"Unknown assert operator '{op}'{suffix}", $"{path}.operator"));
+                return null;
+        }
+    }
 
     private static AssertDirection ParseDirection(string? dir) => dir switch
     {

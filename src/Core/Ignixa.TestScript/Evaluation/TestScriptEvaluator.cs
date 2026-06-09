@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
@@ -69,7 +71,7 @@ public sealed class TestScriptEvaluator(
                             new OperationOutcome(false, ErrorMessage: $"No provider resolved fixture '{fixture.Id}'"));
                     }
                 }
-                catch (OperationCanceledException) { throw; }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception ex)
                 {
                     recorder.RecordOperationResult($"fixture:{fixture.Id}", $"Resolve fixture '{fixture.Id}'",
@@ -77,11 +79,7 @@ public sealed class TestScriptEvaluator(
                 }
             }
 
-            foreach (var action in definition.Setup)
-            {
-                context = await action.AcceptAsync(this, context, cancellationToken);
-                context = VariableExtractor.ExtractFromResponse(definition.Variables, context, schemaProvider);
-            }
+            context = await ExecuteActionsAsync(definition.Setup, definition.Variables, context, cancellationToken);
 
             recorder.EndPhase();
         }
@@ -115,6 +113,21 @@ public sealed class TestScriptEvaluator(
                         await ExecuteActionsAsync(test.Actions, definition.Variables, iterationContext, cancellationToken);
                         recorder.EndPhase();
                     }
+                }
+            }
+        }
+        else
+        {
+            foreach (var test in definition.Tests)
+            {
+                if (test.Parameters is null)
+                {
+                    recorder.RecordSkippedTest(test.Name, test.Description, "setup failed");
+                }
+                else
+                {
+                    foreach (var value in test.Parameters.Values)
+                        recorder.RecordSkippedTest($"{test.Name} [{value}]", test.Description, "setup failed");
                 }
             }
         }
@@ -175,6 +188,11 @@ public sealed class TestScriptEvaluator(
                 throw new NotSupportedException(
                     $"Multi-server destinations are not supported. Destination '{expression.Destination}' was requested but only a single provider is configured.");
 
+            if (!expression.EncodeRequestUrl)
+                context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
+                    new AssertionOutcome(false, WarningOnly: true,
+                        "encodeRequestUrl=false is not supported; URL was encoded"));
+
             var request = BuildRequest(expression, context);
 
             context = context.WithRequest(expression.RequestId, request);
@@ -186,10 +204,17 @@ public sealed class TestScriptEvaluator(
                 new OperationOutcome(true, response.StatusCode, Duration: sw.Elapsed));
             return context;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             sw.Stop();
             throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            sw.Stop();
+            context.Recorder.RecordOperationResult(expression.Label, expression.Description,
+                new OperationOutcome(false, ErrorMessage: $"Request timed out or was aborted: {ex.Message}", Duration: sw.Elapsed));
+            return context;
         }
         catch (Exception ex)
         {
@@ -211,14 +236,14 @@ public sealed class TestScriptEvaluator(
             context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
                 new AssertionOutcome(passed, expression.WarningOnly, passed ? null : message));
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
             context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
-                new AssertionOutcome(false, false, ex.Message));
+                new AssertionOutcome(false, expression.WarningOnly, ex.Message, IsError: true));
         }
         return ValueTask.FromResult(context);
     }
@@ -247,7 +272,7 @@ public sealed class TestScriptEvaluator(
                     ? new OperationOutcome(true, response.StatusCode)
                     : new OperationOutcome(false, response.StatusCode, ErrorMessage: $"Autocreate returned HTTP {response.StatusCode}"));
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             context.Recorder.RecordOperationResult(
@@ -291,7 +316,7 @@ public sealed class TestScriptEvaluator(
                     ? new OperationOutcome(true, response.StatusCode)
                     : new OperationOutcome(false, response.StatusCode, ErrorMessage: $"Autodelete returned HTTP {response.StatusCode}"));
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             context.Recorder.RecordOperationResult(
@@ -319,20 +344,21 @@ public sealed class TestScriptEvaluator(
         else if (op.SourceId is not null)
         {
             if (context.Fixtures.TryGetValue(op.SourceId, out var fixture))
-                body = JsonSourceNodeFactory.Parse(fixture.MutableNode.DeepClone());
+                body = fixture;
             else if (context.ResponseHistory.TryGetValue(op.SourceId, out var prevResponse))
-                body = prevResponse.Body is not null
-                    ? JsonSourceNodeFactory.Parse(prevResponse.Body.MutableNode.DeepClone())
-                    : null;
+                body = prevResponse.Body;
+            else
+                throw new InvalidOperationException(
+                    $"sourceId '{op.SourceId}' refers to no known fixture or response");
         }
 
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var headers = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
         if (op.Accept is not null) headers["Accept"] = op.Accept;
         if (op.ContentType is not null) headers["Content-Type"] = op.ContentType;
         foreach (var h in op.Headers)
             headers[VariableResolver.Resolve(h.Field, context)] = VariableResolver.Resolve(h.Value, context);
 
-        return new TestRequest { Method = method, Url = url, Body = body, FormBody = formBody, Headers = headers };
+        return new TestRequest { Method = method, Url = url, Body = body, FormBody = formBody, Headers = headers.ToImmutable() };
     }
 
     private static string BuildUrl(OperationExpression op, TestScriptContext context)
@@ -374,11 +400,11 @@ public sealed class TestScriptEvaluator(
     {
         return assertion.Criteria switch
         {
-            ResponseStatusCriteria c => EvaluateResponseStatus(c, context),
-            ResponseCodeCriteria c => EvaluateResponseCode(c, context),
-            ContentTypeCriteria c => EvaluateContentType(c, context),
-            ResourceTypeCriteria c => EvaluateResourceType(c, context),
-            HeaderCriteria c => EvaluateHeader(c, context),
+            ResponseStatusCriteria c => EvaluateResponseStatus(c, assertion, context),
+            ResponseCodeCriteria c => EvaluateResponseCode(c, assertion, context),
+            ContentTypeCriteria c => EvaluateContentType(c, assertion, context),
+            ResourceTypeCriteria c => EvaluateResourceType(c, assertion, context),
+            HeaderCriteria c => EvaluateHeader(c, assertion, context),
             FhirPathCriteria c => EvaluateFhirPath(c, assertion, context),
             FhirPathValueCriteria c => EvaluateFhirPathValue(c, assertion, context),
             RequestMethodCriteria c => EvaluateRequestMethod(c, assertion, context),
@@ -390,12 +416,7 @@ public sealed class TestScriptEvaluator(
     private static ResourceJsonNode? ResolveAssertionBody(AssertExpression assertion, TestScriptContext context)
     {
         if (assertion.Direction == AssertDirection.Request)
-        {
-            var request = assertion.SourceId is not null
-                ? context.RequestHistory.GetValueOrDefault(assertion.SourceId)
-                : context.LastRequest;
-            return request?.Body;
-        }
+            return ResolveAssertionRequest(assertion, context)?.Body;
 
         return ResolveAssertionResponse(assertion, context)?.Body;
     }
@@ -403,9 +424,20 @@ public sealed class TestScriptEvaluator(
     private static TestResponse? ResolveAssertionResponse(AssertExpression assertion, TestScriptContext context)
     {
         if (assertion.Direction == AssertDirection.Request) return null;
-        return assertion.SourceId is not null
-            ? context.ResponseHistory.GetValueOrDefault(assertion.SourceId)
-            : context.LastResponse;
+        if (assertion.SourceId is null) return context.LastResponse;
+        if (context.ResponseHistory.TryGetValue(assertion.SourceId, out var response)) return response;
+
+        throw new InvalidOperationException(
+            $"Assertion sourceId '{assertion.SourceId}' refers to no known response");
+    }
+
+    private static TestRequest? ResolveAssertionRequest(AssertExpression assertion, TestScriptContext context)
+    {
+        if (assertion.SourceId is null) return context.LastRequest;
+        if (context.RequestHistory.TryGetValue(assertion.SourceId, out var request)) return request;
+
+        throw new InvalidOperationException(
+            $"Assertion sourceId '{assertion.SourceId}' refers to no known request");
     }
 
     private (bool, string?) EvaluateFhirPath(FhirPathCriteria c, AssertExpression assertion, TestScriptContext context)
@@ -447,9 +479,9 @@ public sealed class TestScriptEvaluator(
             : $"FHIRPath expression '{resolvedExpr}' value '{actual}' did not match expected '{resolvedValue}' with operator {c.Operator}");
     }
 
-    private static (bool, string?) EvaluateResponseStatus(ResponseStatusCriteria c, TestScriptContext context)
+    private static (bool, string?) EvaluateResponseStatus(ResponseStatusCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var response = context.LastResponse;
+        var response = ResolveAssertionResponse(assertion, context);
         if (response is null)
             return (false, "No response available to assert against");
 
@@ -457,9 +489,9 @@ public sealed class TestScriptEvaluator(
         return (matched, matched ? null : $"Expected response '{c.Status}' but got status {response.StatusCode}");
     }
 
-    private static (bool, string?) EvaluateResponseCode(ResponseCodeCriteria c, TestScriptContext context)
+    private static (bool, string?) EvaluateResponseCode(ResponseCodeCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var response = context.LastResponse;
+        var response = ResolveAssertionResponse(assertion, context);
         if (response is null)
             return (false, "No response available to assert against");
 
@@ -467,31 +499,39 @@ public sealed class TestScriptEvaluator(
         return (passed, passed ? null : $"Expected responseCode '{c.Code}' but got {response.StatusCode}");
     }
 
-    private static (bool, string?) EvaluateContentType(ContentTypeCriteria c, TestScriptContext context)
+    private static (bool, string?) EvaluateContentType(ContentTypeCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var response = context.LastResponse;
+        var response = ResolveAssertionResponse(assertion, context);
         if (response is null)
             return (false, "No response available to assert against");
 
         var actual = response.Headers.GetValueOrDefault("Content-Type");
-        var passed = string.Equals(actual, c.ContentType, StringComparison.OrdinalIgnoreCase);
+        var passed = string.Equals(MediaTypeOf(actual), MediaTypeOf(c.ContentType), StringComparison.OrdinalIgnoreCase);
         return (passed, passed ? null : $"Expected content type '{c.ContentType}' but got '{actual}'");
     }
 
-    private static (bool, string?) EvaluateResourceType(ResourceTypeCriteria c, TestScriptContext context)
+    private static string? MediaTypeOf(string? headerValue) =>
+        headerValue?.Split(';', 2)[0].Trim();
+
+    private static (bool, string?) EvaluateResourceType(ResourceTypeCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var response = context.LastResponse;
+        var response = ResolveAssertionResponse(assertion, context);
         if (response?.Body is null)
-            return (false, "No response body available to assert against");
+        {
+            var reason = response?.BodyParseError is { } parseError
+                ? $"Response body was not valid JSON: {parseError}"
+                : "No response body available to assert against";
+            return (false, reason);
+        }
 
         var actual = response.Body.ResourceType;
         var passed = actual == c.ResourceType;
         return (passed, passed ? null : $"Expected resource type '{c.ResourceType}' but got '{actual}'");
     }
 
-    private static (bool, string?) EvaluateHeader(HeaderCriteria c, TestScriptContext context)
+    private static (bool, string?) EvaluateHeader(HeaderCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var response = context.LastResponse;
+        var response = ResolveAssertionResponse(assertion, context);
         if (response is null)
             return (false, "No response available to assert against");
 
@@ -503,10 +543,7 @@ public sealed class TestScriptEvaluator(
 
     private static (bool, string?) EvaluateRequestMethod(RequestMethodCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var request = assertion.SourceId is not null
-            ? context.RequestHistory.GetValueOrDefault(assertion.SourceId)
-            : context.LastRequest;
-
+        var request = ResolveAssertionRequest(assertion, context);
         if (request is null)
             return (false, "No request available to assert against");
 
@@ -517,10 +554,7 @@ public sealed class TestScriptEvaluator(
 
     private static (bool, string?) EvaluateRequestUrl(RequestUrlCriteria c, AssertExpression assertion, TestScriptContext context)
     {
-        var request = assertion.SourceId is not null
-            ? context.RequestHistory.GetValueOrDefault(assertion.SourceId)
-            : context.LastRequest;
-
+        var request = ResolveAssertionRequest(assertion, context);
         if (request is null)
             return (false, "No request available to assert against");
 
@@ -541,10 +575,19 @@ public sealed class TestScriptEvaluator(
             AssertOperator.NotIn => !(expected?.Split(',').Select(s => s.Trim()).Contains(actual) ?? false),
             AssertOperator.Empty => string.IsNullOrEmpty(actual),
             AssertOperator.NotEmpty => !string.IsNullOrEmpty(actual),
-            AssertOperator.GreaterThan => string.Compare(actual, expected, StringComparison.Ordinal) > 0,
-            AssertOperator.LessThan => string.Compare(actual, expected, StringComparison.Ordinal) < 0,
+            AssertOperator.GreaterThan => CompareOrdered(actual, expected) > 0,
+            AssertOperator.LessThan => CompareOrdered(actual, expected) < 0,
             _ => throw new InvalidOperationException($"Unhandled assert operator: {op}")
         };
+    }
+
+    private static int CompareOrdered(string? actual, string? expected)
+    {
+        if (decimal.TryParse(actual, NumberStyles.Number, CultureInfo.InvariantCulture, out var a) &&
+            decimal.TryParse(expected, NumberStyles.Number, CultureInfo.InvariantCulture, out var e))
+            return a.CompareTo(e);
+
+        return string.Compare(actual, expected, StringComparison.Ordinal);
     }
 
     private static bool MatchesResponseCode(string response, int statusCode) => response switch

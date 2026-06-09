@@ -22,7 +22,7 @@ internal static class RunCommand
         var outOption = new Option<string>("--out") { Description = "Output path for the per-impl report JSON", Required = true };
         var fhirVersionOption = new Option<string?>("--fhir-version")
         {
-            Description = "FHIR version to test against (e.g. '4.0', '4.3', '5.0'). Sets fhirVersion on Content-Type/Accept headers and skips tests not tagged for this version. Omit to run all tests against any server."
+            Description = "FHIR version to test against (e.g. '4.0', '4.3', '5.0'). Sets fhirVersion on the Accept header and skips tests not tagged for this version. Omit to run all tests against any server."
         };
 
         command.Options.Add(serverOption);
@@ -46,95 +46,157 @@ internal static class RunCommand
 
     private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, CancellationToken cancellationToken)
     {
-        var startedAt = DateTimeOffset.UtcNow;
-
-        var files = Directory.EnumerateFiles(testsPath, "*.json", SearchOption.AllDirectories)
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var schema = new R4CoreSchemaProvider();
-        using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
-        if (fhirVersion is not null)
+        try
         {
-            var mediaType = $"application/fhir+json; fhirVersion={fhirVersion}";
-            httpClient.DefaultRequestHeaders.Accept.Clear();
-            httpClient.DefaultRequestHeaders.Accept.Add(
-                System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse(mediaType));
-        }
-        var provider = new HttpTestRequestProvider(httpClient);
-        var fixtureProvider = new CompositeFixtureProvider(
-        [
-            new FhirFakesFixtureProvider(),
-            new InlineFixtureProvider()
-        ]);
-        var evaluator = new TestScriptEvaluator(provider, fixtureProvider, schema);
-
-        var allResults = new List<ImplReportResult>();
-        foreach (var file in files)
-        {
-            var relFile = Path.GetRelativePath(testsPath, file).Replace('\\', '/');
-            Console.WriteLine($"  running {relFile}...");
-
-            var parseResult = TestScriptParser.ParseFile(file);
-            if (!parseResult.IsSuccess)
+            if (!Directory.Exists(testsPath))
             {
-                var messages = string.Join("; ", parseResult.Errors.Select(e => e.Message));
-                Console.Error.WriteLine($"  PARSE ERROR: {messages}");
-                allResults.Add(new ImplReportResult
+                Console.Error.WriteLine($"error: --tests directory not found: {testsPath}");
+                return 1;
+            }
+
+            if (!Uri.TryCreate(server, UriKind.Absolute, out _))
+            {
+                Console.Error.WriteLine($"error: --server is not a valid absolute URI: {server}");
+                return 1;
+            }
+
+            var startedAt = DateTimeOffset.UtcNow;
+
+            var files = Directory.EnumerateFiles(testsPath, "*.json", SearchOption.AllDirectories)
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (files.Count == 0)
+            {
+                Console.Error.WriteLine($"error: no .json files found in {testsPath} — no tests to run");
+                return 1;
+            }
+
+            var schema = new R4CoreSchemaProvider();
+            using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
+            if (fhirVersion is not null)
+            {
+                var mediaType = $"application/fhir+json; fhirVersion={fhirVersion}";
+                httpClient.DefaultRequestHeaders.Accept.Clear();
+                httpClient.DefaultRequestHeaders.Accept.Add(
+                    System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse(mediaType));
+            }
+            var provider = new HttpTestRequestProvider(httpClient);
+            var fixtureProvider = new CompositeFixtureProvider(
+            [
+                new FhirFakesFixtureProvider(),
+                new InlineFixtureProvider()
+            ]);
+            var evaluator = new TestScriptEvaluator(provider, fixtureProvider, schema);
+
+            var allResults = new List<ImplReportResult>();
+            foreach (var file in files)
+            {
+                var relFile = Path.GetRelativePath(testsPath, file).Replace('\\', '/');
+                Console.WriteLine($"  running {relFile}...");
+
+                Ignixa.TestScript.Parsing.ParseResult<Ignixa.TestScript.Model.TestScriptDefinition> parseResult;
+                try
                 {
-                    Id = relFile,
-                    File = relFile,
-                    Status = "fail",
-                    DurationMs = 0,
-                    Error = new CellError { Assertion = "Parse error", Received = messages }
-                });
-                continue;
-            }
-
-            try
-            {
-                var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, fhirVersion: fhirVersion);
-                var mapped = ReportMapper.Map(report, relFile);
-                allResults.AddRange(mapped);
-
-                var pass = mapped.Count(r => r.Status == "pass");
-                var fail = mapped.Count(r => r.Status != "pass" && r.Status != "skipped");
-                Console.WriteLine($"    {pass} passed, {fail} failed");
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"  ERROR evaluating {relFile}: {ex.Message}");
-                allResults.Add(new ImplReportResult
+                    parseResult = TestScriptParser.ParseFile(file);
+                }
+                catch (OperationCanceledException)
                 {
-                    Id = relFile,
-                    File = relFile,
-                    Status = "error",
-                    DurationMs = 0,
-                    Error = new CellError { Assertion = "Evaluator error", Received = ex.Message }
-                });
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  PARSE ERROR {relFile}: {ex.GetType().Name}: {ex.Message}");
+                    allResults.Add(new ImplReportResult
+                    {
+                        Id = relFile,
+                        File = relFile,
+                        Status = "error",
+                        DurationMs = 0,
+                        Error = new CellError { Assertion = "Parse exception", Received = ex.Message }
+                    });
+                    continue;
+                }
+
+                if (!parseResult.IsSuccess)
+                {
+                    var messages = string.Join("; ", parseResult.Errors.Select(e => e.Message));
+                    Console.Error.WriteLine($"  PARSE ERROR {relFile}: {messages}");
+                    allResults.Add(new ImplReportResult
+                    {
+                        Id = relFile,
+                        File = relFile,
+                        Status = "error",
+                        DurationMs = 0,
+                        Error = new CellError { Assertion = "Parse error", Received = messages }
+                    });
+                    continue;
+                }
+
+                if (parseResult.Errors.Count > 0)
+                {
+                    foreach (var warning in parseResult.Errors)
+                        Console.Error.WriteLine($"  PARSE WARNING {relFile}: {warning.Message}");
+                }
+
+                try
+                {
+                    var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, fhirVersion: fhirVersion);
+                    var mapped = ReportMapper.Map(report, relFile);
+                    allResults.AddRange(mapped);
+
+                    var pass = mapped.Count(r => r.Status == "pass");
+                    var fail = mapped.Count(r => MatrixBuilder.IsFail(r.Status));
+                    Console.WriteLine($"    {pass} passed, {fail} failed");
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  ERROR evaluating {relFile}: {ex.GetType().Name}: {ex.Message}");
+                    allResults.Add(new ImplReportResult
+                    {
+                        Id = relFile,
+                        File = relFile,
+                        Status = "error",
+                        DurationMs = 0,
+                        Error = new CellError { Assertion = "Evaluator error", Received = ex.Message }
+                    });
+                }
             }
+
+            var duration = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
+            var implReport = new ImplReport
+            {
+                Impl = impl,
+                StartedAt = startedAt,
+                DurationMs = duration,
+                Results = allResults
+            };
+
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+            var json = JsonSerializer.Serialize(implReport, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(outPath, json, cancellationToken);
+
+            var totalPass = allResults.Count(r => r.Status == "pass");
+            var totalFail = allResults.Count(r => MatrixBuilder.IsFail(r.Status));
+            var totalError = allResults.Count(r => r.Status == "error");
+            Console.WriteLine($"\n{impl}: {totalPass} passed, {totalFail} failed, {totalError} error(s) ({duration}ms) -> {outPath}");
+            return ClassifyExitCode(allResults);
         }
-
-        var duration = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
-        var implReport = new ImplReport
+        catch (OperationCanceledException)
         {
-            Impl = impl,
-            StartedAt = startedAt.ToString("O"),
-            DurationMs = duration,
-            Results = allResults
-        };
-
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
-        var json = JsonSerializer.Serialize(implReport, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(outPath, json, cancellationToken);
-
-        var totalPass = allResults.Count(r => r.Status == "pass");
-        var totalFail = allResults.Count(r => r.Status == "fail");
-        Console.WriteLine($"\n{impl}: {totalPass} passed, {totalFail} failed ({duration}ms) -> {outPath}");
-        return totalFail > 0 ? 1 : 0;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: {ex.GetType().Name}: {ex.Message}");
+            return 1;
+        }
     }
+
+    internal static int ClassifyExitCode(IReadOnlyList<ImplReportResult> results)
+        => results.Any(r => MatrixBuilder.IsFail(r.Status)) ? 1 : 0;
 }

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
@@ -337,9 +338,85 @@ public class TestScriptEvaluatorTests
         var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
-        report.TestResults.ShouldBeEmpty();
         report.SetupResult.ShouldNotBeNull();
         report.SetupResult.Outcome.ShouldBe(TestScriptOutcome.Error);
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Name.ShouldBe("ShouldBeSkipped");
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+        report.TestResults[0].Actions[0].Message.ShouldNotBeNull();
+        report.TestResults[0].Actions[0].Message!.ShouldContain("setup failed");
+    }
+
+    [Fact]
+    public async Task GivenSetupAssertPasses_WhenExecuting_ThenTestsRun()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 201 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "SetupAssertPass" },
+            Setup =
+            [
+                new OperationExpression { Type = "create", Resource = "Patient" },
+                new AssertExpression { Criteria = new ResponseStatusCriteria("created") }
+            ],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "ShouldRun",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.SetupResult.ShouldNotBeNull();
+        report.SetupResult.Outcome.ShouldBe(TestScriptOutcome.Pass);
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Name.ShouldBe("ShouldRun");
+    }
+
+    [Fact]
+    public async Task GivenSetupAssertFails_WhenExecuting_ThenSetupFailsAndTestsAreSkipped()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 500 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "SetupAssertFail" },
+            Setup =
+            [
+                new OperationExpression { Type = "create", Resource = "Patient" },
+                new AssertExpression { Criteria = new ResponseStatusCriteria("created") }
+            ],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "ShouldBeSkipped",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.SetupResult.ShouldNotBeNull();
+        report.SetupResult.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
     }
 
     [Fact]
@@ -490,7 +567,7 @@ public class TestScriptEvaluatorTests
             new TestResponse
             {
                 StatusCode = 201,
-                Headers = new Dictionary<string, string> { ["Location"] = "Patient/created-123" }
+                Headers = new Dictionary<string, string> { ["Location"] = "Patient/created-123" }.ToImmutableDictionary()
             },
             new TestResponse { StatusCode = 200 }
         });
@@ -762,7 +839,7 @@ public class TestScriptEvaluatorTests
     }
 
     [Fact]
-    public async Task GivenAssertWithUnknownCriteriaType_WhenEvaluating_ThenRecordsFailureNotCrash()
+    public async Task GivenAssertWithUnknownCriteriaType_WhenEvaluating_ThenRecordsErrorNotCrash()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
             .Returns(new TestResponse { StatusCode = 200 });
@@ -788,7 +865,7 @@ public class TestScriptEvaluatorTests
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         var assertAction = report.TestResults[0].Actions[1];
-        assertAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        assertAction.Outcome.ShouldBe(TestScriptOutcome.Error);
         assertAction.Message.ShouldNotBeNullOrEmpty();
     }
 
@@ -834,5 +911,275 @@ public class TestScriptEvaluatorTests
         capturedRequest.ShouldNotBeNull();
         capturedRequest.FormBody.ShouldBe("_has:Observation:subject:code=8867-4");
         capturedRequest.Body.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenProviderThrowsTaskCanceled_WhenTokenNotCancelled_ThenRecordsErrorAndSuiteContinues()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout"));
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "Timeout" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "ReadTimesOut",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Error);
+        report.TestResults.Count.ShouldBe(1);
+        var action = report.TestResults[0].Actions[0];
+        action.Outcome.ShouldBe(TestScriptOutcome.Error);
+        action.Message.ShouldNotBeNull();
+        action.Message!.ShouldContain("timed out");
+    }
+
+    [Fact]
+    public async Task GivenAssertWithUnknownSourceId_WhenEvaluating_ThenRecordsErrorNamingSourceId()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "UnknownAssertSource" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "BadSource",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+                        new AssertExpression
+                        {
+                            Criteria = new ResponseStatusCriteria("okay"),
+                            SourceId = "does-not-exist"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var assertAction = report.TestResults[0].Actions[1];
+        assertAction.Outcome.ShouldBe(TestScriptOutcome.Error);
+        assertAction.Message.ShouldNotBeNull();
+        assertAction.Message!.ShouldContain("does-not-exist");
+    }
+
+    [Fact]
+    public async Task GivenAssertWithSourceId_WhenEarlierResponseMatchesButLastDoesNot_ThenHonorsSourceId()
+    {
+        var responses = new Queue<TestResponse>(new[]
+        {
+            new TestResponse { StatusCode = 201 },
+            new TestResponse { StatusCode = 500 }
+        });
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => responses.Dequeue());
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "SourceIdHonored" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "TwoOps",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "create", Resource = "Patient", ResponseId = "first" },
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+                        new AssertExpression
+                        {
+                            Criteria = new ResponseStatusCriteria("created"),
+                            SourceId = "first"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults[0].Actions[2].Outcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenOperationWithUnknownSourceId_WhenBuildingRequest_ThenRecordsOperationError()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "UnknownOpSource" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PostUnknownBody",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "create", Resource = "Patient", SourceId = "no-such-fixture" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var action = report.TestResults[0].Actions[0];
+        action.Outcome.ShouldBe(TestScriptOutcome.Error);
+        action.Message.ShouldNotBeNull();
+        action.Message!.ShouldContain("no-such-fixture");
+        await _mockProvider.DidNotReceive().ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenContentTypeWithCharsetParameter_WhenAsserting_ThenMatchesOnMediaType()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> { ["Content-Type"] = "application/fhir+json; charset=utf-8" }.ToImmutableDictionary()
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "ContentTypeCharset" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Check",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+                        new AssertExpression { Criteria = new ContentTypeCriteria("application/fhir+json") }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults[0].Actions[1].Outcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenResourceTypeAssertWithParseError_WhenBodyFailedToParse_ThenMessageReportsParseError()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200, Body = null, BodyParseError = "Unexpected token at position 0" });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "ResourceTypeParseError" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Check",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient" },
+                        new AssertExpression { Criteria = new ResourceTypeCriteria("Patient") }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var assertAction = report.TestResults[0].Actions[1];
+        assertAction.Outcome.ShouldBe(TestScriptOutcome.Fail);
+        assertAction.Message.ShouldNotBeNull();
+        assertAction.Message!.ShouldContain("Unexpected token at position 0");
+    }
+
+    [Fact]
+    public async Task GivenOperationWithEncodeRequestUrlFalse_WhenExecuting_ThenRecordsWarning()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "EncodeRequestUrlFalse" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "NoEncode",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1", EncodeRequestUrl = false }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults[0].Actions.ShouldContain(a =>
+            a.Outcome == TestScriptOutcome.Warning &&
+            a.Message != null &&
+            a.Message.Contains("encodeRequestUrl=false"));
+    }
+
+    [Fact]
+    public async Task GivenFhirPathValueGreaterThan_WhenComparingNumbers_ThenComparesNumerically()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> { ["X-Count"] = "9" }.ToImmutableDictionary()
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "NumericCompare" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Compare",
+                    Actions =
+                    [
+                        new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
+                        new AssertExpression
+                        {
+                            Criteria = new HeaderCriteria("X-Count", "10", AssertOperator.LessThan)
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults[0].Actions[1].Outcome.ShouldBe(TestScriptOutcome.Pass);
     }
 }

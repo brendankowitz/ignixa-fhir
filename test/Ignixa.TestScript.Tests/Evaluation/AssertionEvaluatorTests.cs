@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
@@ -37,10 +38,26 @@ public class AssertionEvaluatorTests
     [InlineData("created", 200, false)]
     [InlineData("noContent", 204, true)]
     [InlineData("noContent", 200, false)]
+    [InlineData("notModified", 304, true)]
+    [InlineData("notModified", 200, false)]
     [InlineData("bad", 400, true)]
     [InlineData("bad", 200, false)]
+    [InlineData("forbidden", 403, true)]
+    [InlineData("forbidden", 200, false)]
     [InlineData("notFound", 404, true)]
     [InlineData("notFound", 200, false)]
+    [InlineData("methodNotAllowed", 405, true)]
+    [InlineData("methodNotAllowed", 200, false)]
+    [InlineData("conflict", 409, true)]
+    [InlineData("conflict", 200, false)]
+    [InlineData("gone", 410, true)]
+    [InlineData("gone", 200, false)]
+    [InlineData("preconditionFailed", 412, true)]
+    [InlineData("preconditionFailed", 200, false)]
+    [InlineData("unprocessable", 422, true)]
+    [InlineData("unprocessable", 200, false)]
+    [InlineData("notAKeyword", 200, false)]
+    [InlineData("notAKeyword", 404, false)]
     public async Task GivenResponseCodeAssertion_WhenEvaluating_ThenMatchesCategory(
         string responseCode, int statusCode, bool expectedPass)
     {
@@ -111,7 +128,7 @@ public class AssertionEvaluatorTests
             .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Headers = new Dictionary<string, string> { ["Content-Type"] = "application/fhir+json" }
+                Headers = new Dictionary<string, string> { ["Content-Type"] = "application/fhir+json" }.ToImmutableDictionary()
             });
 
         var definition = BuildDefinition(
@@ -134,7 +151,7 @@ public class AssertionEvaluatorTests
             .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Headers = new Dictionary<string, string> { ["Content-Type"] = "application/fhir+json; charset=utf-8" }
+                Headers = new Dictionary<string, string> { ["Content-Type"] = "application/fhir+json; charset=utf-8" }.ToImmutableDictionary()
             });
 
         var definition = BuildDefinition(
@@ -230,7 +247,7 @@ public class AssertionEvaluatorTests
             headers["X-Custom"] = headerValue;
 
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new TestResponse { StatusCode = 200, Headers = headers });
+            .Returns(new TestResponse { StatusCode = 200, Headers = headers.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase) });
 
         var definition = BuildDefinition(
             new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" },
@@ -258,7 +275,7 @@ public class AssertionEvaluatorTests
             .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Headers = new Dictionary<string, string> { ["X-Custom"] = actualValue }
+                Headers = new Dictionary<string, string> { ["X-Custom"] = actualValue }.ToImmutableDictionary()
             });
 
         var definition = BuildDefinition(
@@ -337,7 +354,7 @@ public class AssertionEvaluatorTests
             .Returns(new TestResponse
             {
                 StatusCode = 200,
-                Headers = new Dictionary<string, string> { ["X-Custom"] = actual }
+                Headers = new Dictionary<string, string> { ["X-Custom"] = actual }.ToImmutableDictionary()
             });
 
         var definition = BuildDefinition(

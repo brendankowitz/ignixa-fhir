@@ -12,7 +12,7 @@ internal static class ReportMapper
             return MapSetupFailure(report, relativeFilePath);
 
         if (report.TestResults.Count == 0)
-            return [SyntheticPass(report, relativeFilePath)];
+            return [SyntheticSkip(report, relativeFilePath)];
 
         var results = new List<ImplReportResult>(report.TestResults.Count);
         foreach (var testCase in report.TestResults)
@@ -97,17 +97,17 @@ internal static class ReportMapper
         };
     }
 
-    private static ImplReportResult SyntheticPass(TestScriptReport report, string relativeFilePath) =>
+    private static ImplReportResult SyntheticSkip(TestScriptReport report, string relativeFilePath) =>
         new()
         {
             Id = report.TestScriptName,
             File = relativeFilePath,
-            Status = "pass",
+            Status = "skipped",
             DurationMs = 0,
-            Error = null
+            Error = new CellError { Assertion = "No tests", Received = "Script contained no test cases" }
         };
 
-    private static string MapStatus(TestScriptOutcome outcome) => outcome switch
+    internal static string MapStatus(TestScriptOutcome outcome) => outcome switch
     {
         TestScriptOutcome.Pass or TestScriptOutcome.Warning => "pass",
         TestScriptOutcome.Fail or TestScriptOutcome.Error => "fail",

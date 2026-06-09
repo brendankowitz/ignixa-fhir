@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace Ignixa.ConformanceMatrix.Cli.Reporting;
 
 internal static class MatrixBuilder
@@ -12,7 +10,7 @@ internal static class MatrixBuilder
         string repoUrl = "")
     {
         var startedAt = reports
-            .Select(r => DateTimeOffset.Parse(r.StartedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind))
+            .Select(r => r.StartedAt)
             .DefaultIfEmpty(DateTimeOffset.UtcNow)
             .Min();
 
@@ -36,7 +34,7 @@ internal static class MatrixBuilder
             Meta = new RunMeta
             {
                 Id = runId,
-                StartedAt = startedAt.ToString("O"),
+                StartedAt = startedAt,
                 DurationMs = durationMs,
                 Commit = commit,
                 CommitMessage = commitMessage,
@@ -52,7 +50,7 @@ internal static class MatrixBuilder
         var index = new IndexEntry
         {
             Id = runId,
-            StartedAt = startedAt.ToString("O"),
+            StartedAt = startedAt,
             DurationMs = durationMs,
             Commit = commit,
             CommitMessage = commitMessage,
@@ -65,6 +63,12 @@ internal static class MatrixBuilder
 
         return (run, index);
     }
+
+    internal static bool IsPass(string status) => status == "pass";
+
+    internal static bool IsSkipped(string status) => status == "skipped";
+
+    internal static bool IsFail(string status) => !IsPass(status) && !IsSkipped(status);
 
     private static IReadOnlyList<Module> BuildModules(IReadOnlyList<ImplReport> reports)
     {
@@ -139,16 +143,16 @@ internal static class MatrixBuilder
         return statuses;
     }
 
-    private static (int Pass, int Fail, int Skipped) CountOutcomes(IReadOnlyList<ImplReport> reports)
+    internal static (int Pass, int Fail, int Skipped) CountOutcomes(IReadOnlyList<ImplReport> reports)
     {
         int pass = 0, fail = 0, skipped = 0;
         foreach (var report in reports)
         {
             foreach (var result in report.Results)
             {
-                if (result.Status == "pass") pass++;
-                else if (result.Status == "fail") fail++;
-                else skipped++;
+                if (IsPass(result.Status)) pass++;
+                else if (IsSkipped(result.Status)) skipped++;
+                else fail++;
             }
         }
         return (pass, fail, skipped);
@@ -164,7 +168,7 @@ internal static class MatrixBuilder
 
         foreach (var report in reports)
         {
-            var s = DateTimeOffset.Parse(report.StartedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            var s = report.StartedAt;
             var e = s.AddMilliseconds(report.DurationMs);
             if (s < start) start = s;
             if (e > end) end = e;
@@ -179,8 +183,11 @@ internal static class MatrixBuilder
         return $"run-{utc:yyyy-MM-dd-HHmmss}";
     }
 
-    private static string ModuleIdFromFile(string file)
-        => file.Split('/').FirstOrDefault() ?? file;
+    internal static string ModuleIdFromFile(string file)
+    {
+        var normalized = file.Replace('\\', '/');
+        return normalized.Split('/').FirstOrDefault() ?? file;
+    }
 
     private static string TestKey(string file, string id) => $"{file}::{id}";
 
