@@ -51,9 +51,9 @@ public static class TestScriptParser
         var fixtures = ParseFixtures(obj["fixture"]?.AsArray());
         var variables = ParseVariables(obj["variable"]?.AsArray());
         var profiles = ParseProfiles(obj["profile"]?.AsArray());
-        var setup = ParseOperationActions(obj["setup"]?["action"]?.AsArray());
+        var setup = ParseOperationActions(obj["setup"]?["action"]?.AsArray(), errors);
         var tests = ParseTests(obj["test"]?.AsArray(), errors);
-        var teardown = ParseOperationActions(obj["teardown"]?["action"]?.AsArray());
+        var teardown = ParseOperationActions(obj["teardown"]?["action"]?.AsArray(), errors);
 
         var definition = new TestScriptDefinition
         {
@@ -221,6 +221,9 @@ public static class TestScriptParser
         return found.Count > 0 ? found[0] : null;
     }
 
+    private static readonly HashSet<string> KnownHttpMethods =
+        new(StringComparer.OrdinalIgnoreCase) { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS" };
+
     private static IReadOnlyList<ActionExpression> ParseActions(JsonArray? actions, List<ParseError> errors)
     {
         if (actions is null) return [];
@@ -230,14 +233,14 @@ public static class TestScriptParser
             if (item is not JsonObject action) continue;
 
             if (action["operation"] is JsonObject op)
-                result.Add(ParseOperation(op));
+                result.Add(ParseOperation(op, errors));
             else if (action["assert"] is JsonObject assert)
                 result.Add(ParseAssert(assert, errors));
         }
         return result;
     }
 
-    private static IReadOnlyList<OperationExpression> ParseOperationActions(JsonArray? actions)
+    private static IReadOnlyList<OperationExpression> ParseOperationActions(JsonArray? actions, List<ParseError> errors)
     {
         if (actions is null) return [];
         var result = new List<OperationExpression>();
@@ -245,15 +248,19 @@ public static class TestScriptParser
         {
             if (item is not JsonObject action) continue;
             if (action["operation"] is JsonObject op)
-                result.Add(ParseOperation(op));
+                result.Add(ParseOperation(op, errors));
         }
         return result;
     }
 
-    private static OperationExpression ParseOperation(JsonObject op)
+    private static OperationExpression ParseOperation(JsonObject op, List<ParseError> errors)
     {
         var typeCode = op["type"]?["code"]?.GetValue<string>() ?? "read";
         var methodStr = op["method"]?.GetValue<string>();
+
+        if (methodStr is not null && !KnownHttpMethods.Contains(methodStr))
+            errors.Add(new ParseError(ParseSeverity.Warning,
+                $"Unknown HTTP method '{methodStr}'; expected one of GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS."));
 
         return new OperationExpression
         {
@@ -270,8 +277,8 @@ public static class TestScriptParser
             RequestId = op["requestId"]?.GetValue<string>(),
             Label = op["label"]?.GetValue<string>(),
             Description = op["description"]?.GetValue<string>(),
-            Destination = op["destination"]?.GetValue<int>(),
-            Origin = op["origin"]?.GetValue<int>(),
+            Destination = op["destination"] is JsonValue dv && dv.TryGetValue<int>(out var dest) ? dest : null,
+            Origin = op["origin"] is JsonValue ov && ov.TryGetValue<int>(out var orig) ? orig : null,
             EncodeRequestUrl = op["encodeRequestUrl"]?.GetValue<bool>() ?? true,
             Headers = ParseHeaders(op["requestHeader"]?.AsArray())
         };

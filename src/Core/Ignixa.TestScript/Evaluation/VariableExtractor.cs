@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.TestScript.Client;
@@ -33,14 +34,38 @@ internal static class VariableExtractor
         extraction switch
         {
             HeaderExtraction h => response.Headers.GetValueOrDefault(h.Field),
-            PathExtraction p => ExtractFromBody(response.Body, schema, p.Path),
-            ExpressionExtraction e => ExtractFromBody(response.Body, schema, e.Expression),
+            PathExtraction p => ExtractFromBodyByPath(response.Body?.MutableNode, p.Path),
+            ExpressionExtraction e => ExtractFromBodyByExpression(response.Body, schema, e.Expression),
             _ => null
         };
 
-    private static string? ExtractFromBody(Ignixa.Serialization.SourceNodes.ResourceJsonNode? body, IFhirSchemaProvider schema, string expression)
+    private static string? ExtractFromBodyByPath(JsonNode? body, string path)
     {
         if (body is null) return null;
-        return body.ToElement(schema).Scalar(expression)?.ToString();
+
+        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        JsonNode? current = body;
+        foreach (var part in parts)
+        {
+            if (current is JsonObject obj)
+                current = obj[part];
+            else
+                return null;
+        }
+        return current?.GetValue<string>();
+    }
+
+    private static string? ExtractFromBodyByExpression(Ignixa.Serialization.SourceNodes.ResourceJsonNode? body, IFhirSchemaProvider schema, string expression)
+    {
+        if (body is null) return null;
+        try
+        {
+            return body.ToElement(schema).Scalar(expression)?.ToString();
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }

@@ -393,4 +393,47 @@ public class TestScriptParserTests
         result.Value!.Tests[0].Parameters.ShouldNotBeNull();
         result.Value!.Tests[0].Parameters!.VariableName.ShouldBe("x");
     }
+
+    [Fact]
+    public void GivenTestScriptWithWrongFieldType_WhenParsing_ThenSucceedsWithNullDestination()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BadType",
+              "status":"active",
+              "test":[{"name":"t","action":[{
+                "operation":{"type":{"code":"read"},"resource":"Patient","destination":"server1"}
+              }]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var op = result.Value!.Tests[0].Actions[0].ShouldBeOfType<OperationExpression>();
+        op.Destination.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenOperationWithInvalidHttpMethod_WhenParsing_ThenReturnsWarning()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BadMethod",
+              "status":"active",
+              "test":[{"name":"t","action":[{
+                "operation":{"type":{"code":"read"},"resource":"Patient","method":"GEET"}
+              }]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.HasWarnings.ShouldBeTrue();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Warning && e.Message.Contains("GEET"));
+    }
 }
