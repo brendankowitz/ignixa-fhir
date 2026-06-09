@@ -61,13 +61,17 @@ public sealed class EncounterState : ScenarioState
         node["id"] = Guid.NewGuid().ToString();
         node["status"] = Status;
 
-        // Set class
-        node["class"] = new JsonObject
+        // Set class. R4/R4B/STU3: a single Coding (0..1). R5: 0..* CodeableConcept, so it
+        // must be a JSON array of CodeableConcept.
+        var classCoding = new JsonObject
         {
             ["system"] = FhirCode.Systems.EncounterType,
             ["code"] = EncounterClass,
             ["display"] = EncounterType.Display
         };
+        node["class"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+            ? new JsonArray { new JsonObject { ["coding"] = new JsonArray { classCoding } } }
+            : classCoding;
 
         // Set type
         node["type"] = new JsonArray
