@@ -11,7 +11,7 @@
       "resource": {
         "resourceType": "Observation",
         "status": "final",
-        "code": { "text": "fhir262-interval-test" },
+        "code": { "coding": [ { "system": "http://fhir262/test", "code": "fhir262-interval-test" } ] },
         "effectiveDateTime": "2026-06-15"
       }
     },
@@ -22,7 +22,7 @@
       "resource": {
         "resourceType": "Observation",
         "status": "final",
-        "code": { "text": "fhir262-interval-test" },
+        "code": { "coding": [ { "system": "http://fhir262/test", "code": "fhir262-interval-test" } ] },
         "effectiveDateTime": "2028-06-15"
       }
     },
@@ -33,7 +33,7 @@
       "resource": {
         "resourceType": "Observation",
         "status": "final",
-        "code": { "text": "fhir262-interval-test" },
+        "code": { "coding": [ { "system": "http://fhir262/test", "code": "fhir262-interval-test" } ] },
         "effectiveDateTime": "2030-06-15"
       }
     },
@@ -95,7 +95,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -114,7 +114,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -133,7 +133,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -152,7 +152,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -171,7 +171,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -190,7 +190,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -209,7 +209,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -228,7 +228,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -247,7 +247,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -266,7 +266,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -285,7 +285,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -304,7 +304,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -323,7 +323,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -342,7 +342,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -361,7 +361,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [
@@ -380,7 +380,7 @@
         "url": "http://ignixa.io/testscript/parametrize",
         "extension": [
           { "url": "variable", "valueString": "searchDate" },
-          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z,2028-12-31,2028-01-01T00:00:00Z" }
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
         ]
       }],
       "action": [

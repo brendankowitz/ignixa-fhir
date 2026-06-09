@@ -68,7 +68,7 @@
       "name": "AND across params: given=Alex&family=Doe",
       "description": "Distinct params are ANDed. given=Alex&family=Doe must match only the patient who is both Alex (given) and Doe (family): pa.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given=Alex&family=Doe", "responseId": "and-params-response", "description": "Search given=Alex AND family=Doe" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given=Alex&family=Doe&identifier=http://fhir262/test|&_count=100", "responseId": "and-params-response", "description": "Search given=Alex AND family=Doe" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include pa (Alex Doe)", "expression": "entry.where(resource.id = '${paId}').exists()" } },
@@ -94,7 +94,7 @@
       "name": "AND on name parameter: name=Alex&name=Smith",
       "description": "The name param matches across given and family. name=Alex&name=Smith ANDs: one token must match Alex, the other Smith. Only pab (given Alex, family Smith) satisfies both.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?name=Alex&name=Smith", "responseId": "and-name-response", "description": "Search name=Alex AND name=Smith" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?name=Alex&name=Smith&identifier=http://fhir262/test|&_count=100", "responseId": "and-name-response", "description": "Search name=Alex AND name=Smith" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include pab (Alex/Bob Smith)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },
@@ -107,7 +107,7 @@
       "name": "OR via comma: given=Alex,Carol",
       "description": "Comma-separated values within one param are ORed. given=Alex,Carol matches anyone with given Alex OR Carol: pab (Alex), pa (Alex), pc (Carol). pb (Bob only) is excluded.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given=Alex,Carol", "responseId": "or-comma-response", "description": "Search given=Alex OR Carol" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given=Alex,Carol&identifier=http://fhir262/test|&_count=100", "responseId": "or-comma-response", "description": "Search given=Alex OR Carol" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include pab (has Alex)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },
@@ -133,7 +133,7 @@
       "name": "MIX: AND between params with OR within one: given=Alex,Bob&family=Smith",
       "description": "Combines OR within given (Alex OR Bob) ANDed with family=Smith. Only pab has (Alex or Bob) given AND Smith family.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given=Alex,Bob&family=Smith", "responseId": "mix-response", "description": "Search (given=Alex OR Bob) AND family=Smith" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given=Alex,Bob&family=Smith&identifier=http://fhir262/test|&_count=100", "responseId": "mix-response", "description": "Search (given=Alex OR Bob) AND family=Smith" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include pab (Alex/Bob given, Smith family)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },
@@ -146,7 +146,7 @@
       "name": "OR on array-complex: name=Doe,Smith",
       "description": "name param is array-complex (matches given AND family). name=Doe,Smith ORs: any token in any HumanName part matches Doe OR Smith. All four patients match: pab (Smith), pa (Doe), pb (Doe), pc (Smith).",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?name=Doe,Smith", "responseId": "or-name-response", "description": "Search name=Doe OR Smith" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?name=Doe,Smith&identifier=http://fhir262/test|&_count=100", "responseId": "or-name-response", "description": "Search name=Doe OR Smith" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include pab (Smith)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },
@@ -159,7 +159,7 @@
       "name": "OR with modifier: given:exact=Alex,Carol",
       "description": "Modifier applies to each comma-separated value. given:exact=Alex,Carol requires a case-sensitive full-match on any given name token: Alex OR Carol. Matches pab (Alex), pa (Alex), pc (Carol); excludes pb (Bob only).",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given:exact=Alex,Carol", "responseId": "or-modifier-response", "description": "Search given:exact=Alex OR Carol" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?given:exact=Alex,Carol&identifier=http://fhir262/test|&_count=100", "responseId": "or-modifier-response", "description": "Search given:exact=Alex OR Carol" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include pab (has Alex)", "expression": "entry.where(resource.id = '${pabId}').exists()" } },

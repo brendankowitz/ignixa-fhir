@@ -80,6 +80,7 @@
       "autodelete": false,
       "resource": {
         "resourceType": "ValueSet",
+        "identifier": [ { "system": "http://fhir262/test", "value": "VS-ACME" } ],
         "url": "http://acme.org/fhir/ValueSet/foo",
         "status": "active"
       }
@@ -90,6 +91,7 @@
       "autodelete": false,
       "resource": {
         "resourceType": "ValueSet",
+        "identifier": [ { "system": "http://fhir262/test", "value": "VS-EXAMPLE" } ],
         "url": "http://example.org/fhir/ValueSet/bar",
         "status": "active"
       }
@@ -258,7 +260,7 @@
       "name": "exact: family:exact=Smith matches full string case-sensitively",
       "description": "GET /Patient?family:exact=Smith must return only the patient whose family name is exactly 'Smith' (case-sensitive, whole-string). Prefix matches (Smithson) and case-mismatches (smith) must be excluded.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:exact=Smith", "responseId": "exact-smith-response", "description": "Search family:exact=Smith" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:exact=Smith&identifier=http://fhir262/test|&_count=100", "responseId": "exact-smith-response", "description": "Search family:exact=Smith" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-exact-smith (exact 'Smith')", "expression": "entry.where(resource.id = '${patientExactSmithId}').exists()" } },
@@ -270,7 +272,7 @@
       "name": "exact: family:exact=smith matches only lowercase",
       "description": "GET /Patient?family:exact=smith must match only the lowercase 'smith' family name; the capitalized variants are case-sensitive misses.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:exact=smith", "responseId": "exact-smith-lower-response", "description": "Search family:exact=smith" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:exact=smith&identifier=http://fhir262/test|&_count=100", "responseId": "exact-smith-lower-response", "description": "Search family:exact=smith" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-exact-smith-lower (exact lowercase 'smith')", "expression": "entry.where(resource.id = '${patientExactSmithLowerId}').exists()" } },
@@ -282,7 +284,7 @@
       "name": "contains: family:contains=son matches substring anywhere",
       "description": "GET /Patient?family:contains=son must match any family name containing 'son' as a substring (Anderson, Sonder, Samsonite), and exclude Brown.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:contains=son", "responseId": "contains-son-response", "description": "Search family:contains=son" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:contains=son&identifier=http://fhir262/test|&_count=100", "responseId": "contains-son-response", "description": "Search family:contains=son" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-ct-anderson", "expression": "entry.where(resource.id = '${patientCtAndersonId}').exists()" } },
@@ -295,7 +297,7 @@
       "name": "contains: family:contains=SON is case-insensitive",
       "description": "GET /Patient?family:contains=SON must behave case-insensitively, matching the same set as lowercase 'son'.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:contains=SON", "responseId": "contains-son-upper-response", "description": "Search family:contains=SON" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:contains=SON&identifier=http://fhir262/test|&_count=100", "responseId": "contains-son-upper-response", "description": "Search family:contains=SON" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-ct-anderson", "expression": "entry.where(resource.id = '${patientCtAndersonId}').exists()" } },
@@ -308,7 +310,7 @@
       "name": "contains: url:contains=acme matches ValueSet URL substring",
       "description": "GET /ValueSet?url:contains=acme must match the ValueSet whose url contains 'acme' and exclude the example.org one.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:contains=acme", "responseId": "contains-acme-response", "description": "Search ValueSet url:contains=acme" } },
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:contains=acme&identifier=http://fhir262/test|&_count=100", "responseId": "contains-acme-response", "description": "Search ValueSet url:contains=acme" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include valueset-ct-acme", "expression": "entry.where(resource.id = '${valuesetCtAcmeId}').exists()" } },
@@ -319,7 +321,7 @@
       "name": "missing: gender:missing=true returns records without gender",
       "description": "GET /Patient?gender:missing=true must return patients with no gender element and exclude those with a gender.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:missing=true", "responseId": "gender-missing-true-response", "description": "Search gender:missing=true" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:missing=true&identifier=http://fhir262/test|&_count=100", "responseId": "gender-missing-true-response", "description": "Search gender:missing=true" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-mi-empty (no gender)", "expression": "entry.where(resource.id = '${patientMiEmptyId}').exists()" } },
@@ -330,7 +332,7 @@
       "name": "missing: gender:missing=false returns records with gender",
       "description": "GET /Patient?gender:missing=false must return patients that have a gender element and exclude those without.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:missing=false", "responseId": "gender-missing-false-response", "description": "Search gender:missing=false" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:missing=false&identifier=http://fhir262/test|&_count=100", "responseId": "gender-missing-false-response", "description": "Search gender:missing=false" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-mi-full (has gender)", "expression": "entry.where(resource.id = '${patientMiFullId}').exists()" } },
@@ -341,7 +343,7 @@
       "name": "missing: birthdate:missing=true returns records without birthDate",
       "description": "GET /Patient?birthdate:missing=true must return patients with no birthDate element.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?birthdate:missing=true", "responseId": "birthdate-missing-true-response", "description": "Search birthdate:missing=true" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?birthdate:missing=true&identifier=http://fhir262/test|&_count=100", "responseId": "birthdate-missing-true-response", "description": "Search birthdate:missing=true" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-mi-empty (no birthDate)", "expression": "entry.where(resource.id = '${patientMiEmptyId}').exists()" } },
@@ -352,7 +354,7 @@
       "name": "missing: birthdate:missing=false returns records with birthDate",
       "description": "GET /Patient?birthdate:missing=false must return patients that have a birthDate element.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?birthdate:missing=false", "responseId": "birthdate-missing-false-response", "description": "Search birthdate:missing=false" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?birthdate:missing=false&identifier=http://fhir262/test|&_count=100", "responseId": "birthdate-missing-false-response", "description": "Search birthdate:missing=false" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-mi-full (has birthDate)", "expression": "entry.where(resource.id = '${patientMiFullId}').exists()" } },
@@ -363,7 +365,7 @@
       "name": "not: gender:not=male excludes male and includes no-gender",
       "description": "GET /Patient?gender:not=male must return patients whose gender is not male (female, other) plus those with no gender, while excluding male patients.",
       "action": [
-        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:not=male", "responseId": "gender-not-male-response", "description": "Search gender:not=male" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:not=male&identifier=http://fhir262/test|&_count=100", "responseId": "gender-not-male-response", "description": "Search gender:not=male" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
         { "assert": { "description": "Must include patient-nt-female", "expression": "entry.where(resource.id = '${patientNtFemaleId}').exists()" } },

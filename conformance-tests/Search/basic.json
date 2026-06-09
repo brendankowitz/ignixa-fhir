@@ -173,7 +173,7 @@
           "operation": {
             "type": { "code": "search" },
             "resource": "Patient",
-            "params": "?family=smi",
+            "params": "?family=smi&identifier=http://fhir262/test|&_count=100",
             "responseId": "family-search-response",
             "description": "Search by family name prefix 'smi' (case-insensitive prefix per FHIR string search)"
           }
@@ -221,7 +221,7 @@
           "operation": {
             "type": { "code": "search" },
             "resource": "Patient",
-            "params": "?birthdate=ge1985-01-01",
+            "params": "?birthdate=ge1985-01-01&identifier=http://fhir262/test|&_count=100",
             "responseId": "date-search-response",
             "description": "Search for patients born on or after 1985-01-01"
           }

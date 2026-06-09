@@ -316,6 +316,16 @@ public sealed class TestScriptEvaluator(
             return $"{resource}/_search";
 
         var parameters = VariableResolver.ResolveIfNotNull(op.Params, context) ?? string.Empty;
+
+        // FHIR operations ($validate, $expand, ...) are invoked at [type]/$op (type-level) or
+        // /$op (system-level), not as a plain POST to the resource type. Without this, a
+        // $validate operation would POST the body to /[type] and create the resource instead.
+        if (op.Type.StartsWith('$'))
+        {
+            var opPath = string.IsNullOrEmpty(resource) ? op.Type : $"{resource}/{op.Type}";
+            return $"{opPath}{parameters}";
+        }
+
         return $"{resource}{parameters}";
     }
 

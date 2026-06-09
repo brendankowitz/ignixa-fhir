@@ -179,8 +179,8 @@
       ]
     },
     {
-      "name": "read after delete returns 404 or 410",
-      "description": "GET after DELETE must return 404 (Not Found) or 410 (Gone). The 410 assertion is warningOnly because some servers return 404 for both never-existed and deleted resources. The primary assertion requires 404; if the server returns 410, it still passes as a warning.",
+      "name": "read after delete returns 410 or 404",
+      "description": "GET after DELETE must return 410 (Gone) or 404 (Not Found). FHIR R4 specifies 410 Gone for a resource that existed and was deleted, so that is the primary assertion. 404 is accepted as a warningOnly alternative for servers that do not distinguish deleted from never-existed.",
       "action": [
         {
           "operation": {
@@ -192,15 +192,15 @@
         },
         {
           "assert": {
-            "description": "Primary: expect 404 Not Found (acceptable per FHIR spec for deleted resources)",
-            "response": "notFound",
+            "description": "Primary: expect 410 Gone (FHIR R4 behavior for a deleted resource)",
+            "response": "gone",
             "warningOnly": false
           }
         },
         {
           "assert": {
-            "description": "Alternative: 410 Gone is also valid (warningOnly so 404-returning servers still pass this suite)",
-            "response": "gone",
+            "description": "Alternative: 404 Not Found is also accepted (warningOnly so 404-returning servers still pass this suite)",
+            "response": "notFound",
             "warningOnly": true
           }
         }
