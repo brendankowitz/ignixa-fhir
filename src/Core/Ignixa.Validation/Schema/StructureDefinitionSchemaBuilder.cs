@@ -135,6 +135,29 @@ public class StructureDefinitionSchemaBuilder
         // Tier 2 (Spec): Schema-driven checks from StructureDefinition
         var specChecks = new List<IValidationCheck>();
 
+        // Extract structural-shape checks: enforce that the raw JSON shape of each declared
+        // element matches its definition (array-vs-scalar, null, ele-1 emptiness, primitive-vs-object).
+        // Choice elements are excluded: their value[x] shape and primitive value rules are handled
+        // by ChoiceElementCheck. xhtml is excluded for the same reason as the cardinality pass.
+        // "contained" is excluded: it has dedicated handling (ContainedResourceCheck) and an empty
+        // contained array is tolerated by established behavior.
+        var shapeChecks = elements
+            .Where(e => !e.Info.IsChoiceElement
+                && GetTypeName(e) != "xhtml"
+                && e.Info.Name != "contained")
+            .Select(e =>
+            {
+                var typeName = GetTypeName(e);
+                var isBackbone = typeName is "BackboneElement" or "Element";
+                return new StructuralShapeCheck(
+                    e.Info.Name,
+                    e.Info.IsPrimitive,
+                    IsCollectionElement(e),
+                    isBackbone,
+                    typeName);
+            });
+        specChecks.AddRange(shapeChecks);
+
         // Extract reference format checks - check the type name, not element name
         // Skip choice elements: their DefaultTypeName may be Reference but the actual type
         // depends on runtime data (e.g., medication[x] could be medicationCodeableConcept)
@@ -502,6 +525,28 @@ public class StructureDefinitionSchemaBuilder
         }
 
         return char.ToUpperInvariant(str[0]) + str.Substring(1);
+    }
+
+    /// <summary>
+    /// Determines whether an element is a collection (max &gt; 1 / "*").
+    /// Prefers the explicit <see cref="ITypeExtended.Max"/> value, matching the cardinality pass,
+    /// and falls back to <see cref="IType.IsCollection"/> when extended metadata is unavailable.
+    /// </summary>
+    /// <param name="element">The element to inspect.</param>
+    /// <returns>True if the element accepts more than one occurrence.</returns>
+    private static bool IsCollectionElement(IType element)
+    {
+        if (element is ITypeExtended extended)
+        {
+            if (extended.Max == "*")
+            {
+                return true;
+            }
+
+            return int.TryParse(extended.Max, out var parsedMax) && parsedMax > 1;
+        }
+
+        return element.IsCollection;
     }
 
     /// <summary>
