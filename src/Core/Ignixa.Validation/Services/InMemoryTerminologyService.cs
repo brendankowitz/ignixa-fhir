@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
 
@@ -15,8 +16,7 @@ namespace Ignixa.Validation.Services;
 /// </summary>
 public class InMemoryTerminologyService : ITerminologyService
 {
-    private readonly Dictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal);
-    private readonly object _valueSetsLock = new();
+    private readonly ConcurrentDictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal);
     private readonly IValueSetProvider _valueSetProvider;
 
     /// <summary>
@@ -134,24 +134,19 @@ public class InMemoryTerminologyService : ITerminologyService
             ? valueSetUrl[..valueSetUrl.LastIndexOf('|')]
             : valueSetUrl;
 
-        if (!_valueSets.TryGetValue(normalizedUrl, out var validCodes))
+        HashSet<string>? validCodes;
+        if (!_valueSets.TryGetValue(normalizedUrl, out validCodes))
         {
-            lock (_valueSetsLock)
+            var providerCodes = _valueSetProvider.GetCodes(normalizedUrl);
+            if (providerCodes is null)
             {
-                if (!_valueSets.TryGetValue(normalizedUrl, out validCodes))
-                {
-                    var providerCodes = _valueSetProvider.GetCodes(normalizedUrl);
-                    if (providerCodes is null)
-                    {
-                        return Task.FromResult(new TerminologyValidationResult(
-                            IsValid: true,
-                            Severity: IssueSeverity.Warning,
-                            Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - provider does not contain this ValueSet"));
-                    }
-                    validCodes = new HashSet<string>(providerCodes.Select(c => c.Code), StringComparer.Ordinal);
-                    _valueSets[normalizedUrl] = validCodes;
-                }
+                return Task.FromResult(new TerminologyValidationResult(
+                    IsValid: true,
+                    Severity: IssueSeverity.Warning,
+                    Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - provider does not contain this ValueSet"));
             }
+            var built = new HashSet<string>(providerCodes.Select(c => c.Code), StringComparer.Ordinal);
+            validCodes = _valueSets.GetOrAdd(normalizedUrl, built);
         }
 
         if (!validCodes.Contains(code))

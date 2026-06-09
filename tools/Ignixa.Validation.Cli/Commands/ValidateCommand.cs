@@ -8,6 +8,7 @@ using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.Validation.Cli.Commands;
@@ -159,9 +160,11 @@ internal static class ValidateCommand
                 using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
                 var cacheDir = Path.Combine(Path.GetTempPath(), "ignixa-validator-package-cache");
                 Directory.CreateDirectory(cacheDir);
-                var cache = new PackageCacheManager(cacheDir, NullLogger<PackageCacheManager>.Instance);
-                var pkgLoader = new NpmPackageLoader(httpClient, cache, options: null, NullLogger<NpmPackageLoader>.Instance);
-                var extractor = new PackageExtractor(NullLogger<PackageExtractor>.Instance);
+
+                using var loggerFactory = new ConsoleWarningLoggerFactory();
+                var cache = new PackageCacheManager(cacheDir, loggerFactory.CreateLogger<PackageCacheManager>());
+                var pkgLoader = new NpmPackageLoader(httpClient, cache, options: null, loggerFactory.CreateLogger<NpmPackageLoader>());
+                var extractor = new PackageExtractor(loggerFactory.CreateLogger<PackageExtractor>());
 
                 foreach (var spec in packageSpecs)
                 {
@@ -179,16 +182,26 @@ internal static class ValidateCommand
                         var extracted = await extractor.ExtractAsync(stream, cancellationToken);
                         packageResources.AddRange(extracted.Resources);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"✗ Error loading package '{spec}': {ex.Message}");
+                        Console.WriteLine($"✗ Error loading package '{spec}': {ex.GetType().Name}: {ex.Message}");
+                        WalkInnerExceptions(ex.InnerException);
                         Environment.ExitCode = 1;
                         return;
                     }
                 }
 
-                effectiveSchema = new ProfileLayeredSchemaProvider(schemaProvider, packageResources);
-                var packageVs = new PackageValueSetSource(packageResources);
+                effectiveSchema = new ProfileLayeredSchemaProvider(
+                    schemaProvider,
+                    packageResources,
+                    loggerFactory.CreateLogger<ProfileLayeredSchemaProvider>());
+                var packageVs = new PackageValueSetSource(
+                    packageResources,
+                    loggerFactory.CreateLogger<PackageValueSetSource>());
                 terminology = new InMemoryTerminologyService(
                     primary: schemaProvider.ValueSetProvider,
                     additional: new[] { (IValueSetProvider)packageVs });
@@ -230,10 +243,25 @@ internal static class ValidateCommand
             // Exit with appropriate code
             Environment.ExitCode = validationResult.IsValid ? 0 : 1;
         }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Cancelled.");
+            Environment.ExitCode = 130;
+        }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Error: {ex.Message}");
+            Console.WriteLine($"✗ Error: {ex.GetType().Name}: {ex.Message}");
+            WalkInnerExceptions(ex.InnerException);
             Environment.ExitCode = 1;
+        }
+    }
+
+    private static void WalkInnerExceptions(Exception? inner)
+    {
+        while (inner != null)
+        {
+            Console.WriteLine($"  Caused by: {inner.GetType().Name}: {inner.Message}");
+            inner = inner.InnerException;
         }
     }
 
@@ -296,15 +324,15 @@ internal static class ValidateCommand
                 };
 
                 var severityText = issue.Severity.ToString().ToUpperInvariant().PadRight(11);
-                
+
                 Console.WriteLine($"{severityIcon} {severityText} @ {issue.Path}");
                 Console.WriteLine($"   {issue.Message}");
-                
+
                 if (issue.Details?.Text != null && issue.Details.Text != issue.Message)
                 {
                     Console.WriteLine($"   Details: {issue.Details.Text}");
                 }
-                
+
                 Console.WriteLine();
             }
         }
@@ -320,14 +348,14 @@ internal static class ValidateCommand
     private static async Task WriteOperationOutcomeToFile(ValidationResult result, string outputFile)
     {
         var operationOutcome = result.ToOperationOutcome();
-        
+
         var options = new JsonSerializerOptions
         {
             WriteIndented = true
         };
 
         var json = JsonSerializer.Serialize(operationOutcome.MutableNode, options);
-        
+
         // Ensure output directory exists
         var directory = Path.GetDirectoryName(outputFile);
         if (!string.IsNullOrEmpty(directory))
@@ -336,5 +364,55 @@ internal static class ValidateCommand
         }
 
         await File.WriteAllTextAsync(outputFile, json);
+    }
+
+    /// <summary>
+    /// Minimal <see cref="ILoggerFactory"/> that writes Warning-and-above messages to
+    /// <see cref="Console.Error"/>. Used instead of adding a Microsoft.Extensions.Logging.Console
+    /// package dependency.
+    /// </summary>
+    private sealed class ConsoleWarningLoggerFactory : ILoggerFactory
+    {
+        public void AddProvider(ILoggerProvider provider) { }
+
+        public ILogger CreateLogger(string categoryName)
+            => new ConsoleWarningLogger(categoryName);
+
+#pragma warning disable CA1822
+        public ILogger<T> CreateLogger<T>()
+            => new ConsoleWarningLogger<T>();
+#pragma warning restore CA1822
+
+        public void Dispose() { }
+
+        private class ConsoleWarningLogger(string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                if (!IsEnabled(logLevel))
+                {
+                    return;
+                }
+                var message = formatter(state, exception);
+                Console.Error.WriteLine($"[{logLevel}] {category}: {message}");
+                if (exception != null)
+                {
+                    Console.Error.WriteLine($"  Exception: {exception.GetType().Name}: {exception.Message}");
+                }
+            }
+        }
+
+        private sealed class ConsoleWarningLogger<T>() : ConsoleWarningLogger(typeof(T).Name), ILogger<T>
+        {
+        }
     }
 }

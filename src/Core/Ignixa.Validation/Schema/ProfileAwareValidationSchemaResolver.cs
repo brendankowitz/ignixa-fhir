@@ -34,7 +34,7 @@ namespace Ignixa.Validation.Schema;
 /// element should prefer <see cref="ResolveForElement"/>.
 /// </para>
 /// </summary>
-public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaResolver
+public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaResolver, IElementSchemaResolver
 {
     private readonly IValidationSchemaResolver _inner;
 

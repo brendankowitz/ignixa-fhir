@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
-using Ignixa.Validation.Checks;
 
 namespace Ignixa.Validation.Abstractions;
 
@@ -87,59 +86,12 @@ public sealed class ValidationSchema
 
         var primary = schemas[0];
 
-        // Universal checks: deduplicate stateless singleton checks (JsonStructureCheck,
-        // NarrativeCheck, ResourceTypeValidationCheck) that are per-resource and must run
-        // exactly once. Parameterized per-element checks (CardinalityCheck, TypeCheck) are
-        // concatenated normally — each carries distinct element metadata.
-        var seenSingletonTypes = new HashSet<Type>
-        {
-            typeof(JsonStructureCheck),
-            typeof(NarrativeCheck),
-            typeof(ResourceTypeValidationCheck),
-        };
-        var seenAdded = new HashSet<Type>();
-        var universal = new List<IValidationCheck>();
-        foreach (var s in schemas)
-        {
-            foreach (var c in s._universalChecks)
-            {
-                if (seenSingletonTypes.Contains(c.GetType()))
-                {
-                    if (seenAdded.Add(c.GetType()))
-                    {
-                        universal.Add(c);
-                    }
-                }
-                else
-                {
-                    universal.Add(c);
-                }
-            }
-        }
-
-        // Spec checks: concatenate normally (cardinality, binding, choice, reference checks are
-        // per-element and must all run), but deduplicate UnknownPropertyCheck by type (the first
-        // schema's list covers all known property names for the resource).
-        var hasUnknownPropertyCheck = false;
-        var spec = new List<IValidationCheck>();
-        foreach (var s in schemas)
-        {
-            foreach (var c in s._specChecks)
-            {
-                if (c is UnknownPropertyCheck)
-                {
-                    if (!hasUnknownPropertyCheck)
-                    {
-                        hasUnknownPropertyCheck = true;
-                        spec.Add(c);
-                    }
-                }
-                else
-                {
-                    spec.Add(c);
-                }
-            }
-        }
+        // Singleton checks (marked with ISingletonCheck) are per-resource and must run at most
+        // once: dedup by concrete type, first occurrence wins. Parameterized per-element checks
+        // (cardinality, type, binding) are not marked and are concatenated — each carries distinct
+        // element metadata. The marker keeps this contract with the check, not a hardcoded type list.
+        var universal = ConcatDeduplicatingSingletons(schemas, static s => s._universalChecks);
+        var spec = ConcatDeduplicatingSingletons(schemas, static s => s._specChecks);
 
         // Profile checks: no dedup — all profile-tier checks (invariants, slicing) are meaningful
         var profile = new List<IValidationCheck>();
@@ -154,6 +106,32 @@ public sealed class ValidationSchema
             universalChecks: universal,
             specChecks: spec,
             profileChecks: profile);
+    }
+
+    private static List<IValidationCheck> ConcatDeduplicatingSingletons(
+        IReadOnlyList<ValidationSchema> schemas,
+        Func<ValidationSchema, IReadOnlyList<IValidationCheck>> tierSelector)
+    {
+        var seenSingletonTypes = new HashSet<Type>();
+        var merged = new List<IValidationCheck>();
+        foreach (var schema in schemas)
+        {
+            foreach (var check in tierSelector(schema))
+            {
+                if (check is ISingletonCheck)
+                {
+                    if (seenSingletonTypes.Add(check.GetType()))
+                    {
+                        merged.Add(check);
+                    }
+                }
+                else
+                {
+                    merged.Add(check);
+                }
+            }
+        }
+        return merged;
     }
 
     /// <summary>

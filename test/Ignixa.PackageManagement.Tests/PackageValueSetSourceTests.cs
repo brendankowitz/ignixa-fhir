@@ -243,4 +243,44 @@ public class PackageValueSetSourceTests
 
         source.GetCodes("http://example.org/ValueSet/exclude").ShouldBeNull();
     }
+
+    // ===== New tests required by PR review =====
+
+    [Fact]
+    public void GivenMalformedValueSetJson_WhenExpanding_ThenReturnsNullAndDoesNotThrow()
+    {
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/broken", "broken-vs", null, "{ this is not valid json"),
+        });
+
+        var result = source.GetCodes("http://example.org/ValueSet/broken");
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenVersionedCanonicalKey_WhenLookingUpWithBareUrl_ThenFindsValueSet()
+    {
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/demo|1.0.0", "demo-vs", "1.0.0", DemoValueSetWithInlineConcepts),
+        });
+
+        var codes = source.GetCodes("http://example.org/ValueSet/demo");
+        codes.ShouldNotBeNull();
+        codes!.Select(c => c.Code).ShouldBe(AlphaBeta, ignoreOrder: true);
+    }
+
+    [Fact]
+    public void GivenUnexpandableValueSet_WhenQueriedMultipleTimes_ThenReturnsCachedNull()
+    {
+        var source = new PackageValueSetSource(new[]
+        {
+            MakeValueSet("http://example.org/ValueSet/filter", "filter-vs", null, IntensionalFilterValueSet),
+        });
+
+        source.GetCodes("http://example.org/ValueSet/filter").ShouldBeNull();
+        source.GetCodes("http://example.org/ValueSet/filter").ShouldBeNull();
+        source.GetCodes("http://example.org/ValueSet/filter").ShouldBeNull();
+    }
 }

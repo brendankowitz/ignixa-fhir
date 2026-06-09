@@ -18,6 +18,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// subsequent runs. Cache directory: see <see cref="TestFhirPackageLoader.GetCacheDirectory"/>.
 /// </para>
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class CarinBlueButtonPackageTests
 {
     [Fact]

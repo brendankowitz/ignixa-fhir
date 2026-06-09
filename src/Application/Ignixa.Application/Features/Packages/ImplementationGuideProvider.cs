@@ -1,4 +1,6 @@
+using System.Globalization;
 using Ignixa.Domain.Abstractions;
+using Ignixa.PackageManagement;
 using Ignixa.PackageManagement.Abstractions;
 using Ignixa.PackageManagement.Models;
 using Microsoft.Extensions.Logging;
@@ -80,7 +82,8 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
         try
         {
             // Step 0: Check if package already loaded (idempotent operation)
-            var tenantIdInt = int.Parse(tenantId);
+            if (!int.TryParse(tenantId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tenantIdInt))
+                throw new ArgumentException($"Tenant ID '{tenantId}' is not a valid integer", nameof(tenantId));
             var alreadyLoaded = await _packageRepository.PackageVersionExistsAsync(
                 packageId, version, tenantIdInt, cancellationToken);
 
@@ -154,14 +157,14 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             "Loading package {PackageId}@{Version} with dependencies into tenant {TenantId}",
             packageId, version, tenantId);
 
-        // BFS the closure. Skip r4.core (in-process) and dedup by package id so a diamond
-        // dependency graph doesn't double-load anything.
-        var visitedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["hl7.fhir.r4.core"] = "*"
-        };
-        var queue = new Queue<(string Id, string Version)>();
-        queue.Enqueue((packageId, version));
+        // BFS the closure. Pre-seed all known core packages (in-process) and dedup by
+        // package id so a diamond dependency graph doesn't double-load anything.
+        var visitedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var coreId in KnownPackages.CorePackages)
+            visitedVersions[coreId] = "*";
+
+        var queue = new Queue<(string Id, string Version, bool IsRoot)>();
+        queue.Enqueue((packageId, version, IsRoot: true));
 
         var aggregatedResourcesByType = new Dictionary<string, int>(StringComparer.Ordinal);
         var loadedSpecs = new List<string>();
@@ -173,10 +176,14 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
 
         while (queue.Count > 0)
         {
-            var (id, ver) = queue.Dequeue();
+            var (id, ver, isRoot) = queue.Dequeue();
             if (visitedVersions.TryGetValue(id, out var existingVer))
             {
-                if (existingVer != "*" && !string.Equals(existingVer, ver, StringComparison.OrdinalIgnoreCase))
+                if (existingVer == "*")
+                {
+                    skippedSpecs.Add($"{id}@{ver} (core package, provided in-process)");
+                }
+                else if (!string.Equals(existingVer, ver, StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogWarning(
                         "Version conflict for {PackageId}: already loading @{ExistingVersion}, skipping @{RequestedVersion}",
@@ -197,7 +204,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!isRoot)
             {
                 _logger.LogWarning(
                     ex,
@@ -224,6 +231,7 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
                         ex,
                         "Failed to re-read manifest of already-loaded package {PackageId}@{Version} - skipping its transitive deps",
                         id, ver);
+                    skippedSpecs.Add($"{id}@{ver} dependencies (manifest unavailable: {ex.GetType().Name}: {ex.Message})");
                 }
             }
 
@@ -231,9 +239,23 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
             {
                 foreach (var dep in deps)
                 {
-                    if (!visitedVersions.ContainsKey(dep.Key))
+                    if (visitedVersions.TryGetValue(dep.Key, out var alreadyQueuedVer))
                     {
-                        queue.Enqueue((dep.Key, dep.Value));
+                        if (alreadyQueuedVer == "*")
+                        {
+                            skippedSpecs.Add($"{dep.Key}@{dep.Value} (core package, provided in-process)");
+                        }
+                        else if (!string.Equals(alreadyQueuedVer, dep.Value, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogWarning(
+                                "Version conflict for {PackageId}: already loading @{ExistingVersion}, skipping @{RequestedVersion}",
+                                dep.Key, alreadyQueuedVer, dep.Value);
+                            skippedSpecs.Add($"{dep.Key}@{dep.Value} (version conflict: @{alreadyQueuedVer} already queued)");
+                        }
+                    }
+                    else
+                    {
+                        queue.Enqueue((dep.Key, dep.Value, IsRoot: false));
                     }
                 }
             }

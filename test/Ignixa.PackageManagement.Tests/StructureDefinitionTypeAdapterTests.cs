@@ -90,6 +90,67 @@ public class StructureDefinitionTypeAdapterTests
         result.ShouldBeNull();
     }
 
+    // ===== Primitive type mapping — regression pins for FhirPrimitiveExtensions delegation =====
+
+    private const string Integer64StructureDefinitionJson = """
+        {
+          "resourceType": "StructureDefinition",
+          "id": "integer64",
+          "url": "http://hl7.org/fhir/StructureDefinition/integer64",
+          "version": "5.0.0",
+          "name": "integer64",
+          "status": "active",
+          "kind": "primitive-type",
+          "abstract": false,
+          "type": "integer64",
+          "snapshot": {
+            "element": [
+              {
+                "id": "integer64",
+                "path": "integer64",
+                "min": 0,
+                "max": "*",
+                "type": [ { "code": "integer64" } ]
+              },
+              {
+                "id": "integer64.value",
+                "path": "integer64.value",
+                "min": 0,
+                "max": "1",
+                "type": [ { "code": "integer64" } ]
+              }
+            ]
+          }
+        }
+        """;
+
+    [Fact]
+    public void GivenInteger64StructureDefinition_WhenAdapted_ThenRootIsPrimitive()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(Integer64StructureDefinitionJson, "5.0.0")!;
+
+        type.ShouldNotBeNull();
+        type.Info.Primitive.ShouldBe(FhirPrimitive.Integer64);
+    }
+
+    [Fact]
+    public void GivenBooleanElement_WhenAdapted_ThenPrimitiveIsBoolean()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+        var active = (ITypeExtended)type.Children.Single(c => c.Info.Name == "active");
+
+        active.Info.Primitive.ShouldBe(FhirPrimitive.Boolean);
+    }
+
+    [Fact]
+    public void GivenDateElement_WhenAdapted_ThenPrimitiveIsDate()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(LoadFixture("PatientMinimal.json"), "4.0.1")!;
+        var birthDate = (ITypeExtended)type.Children.Single(c => c.Info.Name == "birthDate");
+
+        birthDate.Info.Primitive.ShouldBe(FhirPrimitive.Date);
+    }
+
     // ===== Constraints, choice types, fixed/pattern, reference targets =====
 
     [Fact]

@@ -19,6 +19,7 @@ namespace Ignixa.Validation.Tests.Services;
 /// that accepts additional <see cref="IValueSetProvider"/> sources on top of the base provider.
 /// Exercises end-to-end with a real CARIN BlueButton package supplying IG-defined ValueSets.
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class LayeredTerminologyServiceTests
 {
     [Fact]

@@ -16,6 +16,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// First run downloads ~1.6 MB from <c>packages.fhir.org</c>; subsequent runs hit the local cache.
 /// </para>
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class UsCorePackageTests
 {
     [Fact]

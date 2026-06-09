@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Abstractions;
+using static Ignixa.Abstractions.FhirPrimitiveExtensions;
 
 namespace Ignixa.PackageManagement.Infrastructure;
 
@@ -364,40 +365,13 @@ public sealed class StructureDefinitionTypeAdapter
         return targets;
     }
 
-    /// <summary>
-    /// Maps a FHIR primitive type code to <see cref="FhirPrimitive"/>. Returns
-    /// <see cref="FhirPrimitive.None"/> for complex types or unknown codes.
-    /// </summary>
     private static (string fhirTypeName, FhirPrimitive primitive) ResolvePrimitive(string? typeCode)
     {
         if (string.IsNullOrEmpty(typeCode))
         {
             return (string.Empty, FhirPrimitive.None);
         }
-        return typeCode switch
-        {
-            "boolean" => (typeCode, FhirPrimitive.Boolean),
-            "integer" => (typeCode, FhirPrimitive.Integer),
-            "string" => (typeCode, FhirPrimitive.String),
-            "decimal" => (typeCode, FhirPrimitive.Decimal),
-            "uri" => (typeCode, FhirPrimitive.Uri),
-            "url" => (typeCode, FhirPrimitive.Url),
-            "canonical" => (typeCode, FhirPrimitive.Canonical),
-            "base64Binary" => (typeCode, FhirPrimitive.Base64Binary),
-            "instant" => (typeCode, FhirPrimitive.Instant),
-            "date" => (typeCode, FhirPrimitive.Date),
-            "dateTime" => (typeCode, FhirPrimitive.DateTime),
-            "time" => (typeCode, FhirPrimitive.Time),
-            "code" => (typeCode, FhirPrimitive.Code),
-            "oid" => (typeCode, FhirPrimitive.Oid),
-            "id" => (typeCode, FhirPrimitive.Id),
-            "markdown" => (typeCode, FhirPrimitive.Markdown),
-            "unsignedInt" => (typeCode, FhirPrimitive.UnsignedInt),
-            "positiveInt" => (typeCode, FhirPrimitive.PositiveInt),
-            "uuid" => (typeCode, FhirPrimitive.Uuid),
-            "xhtml" => (typeCode, FhirPrimitive.None),
-            _ => (typeCode, FhirPrimitive.None),
-        };
+        return (typeCode, FhirPrimitiveExtensions.FromTypeString(typeCode));
     }
 
     private static string ExtractLocalName(string path)

@@ -52,7 +52,9 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
         _profileTypes = new Dictionary<string, IType>(StringComparer.Ordinal);
         var log = logger ?? NullLogger<ProfileLayeredSchemaProvider>.Instance;
 
-        var provider = new PackageResourceProvider(NullLogger<PackageResourceProvider>.Instance);
+        var provider = new PackageResourceProvider(
+            new LoggerAdapter<PackageResourceProvider>(log));
+
         foreach (var res in packageResources)
         {
             if (res.ResourceType != "StructureDefinition")
@@ -62,6 +64,20 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
             var type = provider.ToTypeDefinition(res.ResourceJson, baseProvider.FullVersion);
             if (type != null && !string.IsNullOrEmpty(res.ResourceId))
             {
+                if (_profileTypes.ContainsKey(res.ResourceId))
+                {
+                    log.LogWarning(
+                        "Profile id '{ProfileId}' (canonical='{Canonical}') overwrites an existing profile entry — last-wins. Check package ordering if this is unintended.",
+                        res.ResourceId,
+                        res.Canonical);
+                }
+                else if (_base.IsKnownType(res.ResourceId))
+                {
+                    log.LogWarning(
+                        "Profile id '{ProfileId}' (canonical='{Canonical}') shadows a base-spec type — profile takes precedence. Validate against the base type will use the profile definition.",
+                        res.ResourceId,
+                        res.Canonical);
+                }
                 _profileTypes[res.ResourceId] = type;
             }
             else
@@ -96,4 +112,27 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
     /// <inheritdoc/>
     public bool IsKnownType(string typeName)
         => _profileTypes.ContainsKey(typeName) || _base.IsKnownType(typeName);
+
+    /// <summary>
+    /// Bridges a <see cref="ILogger{TCategoryName}"/> of one category to another typed logger,
+    /// forwarding all log calls with the same level, message, and exception.
+    /// Used to pass the outer logger into <see cref="PackageResourceProvider"/> without
+    /// requiring an <c>ILoggerFactory</c> on the constructor.
+    /// </summary>
+    private sealed class LoggerAdapter<T>(ILogger source) : ILogger<T>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+            => source.BeginScope(state);
+
+        public bool IsEnabled(LogLevel logLevel)
+            => source.IsEnabled(logLevel);
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => source.Log(logLevel, eventId, state, exception, formatter);
+    }
 }

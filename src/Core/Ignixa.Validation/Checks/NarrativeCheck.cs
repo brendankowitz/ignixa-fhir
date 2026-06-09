@@ -14,7 +14,7 @@ namespace Ignixa.Validation.Checks;
 /// Ensures text.div is present when status is not 'empty'.
 /// Tier 1 (Fast) validator.
 /// </summary>
-public class NarrativeCheck : IValidationCheck
+public class NarrativeCheck : IValidationCheck, ISingletonCheck
 {
     /// <summary>
     /// Validates Narrative structure.

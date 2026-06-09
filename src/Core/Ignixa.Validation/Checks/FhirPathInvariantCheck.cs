@@ -32,7 +32,7 @@ public class FhirPathInvariantCheck : IValidationCheck
     private readonly IReadOnlyList<string> _appliesTo;
     private readonly ILogger? _logger;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
-    private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
+    private readonly Lazy<FhirPath.Expressions.Expression?> _compiledExpression;
 
     /// <summary>
     /// Gets the constraint key (e.g., "ele-1", "ext-1", "bdl-5").
@@ -74,16 +74,20 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         // Lazy compilation - parse FHIRPath expression only when first needed
         _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
-        _compiledExpression = new Lazy<FhirPath.Expressions.Expression>(() =>
+        _compiledExpression = new Lazy<FhirPath.Expressions.Expression?>(() =>
         {
             try
             {
                 return _parser.Parse(_constraint.Expression);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will be skipped", _constraint.Key);
-                return new FhirPath.Expressions.EmptyExpression();
+                _logger?.LogError(ex, "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will not be evaluated", _constraint.Key);
+                return null;
             }
         });
     }
@@ -147,10 +151,21 @@ public class FhirPathInvariantCheck : IValidationCheck
             }
         }
 
+        var expression = _compiledExpression.Value;
+        if (expression is null)
+        {
+            var parseFailureIssue = new ValidationIssue(
+                IssueSeverity.Warning,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                $"Constraint '{_constraint.Key}' could not be evaluated: FHIRPath expression failed to parse");
+            return new ValidationResult(isValid: true, issues: new[] { parseFailureIssue });
+        }
+
         try
         {
             // Evaluate the FHIRPath expression
-            var result = _evaluator.Value.Evaluate(element, _compiledExpression.Value);
+            var result = _evaluator.Value.Evaluate(element, expression);
 
             // Convert result to boolean
             // Per FHIRPath spec: empty result = false, single boolean true = true, all else = false

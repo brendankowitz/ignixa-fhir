@@ -11,6 +11,7 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Tests.TestHelpers;
+using Shouldly;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -42,8 +43,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -63,8 +64,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -84,8 +85,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     #endregion
@@ -110,11 +111,11 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.False(result.IsValid);
-        Assert.Single(result.Issues);
-        Assert.Contains(result.Issues, i => i.Code == "choice-multiple");
-        Assert.Contains("valueQuantity", result.Issues[0].Message);
-        Assert.Contains("valueString", result.Issues[0].Message);
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues.ShouldContain(i => i.Code == "choice-multiple");
+        result.Issues[0].Message.ShouldContain("valueQuantity");
+        result.Issues[0].Message.ShouldContain("valueString");
     }
 
     [Fact]
@@ -136,9 +137,9 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.False(result.IsValid);
-        Assert.Single(result.Issues);
-        Assert.Contains(result.Issues, i => i.Code == "choice-multiple");
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues.ShouldContain(i => i.Code == "choice-multiple");
     }
 
     #endregion
@@ -167,11 +168,11 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.False(result.IsValid);
-        Assert.Single(result.Issues);
-        Assert.Contains(result.Issues, i => i.Code == "choice-invalid-type");
-        Assert.Contains("CodeableConcept", result.Issues[0].Message);
-        Assert.Contains("Quantity, string", result.Issues[0].Message); // Shows allowed types
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues.ShouldContain(i => i.Code == "choice-invalid-type");
+        result.Issues[0].Message.ShouldContain("CodeableConcept");
+        result.Issues[0].Message.ShouldContain("Quantity, string"); // Shows allowed types
     }
 
     [Fact]
@@ -192,10 +193,10 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.False(result.IsValid);
-        Assert.Single(result.Issues);
-        Assert.Contains(result.Issues, i => i.Code == "choice-invalid-type");
-        Assert.Contains("Attachment", result.Issues[0].Message);
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues.ShouldContain(i => i.Code == "choice-invalid-type");
+        result.Issues[0].Message.ShouldContain("Attachment");
     }
 
     #endregion
@@ -218,8 +219,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -238,8 +239,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     #endregion
@@ -266,8 +267,8 @@ public class ChoiceElementCheckTests
             $@"{{ ""valueBoolean"": {value} }}",
             new[] { "boolean", "string", "integer" });
 
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 
     [Theory]
@@ -279,7 +280,7 @@ public class ChoiceElementCheckTests
             $@"{{ ""valueBoolean"": {value} }}",
             new[] { "boolean", "string" });
 
-        Assert.True(result.IsValid);
+        result.IsValid.ShouldBeTrue();
     }
 
     [Theory]
@@ -292,23 +293,23 @@ public class ChoiceElementCheckTests
             $@"{{ ""valueInteger"": {value} }}",
             new[] { "integer", "boolean" });
 
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 
     [Fact]
     public void GivenChoiceIntegerWithValidValue_WhenValidating_ThenReturnsSuccess()
     {
         var result = ValidateChoice(@"{ ""valueInteger"": 42 }", new[] { "integer" });
-        Assert.True(result.IsValid);
+        result.IsValid.ShouldBeTrue();
     }
 
     [Fact]
     public void GivenChoiceUnsignedIntWithNegativeValue_WhenValidating_ThenReturnsError()
     {
         var result = ValidateChoice(@"{ ""valueUnsignedInt"": -1 }", new[] { "unsignedInt" });
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 
     [Theory]
@@ -322,8 +323,8 @@ public class ChoiceElementCheckTests
             $@"{{ ""valueDateTime"": {value} }}",
             new[] { "dateTime", "string" });
 
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 
     [Theory]
@@ -337,7 +338,7 @@ public class ChoiceElementCheckTests
             $@"{{ ""valueDateTime"": {value} }}",
             new[] { "dateTime", "string" });
 
-        Assert.True(result.IsValid);
+        result.IsValid.ShouldBeTrue();
     }
 
     [Theory]
@@ -351,8 +352,8 @@ public class ChoiceElementCheckTests
             $@"{{ ""{variant}"": """" }}",
             new[] { "string", "code", "uri", "id" });
 
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 
     [Fact]
@@ -366,8 +367,8 @@ public class ChoiceElementCheckTests
             new ValidationSettings(),
             new ValidationState());
 
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Path.EndsWith("value.ofType(boolean)", StringComparison.Ordinal));
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Path.EndsWith("value.ofType(boolean)", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -378,7 +379,7 @@ public class ChoiceElementCheckTests
             @"{ ""valueQuantity"": { ""value"": 120, ""unit"": ""mmHg"" } }",
             new[] { "Quantity", "boolean" });
 
-        Assert.True(result.IsValid);
+        result.IsValid.ShouldBeTrue();
     }
 
     #endregion
@@ -414,8 +415,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -446,8 +447,8 @@ public class ChoiceElementCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Issues);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     #endregion

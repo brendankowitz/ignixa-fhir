@@ -35,7 +35,8 @@ public static class ValidationServicesRegistration
         builder.Register(c =>
         {
             var compiler = c.Resolve<FhirPathParser>();
-            return new StructureDefinitionSchemaBuilder(compiler);
+            var logger = c.Resolve<ILogger<StructureDefinitionSchemaBuilder>>();
+            return new StructureDefinitionSchemaBuilder(compiler, logger);
         })
         .AsSelf()
         .SingleInstance();

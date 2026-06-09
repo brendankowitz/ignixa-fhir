@@ -17,6 +17,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// CARIN BlueButton 2.1.0 IG package. Validates that loading a profile, converting it to
 /// <see cref="IType"/>, and inspecting profile-defined invariants/bindings all succeed.
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class CarinBbProfileAdapterTests
 {
     private const string ProfileCanonical =

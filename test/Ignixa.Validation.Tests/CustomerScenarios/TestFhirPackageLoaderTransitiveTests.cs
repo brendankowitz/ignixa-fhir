@@ -15,6 +15,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// the closure stabilises, deduplicating by package id, skipping <c>hl7.fhir.r4.core</c>
 /// (it's served from the built-in <c>R4CoreSchemaProvider</c>, not from a downloaded tarball).
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class TestFhirPackageLoaderTransitiveTests
 {
     [Fact]

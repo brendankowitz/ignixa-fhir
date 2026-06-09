@@ -7,6 +7,8 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.PackageManagement.Infrastructure;
 
@@ -31,13 +33,19 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// </summary>
 public sealed class PackageValueSetSource : IValueSetProvider
 {
+    private static readonly IReadOnlyList<FhirCode> Unexpandable = Array.Empty<FhirCode>();
+
     private readonly Dictionary<string, ExtractedResource> _valueSets;
     private readonly Dictionary<string, ExtractedResource> _codeSystems;
     private readonly ConcurrentDictionary<string, IReadOnlyList<FhirCode>> _expansionCache = new(StringComparer.Ordinal);
+    private readonly ILogger<PackageValueSetSource> _logger;
 
-    public PackageValueSetSource(IEnumerable<ExtractedResource> resources)
+    public PackageValueSetSource(
+        IEnumerable<ExtractedResource> resources,
+        ILogger<PackageValueSetSource>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(resources);
+        _logger = logger ?? NullLogger<PackageValueSetSource>.Instance;
         _valueSets = new(StringComparer.Ordinal);
         _codeSystems = new(StringComparer.Ordinal);
         foreach (var r in resources)
@@ -45,10 +53,10 @@ public sealed class PackageValueSetSource : IValueSetProvider
             switch (r.ResourceType)
             {
                 case "ValueSet":
-                    _valueSets[r.Canonical] = r;
+                    _valueSets[StripVersionSuffix(r.Canonical)] = r;
                     break;
                 case "CodeSystem":
-                    _codeSystems[r.Canonical] = r;
+                    _codeSystems[StripVersionSuffix(r.Canonical)] = r;
                     break;
             }
         }
@@ -85,7 +93,7 @@ public sealed class PackageValueSetSource : IValueSetProvider
 
         if (_expansionCache.TryGetValue(canonical, out var cached))
         {
-            return cached;
+            return ReferenceEquals(cached, Unexpandable) ? null : cached;
         }
 
         if (!_valueSets.TryGetValue(canonical, out var vs))
@@ -93,15 +101,13 @@ public sealed class PackageValueSetSource : IValueSetProvider
             return null;
         }
 
-        var expanded = ExpandValueSet(vs);
-        if (expanded != null)
-        {
-            _expansionCache[canonical] = expanded;
-        }
+        var expanded = ExpandValueSet(vs, canonical);
+        var toCache = expanded ?? Unexpandable;
+        _expansionCache[canonical] = toCache;
         return expanded;
     }
 
-    private IReadOnlyList<FhirCode>? ExpandValueSet(ExtractedResource valueSet)
+    private IReadOnlyList<FhirCode>? ExpandValueSet(ExtractedResource valueSet, string canonical)
     {
         try
         {
@@ -176,15 +182,17 @@ public sealed class PackageValueSetSource : IValueSetProvider
             // (reject-everything) set.
             return codes.Count > 0 ? codes : null;
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            _logger.LogWarning(ex, "Failed to parse ValueSet JSON for canonical '{Canonical}' — treating as unexpandable", canonical);
             return null;
         }
     }
 
     private IReadOnlyList<FhirCode>? ExpandCodeSystem(string systemUrl)
     {
-        if (!_codeSystems.TryGetValue(systemUrl, out var cs))
+        var key = StripVersionSuffix(systemUrl);
+        if (!_codeSystems.TryGetValue(key, out var cs))
         {
             return null;
         }
@@ -202,8 +210,9 @@ public sealed class PackageValueSetSource : IValueSetProvider
             CollectConcepts(conceptArr, systemUrl, codes);
             return codes;
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            _logger.LogWarning(ex, "Failed to parse CodeSystem JSON for system '{SystemUrl}' — treating as unexpandable", systemUrl);
             return null;
         }
     }

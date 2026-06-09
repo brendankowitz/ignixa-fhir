@@ -13,7 +13,7 @@ namespace Ignixa.Validation.Checks;
 /// Tier 1 (Fast) validator - executes in less than 1ms.
 /// Only applies to FHIR resources, not BackboneElements or complex datatypes.
 /// </summary>
-public class ResourceTypeValidationCheck : IValidationCheck
+public class ResourceTypeValidationCheck : IValidationCheck, ISingletonCheck
 {
     private readonly IReadOnlySet<string> _validResourceTypes;
 

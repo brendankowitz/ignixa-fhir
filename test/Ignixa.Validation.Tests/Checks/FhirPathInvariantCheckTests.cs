@@ -14,6 +14,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Tests.TestHelpers;
+using Shouldly;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -347,9 +348,11 @@ public class FhirPathInvariantCheckTests
 
     /// <summary>
     /// Tests handling of invalid FHIRPath expression.
+    /// Parse failure must not be reported as a constraint violation — it yields a
+    /// non-failing Warning so callers can distinguish "constraint failed" from "could not evaluate".
     /// </summary>
     [Fact]
-    public void GivenInvalidExpression_WhenValidating_ThenReturnsError()
+    public void GivenUnparseableExpression_WhenValidating_ThenResultIsNonFailingWithWarning()
     {
         // Arrange
         var constraint = new Ignixa.Specification.ConstraintDefinition
@@ -371,10 +374,83 @@ public class FhirPathInvariantCheckTests
         // Act
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
+        // Assert — parse failure must NOT fail validation
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("bad-expr");
+        result.Issues[0].Message.ShouldContain("could not be evaluated");
+        result.Issues[0].Message.ShouldNotContain("Invalid expression");
+    }
+
+    /// <summary>
+    /// A parse failure on a warning-severity constraint must also be non-failing and carry
+    /// a Warning issue — parse failure severity is independent of the declared constraint severity.
+    /// </summary>
+    [Fact]
+    public void GivenUnparseableExpressionWithWarningSeverity_WhenValidating_ThenResultIsNonFailingWithWarning()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "bad-warn",
+            Severity = ConstraintSeverity.Warning,
+            Human = "Invalid warning expression",
+            Expression = "@@@ totally invalid @@@",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
         // Assert
-        // Invalid expressions should not crash - they return Success (empty result = false)
-        // The lazy compilation catches parse errors
-        Assert.False(result.IsValid);
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("bad-warn");
+        result.Issues[0].Message.ShouldContain("could not be evaluated");
+        result.Issues[0].Message.ShouldNotContain("Invalid warning expression");
+    }
+
+    /// <summary>
+    /// Validates the same unparseable constraint across multiple calls — the Lazy must
+    /// retain the null result and keep returning the non-failing Warning each time.
+    /// </summary>
+    [Fact]
+    public void GivenUnparseableExpression_WhenValidatingMultipleTimes_ThenAlwaysNonFailing()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "repeat-bad",
+            Severity = ConstraintSeverity.Error,
+            Human = "Repeated bad expression",
+            Expression = "!!! bad !!!",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+
+        // Act & Assert — each call must remain non-failing
+        for (var i = 0; i < 3; i++)
+        {
+            var result = check.Validate(element, settings, state);
+            result.IsValid.ShouldBeTrue();
+            result.Issues[0].Message.ShouldContain("could not be evaluated");
+        }
     }
 
     /// <summary>

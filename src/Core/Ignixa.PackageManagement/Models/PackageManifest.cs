@@ -37,7 +37,7 @@ public record PackageManifest
 
     /// <summary>
     /// Transitive package dependencies declared in <c>package.json</c> as a map of
-    /// package id → version (e.g. <c>{"hl7.fhir.r4.core":"4.0.1"}</c>). Null when the
+    /// package id → version (e.g. <c>{"hl7.fhir.r4.core":"4.0.1"}</c>). Empty when the
     /// source manifest carried no <c>dependencies</c> object.
     /// </summary>
     /// <remarks>

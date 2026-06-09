@@ -11,7 +11,6 @@ using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
-using Ignixa.Validation.Schema;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -94,15 +93,14 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
             var element = request.JsonNode.ToElement(schemaProvider);
 
             // Prefer element-aware resolution (composes meta.profile checks). The DI factory
-            // returns a ProfileAwareValidationSchemaResolver wrapping the inner cached
-            // resolver, but consumers see only IValidationSchemaResolver - downcast to
-            // pick up the richer API. Falls back to canonical-URL lookup if downcast fails
-            // (e.g. test doubles that don't use the production wrapping).
+            // returns a resolver implementing IElementSchemaResolver, but consumers see only
+            // IValidationSchemaResolver - feature-detect the richer API. Falls back to
+            // canonical-URL lookup otherwise (e.g. test doubles without the production wrapping).
             ValidationSchema? schema = null;
             var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{request.ResourceType}";
-            if (schemaResolver is ProfileAwareValidationSchemaResolver profileAware)
+            if (schemaResolver is IElementSchemaResolver elementResolver)
             {
-                schema = profileAware.ResolveForElement(element);
+                schema = elementResolver.ResolveForElement(element);
             }
             schema ??= schemaResolver.GetSchema(canonicalUrl);
 

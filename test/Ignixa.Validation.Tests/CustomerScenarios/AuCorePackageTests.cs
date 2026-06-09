@@ -16,6 +16,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// First run downloads ~10 MB; subsequent runs hit the local cache.
 /// </para>
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class AuCorePackageTests
 {
     [Fact]

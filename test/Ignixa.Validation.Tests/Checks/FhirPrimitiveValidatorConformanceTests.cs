@@ -10,6 +10,7 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Tests.TestHelpers;
+using Shouldly;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -50,14 +51,14 @@ public class FhirPrimitiveValidatorConformanceTests
         // against TryGetValue<long> failing on non-JsonElement-backed nodes (e.g. faker- or
         // code-constructed resources), which previously misreported a valid integer as fractional.
         var result = ValidateNode(new JsonObject { ["valueInteger"] = value }, new[] { "integer" });
-        Assert.True(result.IsValid);
+        result.IsValid.ShouldBeTrue();
     }
 
     [Fact]
     public void GivenProgrammaticPositiveIntValue_WhenValidating_ThenAcceptsWholeValue()
     {
         var result = ValidateNode(new JsonObject { ["valuePositiveInt"] = 2 }, new[] { "positiveInt" });
-        Assert.True(result.IsValid);
+        result.IsValid.ShouldBeTrue();
     }
 
     // -------------------------------------------------------------------------
@@ -79,7 +80,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenValidDateTime_WhenValidating_ThenReturnsSuccess(string jsonValue)
     {
         var result = ValidatePrimitive("valueDateTime", jsonValue, ["dateTime"]);
-        Assert.True(result.IsValid, $"Expected valid dateTime for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid dateTime for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     // -------------------------------------------------------------------------
@@ -104,7 +105,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenInvalidDateTime_WhenValidating_ThenReturnsError(string jsonValue)
     {
         var result = ValidatePrimitive("valueDateTime", jsonValue, ["dateTime"]);
-        Assert.False(result.IsValid, $"Expected invalid dateTime for {jsonValue} but validation passed");
+        result.IsValid.ShouldBeFalse($"Expected invalid dateTime for {jsonValue} but validation passed");
     }
 
     // -------------------------------------------------------------------------
@@ -122,7 +123,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenValidDate_WhenValidating_ThenReturnsSuccess(string jsonValue)
     {
         var result = ValidatePrimitive("valueDate", jsonValue, ["date"]);
-        Assert.True(result.IsValid, $"Expected valid date for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid date for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     // -------------------------------------------------------------------------
@@ -141,7 +142,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenInvalidDate_WhenValidating_ThenReturnsError(string jsonValue)
     {
         var result = ValidatePrimitive("valueDate", jsonValue, ["date"]);
-        Assert.False(result.IsValid, $"Expected invalid date for {jsonValue} but validation passed");
+        result.IsValid.ShouldBeFalse($"Expected invalid date for {jsonValue} but validation passed");
     }
 
     // -------------------------------------------------------------------------
@@ -157,7 +158,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenValidTime_WhenValidating_ThenReturnsSuccess(string jsonValue)
     {
         var result = ValidatePrimitive("valueTime", jsonValue, ["time"]);
-        Assert.True(result.IsValid, $"Expected valid time for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid time for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     // -------------------------------------------------------------------------
@@ -175,7 +176,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenInvalidTime_WhenValidating_ThenReturnsError(string jsonValue)
     {
         var result = ValidatePrimitive("valueTime", jsonValue, ["time"]);
-        Assert.False(result.IsValid, $"Expected invalid time for {jsonValue} but validation passed");
+        result.IsValid.ShouldBeFalse($"Expected invalid time for {jsonValue} but validation passed");
     }
 
     // -------------------------------------------------------------------------
@@ -190,7 +191,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenValidInstant_WhenValidating_ThenReturnsSuccess(string jsonValue)
     {
         var result = ValidatePrimitive("valueInstant", jsonValue, ["instant"]);
-        Assert.True(result.IsValid, $"Expected valid instant for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid instant for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     // -------------------------------------------------------------------------
@@ -206,7 +207,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenInvalidInstant_WhenValidating_ThenReturnsError(string jsonValue)
     {
         var result = ValidatePrimitive("valueInstant", jsonValue, ["instant"]);
-        Assert.False(result.IsValid, $"Expected invalid instant for {jsonValue} but validation passed");
+        result.IsValid.ShouldBeFalse($"Expected invalid instant for {jsonValue} but validation passed");
     }
 
     // -------------------------------------------------------------------------
@@ -221,14 +222,14 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenIntegerFamilyBoundaryValue_WhenValidating_ThenReturnsSuccess(string property, string jsonValue, string type)
     {
         var result = ValidatePrimitive(property, jsonValue, [type]);
-        Assert.True(result.IsValid, $"Expected valid {type} for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid {type} for {jsonValue} but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     [Fact]
     public void GivenIntegerBelowInt32Min_WhenValidating_ThenReturnsError()
     {
         var result = ValidatePrimitive("valueInteger", "-2147483649", ["integer"]);
-        Assert.False(result.IsValid, "Expected invalid integer below Int32.MinValue but validation passed");
+        result.IsValid.ShouldBeFalse("Expected invalid integer below Int32.MinValue but validation passed");
     }
 
     // -------------------------------------------------------------------------
@@ -239,21 +240,21 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenInteger64AtInt64Max_WhenValidating_ThenReturnsSuccess()
     {
         var result = ValidatePrimitive("valueInteger64", "9223372036854775807", ["integer64"]);
-        Assert.True(result.IsValid, $"Expected valid integer64 but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid integer64 but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     [Fact]
     public void GivenInteger64WithFraction_WhenValidating_ThenReturnsError()
     {
         var result = ValidatePrimitive("valueInteger64", "3.1", ["integer64"]);
-        Assert.False(result.IsValid, "Expected invalid integer64 (fractional) but validation passed");
+        result.IsValid.ShouldBeFalse("Expected invalid integer64 (fractional) but validation passed");
     }
 
     [Fact]
     public void GivenDecimalWithFraction_WhenValidating_ThenReturnsSuccess()
     {
         var result = ValidatePrimitive("valueDecimal", "3.14", ["decimal"]);
-        Assert.True(result.IsValid, $"Expected valid decimal but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid decimal but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     [Theory]
@@ -262,7 +263,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenDecimalWithNonNumberValue_WhenValidating_ThenReturnsError(string jsonValue)
     {
         var result = ValidatePrimitive("valueDecimal", jsonValue, ["decimal"]);
-        Assert.False(result.IsValid, $"Expected invalid decimal for {jsonValue} but validation passed");
+        result.IsValid.ShouldBeFalse($"Expected invalid decimal for {jsonValue} but validation passed");
     }
 
     // -------------------------------------------------------------------------
@@ -273,7 +274,7 @@ public class FhirPrimitiveValidatorConformanceTests
     public void GivenTimeWithNineFractionalDigits_WhenValidating_ThenReturnsSuccess()
     {
         var result = ValidatePrimitive("valueTime", "\"12:00:00.000000000\"", ["time"]);
-        Assert.True(result.IsValid, $"Expected valid time but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid time but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     // -------------------------------------------------------------------------
@@ -302,7 +303,7 @@ public class FhirPrimitiveValidatorConformanceTests
             @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
             ["dateTime", "string", "boolean"]);
 
-        Assert.True(result.IsValid, $"Expected valid dateTime+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid dateTime+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     [Fact]
@@ -314,7 +315,7 @@ public class FhirPrimitiveValidatorConformanceTests
             @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
             ["boolean", "string"]);
 
-        Assert.True(result.IsValid, $"Expected valid boolean+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid boolean+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     [Fact]
@@ -326,7 +327,7 @@ public class FhirPrimitiveValidatorConformanceTests
             @"{ ""id"": ""1"" }",
             ["string", "boolean"]);
 
-        Assert.True(result.IsValid, $"Expected valid string+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
+        result.IsValid.ShouldBeTrue($"Expected valid string+shadow but got: {(result.Issues.Count > 0 ? result.Issues[0].Message : "no issues")}");
     }
 
     [Fact]
@@ -339,8 +340,8 @@ public class FhirPrimitiveValidatorConformanceTests
             @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
             ["boolean", "string", "integer"]);
 
-        Assert.False(result.IsValid, "Expected invalid boolean (0) even with shadow but validation passed");
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse("Expected invalid boolean (0) even with shadow but validation passed");
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 
     [Fact]
@@ -352,7 +353,7 @@ public class FhirPrimitiveValidatorConformanceTests
             @"{ ""extension"": [ { ""url"": ""http://x"", ""valueCode"": ""estimated"" } ] }",
             ["dateTime", "string"]);
 
-        Assert.False(result.IsValid, "Expected invalid dateTime (2000-13) even with shadow but validation passed");
-        Assert.Contains(result.Issues, i => i.Code == "type-1");
+        result.IsValid.ShouldBeFalse("Expected invalid dateTime (2000-13) even with shadow but validation passed");
+        result.Issues.ShouldContain(i => i.Code == "type-1");
     }
 }

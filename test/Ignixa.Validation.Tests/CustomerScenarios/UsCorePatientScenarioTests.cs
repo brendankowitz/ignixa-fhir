@@ -21,6 +21,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// End-to-end validation scenarios against the US Core 6.1.0 IG. Mirrors the CARIN-BB
 /// scenario tests but exercises a different IG to prove the validator chain is IG-agnostic.
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class UsCorePatientScenarioTests
 {
     private const string ValidInputFile = "TestData/CustomerScenarios/us-core-patient-valid.json";

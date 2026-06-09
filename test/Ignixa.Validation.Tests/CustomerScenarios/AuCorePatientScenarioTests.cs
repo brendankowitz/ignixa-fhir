@@ -21,6 +21,7 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// End-to-end validation scenarios against AU Core 1.0.0. Exercises the multi-package
 /// composition path: AU Core layered with AU Base + HL7 Terminology + UV Extensions.
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public class AuCorePatientScenarioTests
 {
     private const string ValidInputFile = "TestData/CustomerScenarios/au-core-patient-valid.json";

@@ -257,7 +257,7 @@ public class StructureDefinitionSchemaBuilder
         var addedToVisiting = visiting.Add(typeDefinition.Info.Name);
         try
         {
-            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService, _logger);
+            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService, _logger, _parser);
             specChecks.AddRange(nestedTypeChecks);
         }
         finally
@@ -304,7 +304,7 @@ public class StructureDefinitionSchemaBuilder
         // This includes constraints like ele-1, dom-1, resource-specific invariants
         // Moved to Profile tier to avoid false positives on minimal resources
         // Constraints are scoped to the current resource type (see ExtractInvariantChecks for filtering)
-        var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser);
+        var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser, _logger);
         profileChecks.AddRange(invariantChecks);
 
         // Build the canonical URL from the type name
@@ -358,7 +358,8 @@ public class StructureDefinitionSchemaBuilder
         IReadOnlyList<IType> elements,
         IType typeDefinition,
         ISchema schema,
-        FhirPathParser parser)
+        FhirPathParser parser,
+        ILogger? logger = null)
     {
         var checks = new List<IValidationCheck>();
 
@@ -403,7 +404,7 @@ public class StructureDefinitionSchemaBuilder
                 }
 
                 seenConstraints.Add(constraint.Key);
-                checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo));
+                checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo, logger));
             }
         }
 
@@ -424,7 +425,8 @@ public class StructureDefinitionSchemaBuilder
         IType typeDefinition,
         ISchema schema,
         ITerminologyService? terminologyService,
-        ILogger? logger = null)
+        ILogger<StructureDefinitionSchemaBuilder>? logger = null,
+        FhirPathParser? parser = null)
     {
         var checks = new List<IValidationCheck>();
 
@@ -486,7 +488,7 @@ public class StructureDefinitionSchemaBuilder
             var nestedTypeDefinition = schema.GetTypeDefinition(nestedTypeName);
             if (nestedTypeDefinition == null)
             {
-                logger?.LogDebug("Nested type '{NestedTypeName}' not found in schema - subtree will not be validated", nestedTypeName);
+                logger?.LogWarning("Nested type '{NestedTypeName}' not found in schema - subtree will not be validated", nestedTypeName);
                 continue;
             }
 
@@ -501,7 +503,7 @@ public class StructureDefinitionSchemaBuilder
             }
 
             // Build the nested schema
-            var nestedBuilder = new StructureDefinitionSchemaBuilder();
+            var nestedBuilder = new StructureDefinitionSchemaBuilder(parser, logger);
             var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition, schema, terminologyService);
 
             // Create the nested type check
