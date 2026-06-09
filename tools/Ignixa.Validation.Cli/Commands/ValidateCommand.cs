@@ -2,10 +2,14 @@ using System.CommandLine;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.PackageManagement.Infrastructure;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.Validation.Cli.Commands;
 
@@ -22,11 +26,23 @@ internal static class ValidateCommand
         var jsonOption = new Option<string?>("--json") { Description = "JSON string to validate" };
         var outOption = new Option<string?>("--out") { Description = "Output file for validation results (OperationOutcome JSON)" };
         var consoleOption = new Option<bool>("--console") { Description = "Display formatted validation results in console", DefaultValueFactory = _ => false };
+        var depthOption = new Option<string>("--depth")
+        {
+            Description = "Validation depth: minimal | spec | full | compatibility (default: spec)",
+            DefaultValueFactory = _ => "spec",
+        };
+        var packageOption = new Option<string[]>("--package")
+        {
+            Description = "FHIR IG package to layer for profile validation, in form 'id@version' (repeatable). Example: --package hl7.fhir.us.core@6.1.0",
+            AllowMultipleArgumentsPerToken = true,
+        };
 
         command.Options.Add(inputOption);
         command.Options.Add(jsonOption);
         command.Options.Add(outOption);
         command.Options.Add(consoleOption);
+        command.Options.Add(depthOption);
+        command.Options.Add(packageOption);
 
         command.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -34,7 +50,9 @@ internal static class ValidateCommand
             var json = parseResult.GetValue(jsonOption);
             var output = parseResult.GetValue(outOption);
             var console = parseResult.GetValue(consoleOption);
-            await HandleValidateCommand(schemaProvider, fhirVersion, input, json, output, console);
+            var depth = parseResult.GetValue(depthOption) ?? "spec";
+            var packages = parseResult.GetValue(packageOption) ?? Array.Empty<string>();
+            await HandleValidateCommand(schemaProvider, fhirVersion, input, json, output, console, depth, packages, cancellationToken);
         });
 
         return command;
@@ -46,7 +64,10 @@ internal static class ValidateCommand
         string? inputFile,
         string? jsonString,
         string? outputFile,
-        bool consoleOutput)
+        bool consoleOutput,
+        string depthName,
+        string[] packageSpecs,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -82,7 +103,7 @@ internal static class ValidateCommand
                     Environment.ExitCode = 1;
                     return;
                 }
-                jsonContent = await File.ReadAllTextAsync(inputFile);
+                jsonContent = await File.ReadAllTextAsync(inputFile, cancellationToken);
             }
             else
             {
@@ -119,11 +140,81 @@ internal static class ValidateCommand
                 return;
             }
 
-            // Get validation schema
-            var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
-            var innerResolver = new StructureDefinitionSchemaResolver(schemaProvider);
-            var schemaResolver = new CachedValidationSchemaResolver(innerResolver);
-            var schema = schemaResolver.GetSchema(canonicalUrl);
+            // Parse depth (case-insensitive)
+            if (!Enum.TryParse<ValidationDepth>(depthName, ignoreCase: true, out var depth))
+            {
+                Console.WriteLine($"✗ Error: Unknown --depth value '{depthName}'. Use minimal, spec, full, or compatibility.");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            // Build the schema chain. When --package was supplied, layer each package's
+            // StructureDefinitions and ValueSets on top of the base spec, and use the
+            // profile-aware resolver so meta.profile composes the right checks.
+            ISchema effectiveSchema = schemaProvider;
+            ITerminologyService terminology = new InMemoryTerminologyService(schemaProvider.ValueSetProvider);
+            if (packageSpecs.Length > 0)
+            {
+                Console.WriteLine($"→ Loading {packageSpecs.Length} IG package(s)...");
+                var packageResources = new List<Ignixa.PackageManagement.Models.ExtractedResource>();
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                var cacheDir = Path.Combine(Path.GetTempPath(), "ignixa-validator-package-cache");
+                Directory.CreateDirectory(cacheDir);
+
+                using var loggerFactory = new ConsoleWarningLoggerFactory();
+                var cache = new PackageCacheManager(cacheDir, loggerFactory.CreateLogger<PackageCacheManager>());
+                var pkgLoader = new NpmPackageLoader(httpClient, cache, options: null, loggerFactory.CreateLogger<NpmPackageLoader>());
+                var extractor = new PackageExtractor(loggerFactory.CreateLogger<PackageExtractor>());
+
+                foreach (var spec in packageSpecs)
+                {
+                    var (pkgId, pkgVer) = SplitPackageSpec(spec);
+                    if (pkgId is null || pkgVer is null)
+                    {
+                        Console.WriteLine($"✗ Error: Invalid --package value '{spec}'. Expected 'id@version'.");
+                        Environment.ExitCode = 1;
+                        return;
+                    }
+                    try
+                    {
+                        Console.WriteLine($"  • {pkgId}@{pkgVer}");
+                        await using var stream = await pkgLoader.DownloadPackageAsync(pkgId, pkgVer, cancellationToken);
+                        var extracted = await extractor.ExtractAsync(stream, cancellationToken);
+                        packageResources.AddRange(extracted.Resources);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"✗ Error loading package '{spec}': {ex.GetType().Name}: {ex.Message}");
+                        WalkInnerExceptions(ex.InnerException);
+                        Environment.ExitCode = 1;
+                        return;
+                    }
+                }
+
+                effectiveSchema = new ProfileLayeredSchemaProvider(
+                    schemaProvider,
+                    packageResources,
+                    loggerFactory.CreateLogger<ProfileLayeredSchemaProvider>());
+                var packageVs = new PackageValueSetSource(
+                    packageResources,
+                    loggerFactory.CreateLogger<PackageValueSetSource>());
+                terminology = new InMemoryTerminologyService(
+                    primary: schemaProvider.ValueSetProvider,
+                    additional: new[] { (IValueSetProvider)packageVs });
+            }
+
+            // Resolve validation schema. Always use the profile-aware resolver so meta.profile
+            // is honored regardless of whether --package was passed.
+            var innerResolver = new StructureDefinitionSchemaResolver(effectiveSchema, terminologyService: terminology);
+            var cachedResolver = new CachedValidationSchemaResolver(innerResolver);
+            var profileAwareResolver = new ProfileAwareValidationSchemaResolver(cachedResolver);
+
+            var element = sourceNode.ToElement(effectiveSchema);
+            var schema = profileAwareResolver.ResolveForElement(element);
 
             if (schema == null)
             {
@@ -133,9 +224,8 @@ internal static class ValidateCommand
             }
 
             // Perform validation
-            var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+            var settings = new ValidationSettings { Depth = depth };
             var state = new ValidationState();
-            var element = sourceNode.ToElement(schemaProvider);
             var validationResult = schema.Validate(element, settings, state);
 
             // Output results
@@ -153,11 +243,36 @@ internal static class ValidateCommand
             // Exit with appropriate code
             Environment.ExitCode = validationResult.IsValid ? 0 : 1;
         }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Cancelled.");
+            Environment.ExitCode = 130;
+        }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Error: {ex.Message}");
+            Console.WriteLine($"✗ Error: {ex.GetType().Name}: {ex.Message}");
+            WalkInnerExceptions(ex.InnerException);
             Environment.ExitCode = 1;
         }
+    }
+
+    private static void WalkInnerExceptions(Exception? inner)
+    {
+        while (inner != null)
+        {
+            Console.WriteLine($"  Caused by: {inner.GetType().Name}: {inner.Message}");
+            inner = inner.InnerException;
+        }
+    }
+
+    internal static (string? Id, string? Version) SplitPackageSpec(string spec)
+    {
+        var atIndex = spec.LastIndexOf('@');
+        if (atIndex <= 0 || atIndex == spec.Length - 1)
+        {
+            return (null, null);
+        }
+        return (spec[..atIndex], spec[(atIndex + 1)..]);
     }
 
     private static void DisplayConsoleOutput(ValidationResult result, string resourceType, string fhirVersion)
@@ -209,15 +324,15 @@ internal static class ValidateCommand
                 };
 
                 var severityText = issue.Severity.ToString().ToUpperInvariant().PadRight(11);
-                
+
                 Console.WriteLine($"{severityIcon} {severityText} @ {issue.Path}");
                 Console.WriteLine($"   {issue.Message}");
-                
+
                 if (issue.Details?.Text != null && issue.Details.Text != issue.Message)
                 {
                     Console.WriteLine($"   Details: {issue.Details.Text}");
                 }
-                
+
                 Console.WriteLine();
             }
         }
@@ -233,14 +348,14 @@ internal static class ValidateCommand
     private static async Task WriteOperationOutcomeToFile(ValidationResult result, string outputFile)
     {
         var operationOutcome = result.ToOperationOutcome();
-        
+
         var options = new JsonSerializerOptions
         {
             WriteIndented = true
         };
 
         var json = JsonSerializer.Serialize(operationOutcome.MutableNode, options);
-        
+
         // Ensure output directory exists
         var directory = Path.GetDirectoryName(outputFile);
         if (!string.IsNullOrEmpty(directory))
@@ -249,5 +364,55 @@ internal static class ValidateCommand
         }
 
         await File.WriteAllTextAsync(outputFile, json);
+    }
+
+    /// <summary>
+    /// Minimal <see cref="ILoggerFactory"/> that writes Warning-and-above messages to
+    /// <see cref="Console.Error"/>. Used instead of adding a Microsoft.Extensions.Logging.Console
+    /// package dependency.
+    /// </summary>
+    private sealed class ConsoleWarningLoggerFactory : ILoggerFactory
+    {
+        public void AddProvider(ILoggerProvider provider) { }
+
+        public ILogger CreateLogger(string categoryName)
+            => new ConsoleWarningLogger(categoryName);
+
+#pragma warning disable CA1822
+        public ILogger<T> CreateLogger<T>()
+            => new ConsoleWarningLogger<T>();
+#pragma warning restore CA1822
+
+        public void Dispose() { }
+
+        private class ConsoleWarningLogger(string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                if (!IsEnabled(logLevel))
+                {
+                    return;
+                }
+                var message = formatter(state, exception);
+                Console.Error.WriteLine($"[{logLevel}] {category}: {message}");
+                if (exception != null)
+                {
+                    Console.Error.WriteLine($"  Exception: {exception.GetType().Name}: {exception.Message}");
+                }
+            }
+        }
+
+        private sealed class ConsoleWarningLogger<T>() : ConsoleWarningLogger(typeof(T).Name), ILogger<T>
+        {
+        }
     }
 }

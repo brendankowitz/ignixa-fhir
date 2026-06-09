@@ -357,6 +357,124 @@ public class ValidateResourceHandlerTests
         issues[0]["code"]?.GetValue<string>().ShouldBe("not-found");
     }
 
+    [Fact]
+    public async Task GivenResolverImplementingElementSchemaResolver_WhenValidatingWithoutExplicitProfile_ThenResolveForElementIsUsed()
+    {
+        // Arrange
+        var patientJson = """
+        {
+            "resourceType": "Patient",
+            "id": "patient-123",
+            "meta": { "profile": ["http://example.org/StructureDefinition/MyPatient"] }
+        }
+        """;
+
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
+        var command = new ValidateResourceCommand(
+            TenantId: 1,
+            ResourceType: "Patient",
+            JsonNode: jsonNode);
+
+        SetupHttpContext();
+        var composedSchema = new ValidationSchema(
+            "http://hl7.org/fhir/StructureDefinition/Patient",
+            "Patient",
+            Array.Empty<IValidationCheck>(),
+            Array.Empty<IValidationCheck>(),
+            Array.Empty<IValidationCheck>());
+        var schemaResolver = Substitute.For<IValidationSchemaResolver, IElementSchemaResolver>();
+        ((IElementSchemaResolver)schemaResolver).ResolveForElement(Arg.Any<IElement>()).Returns(composedSchema);
+        _schemaResolverFactory(Arg.Any<FhirVersion>(), Arg.Any<int>()).Returns(schemaResolver);
+
+        // Act
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        ((IElementSchemaResolver)schemaResolver).Received(1).ResolveForElement(Arg.Any<IElement>());
+        schemaResolver.DidNotReceive().GetSchema(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task GivenExplicitProfile_WhenValidating_ThenResolveForElementIsNotCalled()
+    {
+        // Arrange
+        var patientJson = """
+        {
+            "resourceType": "Patient",
+            "id": "patient-123"
+        }
+        """;
+
+        var explicitProfile = "http://example.org/StructureDefinition/ExplicitPatient";
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
+        var command = new ValidateResourceCommand(
+            TenantId: 1,
+            ResourceType: "Patient",
+            JsonNode: jsonNode,
+            Profile: explicitProfile);
+
+        SetupHttpContext();
+        var composedSchema = new ValidationSchema(
+            explicitProfile,
+            "Patient",
+            Array.Empty<IValidationCheck>(),
+            Array.Empty<IValidationCheck>(),
+            Array.Empty<IValidationCheck>());
+        var schemaResolver = Substitute.For<IValidationSchemaResolver, IElementSchemaResolver>();
+        schemaResolver.GetSchema(explicitProfile).Returns(composedSchema);
+        _schemaResolverFactory(Arg.Any<FhirVersion>(), Arg.Any<int>()).Returns(schemaResolver);
+
+        // Act
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        ((IElementSchemaResolver)schemaResolver).DidNotReceive().ResolveForElement(Arg.Any<IElement>());
+        schemaResolver.Received(1).GetSchema(explicitProfile);
+    }
+
+    [Fact]
+    public async Task GivenResolverWithoutElementSchemaResolver_WhenValidating_ThenFallsBackToBaseSchema()
+    {
+        // Arrange
+        var patientJson = """
+        {
+            "resourceType": "Patient",
+            "id": "patient-123",
+            "meta": { "profile": ["http://example.org/StructureDefinition/MyPatient"] }
+        }
+        """;
+
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
+        var command = new ValidateResourceCommand(
+            TenantId: 1,
+            ResourceType: "Patient",
+            JsonNode: jsonNode);
+
+        SetupHttpContext();
+        var baseCanonical = "http://hl7.org/fhir/StructureDefinition/Patient";
+        var baseSchema = new ValidationSchema(
+            baseCanonical,
+            "Patient",
+            Array.Empty<IValidationCheck>(),
+            Array.Empty<IValidationCheck>(),
+            Array.Empty<IValidationCheck>());
+        var schemaResolver = Substitute.For<IValidationSchemaResolver>();
+        schemaResolver.GetSchema(baseCanonical).Returns(baseSchema);
+        _schemaResolverFactory(Arg.Any<FhirVersion>(), Arg.Any<int>()).Returns(schemaResolver);
+
+        // Act
+        var result = await _handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        schemaResolver.Received(1).GetSchema(baseCanonical);
+    }
+
     #endregion
 
     #region FHIR Version Tests

@@ -1,8 +1,9 @@
-// <copyright file="InMemoryTerminologyService.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
 
@@ -13,9 +14,9 @@ namespace Ignixa.Validation.Services;
 /// Returns warnings for unknown ValueSets to enable graceful degradation.
 /// Intended for testing and prototype scenarios - production systems should use external terminology servers.
 /// </summary>
-public partial class InMemoryTerminologyService : ITerminologyService
+public class InMemoryTerminologyService : ITerminologyService
 {
-    private readonly Dictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal);
     private readonly IValueSetProvider _valueSetProvider;
 
     /// <summary>
@@ -25,10 +26,79 @@ public partial class InMemoryTerminologyService : ITerminologyService
     public InMemoryTerminologyService(IValueSetProvider valueSetProvider)
     {
         _valueSetProvider = valueSetProvider ?? throw new ArgumentNullException(nameof(valueSetProvider));
-
-        // _valueSets dictionary is populated lazily on-demand in ValidateCodeAsync
-        // This avoids upfront memory cost and allows efficient caching
     }
+
+    /// <summary>
+    /// Initializes the service with a primary ValueSet provider plus additional sources
+    /// (e.g. package-loaded IG ValueSets). On lookup the additional sources are queried
+    /// in order before falling back to the primary provider, so IG-defined ValueSets
+    /// override base-spec ones with the same canonical.
+    /// </summary>
+    /// <param name="primary">Base-spec ValueSet provider (e.g. <c>R4ValueSetProvider</c>).</param>
+    /// <param name="additional">Additional sources, queried first.</param>
+    public InMemoryTerminologyService(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
+    {
+        ArgumentNullException.ThrowIfNull(primary);
+        ArgumentNullException.ThrowIfNull(additional);
+        _valueSetProvider = new LayeredValueSetProvider(primary, additional);
+    }
+
+    /// <summary>
+    /// IValueSetProvider decorator that queries additional providers (in declared order)
+    /// before falling back to the primary. Returns null only when no provider in the
+    /// chain knows the ValueSet.
+    /// </summary>
+    private sealed class LayeredValueSetProvider : IValueSetProvider
+    {
+        private readonly IValueSetProvider _primary;
+        private readonly IReadOnlyList<IValueSetProvider> _additional;
+
+        public LayeredValueSetProvider(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
+        {
+            _primary = primary;
+            _additional = additional.ToArray();
+        }
+
+        public IReadOnlyList<FhirCode>? GetCodes(string valueSetUrl)
+        {
+            foreach (var src in _additional)
+            {
+                var codes = src.GetCodes(valueSetUrl);
+                if (codes != null)
+                {
+                    return codes;
+                }
+            }
+            return _primary.GetCodes(valueSetUrl);
+        }
+
+        public bool IsKnownValueSet(string valueSetUrl)
+        {
+            foreach (var src in _additional)
+            {
+                if (src.IsKnownValueSet(valueSetUrl))
+                {
+                    return true;
+                }
+            }
+            return _primary.IsKnownValueSet(valueSetUrl);
+        }
+
+        public bool? IsValidCode(string valueSetUrl, string code)
+        {
+            foreach (var src in _additional)
+            {
+                var result = src.IsValidCode(valueSetUrl, code);
+                if (result.HasValue)
+                {
+                    return result;
+                }
+            }
+            return _primary.IsValidCode(valueSetUrl, code);
+        }
+    }
+
+    /// <summary>
     /// Returns ERROR for known ValueSets with invalid codes.
     /// </summary>
     /// <param name="system">The code system URL.</param>
@@ -44,7 +114,6 @@ public partial class InMemoryTerminologyService : ITerminologyService
         string? valueSetUrl,
         CancellationToken cancellationToken)
     {
-        // Handle null/empty inputs
         if (string.IsNullOrWhiteSpace(code))
         {
             return Task.FromResult(new TerminologyValidationResult(
@@ -61,35 +130,27 @@ public partial class InMemoryTerminologyService : ITerminologyService
                 Message: "No ValueSet URL provided - skipping terminology validation"));
         }
 
-        // Normalize the URL by removing version specifier (e.g., "url|4.0.1" -> "url")
         var normalizedUrl = valueSetUrl.Contains('|', StringComparison.Ordinal)
             ? valueSetUrl[..valueSetUrl.LastIndexOf('|')]
             : valueSetUrl;
 
-        // Check if we have this ValueSet in memory cache
-        if (!_valueSets.TryGetValue(normalizedUrl, out var validCodes))
+        HashSet<string>? validCodes;
+        if (!_valueSets.TryGetValue(normalizedUrl, out validCodes))
         {
-            // Try to get from IValueSetProvider
             var providerCodes = _valueSetProvider.GetCodes(normalizedUrl);
-
             if (providerCodes is null)
             {
-                // Unknown ValueSet - return WARNING (graceful degradation)
                 return Task.FromResult(new TerminologyValidationResult(
                     IsValid: true,
                     Severity: IssueSeverity.Warning,
                     Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - provider does not contain this ValueSet"));
             }
-
-            // Cache the codes for future lookups (convert to HashSet for fast Contains checks)
-            validCodes = new HashSet<string>(providerCodes.Select(c => c.Code), StringComparer.Ordinal);
-            _valueSets[normalizedUrl] = validCodes;
+            var built = new HashSet<string>(providerCodes.Select(c => c.Code), StringComparer.Ordinal);
+            validCodes = _valueSets.GetOrAdd(normalizedUrl, built);
         }
 
-        // Check if the code is in the ValueSet
         if (!validCodes.Contains(code))
         {
-            // Invalid code - return ERROR
             var message = system != null
                 ? $"The provided code '{system}#{code}' was not found in the value set '{valueSetUrl}'"
                 : $"The provided code '{code}' was not found in the value set '{valueSetUrl}'";
@@ -100,7 +161,6 @@ public partial class InMemoryTerminologyService : ITerminologyService
                 Message: message));
         }
 
-        // Valid code
         return Task.FromResult(new TerminologyValidationResult(
             IsValid: true,
             Severity: IssueSeverity.Information,
@@ -151,19 +211,14 @@ public partial class InMemoryTerminologyService : ITerminologyService
         string? version,
         CancellationToken cancellationToken)
     {
-        // Use existing ValidateCodeAsync for code validation
         var codeValidation = await ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
-
-        // Determine severity based on binding strength and code validation result
         var (isValid, severity, message) = DetermineSeverity(strength, codeValidation);
-
-        // For display validation, we don't have CodeSystem lookups in memory, so return null
         return new BindingValidationResult(
             IsValid: isValid,
             Strength: strength,
             Severity: severity,
             Message: message,
-            SuggestedDisplay: null); // In-memory service doesn't have CodeSystem definitions
+            SuggestedDisplay: null);
     }
 
     /// <summary>
@@ -201,16 +256,16 @@ public partial class InMemoryTerminologyService : ITerminologyService
         return strength switch
         {
             BindingStrength.Required => codeValidation.IsValid
-                ? (true, codeValidation.Severity, codeValidation.Message)  // Preserve warnings from unknown ValueSets
+                ? (true, codeValidation.Severity, codeValidation.Message)
                 : (false, IssueSeverity.Error, codeValidation.Message),
 
             BindingStrength.Extensible => codeValidation.IsValid
-                ? (true, codeValidation.Severity, codeValidation.Message)  // Preserve warnings
-                : (true, IssueSeverity.Warning, codeValidation.Message), // Warning, not error for extensible
+                ? (true, codeValidation.Severity, codeValidation.Message)
+                : (true, IssueSeverity.Warning, codeValidation.Message),
 
-            BindingStrength.Preferred => (true, codeValidation.Severity, codeValidation.Message),  // Preserve warnings
+            BindingStrength.Preferred => (true, codeValidation.Severity, codeValidation.Message),
 
-            BindingStrength.Example => (true, codeValidation.Severity, codeValidation.Message),  // Preserve warnings
+            BindingStrength.Example => (true, codeValidation.Severity, codeValidation.Message),
 
             _ => (true, IssueSeverity.Warning, "Unknown binding strength")
         };

@@ -110,6 +110,17 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitFunctionCall(FunctionCallExpression expression, EvaluationContext context)
     {
+        if (IsPositionalFunction(expression.FunctionName))
+        {
+            var unorderedSource = GetUnorderedNavigationSource(expression.Focus);
+            if (unorderedSource != null)
+            {
+                // Result is undefined per FHIRPath spec. Return empty rather than throw;
+                // FhirPathAnalyzer surfaces this as a design-time error.
+                return [];
+            }
+        }
+
         var focusElements = expression.Focus != null
             ? EvaluateExpression(context.Focus, expression.Focus, context)
             : context.Focus;
@@ -966,6 +977,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
     {
+        var unorderedSource = GetUnorderedNavigationSource(expression.Collection);
+        if (unorderedSource != null)
+        {
+            // Result is undefined per FHIRPath spec. Return empty rather than throw;
+            // FhirPathAnalyzer surfaces this as a design-time error.
+            return [];
+        }
+
         var collectionElements = EvaluateExpression(context.Focus, expression.Collection, context).ToList();
 
         // Optimization: Fast path for constant integer indexes
@@ -998,31 +1017,28 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         var operand = EvaluateExpression(context.Focus, expression.Operand, context).ToList();
 
-        if (expression.Operator == "-" && operand.Count == 1)
-        {
-            var value = operand[0].Value;
-            try
-            {
-                if (value is int i)
-                {
-                    return [CreateInteger(-i)];
-                }
-                if (value is long l && l >= int.MinValue && l <= int.MaxValue)
-                {
-                    return [CreateInteger(-(int)l)];
-                }
-                if (value is IConvertible)
-                {
-                    var numeric = Convert.ToDecimal(value);
-                    return [CreateDecimal(-numeric)];
-                }
-            }
-            catch
-            {
-            }
-        }
+        if (expression.Operator != "-" || operand.Count != 1)
+            return operand;
 
-        return operand;
+        var value = operand[0].Value;
+        try
+        {
+            return value switch
+            {
+                int i => [CreateInteger(checked(-i))],
+                long l when l >= int.MinValue && l <= int.MaxValue => [CreateInteger(checked(-(int)l))],
+                long l => [CreateDecimal(-(decimal)l)],
+                decimal d => [CreateDecimal(-d)],
+                double d => [CreateDecimal(-(decimal)d)],
+                float f => [CreateDecimal(-(decimal)f)],
+                Types.Quantity q => [FunctionHelpers.CreateQuantity(new Types.Quantity(-q.Value, q.Unit))],
+                _ => [] // non-numeric operand: undefined per FHIRPath spec → empty
+            };
+        }
+        catch (OverflowException)
+        {
+            return [];
+        }
     }
 
 
@@ -1835,6 +1851,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             _ => "string"
         };
     }
+
+    private static bool IsOrderDependentFunction(string functionName) =>
+        UnorderedCollectionDetection.IsOrderDependentFunction(functionName);
+
+    private static bool IsPositionalFunction(string functionName) =>
+        UnorderedCollectionDetection.IsPositionalFunction(functionName);
+
+    private static string? GetUnorderedNavigationSource(Expression? focus) =>
+        UnorderedCollectionDetection.GetUnorderedNavigationSource(focus);
 
     /// <summary>
     /// Simple implementation of IElement for primitive values.

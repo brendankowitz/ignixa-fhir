@@ -365,6 +365,23 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             focusTypes = expression.Focus.AcceptVisitor(visitor, context);
         }
 
+        var unorderedSource = GetUnorderedNavigationSource(expression.Focus);
+        if (unorderedSource != null && IsOrderDependentFunction(functionName))
+        {
+            if (IsPositionalFunction(functionName))
+            {
+                context.AddError(
+                    $"Function '{functionName}()' requires positional access on unordered output from {unorderedSource}(). Result is undefined.",
+                    expression);
+            }
+            else
+            {
+                context.AddWarning(
+                    $"Function '{functionName}()' on unordered output from {unorderedSource}() yields non-deterministic results.",
+                    expression);
+            }
+        }
+
         var funcDef = _symbolTable.Get(functionName);
 
         var innerContext = context.PushTypeContext(focusTypes);
@@ -654,6 +671,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var visitor = _childVisitor ?? this;
         var collectionResult = expression.Collection?.AcceptVisitor(visitor, context) ?? new FhirPathTypeSet();
         expression.Index?.AcceptVisitor(visitor, context);
+
+        var unorderedSource = GetUnorderedNavigationSource(expression.Collection);
+        if (unorderedSource != null)
+        {
+            context.AddError(
+                $"Indexer access on unordered output from {unorderedSource}(). Result is undefined.",
+                expression);
+        }
 
         return collectionResult.AsSingle();
     }
@@ -1074,6 +1099,15 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             }
         }
     }
+
+    private static bool IsOrderDependentFunction(string functionName) =>
+        UnorderedCollectionDetection.IsOrderDependentFunction(functionName);
+
+    private static bool IsPositionalFunction(string functionName) =>
+        UnorderedCollectionDetection.IsPositionalFunction(functionName);
+
+    private static string? GetUnorderedNavigationSource(Expression? focus) =>
+        UnorderedCollectionDetection.GetUnorderedNavigationSource(focus);
 
     /// <summary>
     /// Checks if a type is compatible with a supported context type.

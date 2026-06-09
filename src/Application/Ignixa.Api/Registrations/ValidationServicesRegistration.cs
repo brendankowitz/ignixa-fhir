@@ -1,6 +1,6 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
@@ -35,7 +35,8 @@ public static class ValidationServicesRegistration
         builder.Register(c =>
         {
             var compiler = c.Resolve<FhirPathParser>();
-            return new StructureDefinitionSchemaBuilder(compiler);
+            var logger = c.Resolve<ILogger<StructureDefinitionSchemaBuilder>>();
+            return new StructureDefinitionSchemaBuilder(compiler, logger);
         })
         .AsSelf()
         .SingleInstance();
@@ -60,6 +61,11 @@ public static class ValidationServicesRegistration
     private static void RegisterValidationSchemaResolverFactory(ContainerBuilder builder)
     {
         // Multi-tenant factory: Func<FhirVersion, int, IValidationSchemaResolver>
+        // The returned resolver is a ProfileAwareValidationSchemaResolver so that
+        // consumers with access to the resource element can call ResolveForElement()
+        // for meta.profile composition, while legacy callers that look up by canonical
+        // URL via IValidationSchemaResolver.GetSchema() still work (delegated to the
+        // inner cached resolver).
         builder.Register<Func<FhirVersion, int, IValidationSchemaResolver>>(c =>
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
@@ -70,7 +76,8 @@ public static class ValidationServicesRegistration
             {
                 var schemaProvider = versionContext.GetSchemaProvider(version, tenantId);
                 var resolver = new StructureDefinitionSchemaResolver(schemaProvider, schemaBuilder, terminologyService);
-                return new CachedValidationSchemaResolver(resolver);
+                var cached = new CachedValidationSchemaResolver(resolver);
+                return new ProfileAwareValidationSchemaResolver(cached);
             };
         }).SingleInstance();
 

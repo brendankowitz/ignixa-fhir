@@ -110,6 +110,28 @@ public class ChoiceElementCheck : IValidationCheck
                     $"Choice element '{_baseElementName}[x]' has type '{actualTypeName}' which is not in the allowed types: {allowedTypesStr}"));
         }
 
+        // When the chosen variant is a FHIR primitive (e.g. valueBoolean, valueInteger),
+        // validate the value's JSON kind and primitive rules. Choice variants are skipped by
+        // TypeCheck (their concrete type is only known at runtime from the suffix), so this is
+        // where a malformed primitive like valueBoolean=0 or valueInteger=3.1 is caught.
+        var variantFhirType = char.ToLowerInvariant(actualTypeName[0]) + actualTypeName.Substring(1);
+        if (FhirPrimitiveValidator.IsPrimitiveType(variantFhirType)
+            && !FhirPrimitiveValidator.TryValidate(actualChild, variantFhirType, out var primitiveReason))
+        {
+            // FHIR OperationOutcome expressions reference a choice element via the base name and
+            // .ofType(), e.g. "Parameters.parameter[0].value.ofType(boolean)" rather than the
+            // concrete "valueBoolean" key.
+            var variantExpression = string.IsNullOrEmpty(element.Location)
+                ? $"{_baseElementName}.ofType({variantFhirType})"
+                : $"{element.Location}.{_baseElementName}.ofType({variantFhirType})";
+            return ValidationResult.Failure(
+                new ValidationIssue(
+                    IssueSeverity.Error,
+                    "type-1",
+                    variantExpression,
+                    $"Invalid value for '{actualChild.Name}': {primitiveReason}"));
+        }
+
         return ValidationResult.Success();
     }
 }

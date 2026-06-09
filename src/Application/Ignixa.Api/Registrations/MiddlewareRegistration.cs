@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Middleware;
 
 namespace Ignixa.Api.Registrations;
@@ -74,12 +75,10 @@ public static class MiddlewareRegistration
                 !context.Items.ContainsKey("TenantId") &&
                 fhirContextAccessor.RequestContext?.TenantId == 0)
             {
-                // Safe: Using structured logging with placeholders prevents log injection.
-                // The Path value is passed as a parameter, not concatenated into the message.
                 logger.LogWarning(
                     "TenantResolutionMiddleware may not have run before FhirRequestContextMiddleware. " +
                     "Route: {Path}, TenantId in context: {TenantId}",
-                    context.Request.Path.ToString(),
+                    context.Request.Path.Value.SanitizeForLog(),
                     fhirContextAccessor.RequestContext?.TenantId);
             }
 

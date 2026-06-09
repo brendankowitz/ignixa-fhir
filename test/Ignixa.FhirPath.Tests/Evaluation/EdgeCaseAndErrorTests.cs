@@ -532,6 +532,46 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
+    public void GivenLargeLong_WhenUnaryMinus_ThenReturnsNegatedDecimal()
+    {
+        // Arrange
+        var expr = _parser.Parse("-2147483648L");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.Equal(-2147483648m, result.Value);
+        Assert.Equal("decimal", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenQuantity_WhenUnaryMinus_ThenQuantityHasChildren()
+    {
+        // Arrange
+        var expr = _parser.Parse("-(5 'mg')");
+        var valueExpr = _parser.Parse("(-(5 'mg')).value");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+        var valueResult = _evaluator.Evaluate(root, valueExpr).ToList();
+        var valueChildren = result.Children("value").ToList();
+        var unitChildren = result.Children("unit").ToList();
+
+        // Assert
+        Assert.Equal("Quantity", result.InstanceType);
+        Assert.False(result.HasPrimitiveValue);
+        Assert.Single(valueChildren);
+        Assert.Equal(-5m, valueChildren[0].Value);
+        Assert.Single(unitChildren);
+        Assert.Equal("mg", unitChildren[0].Value);
+        Assert.Single(valueResult);
+        Assert.Equal(-5m, valueResult[0].Value);
+    }
+
+    [Fact]
     public void GivenPositiveInteger_WhenUnaryPlus_ThenReturnsValue()
     {
         // Arrange
@@ -543,6 +583,69 @@ public class EdgeCaseAndErrorTests
 
         // Assert
         Assert.Equal(5, result.Value);
+    }
+
+    [Fact]
+    public void GivenBooleanOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // Regression for #246 (testLiteralIntegerNegative1Invalid, testPrecedence1):
+        // FHIRPath spec: unary minus on non-numeric operand (e.g. boolean) is undefined.
+        // Spec test '-1.convertsToInteger()' is marked invalid="semantic":
+        //   parses as -(1.convertsToInteger()) -> -(true) -> empty (not -1).
+        var expr = _parser.Parse("-1.convertsToInteger()");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenBooleanOperandFromConvertsToDecimal_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // Regression for #246 testLiteralDecimalNegative01Invalid:
+        // '-0.1.convertsToDecimal()' must parse as -(0.1.convertsToDecimal()) -> -(true) -> empty.
+        var expr = _parser.Parse("-0.1.convertsToDecimal()");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenStringOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // FHIRPath spec: unary minus on a string is undefined.
+        var expr = _parser.Parse("-'5'");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenDecimalLiteral_WhenUnaryMinus_ThenReturnsNegative()
+    {
+        // Sanity check: unary minus on a decimal still works.
+        var expr = _parser.Parse("-5.5");
+        var root = CreateIntegerElement(0);
+
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        Assert.Equal(-5.5m, result.Value);
+        Assert.Equal("decimal", result.InstanceType);
+    }
+
+    [Fact]
+    public void GivenIntMinValue_WhenUnaryMinus_ThenReturnsEmpty()
+    {
+        // -int.MinValue = 2147483648 overflows int32; per FHIRPath spec overflow → empty.
+        var root = CreateIntegerElement(int.MinValue);
+        var result = _evaluator.Evaluate(root, _parser.Parse("-$this")).ToList();
+
+        Assert.Empty(result);
     }
 
     #endregion

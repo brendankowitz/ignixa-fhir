@@ -1,7 +1,7 @@
-// <copyright file="ValidationSchema.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
 
@@ -57,6 +57,82 @@ public sealed class ValidationSchema
     /// </summary>
     public IReadOnlyList<IValidationCheck> Checks =>
         _universalChecks.Concat(_specChecks).Concat(_profileChecks).ToList();
+
+    /// <summary>
+    /// Composes multiple <see cref="ValidationSchema"/> instances into a single schema.
+    /// Universal, spec, and profile check lists are concatenated in input order, preserving
+    /// the tier-aware execution semantics of <see cref="Validate"/>.
+    /// <para>
+    /// The first schema in <paramref name="schemas"/> donates its <c>CanonicalUrl</c> and
+    /// <c>ResourceType</c> to the composed result; this matches the convention of treating
+    /// the resource's base StructureDefinition as the primary schema with profiles layered
+    /// on top.
+    /// </para>
+    /// </summary>
+    /// <param name="schemas">Schemas to compose. Must not be empty.</param>
+    /// <returns>A new schema whose check lists are the union of the inputs.</returns>
+    public static ValidationSchema Compose(IReadOnlyList<ValidationSchema> schemas)
+    {
+        ArgumentNullException.ThrowIfNull(schemas);
+        if (schemas.Count == 0)
+        {
+            throw new ArgumentException("Cannot compose an empty list of schemas.", nameof(schemas));
+        }
+
+        if (schemas.Count == 1)
+        {
+            return schemas[0];
+        }
+
+        var primary = schemas[0];
+
+        // Singleton checks (marked with ISingletonCheck) are per-resource and must run at most
+        // once: dedup by concrete type, first occurrence wins. Parameterized per-element checks
+        // (cardinality, type, binding) are not marked and are concatenated — each carries distinct
+        // element metadata. The marker keeps this contract with the check, not a hardcoded type list.
+        var universal = ConcatDeduplicatingSingletons(schemas, static s => s._universalChecks);
+        var spec = ConcatDeduplicatingSingletons(schemas, static s => s._specChecks);
+
+        // Profile checks: no dedup — all profile-tier checks (invariants, slicing) are meaningful
+        var profile = new List<IValidationCheck>();
+        foreach (var s in schemas)
+        {
+            profile.AddRange(s._profileChecks);
+        }
+
+        return new ValidationSchema(
+            canonicalUrl: primary.CanonicalUrl,
+            resourceType: primary.ResourceType,
+            universalChecks: universal,
+            specChecks: spec,
+            profileChecks: profile);
+    }
+
+    private static List<IValidationCheck> ConcatDeduplicatingSingletons(
+        IReadOnlyList<ValidationSchema> schemas,
+        Func<ValidationSchema, IReadOnlyList<IValidationCheck>> tierSelector)
+    {
+        var seenSingletonTypes = new HashSet<Type>();
+        var merged = new List<IValidationCheck>();
+        foreach (var schema in schemas)
+        {
+            foreach (var check in tierSelector(schema))
+            {
+                if (check is ISingletonCheck)
+                {
+                    if (seenSingletonTypes.Add(check.GetType()))
+                    {
+                        merged.Add(check);
+                    }
+                }
+                else
+                {
+                    merged.Add(check);
+                }
+            }
+        }
+        return merged;
+    }
 
     /// <summary>
     /// Validates an element using depth-appropriate checks.

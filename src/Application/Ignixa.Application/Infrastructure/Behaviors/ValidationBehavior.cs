@@ -1,6 +1,6 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
@@ -87,15 +87,25 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
 
             // Get version-specific schema resolver from factory
             var schemaResolver = _schemaResolverFactory(fhirVersionEnum);
+
+            // Build element first - need it both for ProfileAware resolution and for validation
+            var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
+            var element = request.JsonNode.ToElement(schemaProvider);
+
+            // Prefer element-aware resolution (composes meta.profile checks). The DI factory
+            // returns a resolver implementing IElementSchemaResolver, but consumers see only
+            // IValidationSchemaResolver - feature-detect the richer API. Falls back to
+            // canonical-URL lookup otherwise (e.g. test doubles without the production wrapping).
+            ValidationSchema? schema = null;
             var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{request.ResourceType}";
-            var schema = schemaResolver.GetSchema(canonicalUrl);
+            if (schemaResolver is IElementSchemaResolver elementResolver)
+            {
+                schema = elementResolver.ResolveForElement(element);
+            }
+            schema ??= schemaResolver.GetSchema(canonicalUrl);
 
             if (schema != null)
             {
-                // Get schema provider for element conversion
-                var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
-                var element = request.JsonNode.ToElement(schemaProvider);
-
                 var settings = new ValidationSettings
                 {
                     Depth = validationDepth,

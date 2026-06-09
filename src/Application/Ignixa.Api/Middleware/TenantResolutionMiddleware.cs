@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -60,8 +61,8 @@ public class TenantResolutionMiddleware : IDisposable
                 _logger.LogWarning(
                     "Rejected request to system partition {TenantId} for request {Method} {Path}",
                     tenantId,
-                    context.Request.Method,
-                    context.Request.Path);
+                    context.Request.Method.SanitizeForLog(),
+                    context.Request.Path.Value.SanitizeForLog());
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
@@ -88,8 +89,8 @@ public class TenantResolutionMiddleware : IDisposable
                 _logger.LogWarning(
                     "Tenant {TenantId} not found or inactive for request {Method} {Path}",
                     tenantId,
-                    context.Request.Method,
-                    context.Request.Path);
+                    context.Request.Method.SanitizeForLog(),
+                    context.Request.Path.Value.SanitizeForLog());
 
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
@@ -114,13 +115,13 @@ public class TenantResolutionMiddleware : IDisposable
                 "Resolved tenant {TenantId} ({DisplayName}) for request {Method} {Path}",
                 tenantId,
                 tenantConfig.DisplayName,
-                context.Request.Method,
-                context.Request.Path);
+                context.Request.Method.SanitizeForLog(),
+                context.Request.Path.Value.SanitizeForLog());
         }
         else if (IsResourceEndpoint(context))
         {
             // No tenantId in route - check if this is a resource endpoint requiring tenant-agnostic routing
-            _logger.LogTrace("No tenantId in route, attempting auto-detect for {Method} {Path}", context.Request.Method, context.Request.Path);
+            _logger.LogTrace("No tenantId in route, attempting auto-detect for {Method} {Path}", context.Request.Method.SanitizeForLog(), context.Request.Path.Value.SanitizeForLog());
 
             var defaultTenantId = await GetSingleTenantIdAsync(context.RequestAborted);
 
@@ -141,8 +142,8 @@ public class TenantResolutionMiddleware : IDisposable
                         "Auto-detected single tenant {TenantId} ({DisplayName}) for agnostic route {Method} {Path}",
                         defaultTenantId.Value,
                         tenantConfig.DisplayName,
-                        context.Request.Method,
-                        context.Request.Path);
+                        context.Request.Method.SanitizeForLog(),
+                        context.Request.Path.Value.SanitizeForLog());
                 }
             }
             else
@@ -150,8 +151,8 @@ public class TenantResolutionMiddleware : IDisposable
                 // Multiple tenants exist - agnostic route is ambiguous
                 _logger.LogWarning(
                     "Tenant-agnostic route {Method} {Path} used in multi-tenant scenario (requires explicit /tenant/{{id}}/ prefix)",
-                    context.Request.Method,
-                    context.Request.Path);
+                    context.Request.Method.SanitizeForLog(),
+                    context.Request.Path.Value.SanitizeForLog());
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
@@ -171,7 +172,7 @@ public class TenantResolutionMiddleware : IDisposable
         else
         {
             // No tenantId in route and not a resource endpoint - this is expected for /metadata, /health, etc.
-            _logger.LogTrace("No tenantId found in route for non-resource endpoint {Method} {Path}", context.Request.Method, context.Request.Path);
+            _logger.LogTrace("No tenantId found in route for non-resource endpoint {Method} {Path}", context.Request.Method.SanitizeForLog(), context.Request.Path.Value.SanitizeForLog());
         }
 
         await _next(context);

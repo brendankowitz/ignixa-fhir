@@ -1,0 +1,33 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "Patient",
+  "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "version": "4.0.1",
+  "name": "Patient",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "snapshot": {
+    "element": [
+      {
+        "id": "Patient",
+        "path": "Patient",
+        "min": 0,
+        "max": "*",
+        "constraint": [
+          {
+            "key": "ele-1",
+            "severity": "error",
+            "human": "All FHIR elements must have a @value or children",
+            "expression": "hasValue() or (children().count() > id.count())"
+          }
+        ]
+      },
+      { "id": "Patient.id", "path": "Patient.id", "min": 0, "max": "1",
+        "type": [{ "code": "http://hl7.org/fhirpath/System.String",
+          "extension": [{ "url": "http://hl7.org/fhir/StructureDefinition/structuredefinition-fhir-type", "valueUrl": "id" }] }] },
+      { "id": "Patient.active", "path": "Patient.active", "min": 0, "max": "1",
+        "type": [{ "code": "boolean" }] }
+    ]
+  }
+}

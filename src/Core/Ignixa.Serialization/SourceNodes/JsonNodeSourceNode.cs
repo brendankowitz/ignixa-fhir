@@ -102,6 +102,17 @@ public class JsonNodeSourceNode : ISourceNavigator
             return node as T;
         }
 
+        // Expose the primitive VALUE node specifically (never the shadow/content object).
+        // When a FHIR primitive carries both a value and a "_value" shadow (extensions/id),
+        // Meta<JsonNode>() returns the shadow object; callers that need to inspect the raw
+        // primitive value (e.g. strict primitive validation) request this instead.
+        if (typeof(T) == typeof(JsonPrimitiveValueNode))
+        {
+            return _valueNode is JsonValue valueNode
+                ? new JsonPrimitiveValueNode(valueNode) as T
+                : null;
+        }
+
         return null;
     }
 

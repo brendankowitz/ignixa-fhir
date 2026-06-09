@@ -106,8 +106,9 @@ public sealed class ProcedureState : ScenarioState
         node["status"] = Status;
 
         // Set category
+        // R4/R4B/STU3: 0..1 CodeableConcept (single object). R5: 0..* CodeableConcept (JSON array).
         var categoryValue = Category ?? InferCategory();
-        node["category"] = new JsonObject
+        var categoryCodeableConcept = new JsonObject
         {
             ["coding"] = new JsonArray
             {
@@ -119,6 +120,9 @@ public sealed class ProcedureState : ScenarioState
                 }
             }
         };
+        node["category"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+            ? new JsonArray { categoryCodeableConcept }
+            : categoryCodeableConcept;
 
         // Set procedure code
         node["code"] = new JsonObject
@@ -254,12 +258,13 @@ public sealed class ProcedureState : ScenarioState
         }
 
         // Set outcome if provided
+        // R4/R4B/STU3/R5: 0..1 CodeableConcept (single object). R6: 0..* CodeableConcept (JSON array).
         if (!string.IsNullOrEmpty(Outcome))
         {
-            node["outcome"] = new JsonObject
-            {
-                ["text"] = Outcome
-            };
+            var outcomeCodeableConcept = new JsonObject { ["text"] = Outcome };
+            node["outcome"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R6
+                ? new JsonArray { outcomeCodeableConcept }
+                : outcomeCodeableConcept;
         }
 
         // Set complication if provided

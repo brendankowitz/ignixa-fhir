@@ -1,0 +1,868 @@
+{
+
+  "resourceType": "ExplanationOfBenefit",
+  "id":"68413ddb-aec1-454e-8b10-96a40d2662ae",
+  "meta": {
+    "versionId": "6",
+    "lastUpdated": "2024-01-15T00:00:00.000+00:00",
+    "profile": [
+      "http://hl7.org/fhir/us/carin-bb/StructureDefinition/C4BB-ExplanationOfBenefit-Inpatient-Institutional|2.1.0"
+    ]
+  },
+  "language": "en-US",
+  "identifier": [
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBIdentifierType",
+            "code": "uc"
+          }
+        ]
+      },
+      "system": "https://www.example.org/fhir/EOBIdentifier",
+      "value": "EOBID-EXAMPLE-000000000000000000"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/claimid",
+      "value": "CLM-EXAMPLE-0001"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/memberid",
+      "value": "MEM-EXAMPLE-0001"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/payerclaimid",
+      "value": "PCL-EXAMPLE-0001"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/lob",
+      "value": "LOB-EXAMPLE"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/group",
+      "value": "GRP-EXAMPLE"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/plan",
+      "value": "PLAN-EXAMPLE"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/soureid",
+      "value": "LOB-EXAMPLE"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "https://example.org/payer-internal/lastupdate",
+      "value": "2024-11-15"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+      "value": "institutional"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "FILL"
+          }
+        ]
+      },
+      "system": "http://terminology.hl7.org/CodeSystem/ex-claimsubtype",
+      "value": "outpatient"
+    }
+  ],
+  "status": "cancelled",
+  "type": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+        "code": "institutional"
+      }
+    ],
+    "text": "Institutional"
+  },
+  "subType": {
+    "coding": [
+      {
+	  "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBInstitutionalClaimSubType",
+  "version": "2.2.0",
+  "code": "inpatient",
+  "display": "Inpatient"
+  }
+    ]
+  },
+  
+  "use": "claim",
+  "patient": {
+    "reference": "Patient/b2e7bc9f-2ee9-413a-8573-5fc576ca164e"
+  },
+  "billablePeriod": {
+    "start": "2022-01-27",
+    "end": "2019-01-27"
+  },
+  "created": "2022-03-28",
+  "insurer": {
+    "reference": "Organization/7af4e9f5-285a-44ac-8923-5c9d782579d5",
+    "display": "Example Health Plan"
+  },
+  "provider": {
+    "reference": "Organization/7af4e9f5-285a-44ac-8923-5c9d782579d5",
+    "display": "Example Health Plan"
+  },
+  "related":
+  [
+    {
+      "relationship":{
+        "coding":[
+          {
+            "system":"http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBRelatedClaimRelationshipCodes",
+            "code":"replacedby"
+            
+          }
+        ]
+      },
+    
+    "reference":{
+    "system":"http://example.org/claims",
+    "value":"12345"
+    }
+  }
+  ],
+  "payee": {
+    "type": {
+      "coding": [
+        {
+          "system": "http://terminology.hl7.org/CodeSystem/payeetype",
+          "code": "provider"
+        }
+      ]
+    },
+    "party": {
+      "reference": "Organization/7af4e9f5-285a-44ac-8923-5c9d782579d5"
+    }
+  },
+  "outcome": "queued",
+   "careTeam": [
+    {
+      "sequence": 1,
+      "provider": {
+        "reference": "Practitioner/0a33e67d-110c-4da1-a3de-cf71e99a2a92",
+        "display":"EXAMPLE PROVIDER GROUP"
+      },
+      "responsible": true,
+      "role": {
+        "coding": [
+          {
+            "system": " http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBClaimCareTeamRole",
+            "code": " referring"
+          }
+        ]
+      }
+    }
+  ],
+  "supportingInfo": [
+    {
+      "sequence": 2,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "admissionperiod"
+          }
+        ]
+      },
+      "timingPeriod": {
+        "start": "2011-05-23",
+        "end": "2011-05-25"
+      }
+    },
+    {
+      "sequence": 1,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "billingnetworkcontractingstatus"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBPayerAdjudicationStatus",
+            "code": "contracted"
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 3,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "clmrecvddate"
+          }
+        ]
+      },
+      "timingDate": "2011-05-30"
+    },
+    {
+      "sequence": 4,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "typeofbill"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "https://www.nubc.org/CodeSystem/TypeOfBill",
+            "code": "Dummy"
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 5,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "pointoforigin"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "https://www.nubc.org/CodeSystem/PointOfOrigin",
+            "code": "Dummy"
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 6,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "admtype"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "https://www.nubc.org/CodeSystem/PriorityTypeOfAdmitOrVisit",
+            "code": "Dummy"
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 7,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "discharge-status"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "https://www.nubc.org/CodeSystem/PatDischargeStatus",
+            "code":"01"
+          }
+        ]
+      }
+    },
+     {
+      "sequence": 8,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "patientaccountnumber"
+          }
+        ]
+      },
+      "valueString":"PAT-ACCT-EXAMPLE"
+    },
+     {
+      "sequence": 9,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "medicalrecordnumber"
+          }
+        ]
+      },
+     "valueString":"MED-REC-EXAMPLE"
+    },
+     {
+      "sequence": 9,
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBSupportingInfoType",
+            "code": "drg"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": " https://www.cms.gov/Medicare/Medicare-Fee-for-Service-Payment/AcuteInpatientPPS/MS-DRG-Classifications-and-Software",
+            "code": "Dummy"
+          }
+        ]
+      }
+    }
+   
+  ],
+  "diagnosis": [
+    {
+      "sequence": 1,
+      "diagnosisCodeableConcept": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10-cm",
+            "code": "E66.0"
+          }
+        ]
+      },
+      "type": [
+        {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/ex-diagnosistype",
+              "code": "principal"
+            }
+          ]
+        }
+      ],
+      "onAdmission":{
+         "coding": [
+          {
+            "system": "https://www.cms.gov/Medicare/Medicare-Fee-for-Service-Payment/HospitalAcqCond/Coding",
+            "code": "Y"
+          }
+        ]
+      }
+    }
+  ],
+  "procedure":
+  {
+     "sequence":"1",
+     "type": [
+        {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBClaimProcedureType",
+              "code": "other"
+            }
+          ]
+        }
+      ],
+      "date": "2022-01-11T13:28:17-05:00",
+	  "procedureCodeableConcept":
+        {
+          "coding": [
+            {
+              "system": "http://www.cms.gov/Medicare/Coding/ICD10",
+              "code": "005T3ZZ",
+			  "display":"Destruction of Spinal Meninges, Percutaneous Approach"
+            }
+          ]
+        }
+    
+	  
+
+    },
+  "insurance": [
+    {
+      "focal": true,
+      "coverage": {
+        "reference": "Coverage/c3a2d013-1040-4ad2-9acb-8f9bebf5a6da"
+      }
+    }
+  ],
+  "item": [
+    {
+      "sequence": 4,
+      "revenue": {
+        "coding": [
+          {
+            "system":"https://www.nubc.org/CodeSystem/RevenueCodes",
+			"code":0300
+            
+          }
+        ]
+      },
+      
+      "productOrService": {
+        "coding": [
+          {
+            "system": "https://example.org/payer-internal",
+            "code": "T1019"
+          }
+        ]
+      },
+      "modifier":
+             {
+		"coding": [
+			{
+				"system": "http://www.ama-assn.org/go/cpt",
+				"code": "260385129"
+				
+			}
+		],
+		"text": "dummy"
+	},
+
+      "servicedPeriod": {
+        "start": "2025-07-02",
+        "end": "2025-07-02"
+      },
+      "quantity":{
+        "value":[1]
+      },
+      "noteNumber":[1],
+      "adjudication": [
+        {
+          "category": {
+            "coding": [
+              {
+                "code": "allowedunits"
+              }
+            ]
+          },
+          "value": 0.0
+        },
+        {
+          "category": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+                "code": "noncovered"
+              }
+            ]
+          },
+          "amount": {
+            "value": 150.0,
+            "currency": "USD"
+          }
+        },
+        {
+          "category": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+                "code": "submitted"
+              }
+            ]
+          },
+          "amount": {
+            "value": 390.32,
+            "currency": "USD"
+          }
+        }
+      ]
+    }
+  ],
+  "adjudication": [
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudication",
+            "code": "paidtoprovider"
+          }
+        ],
+        "text": "Payment Amount"
+      },
+      "amount": {
+        "value": 520,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudication",
+            "code": "billingnetworkstatus"
+          }
+        ],
+        "text": "billing provider network status"
+      },
+       "reason": {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBPayerAdjudicationStatu",
+                        "code": "innetwork"
+                    }
+                  ]
+    }
+  },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudication",
+            "code": "adjustmentreason"
+          }
+        ],
+        "text": "Adjustment reason"
+      },
+       "reason": {
+                "coding": [
+                    {
+                        "system": "https://x12.org/codes/claim-adjustment-reason-codes",
+                        "code": "Dummy"
+                    }
+                  ]
+    
+    }
+  },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudicationDiscriminator",
+            "code": "benefitpaymentstatus"
+          }
+        ],
+        "text": "benefit payment status"
+      },
+      "reason": {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBPayerAdjudicationStatus",
+                        "code": "innetwork",
+						"display":"In Network"
+                    }
+                  ]
+    
+    }
+    },
+    
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudication",
+            "code": "paidbypatient"
+          }
+        ],
+        "text": "Patient Pay Amount"
+      },
+      "amount": {
+        "value": 0,
+        "currency": "USD"
+      }
+    }
+  ],
+  "total": [
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudication",
+            "code": "paidtoprovider"
+          }
+        ],
+        "text": "Payment Amount"
+      },
+      "amount": {
+        "value": 620,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "submitted"
+          }
+        ],
+        "text": "Submitted Amount"
+      },
+      "amount": {
+        "value": 1575.24,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBAdjudication",
+            "code": "paidbypatient"
+          }
+        ],
+        "text": "Patient Pay Amount"
+      },
+      "amount": {
+        "value": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBPayerAdjudicationStatus",
+            "code": "innetwork"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "eligible"
+          }
+        ]
+      },
+      "amount": {
+        "value": 2625.84,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "benefit"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "discount"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "deductible"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "coinsurance"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "copay"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "memberliability"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "paidtopatient"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "discount"
+          }
+        ]
+      },
+      "amount": {
+        "currency": "USD"
+      }
+    },
+    {
+      "category": {
+        "coding": [
+          {
+            "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+            "code": "priorpayerbenefitpaid"
+          }
+        ]
+      },
+      "amount": {
+        "value": 0.0,
+        "currency": "USD"
+      }
+    }
+  ],
+  "payment": {
+    "type": {
+      "coding": [
+        {
+          "system":"http://terminology.hl7.org/CodeSystem/adjudication",
+          "code": "partiallypaid"
+        }
+      ]
+    },
+    "date": "2020-01-11"
+  },
+   "processNote": [
+    {
+      "number": 1,
+      "type": "display",
+      "text": "Orthodontic treatment approved as patient meets eligibility criteria"
+    }
+  ]
+ 
+  
+
+}

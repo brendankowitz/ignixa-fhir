@@ -25,7 +25,7 @@ public class SearchResourceNotSupportedException : FhirException
     /// </summary>
     /// <param name="resourceType">The resource type.</param>
     public SearchResourceNotSupportedException(string resourceType)
-        : base(string.Format(CultureInfo.CurrentCulture, $"{resourceType} not supported", resourceType))
+        : base(string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType))
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
@@ -33,12 +33,12 @@ public class SearchResourceNotSupportedException : FhirException
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,
-            Diagnostics = string.Format(CultureInfo.CurrentCulture, $"{resourceType} not supported", resourceType)
+            Diagnostics = string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType)
         });
     }
 
     public SearchResourceNotSupportedException(string resourceType, Exception innerException)
-        : base(string.Format(CultureInfo.CurrentCulture, $"{resourceType} not supported", resourceType), innerException)
+        : base(string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType), innerException)
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
@@ -46,7 +46,7 @@ public class SearchResourceNotSupportedException : FhirException
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,
-            Diagnostics = string.Format(CultureInfo.CurrentCulture, $"{resourceType} not supported", resourceType)
+            Diagnostics = string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType)
         });
     }
 

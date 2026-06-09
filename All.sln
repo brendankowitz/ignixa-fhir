@@ -191,6 +191,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.TestScript.FhirFakes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.ConformanceMatrix.Cli", "tools\Ignixa.ConformanceMatrix.Cli\Ignixa.ConformanceMatrix.Cli.csproj", "{31DE9105-1282-4F2A-8651-F40F3DA90A92}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.RepoGuards.Tests", "test\Ignixa.RepoGuards.Tests\Ignixa.RepoGuards.Tests.csproj", "{A9BDF164-7EA3-4105-9116-D5A53BCC9924}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -885,6 +887,18 @@ Global
 		{31DE9105-1282-4F2A-8651-F40F3DA90A92}.Release|x64.Build.0 = Release|Any CPU
 		{31DE9105-1282-4F2A-8651-F40F3DA90A92}.Release|x86.ActiveCfg = Release|Any CPU
 		{31DE9105-1282-4F2A-8651-F40F3DA90A92}.Release|x86.Build.0 = Release|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Debug|x64.Build.0 = Debug|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Debug|x86.Build.0 = Debug|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Release|x64.ActiveCfg = Release|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Release|x64.Build.0 = Release|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Release|x86.ActiveCfg = Release|Any CPU
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -956,5 +970,6 @@ Global
 		{38C19693-879C-4DFB-8144-24A7B5159291} = {0955C698-034D-424C-A981-095EB50A5673}
 		{98CC0615-47C4-4235-B674-0015401F5FB5} = {0955C698-034D-424C-A981-095EB50A5673}
 		{31DE9105-1282-4F2A-8651-F40F3DA90A92} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{A9BDF164-7EA3-4105-9116-D5A53BCC9924} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal

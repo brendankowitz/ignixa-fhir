@@ -22,6 +22,32 @@ public interface IImplementationGuideProvider
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Loads a package and its full declared dependency closure into a tenant's database.
+    /// Walks <see cref="PackageManifest.Dependencies"/> breadth-first, deduplicating by
+    /// package id, skipping <c>hl7.fhir.r4.core</c> (provided in-process by the base
+    /// schema provider, not distributed as a downloadable tarball), and tolerating
+    /// individual dependency failures so a missing transitive dep does not abort the
+    /// whole operation.
+    /// </summary>
+    /// <param name="tenantId">Tenant ID for database selection.</param>
+    /// <param name="packageId">Root package id.</param>
+    /// <param name="version">Root package version.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// Aggregated import result. <see cref="PackageImportResult.PackageId"/> /
+    /// <see cref="PackageImportResult.PackageVersion"/> refer to the root package;
+    /// <see cref="PackageImportResult.ImportedResources"/> /
+    /// <see cref="PackageImportResult.ResourcesByType"/> sum across the closure;
+    /// <see cref="PackageImportResult.LoadedPackages"/> lists every package visited
+    /// (newly imported or already-loaded).
+    /// </returns>
+    Task<PackageImportResult> LoadPackageWithDependenciesAsync(
+        string tenantId,
+        string packageId,
+        string version,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Lists all currently loaded packages for a specific tenant.
     /// </summary>
     /// <param name="tenantId">Tenant ID for database selection</param>

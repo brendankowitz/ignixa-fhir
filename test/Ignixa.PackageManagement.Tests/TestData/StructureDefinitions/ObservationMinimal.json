@@ -1,0 +1,62 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "Observation",
+  "url": "http://hl7.org/fhir/StructureDefinition/Observation",
+  "version": "4.0.1",
+  "name": "Observation",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Observation",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/DomainResource",
+  "snapshot": {
+    "element": [
+      {
+        "id": "Observation",
+        "path": "Observation",
+        "min": 0,
+        "max": "*",
+        "constraint": [
+          {
+            "key": "ele-1",
+            "severity": "error",
+            "human": "All FHIR elements must have a @value or children",
+            "expression": "hasValue() or (children().count() > id.count())",
+            "xpath": "@value|f:*|h:div"
+          },
+          {
+            "key": "obs-3",
+            "severity": "warning",
+            "human": "Must have at least a low or a high or text",
+            "expression": "low.exists() or high.exists() or text.exists()"
+          }
+        ]
+      },
+      { "id": "Observation.status", "path": "Observation.status", "min": 1, "max": "1",
+        "type": [{ "code": "code" }],
+        "fixedCode": "final",
+        "binding": {
+          "strength": "required",
+          "valueSet": "http://hl7.org/fhir/ValueSet/observation-status|4.0.1"
+        } },
+      { "id": "Observation.code", "path": "Observation.code", "min": 1, "max": "1",
+        "type": [{ "code": "CodeableConcept" }],
+        "patternCodeableConcept": {
+          "coding": [{ "system": "http://loinc.org" }]
+        } },
+      { "id": "Observation.value[x]", "path": "Observation.value[x]", "min": 0, "max": "1",
+        "type": [
+          { "code": "Quantity" },
+          { "code": "CodeableConcept" },
+          { "code": "string" }
+        ] },
+      { "id": "Observation.subject", "path": "Observation.subject", "min": 0, "max": "1",
+        "type": [{
+          "code": "Reference",
+          "targetProfile": [
+            "http://hl7.org/fhir/StructureDefinition/Patient",
+            "http://hl7.org/fhir/StructureDefinition/Group"
+          ]
+        }] }
+    ]
+  }
+}

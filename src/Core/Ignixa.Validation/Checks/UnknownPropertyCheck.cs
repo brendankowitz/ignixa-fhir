@@ -20,7 +20,7 @@ namespace Ignixa.Validation.Checks;
 /// - Standard extension arrays (extension, modifierExtension)
 /// - Universal resource properties (id, resourceType, meta, implicitRules, language, text, contained)
 /// </remarks>
-public class UnknownPropertyCheck : IValidationCheck
+public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
 {
     private readonly HashSet<string> _allowedPropertyNames;
     private readonly HashSet<string> _choiceElementBases; // Base names of choice elements (e.g., "value", "effective")

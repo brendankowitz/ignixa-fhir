@@ -256,12 +256,12 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
 
             foreach (var element in elements)
             {
-                TrackElementStrings(element);
+                TrackElementStrings(element, definitions);
             }
         }
     }
 
-    private void TrackElementStrings(ElementDefinition element)
+    private void TrackElementStrings(ElementDefinition element, DefinitionCollection definitions)
     {
         if (_constantTracker == null)
             return;
@@ -291,8 +291,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         {
             if (!string.IsNullOrEmpty(type.Code))
             {
-                string normalized = NormalizeFhirPathTypeUrl(type.Code);
-                _constantTracker.Track(normalized);
+                _constantTracker.Track(ResolveTypeName(element, type, definitions));
             }
         }
     }
@@ -422,7 +421,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         bool isResource = element.Type.Any(t => definitions.ResourcesByName.ContainsKey(t.Code ?? string.Empty));
 
         // Get type names
-        var typeNames = element.Type.Select(t => NormalizeFhirPathTypeUrl(t.Code ?? "Element")).ToList();
+        var typeNames = element.Type.Select(type => ResolveTypeName(element, type, definitions)).ToList();
         string typeName = typeNames.FirstOrDefault() ?? "Element";
         string primitive = MapToPrimitive(typeName);
 
@@ -536,7 +535,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         {
             var typeRefs = element.Type.Select(t =>
             {
-                string code = NormalizeFhirPathTypeUrl(t.Code ?? "Element");
+                string code = ResolveTypeName(element, t, definitions);
                 string codeRef = _constantTracker?.GetConstantReference(code) ?? $"\"{EscapeString(code)}\"";
 
                 string profile = "null";
@@ -571,10 +570,11 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
 
         // 7. Default type name
         string defaultTypeName = "null";
-        var firstTypeCode = element.Type?.FirstOrDefault()?.Code;
-        if (firstTypeCode != null)
+        var firstType = element.Type?.FirstOrDefault() is { } firstTypeRef
+            ? ResolveTypeName(element, firstTypeRef, definitions)
+            : null;
+        if (firstType != null)
         {
-            string firstType = NormalizeFhirPathTypeUrl(firstTypeCode);
             defaultTypeName = _constantTracker?.GetConstantReference(firstType) ?? $"\"{EscapeString(firstType)}\"";
         }
 
@@ -751,6 +751,46 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             "integer64" => "Integer64",
             _ => "None" // Complex types
         };
+    }
+
+    private static readonly HashSet<string> PrimitiveTypeNames =
+    [
+        "boolean", "integer", "string", "decimal", "uri", "url", "canonical", "base64Binary", "instant", "date",
+        "dateTime", "time", "code", "oid", "id", "markdown", "unsignedInt", "positiveInt", "uuid", "integer64"
+    ];
+
+    private string ResolveTypeName(ElementDefinition element, ElementDefinition.TypeRefComponent type, DefinitionCollection definitions)
+    {
+        var normalizedType = NormalizeFhirPathTypeUrl(type.Code ?? "Element");
+        if (normalizedType == "string" && IsRootResourceIdElement(element, definitions))
+        {
+            return "id";
+        }
+
+        var profileName = type.Profile?.FirstOrDefault() is { Length: > 0 } profile
+            ? profile[(profile.LastIndexOf('/') + 1)..]
+            : null;
+
+        return profileName is not null && PrimitiveTypeNames.Contains(profileName)
+            ? profileName
+            : normalizedType;
+    }
+
+    private static bool IsRootResourceIdElement(ElementDefinition element, DefinitionCollection definitions)
+    {
+        if (!string.Equals(element.cgName(), "id", StringComparison.Ordinal) || string.IsNullOrEmpty(element.Path))
+        {
+            return false;
+        }
+
+        int separatorIndex = element.Path.IndexOf('.');
+        if (separatorIndex <= 0 || separatorIndex != element.Path.LastIndexOf('.'))
+        {
+            return false;
+        }
+
+        string parentTypeName = element.Path[..separatorIndex];
+        return definitions.ResourcesByName.ContainsKey(parentTypeName);
     }
 
     private string NormalizeFhirPathTypeUrl(string typeCode)

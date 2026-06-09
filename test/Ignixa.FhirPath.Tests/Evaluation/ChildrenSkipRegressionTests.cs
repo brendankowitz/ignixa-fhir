@@ -2,7 +2,10 @@
  * Copyright (c) 2025, Ignixa Contributors
  *
  * Regression tests for GitHub issue #205:
- * children().skip() corrupts arrays by converting them to objects.
+ * navigating to array-backed elements must preserve JsonArray structure.
+ *
+ * These tests originally used children().skip(), but ordered access after children()
+ * is now rejected because children() is unordered by spec.
  *
  * The bug is in SerializeComplexElement: when building JsonObject from children,
  * it only creates arrays when it encounters duplicate child names. If an array
@@ -23,7 +26,7 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 
 /// <summary>
 /// Regression tests for GitHub issue #205:
-/// children().skip() corrupts arrays by converting them to objects.
+/// navigating to array-backed elements must preserve JsonArray structure.
 /// </summary>
 public class ChildrenSkipRegressionTests
 {
@@ -71,11 +74,10 @@ public class ChildrenSkipRegressionTests
         var resource = ResourceJsonNode.Parse(json);
         var element = resource.ToElement(_r4Provider);
 
-        // Act - Navigate to identifier using children().skip(1)
-        // This skips "id" and gets "identifier" as the second child
-        var results = EvaluatePath(element, "children().skip(1)").ToList();
+        // Act - Navigate directly to identifier items
+        var results = EvaluatePath(element, "identifier").ToList();
 
-        // Assert - children().skip(1) flattens arrays, so we get individual items
+        // Assert - FHIRPath flattens repeating elements, so we get individual items
         // We should get one or more identifier elements
         Assert.NotEmpty(results);
         var identifierElement = results.First(r => r.Name == "identifier");
@@ -126,10 +128,10 @@ public class ChildrenSkipRegressionTests
         var resource = ResourceJsonNode.Parse(json);
         var element = resource.ToElement(_r4Provider);
 
-        // Act - Use children().skip(1) to get name (skipping id)
-        var results = EvaluatePath(element, "children().skip(1)").ToList();
+        // Act - Navigate directly to name items
+        var results = EvaluatePath(element, "name").ToList();
 
-        // Assert - Verify we got name element (children().skip() flattens arrays)
+        // Assert - Verify we got the name element
         Assert.NotEmpty(results);
         var nameElement = results.First(r => r.Name == "name");
 
@@ -195,10 +197,10 @@ public class ChildrenSkipRegressionTests
         var resource = ResourceJsonNode.Parse(json);
         var element = resource.ToElement(_r4Provider);
 
-        // Act - Use children().skip(1) to get identifier elements (flattened from array)
-        var results = EvaluatePath(element, "children().skip(1)").ToList();
+        // Act - Navigate directly to identifier items
+        var results = EvaluatePath(element, "identifier").ToList();
 
-        // Assert - children().skip() flattens arrays, so we get individual identifier elements
+        // Assert - Repeating identifier elements are flattened into individual items
         Assert.NotEmpty(results);
         var identifierElements = results.Where(r => r.Name == "identifier").ToList();
         Assert.Equal(2, identifierElements.Count);
@@ -265,10 +267,10 @@ public class ChildrenSkipRegressionTests
         var resource = ResourceJsonNode.Parse(json);
         var element = resource.ToElement(_r4Provider);
 
-        // Act - Use children().skip(2) to get elements after id and status
-        var skippedResults = EvaluatePath(element, "children().skip(2)").ToList();
-        Assert.NotEmpty(skippedResults);
-        var codeElement = skippedResults.First(r => r.Name == "code");
+        // Act - Navigate directly to code
+        var codeResults = EvaluatePath(element, "code").ToList();
+        Assert.NotEmpty(codeResults);
+        var codeElement = codeResults.First();
 
         // Verify code.coding is still an array
         var codeNode = codeElement.Meta<JsonNode>();
@@ -345,8 +347,8 @@ public class ChildrenSkipRegressionTests
         var resource = ResourceJsonNode.Parse(json);
         var element = resource.ToElement(_r4Provider);
 
-        // Act - Navigate through children().skip() chain
-        var afterSkip1 = EvaluatePath(element, "children().skip(1)").ToList();
+        // Act - Navigate through the repeating child collections directly
+        var afterSkip1 = EvaluatePath(element, "identifier | contact").ToList();
         Assert.NotEmpty(afterSkip1);
 
         // For each element returned, verify all nested arrays are preserved
@@ -395,12 +397,8 @@ public class ChildrenSkipRegressionTests
     }
 
     [Fact]
-    public void GivenSingleElementArray_WhenAccessedViaChildrenSkip_ThenArrayStructureIsCorrupted()
+    public void GivenContactWithSingleRelationshipElement_WhenNavigatingDirectly_ThenPreservesJsonArrayStructure()
     {
-        // This test explicitly demonstrates the bug in issue #205.
-        // When SerializeComplexElement processes an element with a single-element array property,
-        // it doesn't create a JsonArray - it creates a plain property instead.
-
         // Arrange - Simple patient with contact.relationship having ONE element
         var json = """
         {
@@ -429,7 +427,7 @@ public class ChildrenSkipRegressionTests
         var resource = ResourceJsonNode.Parse(json);
         var element = resource.ToElement(_r4Provider);
 
-        // Act - Navigate to contact via children().skip() and examine the relationship property
+        // Act - Navigate to contact directly and examine the relationship property
         var contactResults = EvaluatePath(element, "contact").ToList();
         Assert.Single(contactResults);
         var contactElement = contactResults[0];
@@ -438,14 +436,9 @@ public class ChildrenSkipRegressionTests
         Assert.IsType<JsonObject>(contactNode);
         var contactObj = (JsonObject)contactNode;
 
-        // Assert - BUG: relationship should be a JsonArray, but it's corrupted to JsonObject
         Assert.True(contactObj.ContainsKey("relationship"));
         var relationshipProperty = contactObj["relationship"];
         Assert.NotNull(relationshipProperty);
-
-        // This assertion WILL FAIL until the bug is fixed:
-        // Expected: JsonArray (because FHIR spec says relationship is 0..*)
-        // Actual: JsonObject (because SerializeComplexElement only creates arrays for duplicate names)
         Assert.IsType<JsonArray>(relationshipProperty);
     }
 

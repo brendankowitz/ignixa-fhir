@@ -12,7 +12,7 @@ namespace Ignixa.Validation.Checks;
 /// Validates that the resource has basic FHIR structure (resourceType exists).
 /// Tier 1 (Fast) validator - executes in less than 5ms.
 /// </summary>
-public class JsonStructureCheck : IValidationCheck
+public class JsonStructureCheck : IValidationCheck, ISingletonCheck
 {
     /// <summary>
     /// Validates the structure of a FHIR resource.

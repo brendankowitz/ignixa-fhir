@@ -1,7 +1,7 @@
-// <copyright file="FhirPathInvariantCheck.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
@@ -10,6 +10,7 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
+using Microsoft.Extensions.Logging;
 using ConstraintDefinition = Ignixa.Specification.ConstraintDefinition;
 
 namespace Ignixa.Validation.Checks;
@@ -25,11 +26,13 @@ namespace Ignixa.Validation.Checks;
 /// </remarks>
 public class FhirPathInvariantCheck : IValidationCheck
 {
-    private readonly ConstraintDefinition _constraint;
+    private readonly IConstraint _constraint;
     private readonly ISchema _schema;
     private readonly FhirPathParser _parser;
+    private readonly IReadOnlyList<string> _appliesTo;
+    private readonly ILogger? _logger;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
-    private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
+    private readonly Lazy<FhirPath.Expressions.Expression?> _compiledExpression;
 
     /// <summary>
     /// Gets the constraint key (e.g., "ele-1", "ext-1", "bdl-5").
@@ -37,7 +40,63 @@ public class FhirPathInvariantCheck : IValidationCheck
     public string ConstraintKey => _constraint.Key;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="FhirPathInvariantCheck"/> class.
+    /// Gets the resource/datatype names this constraint applies to.
+    /// Empty collection means "applies to all" (the default for constraints sourced
+    /// from <see cref="IConstraint"/> implementations that don't expose scope metadata).
+    /// </summary>
+    public IReadOnlyList<string> AppliesTo => _appliesTo;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FhirPathInvariantCheck"/> class
+    /// from any <see cref="IConstraint"/>. This is the canonical ctor used by
+    /// <c>StructureDefinitionSchemaBuilder</c>.
+    /// </summary>
+    /// <param name="constraint">The constraint to evaluate.</param>
+    /// <param name="schema">Schema provider for FHIRPath type information.</param>
+    /// <param name="parser">Shared FhirPath parser instance.</param>
+    /// <param name="appliesTo">
+    /// Resource/datatype names this constraint applies to. Empty/null = applies to all.
+    /// When non-empty, <see cref="Validate"/> short-circuits to Success for elements
+    /// whose <c>InstanceType</c> is not in the list.
+    /// </param>
+    public FhirPathInvariantCheck(
+        IConstraint constraint,
+        ISchema schema,
+        FhirPathParser parser,
+        IReadOnlyList<string>? appliesTo = null,
+        ILogger? logger = null)
+    {
+        _constraint = constraint ?? throw new ArgumentNullException(nameof(constraint));
+        _schema = schema ?? throw new ArgumentNullException(nameof(schema));
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        _appliesTo = appliesTo ?? Array.Empty<string>();
+        _logger = logger;
+
+        // Lazy compilation - parse FHIRPath expression only when first needed
+        _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
+        _compiledExpression = new Lazy<FhirPath.Expressions.Expression?>(() =>
+        {
+            try
+            {
+                return _parser.Parse(_constraint.Expression);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to parse FHIRPath expression for constraint {ConstraintKey} - constraint will not be evaluated", _constraint.Key);
+                return null;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Backwards-compatible ctor preserving the historical
+    /// <see cref="ConstraintDefinition"/> (Specification record) entry point used by
+    /// existing tests and direct consumers. Delegates to the <see cref="IConstraint"/>
+    /// ctor, honoring the <c>AppliesTo</c> scope carried on the record.
     /// </summary>
     /// <param name="constraint">The constraint definition to evaluate.</param>
     /// <param name="schema">Schema provider for type information.</param>
@@ -46,27 +105,25 @@ public class FhirPathInvariantCheck : IValidationCheck
         ConstraintDefinition constraint,
         ISchema schema,
         FhirPathParser parser)
+        : this(
+            ConvertSpecificationConstraint(constraint),
+            schema,
+            parser,
+            constraint?.AppliesTo)
     {
-        _constraint = constraint ?? throw new ArgumentNullException(nameof(constraint));
-        _schema = schema ?? throw new ArgumentNullException(nameof(schema));
-        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+    }
 
-        // Lazy compilation - parse FHIRPath expression only when first needed
-        _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
-        _compiledExpression = new Lazy<FhirPath.Expressions.Expression>(() =>
+    private static IConstraint ConvertSpecificationConstraint(ConstraintDefinition c)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        return new Ignixa.Abstractions.ConstraintDefinition
         {
-            try
-            {
-                return _parser.Parse(_constraint.Expression);
-            }
-            catch (Exception ex)
-            {
-                // If expression parsing fails, log and return empty expression
-                // This allows validation to continue even if some constraints have invalid expressions
-                System.Diagnostics.Debug.WriteLine($"Failed to parse FHIRPath expression for constraint {_constraint.Key}: {ex.Message}");
-                return new FhirPath.Expressions.EmptyExpression();
-            }
-        });
+            Key = c.Key,
+            Expression = c.Expression,
+            Human = c.Human,
+            Severity = c.Severity == ConstraintSeverity.Warning ? "warning" : "error",
+            Xpath = c.Xpath,
+        };
     }
 
     /// <summary>
@@ -84,10 +141,31 @@ public class FhirPathInvariantCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
+        // Scope filter: skip when AppliesTo is set and the element's resource type is out of scope.
+        if (_appliesTo.Count > 0)
+        {
+            var instanceType = element.InstanceType;
+            if (!string.IsNullOrEmpty(instanceType) && !_appliesTo.Contains(instanceType))
+            {
+                return ValidationResult.Success();
+            }
+        }
+
+        var expression = _compiledExpression.Value;
+        if (expression is null)
+        {
+            var parseFailureIssue = new ValidationIssue(
+                IssueSeverity.Warning,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                $"Constraint '{_constraint.Key}' could not be evaluated: FHIRPath expression failed to parse");
+            return new ValidationResult(isValid: true, issues: new[] { parseFailureIssue });
+        }
+
         try
         {
             // Evaluate the FHIRPath expression
-            var result = _evaluator.Value.Evaluate(element, _compiledExpression.Value);
+            var result = _evaluator.Value.Evaluate(element, expression);
 
             // Convert result to boolean
             // Per FHIRPath spec: empty result = false, single boolean true = true, all else = false
@@ -95,20 +173,19 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             if (!isValid)
             {
-                // Map ConstraintSeverity to IssueSeverity
-                var severity = _constraint.Severity == ConstraintSeverity.Warning
-                    ? IssueSeverity.Warning
-                    : IssueSeverity.Error;
+                // IConstraint.Severity is a string ("error" / "warning"); map to IssueSeverity.
+                var isWarning = string.Equals(_constraint.Severity, "warning", StringComparison.OrdinalIgnoreCase);
+                var severity = isWarning ? IssueSeverity.Warning : IssueSeverity.Error;
 
                 // Create validation issue with constraint key and human description
                 var issue = ValidationIssue.InvariantFailure(
                     _constraint.Key,
-                    _constraint.Human,
+                    _constraint.Human ?? string.Empty,
                     element.Location ?? string.Empty,
                     severity);
 
                 // Warnings don't fail validation (isValid = true), but errors do
-                if (_constraint.Severity == ConstraintSeverity.Warning)
+                if (isWarning)
                 {
                     return new ValidationResult(isValid: true, issues: new[] { issue });
                 }
@@ -118,10 +195,12 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             return ValidationResult.Success();
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            // If evaluation fails, treat as validation error
-            // This ensures malformed data doesn't cause crashes
             var issue = new ValidationIssue(
                 IssueSeverity.Error,
                 _constraint.Key,

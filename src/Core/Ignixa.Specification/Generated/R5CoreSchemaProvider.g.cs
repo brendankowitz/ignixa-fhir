@@ -20186,7 +20186,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -20202,8 +20202,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -21819,7 +21819,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -21835,8 +21835,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -23520,7 +23520,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -23536,8 +23536,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -24542,7 +24542,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -24558,8 +24558,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -25681,7 +25681,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -25697,8 +25697,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -27448,7 +27448,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -27464,8 +27464,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -28508,7 +28508,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -28524,8 +28524,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -30542,7 +30542,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -30558,8 +30558,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -31029,7 +31029,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -31045,8 +31045,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -32178,7 +32178,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -32194,8 +32194,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -34213,7 +34213,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -34229,8 +34229,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -34532,7 +34532,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -34548,8 +34548,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -34707,7 +34707,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -34723,8 +34723,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -35496,7 +35496,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -35512,8 +35512,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -36206,7 +36206,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -36222,8 +36222,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -37177,7 +37177,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -37193,8 +37193,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -38450,7 +38450,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -38466,8 +38466,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -41764,7 +41764,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -41780,8 +41780,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -42666,7 +42666,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -42682,8 +42682,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -43304,7 +43304,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -43320,8 +43320,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -44254,7 +44254,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -44270,8 +44270,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -45355,7 +45355,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -45371,8 +45371,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -49808,7 +49808,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -49824,8 +49824,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -54082,7 +54082,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -54098,8 +54098,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -58658,7 +58658,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -58674,8 +58674,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -59440,7 +59440,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -59456,8 +59456,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -61413,7 +61413,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -61429,8 +61429,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -63550,7 +63550,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -63566,8 +63566,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -64380,7 +64380,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -64396,8 +64396,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -65210,7 +65210,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -65226,8 +65226,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -65992,7 +65992,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -66008,8 +66008,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -67220,7 +67220,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -67236,8 +67236,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -69683,7 +69683,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -69699,8 +69699,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -70544,7 +70544,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -70560,8 +70560,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -72098,7 +72098,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -72114,8 +72114,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -73954,7 +73954,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -73970,8 +73970,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -78688,7 +78688,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -78704,8 +78704,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -80019,7 +80019,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -80035,8 +80035,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -81429,7 +81429,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -81445,8 +81445,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -84102,7 +84102,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -84118,8 +84118,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -84939,7 +84939,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -84955,8 +84955,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -86733,7 +86733,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -86749,8 +86749,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -87299,7 +87299,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -87315,8 +87315,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -90634,7 +90634,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -90650,8 +90650,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -91464,7 +91464,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -91480,8 +91480,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -92030,7 +92030,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -92046,8 +92046,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -92980,7 +92980,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -92996,8 +92996,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -93714,7 +93714,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -93730,8 +93730,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -94846,7 +94846,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -94862,8 +94862,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -96105,7 +96105,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -96121,8 +96121,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -99402,7 +99402,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -99418,8 +99418,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -101076,7 +101076,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -101092,8 +101092,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -101714,7 +101714,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -101730,8 +101730,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -102328,7 +102328,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -102344,8 +102344,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -102695,7 +102695,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -102711,8 +102711,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -103086,7 +103086,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -103102,8 +103102,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -103978,7 +103978,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -103994,8 +103994,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -104897,7 +104897,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -104913,8 +104913,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -107425,7 +107425,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -107441,8 +107441,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -109027,7 +109027,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -109043,8 +109043,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -111037,7 +111037,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -111053,8 +111053,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -113356,7 +113356,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -113372,8 +113372,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -121568,7 +121568,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -121584,8 +121584,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -122748,7 +122748,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -122764,8 +122764,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -123139,7 +123139,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -123155,8 +123155,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -123410,7 +123410,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -123426,8 +123426,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -125012,7 +125012,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -125028,8 +125028,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -125746,7 +125746,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -125762,8 +125762,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -127094,7 +127094,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -127110,8 +127110,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -127883,7 +127883,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -127899,8 +127899,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -128418,7 +128418,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -128434,8 +128434,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -129797,7 +129797,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -129813,8 +129813,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -131008,7 +131008,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -131024,8 +131024,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -132308,7 +132308,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -132324,8 +132324,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -133783,7 +133783,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -133799,8 +133799,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -134294,7 +134294,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -134310,8 +134310,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -135107,7 +135107,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -135123,8 +135123,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -137759,7 +137759,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -137775,8 +137775,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -138977,7 +138977,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -138993,8 +138993,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -140926,7 +140926,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -140942,8 +140942,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -142343,7 +142343,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -142359,8 +142359,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -143108,7 +143108,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -143124,8 +143124,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -144041,7 +144041,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -144057,8 +144057,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -145032,7 +145032,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -145048,8 +145048,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -145430,7 +145430,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -145446,8 +145446,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -146116,7 +146116,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -146132,8 +146132,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -146898,7 +146898,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -146914,8 +146914,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -148140,7 +148140,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -148156,8 +148156,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -150805,7 +150805,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -150821,8 +150821,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -152558,7 +152558,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -152574,8 +152574,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -153251,7 +153251,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -153267,8 +153267,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -154304,7 +154304,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -154320,8 +154320,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -155453,7 +155453,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -155469,8 +155469,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -158730,7 +158730,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -158746,8 +158746,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -160270,7 +160270,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -160286,8 +160286,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -161004,7 +161004,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -161020,8 +161020,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -162908,7 +162908,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -162924,8 +162924,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -164033,7 +164033,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -164049,8 +164049,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -165196,7 +165196,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -165212,8 +165212,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -166510,7 +166510,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -166526,8 +166526,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -167779,7 +167779,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -167795,8 +167795,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -168959,7 +168959,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -168975,8 +168975,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -171436,7 +171436,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -171452,8 +171452,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -172503,7 +172503,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -172519,8 +172519,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -173947,7 +173947,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -173963,8 +173963,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -175655,7 +175655,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -175671,8 +175671,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -177346,7 +177346,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -177362,8 +177362,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -177792,7 +177792,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -177808,8 +177808,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -178406,7 +178406,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -178422,8 +178422,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -178893,7 +178893,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -178909,8 +178909,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -180399,7 +180399,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -180415,8 +180415,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -180701,7 +180701,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -180717,8 +180717,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -181785,7 +181785,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -181801,8 +181801,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -182272,7 +182272,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -182288,8 +182288,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -183788,7 +183788,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -183804,8 +183804,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -184910,7 +184910,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -184926,8 +184926,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -185675,7 +185675,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -185691,8 +185691,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -189246,7 +189246,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -189262,8 +189262,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -190011,7 +190011,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -190027,8 +190027,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -190601,7 +190601,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -190617,8 +190617,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -191925,7 +191925,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -191941,8 +191941,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -192937,7 +192937,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -192953,8 +192953,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -194604,7 +194604,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -194620,8 +194620,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -195877,7 +195877,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -195893,8 +195893,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -196930,7 +196930,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -196946,8 +196946,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -197544,7 +197544,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -197560,8 +197560,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -199856,7 +199856,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -199872,8 +199872,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -200878,7 +200878,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -200894,8 +200894,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -203046,7 +203046,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -203062,8 +203062,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -203684,7 +203684,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -203700,8 +203700,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -203787,7 +203787,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -203803,8 +203803,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -204888,7 +204888,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -204904,8 +204904,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -205303,7 +205303,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -205319,8 +205319,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -206373,7 +206373,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -206389,8 +206389,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -207944,7 +207944,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -207960,8 +207960,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -208407,7 +208407,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -208423,8 +208423,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -209738,7 +209738,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -209754,8 +209754,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -211556,7 +211556,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -211572,8 +211572,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -212959,7 +212959,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -212975,8 +212975,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -215405,7 +215405,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -215421,8 +215421,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -216338,7 +216338,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -216354,8 +216354,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -216880,7 +216880,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -216896,8 +216896,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -218602,7 +218602,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -218618,8 +218618,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -219144,7 +219144,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -219160,8 +219160,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -222228,7 +222228,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -222244,8 +222244,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -223144,7 +223144,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -223160,8 +223160,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -224513,7 +224513,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -224529,8 +224529,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -225079,7 +225079,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -225095,8 +225095,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -225947,7 +225947,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -225963,8 +225963,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -227484,7 +227484,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -227500,8 +227500,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -228074,7 +228074,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -228090,8 +228090,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -228784,7 +228784,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -228800,8 +228800,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -230307,7 +230307,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -230323,8 +230323,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -232568,7 +232568,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -232584,8 +232584,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -234352,7 +234352,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -234368,8 +234368,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -236133,7 +236133,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -236149,8 +236149,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -241111,7 +241111,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -241127,8 +241127,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -243125,7 +243125,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -243141,8 +243141,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -246168,7 +246168,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -246184,8 +246184,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null
@@ -247547,7 +247547,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
         {
             new CoreType(
                 name: "id",
-                primitive: Ignixa.Abstractions.FhirPrimitive.String,
+                primitive: Ignixa.Abstractions.FhirPrimitive.Id,
                 isResource: false,
                 isAbstract: false,
                 isChoiceElement: false,
@@ -247563,8 +247563,8 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 binding: null,
                 fixedValue: null,
                 patternValue: null,
-                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_String, null, null, null, null) },
-                defaultTypeName: Constants.Str_String,
+                types: new[] { new Ignixa.Abstractions.TypeReferenceDefinition(Constants.Str_Id, null, null, null, null) },
+                defaultTypeName: Constants.Str_Id,
                 referenceTargets: null,
                 contentReference: null,
                 slicing: null

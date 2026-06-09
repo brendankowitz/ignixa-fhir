@@ -1,0 +1,308 @@
+{
+	"resourceType": "OperationOutcome",
+	"issue": [
+		{
+			"severity": "error",
+			"code": "invariant",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "1012"
+					},
+					{
+						"system": "http://hl7.org/fhir/us/carin-bb/StructureDefinition/C4BB-ExplanationOfBenefit-Inpatient-Institutional",
+						"code": "EOB-inst-careTeam-practitioner",
+						"display": "Institutional EOB: Careteam roles refer to a practitioner"
+					}
+				],
+				"text": "Instance failed constraint EOB-inst-careTeam-practitioner \"Institutional EOB: Careteam roles refer to a practitioner\""
+			},
+			"diagnostics": "(\nrole.where(coding.where(code in ('attending' | 'primary' | 'referring' | 'supervisor')).exists()).exists() implies\nprovider.all(resolve() is Practitioner)\n)",
+			"location": [
+				"ExplanationOfBenefit.careTeam[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.careTeam[0]"
+			]
+		},
+		{
+			"severity": "error",
+			"code": "code-invalid",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6007"
+					}
+				],
+				"text": "Code '192' from system 'https://www.nubc.org/CodeSystem/RevenueCodes' does not exist in the value set 'NUBC Revenue Codes Value Set' (http://hl7.org/fhir/us/carin-bb/ValueSet/AHANUBCRevenueCodes)"
+			},
+			"location": [
+				"ExplanationOfBenefit.item[0].revenue[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.item[0].revenue[0]"
+			]
+		},
+		{
+			"severity": "error",
+			"code": "invariant",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "1012"
+					},
+					{
+						"system": "http://hl7.org/fhir/us/carin-bb/StructureDefinition/C4BB-ExplanationOfBenefit-Inpatient-Institutional",
+						"code": "adjudication-has-amount-type-slice",
+						"display": "If Adjudication is present, it must have at least one adjudicationamounttype slice"
+					}
+				],
+				"text": "Instance failed constraint adjudication-has-amount-type-slice \"If Adjudication is present, it must have at least one adjudicationamounttype slice\""
+			},
+			"diagnostics": "(adjudication.exists().not() or adjudication.where(category.memberOf('http://hl7.org/fhir/us/carin-bb/ValueSet/C4BBAdjudication')).exists())",
+			"location": [
+				"ExplanationOfBenefit.item[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.item[0]"
+			]
+		},
+		{
+			"severity": "error",
+			"code": "code-invalid",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6007"
+					}
+				],
+				"text": "Code 'partiallypaid' from system 'http://terminology.hl7.org/CodeSystem/adjudication' does not exist in the value set 'C4BB Payer Claim Payment Status Code Value Set' (http://hl7.org/fhir/us/carin-bb/ValueSet/C4BBPayerClaimPaymentStatusCode)"
+			},
+			"location": [
+				"ExplanationOfBenefit.payment[0].type[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.payment[0].type[0]"
+			]
+		},
+		{
+			"severity": "error",
+			"code": "invariant",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "1012"
+					},
+					{
+						"system": "http://hl7.org/fhir/us/carin-bb/StructureDefinition/C4BB-ExplanationOfBenefit-Inpatient-Institutional",
+						"code": "EOB-institutional-item-or-header-adjudication",
+						"display": "Institutional EOB:  Should have adjudication with adjudicationamounttype slice at the item or header level, but not both"
+					}
+				],
+				"text": "Instance failed constraint EOB-institutional-item-or-header-adjudication \"Institutional EOB:  Should have adjudication with adjudicationamounttype slice at the item or header level, but not both\""
+			},
+			"diagnostics": "adjudication.where(category.memberOf('http://hl7.org/fhir/us/carin-bb/ValueSet/C4BBAdjudication')).exists() != item.adjudication.where(category.memberOf('http://hl7.org/fhir/us/carin-bb/ValueSet/C4BBAdjudication')).exists()",
+			"location": [
+				"ExplanationOfBenefit // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code 'Dummy' (system 'https://www.nubc.org/CodeSystem/PointOfOrigin'): Operation validate code failed: creating the required expansion failed mith message \"The ValueSet expander cannot find codesystem 'https://www.nubc.org/CodeSystem/PointOfOriginNewborn', so the expansion cannot be completed.\"."
+			},
+			"location": [
+				"ExplanationOfBenefit.supportingInfo[4].code[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.supportingInfo[4].code[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code '01' (system 'https://www.nubc.org/CodeSystem/PatDischargeStatus'): Operation validate code failed: creating the required expansion failed mith message \"The ValueSet expander cannot find codesystem 'https://www.nubc.org/CodeSystem/PatDischargeStatus', so the expansion cannot be completed.\"."
+			},
+			"location": [
+				"ExplanationOfBenefit.supportingInfo[6].code[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.supportingInfo[6].code[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code 'E66.0' (system 'http://hl7.org/fhir/sid/icd-10-cm'): Operation validate code failed: creating the required expansion failed mith message \"The ValueSet expander cannot find codesystem 'http://hl7.org/fhir/sid/icd-10-cm', so the expansion cannot be completed.\"."
+			},
+			"location": [
+				"ExplanationOfBenefit.diagnosis[0].diagnosis[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.diagnosis[0].diagnosis[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code 'Y' (system 'https://www.cms.gov/Medicare/Medicare-Fee-for-Service-Payment/HospitalAcqCond/Coding'): Operation validate code failed: valueset 'http://hl7.org/fhir/us/carin-bb/ValueSet/CMSPresentOnAdmissionIndicator' is unknown."
+			},
+			"location": [
+				"ExplanationOfBenefit.diagnosis[0].onAdmission[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.diagnosis[0].onAdmission[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code 'other' (system 'http://hl7.org/fhir/us/carin-bb/CodeSystem/C4BBClaimProcedureType'): Operation validate code failed: valueset 'http://hl7.org/fhir/us/carin-bb/ValueSet/C4BBClaimProcedureType' is unknown."
+			},
+			"location": [
+				"ExplanationOfBenefit.procedure[0].type[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.procedure[0].type[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code '005T3ZZ' (system 'http://www.cms.gov/Medicare/Coding/ICD10'): Operation validate code failed: creating the required expansion failed mith message \"The ValueSet expander cannot find codesystem 'http://www.cms.gov/Medicare/Coding/ICD10', so the expansion cannot be completed.\"."
+			},
+			"location": [
+				"ExplanationOfBenefit.procedure[0].procedure[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.procedure[0].procedure[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code 'T1019' (system 'https://example.org/payer-internal'): Operation validate code failed: creating the required expansion failed mith message \"The ValueSet expander cannot find codesystem 'http://www.ama-assn.org/go/cpt', so the expansion cannot be completed.\"."
+			},
+			"location": [
+				"ExplanationOfBenefit.item[0].productOrService[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.item[0].productOrService[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "not-supported",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "6004"
+					}
+				],
+				"text": "Terminology service failed while validating code '260385129' (system 'http://www.ama-assn.org/go/cpt'): Operation validate code failed: valueset 'http://hl7.org/fhir/us/carin-bb/ValueSet/AMACPTCMSHCPCSModifiers' is unknown."
+			},
+			"location": [
+				"ExplanationOfBenefit.item[0].modifier[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.item[0].modifier[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "business-rule",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "2009"
+					}
+				],
+				"text": "Evaluation of FhirPath for constraint 'adjudication-has-amount-type-slice' failed: Invocation of operator 'or' failed: Invocation of function 'exists' failed: Invocation of function 'memberOf' failed: The 'memberOf' function cannot be executed because the FhirEvaluationContext does not include a TerminologyService. (Parameter 'ctx')"
+			},
+			"location": [
+				"ExplanationOfBenefit.item[0] // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit.item[0]"
+			]
+		},
+		{
+			"severity": "warning",
+			"code": "business-rule",
+			"details": {
+				"coding": [
+					{
+						"system": "http://hl7.org/fhir/dotnet-api-operation-outcome",
+						"code": "2009"
+					}
+				],
+				"text": "Evaluation of FhirPath for constraint 'EOB-institutional-item-or-header-adjudication' failed: Invocation of operator '!=' failed: Invocation of function 'exists' failed: Invocation of function 'memberOf' failed: The 'memberOf' function cannot be executed because the FhirEvaluationContext does not include a TerminologyService. (Parameter 'ctx')"
+			},
+			"location": [
+				"ExplanationOfBenefit // OperationOutcome.Location is deprecated, please use OperationOutcome.Expression"
+			],
+			"expression": [
+				"ExplanationOfBenefit"
+			]
+		}
+	]
+}

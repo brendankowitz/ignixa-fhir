@@ -1,6 +1,6 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
@@ -161,7 +161,21 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
             var tenantId = currentTenantConfig?.TenantId ?? 1;
 
             var schemaResolver = _schemaResolverFactory(fhirVersionEnum, tenantId);
-            var schema = schemaResolver.GetSchema(canonicalUrl);
+
+            // Element-aware resolution composes meta.profile checks automatically when
+            // no explicit profile was requested. Any resolver implementing
+            // IElementSchemaResolver participates; falls back to canonical-URL lookup otherwise.
+            var element = sourceNode.ToElement(fhirSchemaProvider);
+            ValidationSchema? schema;
+            if (string.IsNullOrEmpty(request.Profile)
+                && schemaResolver is IElementSchemaResolver elementResolver)
+            {
+                schema = elementResolver.ResolveForElement(element);
+            }
+            else
+            {
+                schema = schemaResolver.GetSchema(canonicalUrl);
+            }
 
             if (schema is null)
             {
@@ -180,7 +194,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                         TerminologyService = _terminologyService
                     };
                     var state = new ValidationState();
-                    var validationResult = schema.Validate(sourceNode.ToElement(fhirSchemaProvider), settings, state);
+                    var validationResult = schema.Validate(element, settings, state);
 
                 if (!validationResult.IsValid)
                 {
@@ -589,9 +603,13 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 );
             }
         }
-        catch
+        catch (InvalidOperationException)
         {
-            return null; // Ignore extraction errors
+            return null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 }
