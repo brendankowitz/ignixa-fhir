@@ -25,6 +25,7 @@ The engine follows a three-phase architecture consistent with other Ignixa Core 
 ## Quick Start
 
 ```csharp
+using Ignixa.Specification.Generated;
 using Ignixa.TestScript.Parsing;
 using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.Client;
@@ -43,6 +44,7 @@ if (!result.IsSuccess)
 // 2. Configure
 var httpClient = new HttpClient { BaseAddress = new Uri("https://your-fhir-server") };
 var provider = new HttpTestRequestProvider(httpClient);
+var schemaProvider = new R4CoreSchemaProvider();
 var evaluator = new TestScriptEvaluator(provider, new InlineFixtureProvider(), schemaProvider);
 
 // 3. Execute
@@ -52,6 +54,61 @@ var report = await evaluator.ExecuteAsync(result.Value!, CancellationToken.None)
 var testReport = TestReportResourceGenerator.Generate(report);
 Console.WriteLine(testReport.ToJsonString());
 ```
+
+The parser is strict: unknown assert operators, unsupported criteria fields, malformed actions, and
+type-mismatched fields all produce `ParseSeverity.Error` entries rather than silently changing test
+semantics. Always check `IsSuccess` and surface `Errors` — a script that fails to parse never reaches
+the evaluator.
+
+## Building TestScripts in Code
+
+JSON is only one front-end. `TestScriptEvaluator.ExecuteAsync` takes the `TestScriptDefinition`
+model directly, and the whole model graph is public immutable records — so tests can be defined in
+C# without any JSON:
+
+```csharp
+using Ignixa.TestScript.Model;
+using Ignixa.TestScript.Expressions;
+
+var definition = new TestScriptDefinition
+{
+    Metadata = new TestScriptMetadata { Name = "Patient read" },
+    Tests =
+    [
+        new TestPhaseDefinition
+        {
+            Name = "read returns 200",
+            Actions =
+            [
+                new OperationExpression
+                {
+                    Type = "read",
+                    Resource = "Patient",
+                    Params = "/example",
+                },
+                new AssertExpression { Criteria = new ResponseCodeCriteria("200") },
+                new AssertExpression
+                {
+                    Criteria = new FhirPathCriteria("Patient.id = 'example'"),
+                    WarningOnly = true,
+                },
+            ],
+        },
+    ],
+};
+
+var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+```
+
+Assertions are expressed through the closed `AssertCriteria` hierarchy
+(`ResponseCodeCriteria`, `ResponseStatusCriteria`, `ResourceTypeCriteria`, `ContentTypeCriteria`,
+`HeaderCriteria`, `FhirPathCriteria`, `FhirPathValueCriteria`, `RequestMethodCriteria`,
+`RequestUrlCriteria`), so the compiler enforces which fields each assertion kind needs. Fixtures,
+variables, setup asserts, parametrized tests, and teardown are all expressible the same way via
+`FixtureDefinition`, `VariableDefinition`, `Setup`, `ParametrizeDefinition`, and `Teardown`.
+
+There is currently no writer from the model back to TestScript JSON — the model is the runtime
+representation, JSON is the interchange format.
 
 ## In-Process Testing
 
@@ -117,22 +174,32 @@ public async Task RunTestScript(string path)
     if (!result.IsSuccess)
         throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Message)));
     var report = await evaluator.ExecuteAsync(result.Value!, CancellationToken.None);
-    report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    report.ShouldPass(); // TestScriptAssertions extension
 }
 ```
 
-## Supported Features
+`TestScriptAssertions` also provides `ShouldFail()`, `ShouldHaveTestCount(n)`,
+`ShouldHavePassingSetup()`, and `ShouldHavePassingTeardown()`.
 
-| Feature | Status |
-|---------|--------|
-| CRUD operations | ✅ |
-| Search operations | ✅ |
-| Response assertions | ✅ |
-| FHIRPath assertions | planned |
-| Variable substitution | ✅ |
-| Fixture management | ✅ |
-| autocreate/autodelete | ✅ |
-| TestReport generation | ✅ |
-| Multi-server (origin/destination) | planned |
-| Batch/transaction | planned |
-| Profile validation | planned |
+## Conformance Matrix CLI
+
+The `ignixa-matrix` dotnet tool runs a folder of TestScript suites against a live FHIR server and
+merges per-implementation reports into a published conformance matrix:
+
+```bash
+dotnet tool install -g Ignixa.ConformanceMatrix.Cli
+
+# Run a conformance suite against a server, producing a per-impl report
+ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+  --impl my-server --out ./reports/my-server.json
+
+# Merge per-impl reports into the matrix (runs/ + index.json)
+ignixa-matrix merge --results ./reports --out ./matrix \
+  --commit "$(git rev-parse HEAD)" --branch main
+```
+
+`run` exits non-zero when any test fails *or errors* (an engine/transport error is never reported as
+a pass), prints parse warnings per file, and records crashed scripts as `error` cells rather than
+aborting the run. `--fhir-version` sets the `fhirVersion` parameter on the `Accept` header for
+version-gated suites. `merge` replaces an existing run with the same id rather than duplicating it,
+and refuses to proceed when a report file is unreadable.

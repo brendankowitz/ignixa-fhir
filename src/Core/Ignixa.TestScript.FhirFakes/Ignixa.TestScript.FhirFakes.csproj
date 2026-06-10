@@ -11,12 +11,7 @@
     <PackageId>Ignixa.TestScript.FhirFakes</PackageId>
     <Description>FhirFakes integration for TestScript fixture generation - auto-generate test data from resource type</Description>
     <PackageTags>fhir;testscript;testing;fake-data;test-generation</PackageTags>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.TestScript\Ignixa.TestScript.csproj" />

@@ -78,6 +78,9 @@ jobs:
           dotnet pack src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.SqlOnFhir.Writers/Ignixa.SqlOnFhir.Writers.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Core/Ignixa.TestScript/Ignixa.TestScript.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Core/Ignixa.TestScript.XUnit/Ignixa.TestScript.XUnit.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Core/Ignixa.TestScript.FhirFakes/Ignixa.TestScript.FhirFakes.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           # Extensions
           dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Ignixa.Extensions.FirelySdk5.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
@@ -85,6 +88,7 @@ jobs:
           dotnet pack tools/Ignixa.FhirFakes.Cli/Ignixa.FhirFakes.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack tools/Ignixa.Validation.Cli/Ignixa.Validation.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack tools/Ignixa.SqlOnFhir.Cli/Ignixa.SqlOnFhir.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack tools/Ignixa.ConformanceMatrix.Cli/Ignixa.ConformanceMatrix.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           # Sidecar contracts (for building custom sidecars)
           dotnet pack src/Application/Ignixa.Sidecar.Contracts/Ignixa.Sidecar.Contracts.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
 

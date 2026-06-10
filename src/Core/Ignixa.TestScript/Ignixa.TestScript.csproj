@@ -11,12 +11,7 @@
     <PackageId>Ignixa.TestScript</PackageId>
     <Description>FHIR TestScript execution engine - parse and evaluate TestScript resources against any FHIR server</Description>
     <PackageTags>fhir;testscript;testing;healthcare;hl7;interoperability</PackageTags>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.TestScript.Tests" />
