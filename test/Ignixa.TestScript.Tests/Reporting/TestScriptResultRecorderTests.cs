@@ -36,6 +36,24 @@ public class TestScriptResultRecorderTests
     }
 
     [Fact]
+    public void GivenNoOpenPhase_WhenRecordingOperation_ThenThrows()
+    {
+        var recorder = new TestScriptResultRecorder();
+
+        Should.Throw<InvalidOperationException>(
+            () => recorder.RecordOperationResult("op", "desc", new OperationOutcome(true, 200)));
+    }
+
+    [Fact]
+    public void GivenNoOpenPhase_WhenRecordingAssertion_ThenThrows()
+    {
+        var recorder = new TestScriptResultRecorder();
+
+        Should.Throw<InvalidOperationException>(
+            () => recorder.RecordAssertionResult("a", "desc", new AssertionOutcome(true, false)));
+    }
+
+    [Fact]
     public void GivenWarningOnlyFailedAssertion_WhenRecording_ThenOutcomeIsWarning()
     {
         var recorder = new TestScriptResultRecorder();

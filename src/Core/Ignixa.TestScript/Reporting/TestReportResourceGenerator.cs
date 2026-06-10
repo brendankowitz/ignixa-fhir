@@ -27,39 +27,33 @@ public static class TestReportResourceGenerator
         return testReport;
     }
 
-    private static JsonObject GenerateSetup(TestPhaseResult setup)
-    {
-        var actions = new JsonArray();
-        foreach (var action in setup.Actions)
-            actions.Add(GenerateAction(action));
-        return new JsonObject { ["action"] = actions };
-    }
+    private static JsonObject GenerateSetup(TestPhaseResult setup) =>
+        new() { ["action"] = GenerateActionArray(setup.Actions) };
 
     private static JsonArray GenerateTests(IReadOnlyList<TestCaseResult> tests)
     {
         var result = new JsonArray();
         foreach (var test in tests)
         {
-            var actions = new JsonArray();
-            foreach (var action in test.Actions)
-                actions.Add(GenerateAction(action));
-
             result.Add(new JsonObject
             {
                 ["name"] = test.Name,
                 ["description"] = test.Description,
-                ["action"] = actions
+                ["action"] = GenerateActionArray(test.Actions)
             });
         }
         return result;
     }
 
-    private static JsonObject GenerateTeardown(TestPhaseResult teardown)
+    private static JsonObject GenerateTeardown(TestPhaseResult teardown) =>
+        new() { ["action"] = GenerateActionArray(teardown.Actions) };
+
+    private static JsonArray GenerateActionArray(IReadOnlyList<ActionResult> actions)
     {
-        var actions = new JsonArray();
-        foreach (var action in teardown.Actions)
-            actions.Add(GenerateAction(action));
-        return new JsonObject { ["action"] = actions };
+        var array = new JsonArray();
+        foreach (var action in actions)
+            array.Add(GenerateAction(action));
+        return array;
     }
 
     private static JsonObject GenerateAction(ActionResult action)

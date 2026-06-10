@@ -34,6 +34,8 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
     {
         if (_isBuilt)
             throw new InvalidOperationException("Cannot record results after Build() has been called.");
+        if (!_inPhase)
+            throw new InvalidOperationException("RecordOperationResult called without an open phase. Call BeginPhase first.");
         var resultOutcome = outcome.Success ? TestScriptOutcome.Pass : TestScriptOutcome.Error;
         _currentActions.Add(new ActionResult(label, description, resultOutcome, outcome.ErrorMessage, outcome.Duration));
     }
@@ -42,6 +44,8 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
     {
         if (_isBuilt)
             throw new InvalidOperationException("Cannot record results after Build() has been called.");
+        if (!_inPhase)
+            throw new InvalidOperationException("RecordAssertionResult called without an open phase. Call BeginPhase first.");
 
         TestScriptOutcome resultOutcome;
         if (outcome.IsError)

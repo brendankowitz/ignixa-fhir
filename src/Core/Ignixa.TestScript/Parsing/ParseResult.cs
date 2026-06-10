@@ -21,6 +21,7 @@ public sealed record ParseResult<T> where T : class
 
     public static ParseResult<T> WithWarnings(T value, IReadOnlyList<ParseError> warnings)
     {
+        ArgumentNullException.ThrowIfNull(warnings);
         if (warnings.Any(e => e.Severity == ParseSeverity.Error))
             throw new ArgumentException(
                 "WithWarnings cannot carry Error-severity entries; use Failure instead.", nameof(warnings));

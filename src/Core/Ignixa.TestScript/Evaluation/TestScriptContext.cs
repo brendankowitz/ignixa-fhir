@@ -35,9 +35,12 @@ public sealed record TestScriptContext
 
     public TestScriptContext WithRequest(string? requestId, TestRequest request)
     {
-        var ctx = this with { LastRequest = request };
+        var stored = request.Body is not null
+            ? request with { Body = DeepCloneResource(request.Body) }
+            : request;
+        var ctx = this with { LastRequest = stored };
         if (requestId is not null)
-            ctx = ctx with { RequestHistory = RequestHistory.SetItem(requestId, request) };
+            ctx = ctx with { RequestHistory = RequestHistory.SetItem(requestId, stored) };
         return ctx;
     }
 

@@ -122,7 +122,7 @@ internal static class MergeCommand
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"error: {ex.GetType().Name}: {ex.Message}");
+            Console.Error.WriteLine($"Merge operation failed: {ex.GetType().Name}: {ex.Message}");
             return 1;
         }
     }

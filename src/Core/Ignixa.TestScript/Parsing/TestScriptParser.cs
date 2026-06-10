@@ -109,10 +109,25 @@ public static class TestScriptParser
                 continue;
             }
 
+            ResourceJsonNode? fixtureResource = null;
+            if (fix["resource"] is JsonNode resourceNode)
+            {
+                try
+                {
+                    fixtureResource = JsonSourceNodeFactory.Parse(resourceNode);
+                }
+                catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
+                {
+                    errors.Add(new ParseError(ParseSeverity.Error,
+                        $"Fixture resource could not be parsed: {ex.Message}", $"{path}.resource"));
+                    continue;
+                }
+            }
+
             result.Add(new FixtureDefinition
             {
                 Id = id,
-                Resource = fix["resource"] is JsonNode resourceNode ? JsonSourceNodeFactory.Parse(resourceNode) : null,
+                Resource = fixtureResource,
                 Autocreate = JsonFieldReader.GetBool(fix, "autocreate", path, errors) ?? false,
                 Autodelete = JsonFieldReader.GetBool(fix, "autodelete", path, errors) ?? false
             });

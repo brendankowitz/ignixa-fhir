@@ -31,7 +31,9 @@ public class ConformanceScriptParseTests
     {
         var root = LocateConformanceTestsRoot();
         if (root is null)
-            return [];
+            throw new InvalidOperationException(
+                "conformance-tests directory not found. Expected it to be a sibling of All.sln or an ancestor of the test output directory. " +
+                "Ensure the conformance-tests directory exists at the repository root.");
 
         return Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
             .Select(path => new object[] { path });

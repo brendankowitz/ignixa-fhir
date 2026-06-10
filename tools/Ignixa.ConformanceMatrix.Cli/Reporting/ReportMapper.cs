@@ -93,7 +93,7 @@ internal static class ReportMapper
         return new CellError
         {
             Assertion = failing?.Description ?? failing?.Label ?? "Setup failed",
-            Received = failing?.Message ?? ""
+            Received = failing?.Message ?? "(no error details captured)"
         };
     }
 
@@ -112,6 +112,6 @@ internal static class ReportMapper
         TestScriptOutcome.Pass or TestScriptOutcome.Warning => "pass",
         TestScriptOutcome.Fail or TestScriptOutcome.Error => "fail",
         TestScriptOutcome.Skip => "skipped",
-        _ => "fail"
+        _ => throw new InvalidOperationException($"Unhandled TestScriptOutcome value: {outcome}")
     };
 }

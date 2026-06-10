@@ -31,7 +31,7 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
             httpRequest.Headers.TryAddWithoutValidation(key, value);
         }
 
-        var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken);
+        using var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken);
 
         var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
         ResourceJsonNode? body = null;

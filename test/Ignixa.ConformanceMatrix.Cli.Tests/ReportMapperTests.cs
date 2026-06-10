@@ -156,7 +156,7 @@ public class ReportMapperTests
     }
 
     [Fact]
-    public void GivenMultipleTests_WhenMapped_ThenIdContainsScriptAndTestName()
+    public void GivenSingleTest_WhenMapped_ThenIdContainsScriptAndTestName()
     {
         // Arrange
         var report = MakeReport(
