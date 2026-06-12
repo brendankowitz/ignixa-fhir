@@ -35,8 +35,10 @@ public class SearchResolverTests
         """{"resourceType":"Patient","id":"p2"}""");
     private static readonly string[] SortDateName = ["-date", "name"];
 
+    private static readonly DateTimeOffset FixedTimestamp = new(2024, 1, 15, 12, 0, 0, TimeSpan.Zero);
+
     private static SearchEntryResult MakeEntry(string id, byte[] json)
-        => new SearchEntryResult("Patient", id, "1", DateTimeOffset.UtcNow, json);
+        => new SearchEntryResult("Patient", id, "1", FixedTimestamp, json);
 
     private static async IAsyncEnumerable<SearchEntryResult> ToAsyncEnumerable(
         IEnumerable<SearchEntryResult> items,
@@ -187,16 +189,20 @@ public class SearchResolverTests
     }
 
     [Fact]
-    public async Task GivenNextPageToken_WhenSearching_ThenResultHasNextCursorInLinks()
+    public async Task GivenMoreResultsThanPageSize_WhenSearching_ThenResultHasEncodedNextCursor()
     {
         // Arrange
-        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+        var searchOptions = new SearchOptions { ResourceType = "Patient", MaxItemCount = 2 };
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks(searchOptions);
 
+        var entries = new[]
+        {
+            MakeEntry("p1", PatientJson1),
+            MakeEntry("p2", PatientJson2),
+            MakeEntry("p3", PatientJson1),
+        };
         mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new SearchResourcesResult(
-                ToAsyncEnumerable([]),
-                ContinuationToken: "next-page-token",
-                HasMore: true));
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable(entries)));
 
         var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
 
@@ -204,8 +210,32 @@ public class SearchResolverTests
         var result = await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
 
         // Assert
+        result.Edges.Count.ShouldBe(2);
         result.Next.ShouldNotBeNull();
-        result.Next.ShouldBe("next-page-token");
+        ContinuationToken.TryDecode(result.Next!, out var offset, out var count).ShouldBeTrue();
+        offset.ShouldBe(2);
+        count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenResultsFitInOnePage_WhenSearching_ThenNextCursorIsNull()
+    {
+        // Arrange
+        var searchOptions = new SearchOptions { ResourceType = "Patient", MaxItemCount = 10 };
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks(searchOptions);
+
+        var entries = new[] { MakeEntry("p1", PatientJson1), MakeEntry("p2", PatientJson2) };
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable(entries)));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        var result = await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        result.Edges.Count.ShouldBe(2);
+        result.Next.ShouldBeNull();
     }
 
     [Fact]
@@ -352,7 +382,7 @@ public class SearchResolverTests
         var entries = new[]
         {
             MakeEntry("p1", PatientJson1),
-            new SearchEntryResult("Patient", "p2", "1", DateTimeOffset.UtcNow, PatientJson2)
+            new SearchEntryResult("Patient", "p2", "1", FixedTimestamp, PatientJson2)
             {
                 IsDeleted = true,
             },
@@ -462,5 +492,79 @@ public class SearchResolverTests
             Arg.Is<IReadOnlyList<QueryParameter>>(p =>
                 p.Any(q => q.Name == "_id" && q.Value == "p1,p2,p3")),
             Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenTenantContext_WhenSearching_ThenCreatesBuilderWithTenantId()
+    {
+        // Arrange
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+
+        var requestContext = new FhirRequestContext
+        {
+            TenantId = 7,
+            FhirVersion = FhirVersion.R4,
+        };
+        contextAccessor.RequestContext.Returns(requestContext);
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builderFactory.Received(1).Create(FhirVersion.R4, 7);
+    }
+
+    [Fact]
+    public async Task GivenTenantContext_WhenListSearching_ThenCreatesBuilderWithTenantId()
+    {
+        // Arrange
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+
+        var requestContext = new FhirRequestContext
+        {
+            TenantId = 42,
+            FhirVersion = FhirVersion.R5,
+        };
+        contextAccessor.RequestContext.Returns(requestContext);
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchListAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builderFactory.Received(1).Create(FhirVersion.R5, 42);
+    }
+
+    [Fact]
+    public async Task GivenMalformedContinuationToken_WhenSearching_ThenOffsetDefaultsToZero()
+    {
+        // Arrange
+        var searchOptions = new SearchOptions
+        {
+            ResourceType = "Patient",
+            MaxItemCount = 10,
+            ContinuationToken = "this-is-not-a-valid-token",
+        };
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks(searchOptions);
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        var result = await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        result.Offset.ShouldBe(0);
     }
 }

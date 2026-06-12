@@ -7,5 +7,7 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 
 public interface IFhirTypeModule
 {
+    event EventHandler<EventArgs>? TypesChanged;
+
     void NotifyTypesChanged();
 }

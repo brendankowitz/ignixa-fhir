@@ -5,16 +5,20 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using HotChocolate;
 using HotChocolate.Resolvers;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 
 internal static class FieldResolver
 {
+    private static readonly FhirPathParser FhirPathExpressionParser = new(preserveTrivia: false);
+
     internal static JsonElement ParseResourceBytes(ReadOnlyMemory<byte> bytes)
     {
         var span = bytes.Span;
@@ -107,7 +111,7 @@ internal static class FieldResolver
         if (string.IsNullOrEmpty(expression))
             return items;
 
-        // "$index = N" → select element at index N (non-standard but useful shorthand)
+        // "$index = N" → select element at index N (non-standard shorthand, not a FHIRPath expression)
         if (expression.StartsWith("$index", StringComparison.Ordinal) && expression.Contains('=', StringComparison.Ordinal))
         {
             var indexStr = expression.Split('=', 2)[1].Trim();
@@ -117,6 +121,8 @@ internal static class FieldResolver
                 return index >= 0 && index < list.Count ? [list[index]] : [];
             }
         }
+
+        ValidateFhirPathExpression(expression);
 
         return items.Where(item =>
         {
@@ -130,12 +136,23 @@ internal static class FieldResolver
                 var element = sourceNode.ToElement(schemaProvider);
                 return element.IsTrue(expression);
             }
-            catch
+            catch (OperationCanceledException)
             {
-                // If FhirPath evaluation fails, include the item (fail open)
-                return true;
+                throw;
             }
         });
+    }
+
+    private static void ValidateFhirPathExpression(string expression)
+    {
+        if (!FhirPathExpressionParser.TryParse(expression, out _, out var errorMessage))
+        {
+            throw new GraphQLException(
+                ErrorBuilder.New()
+                    .SetMessage($"Invalid FHIRPath expression '{expression}': {errorMessage}")
+                    .SetCode("FHIRPATH_INVALID")
+                    .Build());
+        }
     }
 
     private static bool MatchesSubPropertyFilter(JsonElement element, string propertyName, string targetValue)

@@ -33,7 +33,7 @@ public sealed class GraphQlSchemaWarmupService(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to warm up GraphQL schema for version {Version}", version);
+                logger.LogError(ex, "Failed to warm up GraphQL schema for version {Version}", version);
             }
         }
     }

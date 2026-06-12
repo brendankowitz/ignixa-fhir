@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using HotChocolate;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Specification.Generated;
@@ -14,29 +15,30 @@ namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
 public class FieldResolverTests
 {
     private static readonly IFhirSchemaProvider SchemaProvider = new R4CoreSchemaProvider();
-    [Fact]
-    public void GivenJsonWithUnderscoreField_WhenAccessingPrimitiveExtension_ThenReturnsElement()
-    {
-        var json = JsonSerializer.Deserialize<JsonElement>(
-            """{"birthDate":"1990-01-01","_birthDate":{"extension":[{"url":"http://example.com","valueString":"test"}]}}""");
 
-        json.TryGetProperty("_birthDate", out var element).ShouldBeTrue();
-        element.TryGetProperty("extension", out var extensions).ShouldBeTrue();
-        extensions.GetArrayLength().ShouldBe(1);
+    [Fact]
+    public void GivenPrimitiveExtensionElement_WhenFilteringExtensionsByUrl_ThenReturnsMatchingExtension()
+    {
+        var element = JsonSerializer.Deserialize<JsonElement>(
+            """{"extension":[{"url":"http://example.com/a","valueString":"a"},{"url":"http://example.com/b","valueString":"b"}]}""");
+
+        var result = FieldResolver.FilterExtensionsByUrl(element, "http://example.com/b").ToList();
+
+        result.Count.ShouldBe(1);
+        FieldResolver.GetStringProperty(result[0], "valueString").ShouldBe("b");
     }
 
     [Fact]
-    public void GivenArrayField_WhenApplyingOffsetAndCount_ThenReturnsSubset()
+    public void GivenArrayField_WhenSelectingByIndexShorthand_ThenReturnsSingleElement()
     {
-        var json = JsonSerializer.Deserialize<JsonElement>(
-            """{"name":[{"text":"A"},{"text":"B"},{"text":"C"},{"text":"D"}]}""");
+        var items = JsonSerializer.Deserialize<JsonElement>(
+            """[{"text":"A"},{"text":"B"},{"text":"C"},{"text":"D"}]""")
+            .EnumerateArray().ToList();
 
-        var items = json.GetProperty("name").EnumerateArray().ToList();
-        var result = items.Skip(1).Take(2).ToList();
+        var result = FieldResolver.ApplyFhirPathFilter(items, "$index = 1", SchemaProvider, null).ToList();
 
-        result.Count.ShouldBe(2);
-        result[0].GetProperty("text").GetString().ShouldBe("B");
-        result[1].GetProperty("text").GetString().ShouldBe("C");
+        result.Count.ShouldBe(1);
+        FieldResolver.GetStringProperty(result[0], "text").ShouldBe("B");
     }
 
     [Fact]
@@ -73,7 +75,7 @@ public class FieldResolverTests
     }
 
     [Fact]
-    public void GivenInvalidExpression_WhenFiltering_ThenReturnsAllElements()
+    public void GivenInvalidExpression_WhenFiltering_ThenThrowsGraphQLExceptionWithFhirPathInvalidCode()
     {
         var items = new[]
         {
@@ -81,9 +83,23 @@ public class FieldResolverTests
             JsonSerializer.Deserialize<JsonElement>("""{"a":2}"""),
         };
 
-        var result = FieldResolver.ApplyFhirPathFilter(items, "(invalid", SchemaProvider, null).ToList();
+        var ex = Should.Throw<GraphQLException>(() =>
+            FieldResolver.ApplyFhirPathFilter(items, "(invalid", SchemaProvider, null).ToList());
 
-        result.Count.ShouldBe(2);
+        ex.Errors[0].Code.ShouldBe("FHIRPATH_INVALID");
+    }
+
+    [Fact]
+    public void GivenInvalidExpression_WhenFiltering_ThenDoesNotFailOpen()
+    {
+        var items = new[]
+        {
+            JsonSerializer.Deserialize<JsonElement>("""{"status":"active"}"""),
+            JsonSerializer.Deserialize<JsonElement>("""{"status":"inactive"}"""),
+        };
+
+        Should.Throw<GraphQLException>(() =>
+            FieldResolver.ApplyFhirPathFilter(items, "status = 'active'))", SchemaProvider, "Medication").ToList());
     }
 
     [Fact]

@@ -7,16 +7,21 @@ using Ignixa.Abstractions;
 
 namespace Ignixa.Application.Features.Experimental.Configuration;
 
-public class GraphQlExperimentalOptions
+public sealed class GraphQlExperimentalOptions
 {
     public bool Enabled { get; set; } = true;
     public int MaxQueryDepth { get; set; } = 15;
     public bool EnableIntrospection { get; set; } = true;
-    /// <summary>Reserved for future use. HC v15 does not expose a built-in complexity rule via AddGraphQLServer.</summary>
-    public int MaxQueryComplexity { get; set; } = 500;
     public int MaxPageSize { get; set; } = 1000;
     public int DefaultPageSize { get; set; } = 10;
     public bool EnableGetRequests { get; set; } = true;
     public int ExecutionTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// When true, GraphQL errors include the underlying exception type and message in the
+    /// FHIR OperationOutcome diagnostics. Leave false in production to avoid leaking internals.
+    /// </summary>
+    public bool IncludeExceptionDetails { get; set; }
+
     public ICollection<FhirVersion> WarmupVersions { get; } = [FhirVersion.R4];
 }

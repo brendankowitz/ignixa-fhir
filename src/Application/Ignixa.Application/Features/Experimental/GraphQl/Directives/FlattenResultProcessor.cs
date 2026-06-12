@@ -15,15 +15,24 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Directives;
 internal static class FlattenResultProcessor
 {
     /// <summary>
-    /// Processes the result data, applying @flatten and @slice transformations.
+    /// Processes the result data, applying @flatten and @slice transformations to the
+    /// operation matching <paramref name="operationName"/> (or the first when null).
     /// </summary>
-    internal static void Process(DocumentNode document, IDictionary<string, object?> data)
+    internal static void Process(DocumentNode document, string? operationName, IDictionary<string, object?> data)
     {
-        var operation = document.Definitions.OfType<OperationDefinitionNode>().FirstOrDefault();
+        var operation = SelectOperation(document, operationName);
         if (operation?.SelectionSet is null)
             return;
 
         ProcessSelectionSet(operation.SelectionSet, data);
+    }
+
+    private static OperationDefinitionNode? SelectOperation(DocumentNode document, string? operationName)
+    {
+        var operations = document.Definitions.OfType<OperationDefinitionNode>();
+        return operationName is not null
+            ? operations.FirstOrDefault(op => op.Name?.Value == operationName)
+            : operations.FirstOrDefault();
     }
 
     /// <summary>
@@ -187,6 +196,8 @@ internal static class FlattenResultProcessor
 
         parentData.Remove(fieldName);
 
+        var headSegment = HeadSegment(path);
+
         for (var i = 0; i < list.Count; i++)
         {
             if (list[i] is not IDictionary<string, object?> itemDict)
@@ -194,15 +205,68 @@ internal static class FlattenResultProcessor
 
             var suffix = path == "$index"
                 ? i.ToString()
-                : itemDict.TryGetValue(path, out var pathValue)
-                    ? pathValue?.ToString() ?? i.ToString()
-                    : i.ToString();
+                : ResolvePath(itemDict, path)?.ToString() ?? i.ToString();
 
             foreach (var (key, value) in itemDict)
             {
-                if (key == path)
+                if (key == headSegment)
                     continue;
-                parentData[$"{key}.{suffix}"] = value;
+                AssignDisambiguated(parentData, $"{key}.{suffix}", value);
+            }
+        }
+    }
+
+    private static string? HeadSegment(string path)
+    {
+        if (path == "$index")
+            return null;
+
+        var dot = path.IndexOf('.', StringComparison.Ordinal);
+        return dot >= 0 ? path[..dot] : path;
+    }
+
+    /// <summary>
+    /// Resolves a dotted path (e.g. <c>name.family</c>) against a result item by walking
+    /// nested dictionaries, taking the first element of any intermediate list to match
+    /// FHIRPath single-value semantics. Returns null when any segment is missing.
+    /// </summary>
+    private static object? ResolvePath(object? item, string path)
+    {
+        var current = item;
+        foreach (var segment in path.Split('.'))
+        {
+            if (current is IList<object?> { Count: > 0 } list)
+                current = list[0];
+
+            if (current is not IDictionary<string, object?> dict
+                || !dict.TryGetValue(segment, out current))
+            {
+                return null;
+            }
+        }
+
+        if (current is IList<object?> { Count: > 0 } tail)
+            current = tail[0];
+
+        return current;
+    }
+
+    private static void AssignDisambiguated(
+        IDictionary<string, object?> parentData, string key, object? value)
+    {
+        if (!parentData.ContainsKey(key))
+        {
+            parentData[key] = value;
+            return;
+        }
+
+        for (var index = 1; ; index++)
+        {
+            var candidate = $"{key}.{index}";
+            if (!parentData.ContainsKey(candidate))
+            {
+                parentData[candidate] = value;
+                return;
             }
         }
     }

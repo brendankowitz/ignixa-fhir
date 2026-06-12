@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using HotChocolate;
 using HotChocolate.Execution;
+using HotChocolate.Types;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Execution;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
@@ -12,6 +14,7 @@ using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
+using ISchema = HotChocolate.ISchema;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
 
@@ -27,6 +30,23 @@ public class GraphQlExecutionServiceTests
 
     private static ILogger<GraphQlExecutionService> BuildLogger()
         => Substitute.For<ILogger<GraphQlExecutionService>>();
+
+    private static void StubSchemaWithResourceTypes(IRequestExecutor executor, params string[] resourceTypes)
+    {
+        var named = resourceTypes
+            .Select(name =>
+            {
+                var type = Substitute.For<INamedType>();
+                type.Name.Returns(name);
+                return type;
+            })
+            .ToList();
+
+        var schema = Substitute.For<ISchema>();
+        schema.Types.Returns(named);
+
+        executor.Schema.Returns(schema);
+    }
 
     [Fact]
     public async Task GivenValidQuery_WhenExecuteAsync_ThenDelegatesToExecutor()
@@ -61,8 +81,9 @@ public class GraphQlExecutionServiceTests
 
         var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
         var resolver = BuildResolver(executor, schemaName);
+        StubSchemaWithResourceTypes(executor, "Patient");
         var service = new GraphQlExecutionService(resolver, BuildLogger());
-        var body = new GraphQlRequestBody("{ __typename }", null, null);
+        var body = new GraphQlRequestBody("{ id }", null, null);
 
         // Act
         var result = await service.ExecuteInstanceAsync(body, FhirVersion.R4, "Patient", "p1", CancellationToken.None);
@@ -70,6 +91,66 @@ public class GraphQlExecutionServiceTests
         // Assert
         result.ShouldBe(expectedResult);
         await executor.Received(1).ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenUnknownResourceType_WhenExecuteInstanceAsync_ThenReturnsErrorWithoutExecuting()
+    {
+        // Arrange
+        var executor = Substitute.For<IRequestExecutor>();
+        var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
+        var resolver = BuildResolver(executor, schemaName);
+        StubSchemaWithResourceTypes(executor, "Patient");
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
+        var body = new GraphQlRequestBody("{ id }", null, null);
+
+        // Act
+        var result = await service.ExecuteInstanceAsync(body, FhirVersion.R4, "NotAType", "p1", CancellationToken.None);
+
+        // Assert
+        var operationResult = result.ShouldBeAssignableTo<IOperationResult>();
+        operationResult!.Errors![0].Code.ShouldBe("FHIR_UNKNOWN_RESOURCE_TYPE");
+        await executor.DidNotReceive().ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenNonBareInstanceQuery_WhenExecuteInstanceAsync_ThenReturnsErrorWithoutExecuting()
+    {
+        // Arrange
+        var executor = Substitute.For<IRequestExecutor>();
+        var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
+        var resolver = BuildResolver(executor, schemaName);
+        StubSchemaWithResourceTypes(executor, "Patient");
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
+        var body = new GraphQlRequestBody("query { id }", null, null);
+
+        // Act
+        var result = await service.ExecuteInstanceAsync(body, FhirVersion.R4, "Patient", "p1", CancellationToken.None);
+
+        // Assert
+        var operationResult = result.ShouldBeAssignableTo<IOperationResult>();
+        operationResult!.Errors![0].Code.ShouldBe("FHIR_INVALID_INSTANCE_QUERY");
+        await executor.DidNotReceive().ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenInvalidResourceId_WhenExecuteInstanceAsync_ThenReturnsErrorWithoutExecuting()
+    {
+        // Arrange
+        var executor = Substitute.For<IRequestExecutor>();
+        var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
+        var resolver = BuildResolver(executor, schemaName);
+        StubSchemaWithResourceTypes(executor, "Patient");
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
+        var body = new GraphQlRequestBody("{ id }", null, null);
+
+        // Act — id contains characters outside the FHIR id grammar
+        var result = await service.ExecuteInstanceAsync(body, FhirVersion.R4, "Patient", "bad id\"", CancellationToken.None);
+
+        // Assert
+        var operationResult = result.ShouldBeAssignableTo<IOperationResult>();
+        operationResult!.Errors![0].Code.ShouldBe("FHIR_INVALID_ID");
+        await executor.DidNotReceive().ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -119,7 +200,7 @@ public class GraphQlExecutionServiceTests
     }
 
     [Fact]
-    public async Task GivenNullQuery_WhenExecuteAsync_ThenThrowsArgumentException()
+    public async Task GivenNullQuery_WhenExecuteAsync_ThenReturnsGraphQlErrorResult()
     {
         // Arrange
         var executor = Substitute.For<IRequestExecutor>();
@@ -128,9 +209,35 @@ public class GraphQlExecutionServiceTests
         var service = new GraphQlExecutionService(resolver, BuildLogger());
         var body = new GraphQlRequestBody(null, null, null);
 
-        // Act / Assert
-        await Should.ThrowAsync<ArgumentException>(
-            () => service.ExecuteAsync(body, FhirVersion.R4, CancellationToken.None));
+        // Act
+        var result = await service.ExecuteAsync(body, FhirVersion.R4, CancellationToken.None);
+
+        // Assert — malformed input must surface as a GraphQL error, never an HTTP 500.
+        var operationResult = result.ShouldBeAssignableTo<IOperationResult>();
+        operationResult!.Errors.ShouldNotBeNull();
+        operationResult.Errors!.ShouldNotBeEmpty();
+        operationResult.Errors[0].Code.ShouldBe("FHIR_SYNTAX_ERROR");
+        await executor.DidNotReceive().ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenMalformedQuery_WhenExecuteAsync_ThenReturnsGraphQlErrorResult()
+    {
+        // Arrange
+        var executor = Substitute.For<IRequestExecutor>();
+        var schemaName = GraphQlNamingHelper.GetSchemaName(FhirVersion.R4);
+        var resolver = BuildResolver(executor, schemaName);
+        var service = new GraphQlExecutionService(resolver, BuildLogger());
+        var body = new GraphQlRequestBody("{ unterminated", null, null);
+
+        // Act
+        var result = await service.ExecuteAsync(body, FhirVersion.R4, CancellationToken.None);
+
+        // Assert
+        var operationResult = result.ShouldBeAssignableTo<IOperationResult>();
+        operationResult!.Errors!.ShouldNotBeEmpty();
+        operationResult.Errors[0].Code.ShouldBe("FHIR_SYNTAX_ERROR");
+        await executor.DidNotReceive().ExecuteAsync(Arg.Any<IOperationRequest>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

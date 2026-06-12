@@ -8,6 +8,7 @@ using System.Text.Json;
 using HotChocolate;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
@@ -180,47 +181,93 @@ public class MutationResolverTests
     }
 
     [Fact]
-    public async Task GivenInvalidJson_WhenCreating_ThenThrowsGraphQLExceptionWithInvalidResourceCode()
+    public async Task GivenMalformedJson_WhenCreating_ThenThrowsGraphQLExceptionWithInvalidResourceCode()
     {
-        // Arrange
+        // Arrange — "not-json" fails at ResourceJsonNode.Parse before the mediator is reached
         var mediator = Substitute.For<IMediator>();
-        mediator.SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new JsonException("bad json"));
         var resolver = new MutationResolver(mediator, NullLogger<MutationResolver>.Instance);
 
         // Act & Assert
         var ex = await Should.ThrowAsync<GraphQLException>(
             () => resolver.CreateAsync("Patient", "not-json", CancellationToken.None));
         ex.Errors[0].Code.ShouldBe("INVALID_RESOURCE");
+
+        await mediator.DidNotReceive().SendAsync(
+            Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task GivenMediatorThrows_WhenUpdating_ThenThrowsGraphQLExceptionWithMutationFailedCode()
+    public async Task GivenValidationException_WhenUpdating_ThenThrowsGraphQLExceptionWithInvalidResourceCode()
     {
         // Arrange
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new InvalidOperationException("Validation failed"));
+            .ThrowsAsync(new BadRequestException("Resource validation failed"));
         var resolver = new MutationResolver(mediator, NullLogger<MutationResolver>.Instance);
 
         // Act & Assert
         var ex = await Should.ThrowAsync<GraphQLException>(
-            () => resolver.UpdateAsync("Patient", "p1", """{"resourceType":"Patient"}""", CancellationToken.None));
-        ex.Errors[0].Code.ShouldBe("MUTATION_FAILED");
+            () => resolver.UpdateAsync("Patient", "p1", ValidPatientJson, CancellationToken.None));
+        ex.Errors[0].Code.ShouldBe("INVALID_RESOURCE");
+        ex.Errors[0].Message.ShouldBe("Resource validation failed");
     }
 
     [Fact]
-    public async Task GivenMediatorThrows_WhenDeleting_ThenThrowsGraphQLExceptionWithMutationFailedCode()
+    public async Task GivenPreconditionFailedException_WhenUpdating_ThenThrowsGraphQLExceptionWithVersionConflictCode()
+    {
+        // Arrange
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new PreconditionFailedException("Version conflict"));
+        var resolver = new MutationResolver(mediator, NullLogger<MutationResolver>.Instance);
+
+        // Act & Assert
+        var ex = await Should.ThrowAsync<GraphQLException>(
+            () => resolver.UpdateAsync("Patient", "p1", ValidPatientJson, CancellationToken.None));
+        ex.Errors[0].Code.ShouldBe("FHIR_VERSION_CONFLICT");
+    }
+
+    [Fact]
+    public async Task GivenResourceVersionConflictException_WhenCreating_ThenThrowsGraphQLExceptionWithVersionConflictCode()
+    {
+        // Arrange
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ResourceVersionConflictException("Patient", "p1", 2, 1));
+        var resolver = new MutationResolver(mediator, NullLogger<MutationResolver>.Instance);
+
+        // Act & Assert
+        var ex = await Should.ThrowAsync<GraphQLException>(
+            () => resolver.CreateAsync("Patient", ValidPatientJson, CancellationToken.None));
+        ex.Errors[0].Code.ShouldBe("FHIR_VERSION_CONFLICT");
+    }
+
+    [Fact]
+    public async Task GivenResourceNotFoundException_WhenDeleting_ThenThrowsGraphQLExceptionWithNotFoundCode()
     {
         // Arrange
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(Arg.Any<DeleteResourceCommand>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new InvalidOperationException("Not found"));
+            .ThrowsAsync(new ResourceNotFoundException("Patient/p1 was not found"));
         var resolver = new MutationResolver(mediator, NullLogger<MutationResolver>.Instance);
 
         // Act & Assert
         var ex = await Should.ThrowAsync<GraphQLException>(
             () => resolver.DeleteAsync("Patient", "p1", CancellationToken.None));
-        ex.Errors[0].Code.ShouldBe("MUTATION_FAILED");
+        ex.Errors[0].Code.ShouldBe("FHIR_NOT_FOUND");
+    }
+
+    [Fact]
+    public async Task GivenUnexpectedException_WhenUpdating_ThenPropagatesToErrorFilter()
+    {
+        // Arrange — non-FHIR exceptions are not caught; the error filter logs and masks them
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("database offline"));
+        var resolver = new MutationResolver(mediator, NullLogger<MutationResolver>.Instance);
+
+        // Act & Assert
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => resolver.UpdateAsync("Patient", "p1", ValidPatientJson, CancellationToken.None));
     }
 }

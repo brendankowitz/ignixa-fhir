@@ -646,14 +646,31 @@ public sealed class FhirTypeModule(
                 {
                     var parent = ctx.Parent<JsonElement>();
                     var reference = FhirFieldResolver.GetStringProperty(parent, "reference");
-                    if (string.IsNullOrEmpty(reference)
-                        || reference.StartsWith('#')
-                        || reference.StartsWith("urn:", StringComparison.OrdinalIgnoreCase))
+
+                    if (string.IsNullOrEmpty(reference))
+                    {
+                        ReportUnsupportedReference(ctx, "<empty>", "the reference is empty");
                         return null;
+                    }
+
+                    if (reference.StartsWith('#'))
+                    {
+                        ReportUnsupportedReference(ctx, reference, "contained reference resolution is not supported");
+                        return null;
+                    }
+
+                    if (reference.StartsWith("urn:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ReportUnsupportedReference(ctx, reference, "urn reference resolution is not supported");
+                        return null;
+                    }
 
                     var parsed = _referenceParser.Parse(reference);
                     if (parsed.ResourceType is null)
+                    {
+                        ReportUnsupportedReference(ctx, reference, "a resource type and id could not be parsed from the reference");
                         return null;
+                    }
 
                     var key = new Models.ResourceKey(parsed.ResourceType, parsed.ResourceId);
 
@@ -667,23 +684,38 @@ public sealed class FhirTypeModule(
                     var dataLoader = ctx.DataLoader<ResourceDataLoader>();
                     var result = await dataLoader.LoadAsync(key, ctx.RequestAborted);
 
-                    if (result is null)
+                    if (result is null && !IsOptionalReference(ctx))
                     {
-                        var isOptional = ctx.ArgumentOptional<bool?>("optional");
-                        if (!isOptional.HasValue || isOptional.Value != true)
-                        {
-                            ctx.ReportError(
-                                ErrorBuilder.New()
-                                    .SetMessage($"Reference '{reference}' could not be resolved")
-                                    .SetCode("FHIR_REFERENCE_NOT_FOUND")
-                                    .SetPath(ctx.Path)
-                                    .Build());
-                        }
+                        ctx.ReportError(
+                            ErrorBuilder.New()
+                                .SetMessage($"Reference '{reference}' could not be resolved")
+                                .SetCode("FHIR_REFERENCE_NOT_FOUND")
+                                .SetPath(ctx.Path)
+                                .Build());
                     }
 
                     return result;
                 });
         });
+    }
+
+    private static bool IsOptionalReference(IResolverContext ctx)
+    {
+        var isOptional = ctx.ArgumentOptional<bool?>("optional");
+        return isOptional.HasValue && isOptional.Value == true;
+    }
+
+    private static void ReportUnsupportedReference(IResolverContext ctx, string reference, string reason)
+    {
+        if (IsOptionalReference(ctx))
+            return;
+
+        ctx.ReportError(
+            ErrorBuilder.New()
+                .SetMessage($"Reference '{reference}' could not be resolved: {reason}")
+                .SetCode("FHIR_REFERENCE_NOT_SUPPORTED")
+                .SetPath(ctx.Path)
+                .Build());
     }
 
     private static UnionType BuildResourceUnionType(IReadOnlyList<string> resourceTypes)

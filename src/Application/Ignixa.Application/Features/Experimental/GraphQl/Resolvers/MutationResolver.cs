@@ -6,6 +6,8 @@
 using System.Text.Json;
 using HotChocolate;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Domain.Exceptions;
+using Ignixa.Serialization.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -23,10 +25,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
     {
         logger.LogDebug("GraphQL creating {ResourceType}", resourceType);
 
-        ResourceJsonNode jsonNode;
-        try { jsonNode = ResourceJsonNode.Parse(resourceJson); }
-        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
-        { throw CreateError("Invalid resource JSON", "INVALID_RESOURCE", ex); }
+        var jsonNode = ParseResourceJson(resourceJson);
 
         try
         {
@@ -37,7 +36,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
                 ? FieldResolver.ParseResourceBytes(result.ResourceBytes) : null;
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { throw CreateError($"Create {resourceType} failed: {ex.Message}", "MUTATION_FAILED", ex); }
+        catch (FhirException ex) { throw MapFhirException(ex, $"Create {resourceType}"); }
     }
 
     public async Task<JsonElement?> UpdateAsync(
@@ -45,10 +44,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
     {
         logger.LogDebug("GraphQL updating {ResourceType}/{Id}", resourceType, id);
 
-        ResourceJsonNode jsonNode;
-        try { jsonNode = ResourceJsonNode.Parse(resourceJson); }
-        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
-        { throw CreateError("Invalid resource JSON", "INVALID_RESOURCE", ex); }
+        var jsonNode = ParseResourceJson(resourceJson);
 
         try
         {
@@ -58,7 +54,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
                 ? FieldResolver.ParseResourceBytes(result.ResourceBytes) : null;
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { throw CreateError($"Update {resourceType}/{id} failed: {ex.Message}", "MUTATION_FAILED", ex); }
+        catch (FhirException ex) { throw MapFhirException(ex, $"Update {resourceType}/{id}"); }
     }
 
     public async Task<bool> DeleteAsync(
@@ -71,10 +67,38 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
             return await mediator.SendAsync(command, cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { throw CreateError($"Delete {resourceType}/{id} failed: {ex.Message}", "MUTATION_FAILED", ex); }
+        catch (FhirException ex) { throw MapFhirException(ex, $"Delete {resourceType}/{id}"); }
     }
+
+    private static ResourceJsonNode ParseResourceJson(string resourceJson)
+    {
+        try { return ResourceJsonNode.Parse(resourceJson); }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+        { throw CreateError("Invalid resource JSON", "INVALID_RESOURCE", ex); }
+    }
+
+    private GraphQLException MapFhirException(FhirException exception, string operation)
+    {
+        var code = exception is ResourceNotFoundException ? "FHIR_NOT_FOUND" : CodeFromStatus(exception.StatusCode);
+        logger.LogWarning(exception, "GraphQL mutation {Operation} failed with status {StatusCode} ({Code})",
+            operation, exception.StatusCode, code);
+
+        return new GraphQLException(
+            ErrorBuilder.New()
+                .SetMessage(exception.Message)
+                .SetCode(code)
+                .SetException(exception)
+                .Build());
+    }
+
+    private static string CodeFromStatus(int statusCode) => statusCode switch
+    {
+        404 => "FHIR_NOT_FOUND",
+        409 or 412 => "FHIR_VERSION_CONFLICT",
+        400 => "INVALID_RESOURCE",
+        _ => "FHIR_OPERATION_FAILED",
+    };
 
     private static GraphQLException CreateError(string message, string code, Exception inner) =>
         new(ErrorBuilder.New().SetMessage(message).SetCode(code).SetException(inner).Build());
 }
-

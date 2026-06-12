@@ -5,4 +5,4 @@
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Models;
 
-public record ResourceKey(string ResourceType, string ResourceId);
+public sealed record ResourceKey(string ResourceType, string ResourceId);

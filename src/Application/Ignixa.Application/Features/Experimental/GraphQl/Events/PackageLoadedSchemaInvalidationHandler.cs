@@ -6,16 +6,28 @@
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Medino;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Events;
 
 public sealed class PackageLoadedSchemaInvalidationHandler(
-    IReadOnlyList<IFhirTypeModule> typeModules) : INotificationHandler<PackageLoadedEvent>
+    IReadOnlyList<IFhirTypeModule> typeModules,
+    ILogger<PackageLoadedSchemaInvalidationHandler> logger) : INotificationHandler<PackageLoadedEvent>
 {
     public Task HandleAsync(PackageLoadedEvent notification, CancellationToken cancellationToken)
     {
         foreach (var module in typeModules)
-            module.NotifyTypesChanged();
+        {
+            try
+            {
+                module.NotifyTypesChanged();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to invalidate GraphQL schema for module {ModuleType}", module.GetType().Name);
+            }
+        }
+
         return Task.CompletedTask;
     }
 }

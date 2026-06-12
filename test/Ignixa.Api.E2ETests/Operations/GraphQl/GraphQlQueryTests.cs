@@ -658,5 +658,279 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         AssertNoErrors(result);
         result["data"]!["__typename"]!.GetValue<string>().ShouldBe("Query");
     }
+
+    // ========================================================================
+    // Tenant Isolation
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenSystemPartitionRoute_WhenPostingGraphQl_ThenRejectedWithBadRequest()
+    {
+        var body = JsonSerializer.Serialize(new { query = "{ __typename }" });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync("/tenant/0/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GivenPatientInTenant1_WhenQueryingViaInactiveTenant2Route_ThenIsolationIsEnforced()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("Tenant1Only").WithTag(tag).Build());
+
+        var query = JsonSerializer.Serialize(
+            new { query = $$"""{ Patient(_id: "{{created.Id}}") { id } }""" });
+        using var content = new StringContent(query, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync("/tenant/2/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var responseJson = await response.Content.ReadAsStringAsync();
+        responseJson.ShouldNotContain(created.Id!);
+    }
+
+    // ========================================================================
+    // Instance Injection Hardening
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenHostileResourceTypeSegment_WhenInstanceQuery_ThenReturnsGraphQlErrorNotServerError()
+    {
+        var hostileResourceType = Uri.EscapeDataString("""Patient(_id:"x"){id}""");
+        var body = JsonSerializer.Serialize(new { query = "{ id }" });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync(
+            $"/{hostileResourceType}/abc123/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        result["errors"].ShouldNotBeNull(
+            $"Hostile resourceType must produce a GraphQL error. Response: {result.ToJsonString()}");
+        var data = result["data"];
+        (data is null || data.AsObject().Count == 0).ShouldBeTrue(
+            $"Injected selections must not execute. Response: {result.ToJsonString()}");
+    }
+
+    [Fact]
+    public async Task GivenHostileResourceTypeSegment_WhenInstanceGet_ThenReturnsGraphQlErrorNotServerError()
+    {
+        var hostileResourceType = Uri.EscapeDataString("""Patient(_id:"x"){id}""");
+
+        using var response = await Client.GetAsync(
+            $"/{hostileResourceType}/abc123/$graphql?query=" + Uri.EscapeDataString("{ id }"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        result["errors"].ShouldNotBeNull();
+    }
+
+    // ========================================================================
+    // Singleton Directive Violation
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenPatientWithMultipleIdentifiers_WhenUsingSingletonDirective_ThenReturnsViolationError()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient()
+                .WithFamilyName("SingletonViolation")
+                .WithIdentifier("http://sys1", "val1")
+                .WithIdentifier("http://sys2", "val2")
+                .WithTag(tag)
+                .Build());
+
+        var query = JsonSerializer.Serialize(new
+        {
+            query = $$"""{ Patient(_id: "{{created.Id}}") { identifier @singleton { value } } }""",
+        });
+        using var content = new StringContent(query, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync("/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        result["errors"].ShouldNotBeNull(
+            $"@singleton on a multi-element list must error. Response: {result.ToJsonString()}");
+    }
+
+    // ========================================================================
+    // Query Depth Limit
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenDeeplyNestedQuery_WhenExecuting_ThenReturnsDepthLimitErrorNotServerError()
+    {
+        var nested = new StringBuilder("{ __type(name: \"Patient\") { ofType ");
+        const int depth = 18;
+        for (int i = 0; i < depth; i++)
+        {
+            nested.Append("{ ofType ");
+        }
+        nested.Append("{ name }");
+        for (int i = 0; i < depth; i++)
+        {
+            nested.Append(" } ");
+        }
+        nested.Append(" }");
+
+        var body = JsonSerializer.Serialize(new { query = nested.ToString() });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync("/$graphql", content);
+
+        response.StatusCode.ShouldNotBe(HttpStatusCode.InternalServerError);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        result["errors"].ShouldNotBeNull(
+            $"A query exceeding MaxQueryDepth must produce errors. Response: {result.ToJsonString()}");
+    }
+
+    // ========================================================================
+    // Cursor Round-Trip Pagination
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenMultiplePages_WhenFollowingCursor_ThenReturnsDistinctResourcesUntilExhausted()
+    {
+        var tag = Guid.NewGuid().ToString();
+        const int totalPatients = 6;
+        for (int i = 0; i < totalPatients; i++)
+        {
+            await Harness.CreateResourceAsync(
+                CreatePatient().WithFamilyName($"Cursor{i}").WithTag(tag).Build());
+        }
+
+        var page1 = await PostGraphQlAsync(
+            $$"""{ PatientConnection(_count: 2, _tag: "{{tag}}") { edges { resource { id } } next } }""");
+        AssertNoErrors(page1);
+
+        var page1Conn = page1["data"]!["PatientConnection"]!;
+        var collectedIds = page1Conn["edges"]!.AsArray()
+            .Select(e => e!["resource"]!["id"]!.GetValue<string>())
+            .ToList();
+        collectedIds.Count.ShouldBe(2);
+
+        var next = page1Conn["next"]?.GetValue<string>();
+        next.ShouldNotBeNullOrEmpty("First page of a 6-item, 2-per-page set must expose a next cursor.");
+
+        var iterations = 0;
+        while (!string.IsNullOrEmpty(next) && iterations < 10)
+        {
+            iterations++;
+            var page = await PostGraphQlAsync(
+                $$"""{ PatientConnection(_count: 2, _cursor: "{{next}}", _tag: "{{tag}}") { edges { resource { id } } next } }""");
+            AssertNoErrors(page);
+
+            var conn = page["data"]!["PatientConnection"]!;
+            var pageIds = conn["edges"]!.AsArray()
+                .Select(e => e!["resource"]!["id"]!.GetValue<string>())
+                .ToList();
+
+            pageIds.ShouldAllBe(id => !collectedIds.Contains(id));
+            collectedIds.AddRange(pageIds);
+            next = conn["next"]?.GetValue<string>();
+        }
+
+        next.ShouldBeNullOrEmpty("The final page must not expose a next cursor.");
+        collectedIds.Distinct().Count().ShouldBe(totalPatients);
+    }
+
+    // ========================================================================
+    // Mutation Failure Envelope
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenInvalidResourceJson_WhenUpdatingViaGraphQl_ThenReturnsOperationOutcomeWithInvalidResourceCode()
+    {
+        var malformedJson = "{ this is not valid fhir";
+        var escaped = malformedJson.Replace("\"", "\\\"", StringComparison.Ordinal);
+
+        var result = await PostGraphQlAsync(
+            $$"""mutation { PatientUpdate(id: "some-id", res: "{{escaped}}") { id } }""");
+
+        var errors = result["errors"]!.AsArray();
+        errors.Count.ShouldBeGreaterThan(0);
+        var extensions = errors[0]!["extensions"]!;
+        extensions["code"]!.GetValue<string>().ShouldBe("INVALID_RESOURCE");
+        var resource = JsonNode.Parse(extensions["resource"]!.GetValue<string>())!;
+        resource["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+    }
+
+    [Fact]
+    public async Task GivenExistingResource_WhenUpdatingViaGraphQl_ThenReturnsUpdatedResource()
+    {
+        var tag = Guid.NewGuid().ToString();
+        var created = await Harness.CreateResourceAsync(
+            CreatePatient().WithFamilyName("BeforeUpdate").WithTag(tag).Build());
+
+        var updatedJson =
+            $$"""{"resourceType":"Patient","id":"{{created.Id}}","name":[{"family":"AfterUpdate"}]}""";
+        var escaped = updatedJson.Replace("\"", "\\\"", StringComparison.Ordinal);
+
+        var result = await PostGraphQlAsync(
+            $$"""mutation { PatientUpdate(id: "{{created.Id}}", res: "{{escaped}}") { id name { family } } }""");
+
+        AssertNoErrors(result);
+        var updated = result["data"]!["PatientUpdate"]!;
+        updated["id"]!.GetValue<string>().ShouldBe(created.Id);
+        updated["name"]![0]!["family"]!.GetValue<string>().ShouldBe("AfterUpdate");
+    }
+
+    // ========================================================================
+    // Missing Instance
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenMissingInstance_WhenInstanceQuery_ThenReturnsNullDataWithNotFoundError()
+    {
+        var body = JsonSerializer.Serialize(new { query = "{ id name { family } }" });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync(
+            "/Patient/does-not-exist-graphql/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+
+        result["data"].ShouldBeNull(
+            $"Missing instance must unwrap to data:null. Response: {result.ToJsonString()}");
+        var errors = result["errors"]!.AsArray();
+        errors.ShouldContain(e => e!["extensions"]!["code"]!.GetValue<string>() == "FHIR_NOT_FOUND");
+    }
+
+    // ========================================================================
+    // Empty / Malformed Body
+    // ========================================================================
+
+    [Fact]
+    public async Task GivenMalformedJsonBody_WhenPosting_ThenReturnsBadRequestWithParseInfo()
+    {
+        var body = "{ \"query\": ";
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync("/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var responseText = await response.Content.ReadAsStringAsync();
+        responseText.ShouldContain("Invalid JSON");
+    }
+
+    [Fact]
+    public async Task GivenMalformedQueryString_WhenPosting_ThenReturnsSyntaxErrorEnvelope()
+    {
+        var body = JsonSerializer.Serialize(new { query = "{ this is { not valid graphql" });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Client.PostAsync("/$graphql", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var errors = result["errors"]!.AsArray();
+        errors.ShouldContain(e => e!["extensions"]!["code"]!.GetValue<string>() == "FHIR_SYNTAX_ERROR");
+    }
 }
 

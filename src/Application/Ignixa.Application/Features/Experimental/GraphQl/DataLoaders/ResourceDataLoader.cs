@@ -22,28 +22,42 @@ public class ResourceDataLoader(
         IReadOnlyList<ResourceKey> keys,
         CancellationToken cancellationToken)
     {
-        var results = new Dictionary<ResourceKey, JsonElement?>(keys.Count);
+        var tasks = keys.Select(key => LoadKeyAsync(key, cancellationToken));
 
-        var tasks = keys.Select(async key =>
+        var entries = await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        var results = new Dictionary<ResourceKey, JsonElement?>(keys.Count);
+        foreach (var (key, json) in entries)
+            results[key] = json;
+
+        return results;
+    }
+
+    private async Task<(ResourceKey Key, JsonElement? Json)> LoadKeyAsync(
+        ResourceKey key,
+        CancellationToken cancellationToken)
+    {
+        try
         {
             var query = new GetResourceQuery(key.ResourceType, key.ResourceId);
-            var entry = await mediator.SendAsync(query, cancellationToken);
+            var entry = await mediator.SendAsync(query, cancellationToken).ConfigureAwait(false);
 
             if (entry is not null && !entry.IsDeleted)
             {
                 var json = FieldResolver.ParseResourceBytes(entry.ResourceBytes);
-                return (key, json: (JsonElement?)json);
+                return (key, json);
             }
 
-            return (key, json: (JsonElement?)null);
-        });
-
-        foreach (var (key, json) in await Task.WhenAll(tasks))
-        {
-            results[key] = json;
+            return (key, null);
         }
-
-        return results;
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to load reference '{key.ResourceType}/{key.ResourceId}': {ex.Message}", ex);
+        }
     }
 }
-

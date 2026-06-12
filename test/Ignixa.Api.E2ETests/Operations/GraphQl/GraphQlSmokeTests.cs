@@ -46,7 +46,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
         // Arrange
         RequireOperationAnywhere("graphql");
         var createdPatient = await Harness.CreateResourceAsync(CreatePatient().WithTag(Guid.NewGuid().ToString()).Build());
-        var query = """{"query":"query { __typename }"}""";
+        var query = """{"query":"{ id }"}""";
         using var content = new StringContent(query, Encoding.UTF8, "application/json");
 
         // Act

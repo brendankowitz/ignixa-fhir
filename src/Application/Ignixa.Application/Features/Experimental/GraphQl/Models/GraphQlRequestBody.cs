@@ -7,4 +7,4 @@ using System.Text.Json;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Models;
 
-public record GraphQlRequestBody(string? Query, string? OperationName, JsonElement? Variables);
+public sealed record GraphQlRequestBody(string? Query, string? OperationName, JsonElement? Variables);

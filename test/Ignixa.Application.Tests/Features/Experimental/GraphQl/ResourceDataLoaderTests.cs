@@ -12,6 +12,7 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Domain.Models;
 using Medino;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
@@ -97,5 +98,29 @@ public class ResourceDataLoaderTests
         result[key].ShouldNotBeNull();
         result[key]!.Value.GetProperty("id").GetString().ShouldBe("789");
         result[key]!.Value.GetProperty("birthDate").GetString().ShouldBe("1990-01-01");
+    }
+
+    [Fact]
+    public async Task GivenOneFaultingKey_WhenLoading_ThenFailureIsAttributedToThatKey()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var goodKey = new ResourceKey("Patient", "good");
+        var badKey = new ResourceKey("Observation", "bad");
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Patient" && q.Id == "good"), Arg.Any<CancellationToken>())
+            .Returns(MakeResult("Patient", "good", """{"resourceType":"Patient","id":"good"}"""));
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Observation" && q.Id == "bad"), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("corrupt resource bytes"));
+
+        var loader = new TestableResourceDataLoader(mediator);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => loader.LoadBatchPublicAsync([goodKey, badKey], CancellationToken.None));
+
+        ex.Message.ShouldContain("Observation/bad");
+        ex.InnerException.ShouldBeOfType<InvalidOperationException>();
     }
 }

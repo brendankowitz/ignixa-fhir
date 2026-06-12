@@ -11,6 +11,7 @@ using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Endpoints.Experimental;
@@ -96,24 +97,15 @@ public static class GraphQlEndpoints
         HttpContext context,
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        GraphQlRequestBody body;
-        try
-        {
-            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(context.Request.Body, JsonOptions, cancellationToken)
-                ?? new GraphQlRequestBody(null, null, null);
-        }
-        catch (JsonException)
-        {
-            return Results.BadRequest("Invalid JSON in request body.");
-        }
+        var (body, error) = await ReadBodyAsync(context, cancellationToken);
+        if (error is not null)
+            return error;
 
-        if (string.IsNullOrWhiteSpace(body.Query))
-            return Results.BadRequest("'query' is required.");
-
-        var version = ResolveVersion(contextAccessor);
-        var result = await executionService.ExecuteAsync(body, version, cancellationToken);
+        var version = ResolveVersion(contextAccessor, loggerFactory);
+        var result = await executionService.ExecuteAsync(body!, version, cancellationToken);
         return await WriteResultAsync(context, result, cancellationToken);
     }
 
@@ -122,29 +114,18 @@ public static class GraphQlEndpoints
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
         [FromServices] IOptions<ExperimentalOptions> options,
+        [FromServices] ILoggerFactory loggerFactory,
         [FromQuery] string? query,
         [FromQuery] string? operationName,
         [FromQuery] string? variables,
         CancellationToken cancellationToken)
     {
-        if (!options.Value.Features.GraphQl.EnableGetRequests)
-            return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+        var (body, error) = BuildGetBody(options, query, operationName, variables);
+        if (error is not null)
+            return error;
 
-        if (string.IsNullOrWhiteSpace(query))
-            return Results.BadRequest("'query' query parameter is required.");
-
-        GraphQlRequestBody body;
-        try
-        {
-            body = BuildBodyFromGetParams(query, operationName, variables);
-        }
-        catch (JsonException)
-        {
-            return Results.BadRequest("Invalid JSON in 'variables' query parameter.");
-        }
-
-        var version = ResolveVersion(contextAccessor);
-        var result = await executionService.ExecuteAsync(body, version, cancellationToken);
+        var version = ResolveVersion(contextAccessor, loggerFactory);
+        var result = await executionService.ExecuteAsync(body!, version, cancellationToken);
         return await WriteResultAsync(context, result, cancellationToken);
     }
 
@@ -154,24 +135,15 @@ public static class GraphQlEndpoints
         string id,
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        GraphQlRequestBody body;
-        try
-        {
-            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(context.Request.Body, JsonOptions, cancellationToken)
-                ?? new GraphQlRequestBody(null, null, null);
-        }
-        catch (JsonException)
-        {
-            return Results.BadRequest("Invalid JSON in request body.");
-        }
+        var (body, error) = await ReadBodyAsync(context, cancellationToken);
+        if (error is not null)
+            return error;
 
-        if (string.IsNullOrWhiteSpace(body.Query))
-            return Results.BadRequest("'query' is required.");
-
-        var version = ResolveVersion(contextAccessor);
-        var result = await executionService.ExecuteInstanceAsync(body, version, resourceType, id, cancellationToken);
+        var version = ResolveVersion(contextAccessor, loggerFactory);
+        var result = await executionService.ExecuteInstanceAsync(body!, version, resourceType, id, cancellationToken);
         return await WriteResultAsync(context, result, cancellationToken);
     }
 
@@ -182,45 +154,80 @@ public static class GraphQlEndpoints
         [FromServices] IGraphQlExecutionService executionService,
         [FromServices] IFhirRequestContextAccessor contextAccessor,
         [FromServices] IOptions<ExperimentalOptions> options,
+        [FromServices] ILoggerFactory loggerFactory,
         [FromQuery] string? query,
         [FromQuery] string? operationName,
         [FromQuery] string? variables,
         CancellationToken cancellationToken)
     {
-        if (!options.Value.Features.GraphQl.EnableGetRequests)
-            return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+        var (body, error) = BuildGetBody(options, query, operationName, variables);
+        if (error is not null)
+            return error;
 
-        if (string.IsNullOrWhiteSpace(query))
-            return Results.BadRequest("'query' query parameter is required.");
-
-        GraphQlRequestBody body;
-        try
-        {
-            body = BuildBodyFromGetParams(query, operationName, variables);
-        }
-        catch (JsonException)
-        {
-            return Results.BadRequest("Invalid JSON in 'variables' query parameter.");
-        }
-
-        var version = ResolveVersion(contextAccessor);
-        var result = await executionService.ExecuteInstanceAsync(body, version, resourceType, id, cancellationToken);
+        var version = ResolveVersion(contextAccessor, loggerFactory);
+        var result = await executionService.ExecuteInstanceAsync(body!, version, resourceType, id, cancellationToken);
         return await WriteResultAsync(context, result, cancellationToken);
     }
 
-    private static FhirVersion ResolveVersion(IFhirRequestContextAccessor contextAccessor)
-        => contextAccessor.RequestContext?.FhirVersion ?? FhirVersion.R4;
+    private static async Task<(GraphQlRequestBody? Body, IResult? Error)> ReadBodyAsync(
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        GraphQlRequestBody body;
+        try
+        {
+            body = await JsonSerializer.DeserializeAsync<GraphQlRequestBody>(
+                       context.Request.Body, JsonOptions, cancellationToken)
+                   ?? new GraphQlRequestBody(null, null, null);
+        }
+        catch (JsonException ex)
+        {
+            return (null, Results.BadRequest($"Invalid JSON in request body: {ex.Message}"));
+        }
 
-    private static GraphQlRequestBody BuildBodyFromGetParams(
-        string query,
+        if (string.IsNullOrWhiteSpace(body.Query))
+            return (null, Results.BadRequest("'query' is required."));
+
+        return (body, null);
+    }
+
+    private static (GraphQlRequestBody? Body, IResult? Error) BuildGetBody(
+        IOptions<ExperimentalOptions> options,
+        string? query,
         string? operationName,
         string? variables)
     {
-        JsonElement? parsedVariables = null;
-        if (!string.IsNullOrEmpty(variables))
-            parsedVariables = JsonSerializer.Deserialize<JsonElement>(variables);
+        if (!options.Value.Features.GraphQl.EnableGetRequests)
+            return (null, Results.StatusCode(StatusCodes.Status405MethodNotAllowed));
 
-        return new GraphQlRequestBody(query, operationName, parsedVariables);
+        if (string.IsNullOrWhiteSpace(query))
+            return (null, Results.BadRequest("'query' query parameter is required."));
+
+        try
+        {
+            JsonElement? parsedVariables = null;
+            if (!string.IsNullOrEmpty(variables))
+                parsedVariables = JsonSerializer.Deserialize<JsonElement>(variables);
+
+            return (new GraphQlRequestBody(query, operationName, parsedVariables), null);
+        }
+        catch (JsonException ex)
+        {
+            return (null, Results.BadRequest($"Invalid JSON in 'variables' query parameter: {ex.Message}"));
+        }
+    }
+
+    private static FhirVersion ResolveVersion(
+        IFhirRequestContextAccessor contextAccessor,
+        ILoggerFactory loggerFactory)
+    {
+        var version = contextAccessor.RequestContext?.FhirVersion;
+        if (version is not null)
+            return version.Value;
+
+        loggerFactory.CreateLogger(typeof(GraphQlEndpoints))
+            .LogWarning("FHIR request context unavailable; defaulting GraphQL execution to {Version}.", FhirVersion.R4);
+        return FhirVersion.R4;
     }
 
     private static async Task<IResult> WriteResultAsync(

@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Medino;
@@ -62,29 +63,17 @@ public sealed class SearchResolver(
         var query = new SearchResourcesQuery(resourceType, searchOptions);
         var result = await mediator.SendAsync(query, cancellationToken);
 
-        var edges = new List<SearchEdge>();
-        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
-        {
-            if (!entry.IsDeleted)
-            {
-                edges.Add(new SearchEdge
-                {
-                    Resource = FieldResolver.ParseResourceBytes(entry.ResourceBytes),
-                    Mode = "match",
-                });
-            }
-
-            if (edges.Count >= searchOptions.MaxItemCount)
-                break;
-        }
+        var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+        var offset = DecodeOffset(searchOptions.ContinuationToken);
 
         return new SearchConnectionResult
         {
             Count = result.Total,
-            Offset = DecodeOffset(searchOptions.ContinuationToken),
+            Offset = offset,
             Pagesize = searchOptions.MaxItemCount,
             Edges = edges,
-            Next = result.ContinuationToken,
+            First = ContinuationToken.Encode(0, searchOptions.MaxItemCount),
+            Next = hasMore ? ContinuationToken.Encode(offset + searchOptions.MaxItemCount, searchOptions.MaxItemCount) : null,
         };
     }
 
@@ -137,30 +126,47 @@ public sealed class SearchResolver(
         var query = new SearchResourcesQuery(targetResourceType, searchOptions);
         var result = await mediator.SendAsync(query, cancellationToken);
 
-        var edges = new List<SearchEdge>();
-        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
-        {
-            if (!entry.IsDeleted)
-            {
-                edges.Add(new SearchEdge
-                {
-                    Resource = FieldResolver.ParseResourceBytes(entry.ResourceBytes),
-                    Mode = "match",
-                });
-            }
-
-            if (edges.Count >= searchOptions.MaxItemCount)
-                break;
-        }
+        var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+        var offset = DecodeOffset(searchOptions.ContinuationToken);
 
         return new SearchConnectionResult
         {
             Count = result.Total,
-            Offset = DecodeOffset(searchOptions.ContinuationToken),
+            Offset = offset,
             Pagesize = searchOptions.MaxItemCount,
             Edges = edges,
-            Next = result.ContinuationToken,
+            First = ContinuationToken.Encode(0, searchOptions.MaxItemCount),
+            Next = hasMore ? ContinuationToken.Encode(offset + searchOptions.MaxItemCount, searchOptions.MaxItemCount) : null,
         };
+    }
+
+    private static async Task<(List<SearchEdge> Edges, bool HasMore)> CollectEdgesAsync(
+        IAsyncEnumerable<SearchEntryResult> resources,
+        int maxItemCount,
+        CancellationToken cancellationToken)
+    {
+        var edges = new List<SearchEdge>();
+        var hasMore = false;
+
+        await foreach (var entry in resources.WithCancellation(cancellationToken))
+        {
+            if (entry.IsDeleted)
+                continue;
+
+            if (edges.Count >= maxItemCount)
+            {
+                hasMore = true;
+                break;
+            }
+
+            edges.Add(new SearchEdge
+            {
+                Resource = FieldResolver.ParseResourceBytes(entry.ResourceBytes),
+                Mode = "match",
+            });
+        }
+
+        return (edges, hasMore);
     }
 
     private int DecodeOffset(string? continuationToken)

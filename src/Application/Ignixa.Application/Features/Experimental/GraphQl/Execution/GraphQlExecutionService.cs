@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using HotChocolate;
 using HotChocolate.Execution;
 using HotChocolate.Language;
 using Ignixa.Abstractions;
@@ -15,11 +17,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Execution;
 
-public sealed class GraphQlExecutionService(
+public sealed partial class GraphQlExecutionService(
     IRequestExecutorResolver executorResolver,
     ILogger<GraphQlExecutionService> logger)
     : IGraphQlExecutionService
 {
+    private static readonly Regex ResourceTypePattern = BuildResourceTypePattern();
+    private static readonly Regex FhirIdPattern = BuildFhirIdPattern();
+
     public Task<IExecutionResult> ExecuteAsync(
         GraphQlRequestBody request,
         FhirVersion version,
@@ -29,8 +34,8 @@ public sealed class GraphQlExecutionService(
     public Task<IExecutionResult> ExecuteInstanceAsync(
         GraphQlRequestBody request,
         FhirVersion version,
-        string resourceType,
-        string resourceId,
+        string? resourceType,
+        string? resourceId,
         CancellationToken cancellationToken)
         => ExecuteCoreAsync(request, version, resourceType, resourceId, cancellationToken);
 
@@ -45,25 +50,40 @@ public sealed class GraphQlExecutionService(
         var executor = await executorResolver.GetRequestExecutorAsync(schemaName, cancellationToken);
 
         var effectiveQuery = request.Query ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(effectiveQuery))
+            return GraphQlError("The GraphQL query must not be empty.", "FHIR_SYNTAX_ERROR");
 
-        // Instance-level queries: wrap the user's selection set in a resource field.
-        // Per the FHIR $graphql spec, instance queries like /Patient/123/$graphql
-        // accept a bare selection set (e.g., { id name { family } }) that applies
-        // directly to the resource. We rewrite this as { Patient(_id: "123") { ... } }
-        // so it's valid against the root Query type.
         var isInstanceQuery = resourceType is not null && resourceId is not null;
         if (isInstanceQuery)
         {
-            effectiveQuery = WrapInstanceQuery(effectiveQuery, resourceType!, resourceId!);
+            var wrapResult = WrapInstanceQuery(effectiveQuery, resourceType!, resourceId!, executor);
+            if (wrapResult.Error is not null)
+                return wrapResult.Error;
+
+            effectiveQuery = wrapResult.Query!;
         }
 
-        effectiveQuery = InjectSlicePathFields(effectiveQuery);
+        // Parsing raw user input can throw SyntaxException on malformed queries;
+        // surface it as a GraphQL error rather than letting it become an HTTP 500.
+        DocumentNode document;
+        try
+        {
+            document = Utf8GraphQLParser.Parse(effectiveQuery);
+        }
+        catch (SyntaxException ex)
+        {
+            return SyntaxErrorResult(ex);
+        }
+
+        var executedOperationName = request.OperationName;
+        document = InjectSlicePathFields(document, executedOperationName);
+        effectiveQuery = document.ToString();
 
         var builder = OperationRequestBuilder.New()
             .SetDocument(effectiveQuery);
 
-        if (request.OperationName is not null)
-            builder.SetOperationName(request.OperationName);
+        if (executedOperationName is not null)
+            builder.SetOperationName(executedOperationName);
 
         if (request.Variables.HasValue)
             builder.SetVariableValues(DeserializeVariables(request.Variables.Value));
@@ -76,11 +96,8 @@ public sealed class GraphQlExecutionService(
 
         var result = await executor.ExecuteAsync(builder.Build(), cancellationToken);
 
-        result = PostProcessDirectives(result, effectiveQuery, logger);
+        result = PostProcessDirectives(result, document, executedOperationName, logger);
 
-        // Instance-level queries: unwrap the resource data to the root level.
-        // The wrapped query produces { data: { Patient: { ... } } } but the caller
-        // expects { data: { id: ..., name: ... } }.
         if (isInstanceQuery)
         {
             result = UnwrapInstanceResult(result, resourceType!);
@@ -89,38 +106,63 @@ public sealed class GraphQlExecutionService(
         return result;
     }
 
-    /// <summary>
-    /// Wraps an instance-level selection set into a typed resource query.
-    /// Input: <c>{ id name { family } }</c>
-    /// Output: <c>{ Patient(_id: "123") { id name { family } } }</c>
-    /// </summary>
-    private static string WrapInstanceQuery(string query, string resourceType, string resourceId)
+    private static (string? Query, IExecutionResult? Error) WrapInstanceQuery(
+        string query,
+        string resourceType,
+        string resourceId,
+        IRequestExecutor executor)
     {
-        var trimmed = query.Trim();
-
-        // Extract inner selections from the braces
-        if (trimmed.StartsWith('{') && trimmed.EndsWith('}'))
+        if (!ResourceTypePattern.IsMatch(resourceType)
+            || !executor.Schema.Types.Any(t => string.Equals(t.Name, resourceType, StringComparison.Ordinal)))
         {
-            var innerSelections = trimmed[1..^1].Trim();
-            // Escape any double quotes in the resource ID
-            var escapedId = resourceId.Replace("\"", "\\\"", StringComparison.Ordinal);
-            return $"{{ {resourceType}(_id: \"{escapedId}\") {{ {innerSelections} }} }}";
+            return (null, GraphQlError(
+                $"Unknown resource type '{resourceType}'.",
+                "FHIR_UNKNOWN_RESOURCE_TYPE"));
         }
 
-        return query;
+        if (!FhirIdPattern.IsMatch(resourceId))
+        {
+            return (null, GraphQlError(
+                $"Invalid resource id '{resourceId}'. Must be 1-64 characters of [A-Za-z0-9-.].",
+                "FHIR_INVALID_ID"));
+        }
+
+        var trimmed = query.Trim();
+        if (!trimmed.StartsWith('{') || !trimmed.EndsWith('}'))
+        {
+            return (null, GraphQlError(
+                "Instance-level $graphql requires a bare selection set per the FHIR GraphQL spec (e.g., { id name { family } }).",
+                "FHIR_INVALID_INSTANCE_QUERY"));
+        }
+
+        var innerSelections = trimmed[1..^1].Trim();
+        var literalId = new StringValueNode(resourceId).ToString();
+        return ($"{{ {resourceType}(_id: {literalId}) {{ {innerSelections} }} }}", null);
     }
 
-    /// <summary>
-    /// Unwraps instance query result: extracts the resource object from the wrapper field
-    /// so fields appear at the data root level.
-    /// </summary>
     private static IExecutionResult UnwrapInstanceResult(IExecutionResult result, string resourceType)
     {
-        if (result is not IOperationResult { Data: { } data } opResult)
+        if (result is not IOperationResult opResult)
             return result;
 
-        if (!data.TryGetValue(resourceType, out var resourceData))
-            return result;
+        // Missing instance: the wrapped field resolves to null. Returning the wrapped
+        // shape { data: { Patient: null } } hides the not-found condition, so unwrap to
+        // data: null and attach a FHIR_NOT_FOUND error. Skip when the executor already
+        // produced errors so we don't mask the real cause with a spurious not-found.
+        if (opResult.Data is not { } data
+            || !data.TryGetValue(resourceType, out var resourceData)
+            || resourceData is null)
+        {
+            if (opResult.Errors is { Count: > 0 })
+                return result;
+
+            return OperationResultBuilder.FromResult(opResult)
+                .SetData(null)
+                .AddError(BuildError(
+                    $"Resource {resourceType} not found.",
+                    "FHIR_NOT_FOUND"))
+                .Build();
+        }
 
         if (resourceData is not IReadOnlyDictionary<string, object?> resourceDict)
             return result;
@@ -129,48 +171,52 @@ public sealed class GraphQlExecutionService(
     }
 
     private static IExecutionResult PostProcessDirectives(
-        IExecutionResult result, string? query, ILogger logger)
+        IExecutionResult result, DocumentNode document, string? operationName, ILogger logger)
     {
-        if (string.IsNullOrEmpty(query))
+        if (result is not IOperationResult { Data: { } readOnlyData } opResult)
             return result;
 
-        if (result is not IOperationResult { Data: { } readOnlyData })
+        var operation = SelectOperation(document, operationName);
+        if (operation?.SelectionSet is null || !HasAnyDirectives(operation.SelectionSet))
             return result;
 
         try
         {
-            var document = Utf8GraphQLParser.Parse(query);
-
-            // Quick check: skip parsing overhead when no directives present
-            var hasDirectives = document.Definitions
-                .OfType<OperationDefinitionNode>()
-                .Any(op => HasAnyDirectives(op.SelectionSet));
-
-            if (!hasDirectives)
-                return result;
-
-            // Data is IReadOnlyDictionary — try mutable cast first, deep-copy if needed
             if (readOnlyData is IDictionary<string, object?> mutableData)
             {
-                FlattenResultProcessor.Process(document, mutableData);
+                FlattenResultProcessor.Process(document, operationName, mutableData);
                 return result;
             }
 
-            // Deep-copy to mutable dict, process, build new result
             var dataCopy = FlattenResultProcessor.DeepCopyData(readOnlyData);
-            FlattenResultProcessor.Process(document, dataCopy);
+            FlattenResultProcessor.Process(document, operationName, dataCopy);
 
-            return CreateResultWithData(result.ExpectOperationResult(), dataCopy);
+            return CreateResultWithData(opResult, dataCopy);
         }
-        catch (SingletonDirectiveViolationException)
+        catch (SingletonDirectiveViolationException ex)
         {
-            throw;
+            return OperationResultBuilder.FromResult(opResult)
+                .SetData(null)
+                .AddError(BuildError(ex.Message, "FHIR_SINGLETON_VIOLATION"))
+                .Build();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "GraphQL post-processing failed for query: {Query}", query);
-            return result;
+            logger.LogError(ex, "GraphQL post-processing failed");
+            return OperationResultBuilder.FromResult(opResult)
+                .AddError(BuildError(
+                    "GraphQL result post-processing failed; directive transformations were not applied.",
+                    "FHIR_POST_PROCESSING_FAILED"))
+                .Build();
         }
+    }
+
+    internal static OperationDefinitionNode? SelectOperation(DocumentNode document, string? operationName)
+    {
+        var operations = document.Definitions.OfType<OperationDefinitionNode>();
+        return operationName is not null
+            ? operations.FirstOrDefault(op => op.Name?.Value == operationName)
+            : operations.FirstOrDefault();
     }
 
     private static bool HasAnyDirectives(SelectionSetNode? selectionSet)
@@ -206,6 +252,23 @@ public sealed class GraphQlExecutionService(
             .Build();
     }
 
+    private static IExecutionResult SyntaxErrorResult(SyntaxException ex)
+    {
+        var error = ErrorBuilder.New()
+            .SetMessage(ex.Message)
+            .SetCode("FHIR_SYNTAX_ERROR")
+            .AddLocation(ex.Line, ex.Column)
+            .Build();
+
+        return OperationResultBuilder.New().AddError(error).Build();
+    }
+
+    private static IExecutionResult GraphQlError(string message, string code)
+        => OperationResultBuilder.New().AddError(BuildError(message, code)).Build();
+
+    private static IError BuildError(string message, string code)
+        => ErrorBuilder.New().SetMessage(message).SetCode(code).Build();
+
     private static IReadOnlyDictionary<string, object?> DeserializeVariables(JsonElement variables)
     {
         var result = new Dictionary<string, object?>();
@@ -233,36 +296,30 @@ public sealed class GraphQlExecutionService(
     };
 
     /// <summary>
-    /// Scans the query for <c>@slice(path: "X")</c> directives and implicitly injects
-    /// <c>X</c> into the selection set so the discriminator is available in the execution
-    /// result for post-processing.
+    /// Scans the executed operation for <c>@slice(path: "X")</c> directives and implicitly
+    /// injects each segment of <c>X</c> into the selection set so the discriminator is
+    /// available in the execution result for post-processing.
     /// </summary>
-    private static string InjectSlicePathFields(string query)
+    private static DocumentNode InjectSlicePathFields(DocumentNode document, string? operationName)
     {
-        if (string.IsNullOrEmpty(query))
-            return query;
+        var executed = SelectOperation(document, operationName);
+        if (executed is null)
+            return document;
 
-        var document = Utf8GraphQLParser.Parse(query);
-        var modified = RewriteDocument(document);
-        return modified.ToString();
-    }
-
-    private static DocumentNode RewriteDocument(DocumentNode document)
-    {
-        var modifiedDefinitions = new List<IDefinitionNode>();
+        var modifiedDefinitions = new List<IDefinitionNode>(document.Definitions.Count);
         foreach (var definition in document.Definitions)
         {
-            if (definition is OperationDefinitionNode operation)
+            if (ReferenceEquals(definition, executed))
             {
-                var modifiedSelectionSet = RewriteSelectionSet(operation.SelectionSet);
-                if (modifiedSelectionSet != operation.SelectionSet)
+                var modifiedSelectionSet = RewriteSelectionSet(executed.SelectionSet);
+                if (modifiedSelectionSet != executed.SelectionSet)
                 {
                     modifiedDefinitions.Add(new OperationDefinitionNode(
-                        operation.Location,
-                        operation.Name,
-                        operation.Operation,
-                        operation.VariableDefinitions,
-                        operation.Directives,
+                        executed.Location,
+                        executed.Name,
+                        executed.Operation,
+                        executed.VariableDefinitions,
+                        executed.Directives,
                         modifiedSelectionSet));
                     continue;
                 }
@@ -277,7 +334,7 @@ public sealed class GraphQlExecutionService(
     private static SelectionSetNode RewriteSelectionSet(SelectionSetNode selectionSet)
     {
         var modifiedSelections = new List<ISelectionNode>();
-        bool anyModified = false;
+        var anyModified = false;
 
         foreach (var selection in selectionSet.Selections)
         {
@@ -302,32 +359,64 @@ public sealed class GraphQlExecutionService(
 
     private static FieldNode RewriteField(FieldNode field)
     {
-        // Recurse into nested selections first
-        SelectionSetNode? rewrittenSelectionSet = field.SelectionSet is not null
+        var rewrittenSelectionSet = field.SelectionSet is not null
             ? RewriteSelectionSet(field.SelectionSet)
             : null;
 
-        // If this field has @slice(path: "X") and X != "$index", inject X into the selection set
         var slicePath = GetSlicePath(field);
         if (slicePath is not null && slicePath != "$index" && rewrittenSelectionSet is not null)
         {
-            var fieldNames = rewrittenSelectionSet.Selections
-                .OfType<FieldNode>()
-                .Select(f => f.Alias?.Value ?? f.Name.Value)
-                .ToHashSet();
-
-            if (!fieldNames.Contains(slicePath))
-            {
-                var newSelections = rewrittenSelectionSet.Selections.ToList();
-                newSelections.Add(new FieldNode(slicePath));
-                rewrittenSelectionSet = new SelectionSetNode(newSelections);
-            }
+            rewrittenSelectionSet = InjectSliceSegment(rewrittenSelectionSet, slicePath);
         }
 
         if (rewrittenSelectionSet == field.SelectionSet)
             return field;
 
         return field.WithSelectionSet(rewrittenSelectionSet);
+    }
+
+    /// <summary>
+    /// Ensures every segment of a dotted slice path (e.g. <c>name.family</c>) is present in
+    /// the selection set so the discriminator value is available after execution.
+    /// </summary>
+    private static SelectionSetNode InjectSliceSegment(SelectionSetNode selectionSet, string slicePath)
+    {
+        var separatorIndex = slicePath.IndexOf('.', StringComparison.Ordinal);
+        var head = separatorIndex < 0 ? slicePath : slicePath[..separatorIndex];
+
+        var existing = selectionSet.Selections
+            .OfType<FieldNode>()
+            .FirstOrDefault(f => (f.Alias?.Value ?? f.Name.Value) == head);
+
+        if (separatorIndex < 0)
+        {
+            if (existing is not null)
+                return selectionSet;
+
+            var added = selectionSet.Selections.ToList();
+            added.Add(new FieldNode(head));
+            return new SelectionSetNode(added);
+        }
+
+        var tail = slicePath[(separatorIndex + 1)..];
+        if (existing is null)
+        {
+            var childSet = InjectSliceSegment(new SelectionSetNode([]), tail);
+            var added = selectionSet.Selections.ToList();
+            added.Add(new FieldNode(
+                null, new NameNode(head), null, [], [], childSet));
+            return new SelectionSetNode(added);
+        }
+
+        var existingChildSet = existing.SelectionSet ?? new SelectionSetNode([]);
+        var rewrittenChild = InjectSliceSegment(existingChildSet, tail);
+        if (rewrittenChild == existing.SelectionSet)
+            return selectionSet;
+
+        var replaced = selectionSet.Selections
+            .Select(s => ReferenceEquals(s, existing) ? existing.WithSelectionSet(rewrittenChild) : s)
+            .ToList();
+        return new SelectionSetNode(replaced);
     }
 
     private static string? GetSlicePath(FieldNode field)
@@ -339,4 +428,10 @@ public sealed class GraphQlExecutionService(
         var pathArg = sliceDirective.Arguments.FirstOrDefault(a => a.Name.Value == "path");
         return pathArg?.Value is StringValueNode strValue ? strValue.Value : null;
     }
+
+    [GeneratedRegex("^[A-Z][A-Za-z]+$")]
+    private static partial Regex BuildResourceTypePattern();
+
+    [GeneratedRegex("^[A-Za-z0-9\\-\\.]{1,64}$")]
+    private static partial Regex BuildFhirIdPattern();
 }

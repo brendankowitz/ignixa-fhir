@@ -19,7 +19,7 @@ public interface IGraphQlExecutionService
     Task<IExecutionResult> ExecuteInstanceAsync(
         GraphQlRequestBody request,
         FhirVersion version,
-        string resourceType,
-        string resourceId,
+        string? resourceType,
+        string? resourceId,
         CancellationToken cancellationToken);
 }

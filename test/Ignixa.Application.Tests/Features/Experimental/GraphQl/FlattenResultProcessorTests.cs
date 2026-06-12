@@ -24,7 +24,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldNotContainKey("identifier");
@@ -49,7 +49,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldNotContainKey("name");
@@ -75,7 +75,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldNotContainKey("name");
@@ -100,7 +100,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldNotContainKey("name");
@@ -123,7 +123,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldContainKey("name");
@@ -146,7 +146,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldNotContainKey("name");
@@ -169,7 +169,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data.ShouldNotContainKey("name");
@@ -216,7 +216,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert — null field gets removed, nothing promoted
         data.ShouldNotContainKey("identifier");
@@ -235,7 +235,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert — non-list value stays
         data["name"].ShouldBe("not-a-list");
@@ -256,7 +256,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         var identifier = data["identifier"].ShouldBeOfType<Dictionary<string, object?>>();
@@ -276,7 +276,7 @@ public class FlattenResultProcessorTests
         };
 
         // Act
-        FlattenResultProcessor.Process(document, data);
+        FlattenResultProcessor.Process(document, null, data);
 
         // Assert
         data["identifier"].ShouldBeNull();
@@ -298,6 +298,90 @@ public class FlattenResultProcessorTests
         };
 
         // Act + Assert
-        Should.Throw<SingletonDirectiveViolationException>(() => FlattenResultProcessor.Process(document, data));
+        Should.Throw<SingletonDirectiveViolationException>(() => FlattenResultProcessor.Process(document, null, data));
+    }
+
+    [Fact]
+    public void GivenSliceByDottedPath_WhenProcessing_ThenResolvesNestedDiscriminator()
+    {
+        // Arrange
+        var query = """{ name @slice(path: "use.coding") { given } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = new List<object?>
+            {
+                new Dictionary<string, object?>
+                {
+                    ["use"] = new Dictionary<string, object?> { ["coding"] = "official" },
+                    ["given"] = "Peter",
+                },
+                new Dictionary<string, object?>
+                {
+                    ["use"] = new Dictionary<string, object?> { ["coding"] = "usual" },
+                    ["given"] = "Jim",
+                },
+            },
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert
+        data.ShouldNotContainKey("name");
+        data["given.official"].ShouldBe("Peter");
+        data["given.usual"].ShouldBe("Jim");
+    }
+
+    [Fact]
+    public void GivenSliceByDottedPathThroughList_WhenProcessing_ThenTakesFirstElement()
+    {
+        // Arrange
+        var query = """{ name @slice(path: "coding.code") { given } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = new List<object?>
+            {
+                new Dictionary<string, object?>
+                {
+                    ["coding"] = new List<object?>
+                    {
+                        new Dictionary<string, object?> { ["code"] = "primary" },
+                        new Dictionary<string, object?> { ["code"] = "secondary" },
+                    },
+                    ["given"] = "Peter",
+                },
+            },
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert
+        data["given.primary"].ShouldBe("Peter");
+    }
+
+    [Fact]
+    public void GivenSliceWithColludingSuffix_WhenProcessing_ThenDisambiguatesDeterministically()
+    {
+        // Arrange — two items share the same discriminator value, so suffixes collide
+        var query = """{ name @slice(path: "use") { given } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = new List<object?>
+            {
+                new Dictionary<string, object?> { ["use"] = "official", ["given"] = "Peter" },
+                new Dictionary<string, object?> { ["use"] = "official", ["given"] = "Paul" },
+            },
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert — first keeps the base key, the colliding second is suffixed with an index
+        data["given.official"].ShouldBe("Peter");
+        data["given.official.1"].ShouldBe("Paul");
     }
 }

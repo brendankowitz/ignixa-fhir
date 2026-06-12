@@ -174,7 +174,7 @@ public class OperationsSegmentTests
 
         _packageResourceRepository
             .GetOperationDefinitionsAsync(
-                Arg.Is<List<string>>(list => list.Contains("graphql")),
+                Arg.Is<List<string>>(list => list.Count == 1 && list[0] == "graphql"),
                 "R4",
                 Arg.Any<CancellationToken>())
             .Returns([graphQlOpDef]);
@@ -197,7 +197,7 @@ public class OperationsSegmentTests
         var graphQlOp = operations.FirstOrDefault(op =>
             op?["name"]?.GetValue<string>() == "graphql");
         graphQlOp.ShouldNotBeNull("graphql operation should be listed as a system operation");
-        graphQlOp!["definition"]?.GetValue<string>()
+        graphQlOp["definition"]?.GetValue<string>()
             .ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-graphql");
     }
 
