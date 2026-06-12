@@ -31,7 +31,7 @@ outputs:
     value: ${{ steps.gitversion.outputs.informationalVersion }}
   nuget-version:
     description: 'NuGet version'
-    value: ${{ steps.gitversion.outputs.nuGetVersion }}
+    value: ${{ steps.gitversion.outputs.majorMinorPatch }}
 
 runs:
   using: 'composite'
@@ -52,7 +52,7 @@ runs:
         echo "SemVer: ${{ steps.gitversion.outputs.semVer }}"
         echo "AssemblySemVer: ${{ steps.gitversion.outputs.assemblySemVer }}"
         echo "InformationalVersion: ${{ steps.gitversion.outputs.informationalVersion }}"
-        echo "NuGetVersion: ${{ steps.gitversion.outputs.nuGetVersion }}"
+        echo "NuGetVersion: ${{ steps.gitversion.outputs.majorMinorPatch }}"
       shell: bash
 
     - name: Setup .NET
@@ -65,7 +65,7 @@ runs:
       shell: bash
 
     - name: Build solution
-      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal /p:Version=${{ steps.gitversion.outputs.nuGetVersion }}
+      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal /p:Version=${{ steps.gitversion.outputs.semVer }}
       shell: bash
 
     - name: Run unit tests
