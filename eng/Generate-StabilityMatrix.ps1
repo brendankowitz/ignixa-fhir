@@ -21,7 +21,6 @@ $scanPaths = @(
 )
 
 $rank = @{ stable = 0; beta = 1; alpha = 2 }
-$versionExample = @{ stable = '1.0.0'; beta = '1.0.0-beta'; alpha = '1.0.0-alpha' }
 
 $packages = $scanPaths |
     Where-Object { Test-Path $_ } |
@@ -55,7 +54,7 @@ function Format-Rows($items) {
             'beta'   { 'Beta (pre-release)' }
             'alpha'  { 'Alpha (experimental)' }
         }
-        "| ``$($_.PackageId)`` | $badge | ``$($versionExample[$_.Stability])`` | $($_.Description) |"
+        "| ``$($_.PackageId)`` | $badge | $($_.Description) |"
     }
 }
 
@@ -86,17 +85,17 @@ $content = @(
     ''
     '## Libraries'
     ''
-    '| Package | Stability | Version | Description |'
-    '|---------|-----------|---------|-------------|'
+    '| Package | Stability | Description |'
+    '|---------|-----------|-------------|'
     (Format-Rows $libraries)
     ''
     '## CLI Tools'
     ''
-    '| Package | Stability | Version | Description |'
-    '|---------|-----------|---------|-------------|'
+    '| Package | Stability | Description |'
+    '|---------|-----------|-------------|'
     (Format-Rows $tools)
     ''
 ) | ForEach-Object { $_ }
 
-Set-Content -Path $outputPath -Value ($content -join "`n") -Encoding utf8NoBOM
+[System.IO.File]::WriteAllText($outputPath, (($content -join "`n") + "`n"), [System.Text.UTF8Encoding]::new($false))
 Write-Host "Wrote $outputPath ($($libraries.Count) libraries, $($tools.Count) tools)"

@@ -87,7 +87,7 @@ public class PackageStabilityGuardTests
             .Select(dir => Path.Combine(repoRoot, dir))
             .Where(Directory.Exists)
             .SelectMany(dir => Directory.EnumerateFiles(dir, "*.csproj", SearchOption.AllDirectories))
-            .Select(ParseProject)
+            .Select(csprojPath => ParseProject(csprojPath, repoRoot))
             .Where(project => project.IsPackable)
             .ToDictionary(project => project.FullPath, StringComparer.OrdinalIgnoreCase);
 
@@ -95,7 +95,7 @@ public class PackageStabilityGuardTests
         return projects;
     }
 
-    private static PackableProject ParseProject(string csprojPath)
+    private static PackableProject ParseProject(string csprojPath, string repoRoot)
     {
         var doc = XDocument.Load(csprojPath);
         var properties = doc.Descendants("PropertyGroup").Elements().ToList();
@@ -111,21 +111,32 @@ public class PackageStabilityGuardTests
             .Select(reference => Path.GetFullPath(Path.Combine(projectDir, reference.Attribute("Include")!.Value)))
             .ToList();
 
+        var fullPath = Path.GetFullPath(csprojPath);
+        var relativePath = Path.GetRelativePath(repoRoot, fullPath);
+
         return new PackableProject(
             Name: Path.GetFileNameWithoutExtension(csprojPath),
-            FullPath: Path.GetFullPath(csprojPath),
+            FullPath: fullPath,
+            RelativePath: relativePath,
             IsPackable: !string.Equals(isPackable, "false", StringComparison.OrdinalIgnoreCase),
             DeclaredStability: declaredStability,
             ProjectReferences: references);
     }
 
-    // Analyzer/source-generator references (ReferenceOutputAssembly=false) are not recorded
-    // as nuspec dependencies, so they don't constrain stability.
+    // Analyzer/source-generator references (ReferenceOutputAssembly=false) and PrivateAssets="All"
+    // references are not recorded as nuspec dependencies, so they don't constrain stability.
     private static bool IsNuspecDependency(XElement reference)
     {
         var referenceOutput = reference.Element("ReferenceOutputAssembly")?.Value
             ?? reference.Attribute("ReferenceOutputAssembly")?.Value;
-        return !string.Equals(referenceOutput?.Trim(), "false", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(referenceOutput?.Trim(), "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var privateAssets = reference.Element("PrivateAssets")?.Value
+            ?? reference.Attribute("PrivateAssets")?.Value;
+        return !string.Equals(privateAssets?.Trim(), "all", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRepoRoot()
@@ -143,6 +154,7 @@ public class PackageStabilityGuardTests
     private sealed record PackableProject(
         string Name,
         string FullPath,
+        string RelativePath,
         bool IsPackable,
         string? DeclaredStability,
         List<string> ProjectReferences)
@@ -150,8 +162,8 @@ public class PackageStabilityGuardTests
         public string Stability => DeclaredStability ?? DefaultStability;
 
         public bool IsPublicFeed =>
-            FullPath.Contains($"{Path.DirectorySeparatorChar}src{Path.DirectorySeparatorChar}Core{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-            FullPath.Contains($"{Path.DirectorySeparatorChar}tools{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            RelativePath.StartsWith($"src{Path.DirectorySeparatorChar}Core{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            RelativePath.StartsWith($"tools{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
             Name == "Ignixa.Sidecar.Contracts";
     }
 }
