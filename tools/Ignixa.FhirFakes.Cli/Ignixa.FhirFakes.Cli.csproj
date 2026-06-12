@@ -13,10 +13,10 @@
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-fakes</ToolCommandName>
     <PackageId>Ignixa.FhirFakes.Cli</PackageId>
-    <Version>0.1.0-preview</Version>
     <Description>CLI tool for generating FHIR test data using the FhirFakes library. Supports single resources, scenarios, and population generation.</Description>
     <PackageTags>$(PackageTags);fhir;cli;tool;test-data;fake-data</PackageTags>
     <PackageOutputPath>./nupkg</PackageOutputPath>

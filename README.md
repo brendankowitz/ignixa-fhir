@@ -179,7 +179,7 @@ Ignixa follows a strict **Clean Architecture** pattern using **CQRS** (Command Q
 
 ## 🧩 Ignixa Core SDK
 
-The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** available on NuGet. These can be used independently to build custom FHIR applications.
+The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** available on NuGet. These can be used independently to build custom FHIR applications. Packages are versioned by stability level (stable / `-beta` / `-alpha`) — see the [package stability matrix](https://brendankowitz.github.io/ignixa-fhir/core-sdk/stability) and [ADR 2606](docs/adr/adr-2606-nuget-experimental-versioning.md).
 
 | Package | Feature |
 |---------|---------|

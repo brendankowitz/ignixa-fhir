@@ -83,6 +83,7 @@ const sidebars = {
         id: 'core-sdk/overview',
       },
       items: [
+        'core-sdk/stability',
         'core-sdk/abstractions',
         'core-sdk/serialization',
         'core-sdk/fhirpath',

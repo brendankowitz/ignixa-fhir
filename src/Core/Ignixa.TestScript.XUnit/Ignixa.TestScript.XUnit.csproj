@@ -8,6 +8,7 @@
 
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
     <PackageId>Ignixa.TestScript.XUnit</PackageId>
     <Description>xUnit integration for FHIR TestScript execution - discover and run TestScript files as xUnit theories</Description>
     <PackageTags>fhir;testscript;testing;xunit</PackageTags>

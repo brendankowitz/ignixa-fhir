@@ -10,6 +10,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>FHIR resource validation with profile support</Description>
   </PropertyGroup>
 

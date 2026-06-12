@@ -9,6 +9,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>SQL on FHIR implementation for analytics queries</Description>
   </PropertyGroup>
 

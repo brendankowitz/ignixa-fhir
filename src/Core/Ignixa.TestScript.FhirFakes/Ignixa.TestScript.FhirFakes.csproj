@@ -8,6 +8,7 @@
 
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
     <PackageId>Ignixa.TestScript.FhirFakes</PackageId>
     <Description>FhirFakes integration for TestScript fixture generation - auto-generate test data from resource type</Description>
     <PackageTags>fhir;testscript;testing;fake-data;test-generation</PackageTags>

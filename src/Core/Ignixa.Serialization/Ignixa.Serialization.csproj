@@ -13,6 +13,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>High-performance FHIR JSON serialization</Description>
   </PropertyGroup>
 

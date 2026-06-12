@@ -11,6 +11,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
     <Description>FHIR narrative generation using Scriban templates with FHIRPath support</Description>
   </PropertyGroup>
 

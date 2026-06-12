@@ -12,6 +12,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>Firely SDK 5.x interoperability shims for bidirectional conversion (legacy version support)</Description>
     <PackageTags>FHIR;HL7;Healthcare;Firely;Interop;Adapter;SDK5</PackageTags>
   </PropertyGroup>

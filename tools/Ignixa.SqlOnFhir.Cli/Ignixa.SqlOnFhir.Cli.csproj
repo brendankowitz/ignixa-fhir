@@ -13,10 +13,10 @@
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-sqlonfhir</ToolCommandName>
     <PackageId>Ignixa.SqlOnFhir.Cli</PackageId>
-    <Version>0.1.0-preview</Version>
     <Description>CLI tool for SQL on FHIR ViewDefinition processing - convert FHIR resources to Parquet/CSV, preview schemas, and validate ViewDefinitions.</Description>
     <PackageTags>$(PackageTags);fhir;sql-on-fhir;cli;tool;parquet;csv</PackageTags>
     <PackageOutputPath>./nupkg</PackageOutputPath>

@@ -77,18 +77,24 @@ CI passes `-p:BasePackageVersion=$VERSION` (a custom property) rather than `-p:P
 
 ```bash
 # Public packages (NuGet.org)
-find src/Core tools src/Application/Ignixa.Sidecar.Contracts -name "*.csproj" -type f | while read -r PROJECT; do
+find src/Core tools src/Application/Ignixa.Sidecar.Contracts -name "*.csproj" -type f | sort | while read -r PROJECT; do
   dotnet pack "$PROJECT" --configuration Release --no-build \
-    --output ./core-packages -p:BasePackageVersion="$BASE_VERSION"
+    --output ./core-packages \
+    -p:BasePackageVersion="$BASE_VERSION" -p:UpdateVersionProperties=false
 done
 
 # Internal packages (GitHub feed)
 find src/Application src/DataLayer -name "*.csproj" -type f \
-  ! -path "*Ignixa.Sidecar.Contracts*" | while read -r PROJECT; do
+  ! -path "*Ignixa.Sidecar.Contracts*" | sort | while read -r PROJECT; do
   dotnet pack "$PROJECT" --configuration Release --no-build \
-    --output ./internal-packages -p:BasePackageVersion="$BASE_VERSION"
+    --output ./internal-packages \
+    -p:BasePackageVersion="$BASE_VERSION" -p:UpdateVersionProperties=false
 done
 ```
+
+`-p:UpdateVersionProperties=false` is required: GitVersion.MsBuild otherwise overwrites the
+computed `PackageVersion` at target-execution time, after `Directory.Build.targets` evaluation
+(verified empirically — without it, packages emerge with GitVersion's branch semVer).
 
 **`IsPackable` semantics are opt-out, not opt-in.** SDK-style projects default to `IsPackable=true`. Auto-discovery therefore publishes anything not explicitly opted out — which changes the published set relative to today's explicit lists: `Ignixa.Api.OpenIddict` and `Ignixa.DeId.Cli` are packable but not currently packed. Each must either be explicitly marked `IsPackable=false` or deliberately added to the published set (see checklist).
 
@@ -144,10 +150,11 @@ Classification of **all** packable projects. "Forced" means the dependency rule 
 | **Ignixa.SqlOnFhir.Cli** | stable | SqlOnFhir + Writers (stable) |
 | **Ignixa.FhirFakes.Cli** | stable | FhirFakes (stable); also depends on Validation (stable) |
 | **Ignixa.DeId.Cli** | beta | DeId (beta) — newly published; was packable but absent from the old CI list |
+| **Ignixa.ConformanceMatrix.Cli** | beta | TestScript + TestScript.FhirFakes (beta) — added with #255 |
 
 All four tools hardcode `<Version>0.1.0-preview</Version>`; these must be removed in favor of `PackageStability`.
 
-**Previously unpublished projects:** `Ignixa.Api.OpenIddict` joins the internal feed via auto-discovery (defaults to alpha until classified). `tools/FhirPathPerfCheck` is a local perf harness, not a product — it gets `IsPackable=false`.
+**Previously unpublished projects:** `Ignixa.Api.OpenIddict` joins the internal feed via auto-discovery (defaults to alpha until classified), and `Ignixa.FhirPath.Generators` + `Ignixa.DeId.Cli` join the public feed (both were packable but absent from the old CI list). `tools/FhirPathPerfCheck` is a local perf harness, not a product — it gets `IsPackable=false`.
 
 The alpha tier is currently empty. It remains the **default** for any packable project that does not declare `PackageStability`, so new packages enter the catalog as alpha until explicitly classified.
 
@@ -208,7 +215,7 @@ Create `docs/site/docs/core-sdk/stability.md` with the stability matrix. **Gener
 ### Negative
 
 - **New Build Infrastructure**: Introduces `Directory.Build.targets` and a `BasePackageVersion` contract between CI and MSBuild
-- **GitVersion Interplay**: `GitVersion.MsBuild` also sets version properties; the `BasePackageVersion` path must be verified against it on a branch before rollout. Note GitVersion's semVer already carries pre-release tags on non-main branches (e.g., `1.0.0-PullRequest261.1`); naive suffix concatenation would be malformed — CI must pass a clean base version (as it does today via `nuget-version`)
+- **GitVersion Interplay**: `GitVersion.MsBuild` overwrites version properties at target-execution time — verified during implementation; mitigated by passing `-p:UpdateVersionProperties=false` at pack. Note GitVersion's semVer already carries pre-release tags on non-main branches (e.g., `1.0.0-PullRequest261.1`); naive suffix concatenation would be malformed — CI must pass a clean base version (as it does today via `nuget-version`)
 - **Version Churn for Internal Consumers**: Internal packages flip from `1.0.0` to `1.0.0-alpha` unless explicitly marked
 - **Documentation Overhead**: Stability matrix generation step in CI
 
@@ -224,30 +231,30 @@ Create `docs/site/docs/core-sdk/stability.md` with the stability matrix. **Gener
 ## Implementation Checklist
 
 **Phase 1: Infrastructure**
-- [ ] Create `Directory.Build.targets` with the `PackageStability` → `PackageVersion` mapping (§2)
-- [ ] Remove `NU5104` from the global `NoWarn` in `Directory.Build.props`; scope per-project if any project genuinely needs a pre-release NuGet dependency
-- [ ] Add `<PackageStability>` to every packable project per the §5 tables
-- [ ] Remove hardcoded `<Version>` from FhirFakes, Sidecar.Contracts, and all four CLI tools
-- [ ] Set `IsPackable=false` on `tools/FhirPathPerfCheck`
-- [ ] Note in release notes: `Ignixa.Api.OpenIddict` (internal feed) and `Ignixa.DeId.Cli` (NuGet.org, beta) are newly published via auto-discovery
-- [ ] Update descriptions/release notes for alpha packages
+- [x] Create `Directory.Build.targets` with the `PackageStability` → `PackageVersion` mapping (§2)
+- [x] Remove `NU5104` from the global `NoWarn` in `Directory.Build.props` (verified: the only pre-release NuGet dependency, `ModelContextProtocol.AspNetCore`, is consumed by internal alpha packages, so no scoped suppression needed)
+- [x] Add `<PackageStability>` to every packable project per the §5 tables
+- [x] Remove hardcoded `<Version>` from FhirFakes, Sidecar.Contracts, and all five CLI tools
+- [x] Set `IsPackable=false` on `tools/FhirPathPerfCheck`
+- [x] Add README.md to `Ignixa.FhirPath.Generators` (newly published; repo-wide `PackageReadmeFile` made pack fail without it)
+- [x] Guard tests in `Ignixa.RepoGuards.Tests` enforce the dependency-stability rule and explicit classification of public packages
 
 **Phase 2: CI Workflow**
-- [ ] Replace pack steps with the find-based loops (§3), passing `-p:BasePackageVersion`
-- [ ] Verify GitVersion.MsBuild does not override the computed `PackageVersion` (test on branch)
-- [ ] Diff the produced `.nupkg` set against today's published set; confirm no unintended additions/removals
-- [ ] Inspect nuspec dependency versions across a stable→stable and beta→stable edge
+- [x] Replace pack steps with the find-based loops (§3), passing `-p:BasePackageVersion` and `-p:UpdateVersionProperties=false`
+- [x] Verify GitVersion.MsBuild does not override the computed `PackageVersion` (it does without `UpdateVersionProperties=false`; verified both ways)
+- [x] Diff the produced `.nupkg` set against today's published set — additions are exactly `Ignixa.FhirPath.Generators`, `Ignixa.DeId.Cli` (public) and `Ignixa.Api.OpenIddict` (internal); no removals
+- [x] Inspect nuspec dependency versions across beta→beta and beta→stable edges (`TestScript.XUnit → TestScript 1.2.3-beta`; `DeId → FhirPath 1.2.3`)
 
 **Phase 3: Documentation**
-- [ ] Add CI step generating `docs/site/docs/core-sdk/stability.md` from `PackageStability` properties
-- [ ] Update main README.md with link to stability docs
-- [ ] Document graduation criteria
+- [x] `eng/Generate-StabilityMatrix.ps1` generates `docs/site/docs/core-sdk/stability.md`; docs workflow regenerates it on every build and now also triggers on csproj changes
+- [x] Update main README.md with link to stability docs
+- [x] Graduation criteria documented (§6)
 
 **Phase 4: Validation**
-- [ ] Verify NuGet.org displays pre-release correctly
-- [ ] Verify NU5104 fires: temporarily add a pre-release reference to a stable package and confirm pack fails
-- [ ] Notify internal consumers of Application/DataLayer version changes
-- [ ] Update CHANGELOG with versioning policy
+- [ ] Verify NuGet.org displays pre-release correctly (after first publish)
+- [x] Verify NU5104 fires: temporarily promoted `TestScript.XUnit` to stable against beta `TestScript` — pack fails with `error NU5104` (warnings-as-errors)
+- [ ] Notify internal consumers of Application/DataLayer version changes (`1.0.0` → `-alpha` suffixes)
+- [ ] Mention newly published packages and the versioning policy in the next release notes (repo has no CHANGELOG file; release notes are generated by `publish-release.yml`)
 
 ## References
 

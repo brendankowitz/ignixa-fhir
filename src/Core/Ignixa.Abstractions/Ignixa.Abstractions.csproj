@@ -10,6 +10,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>Core interfaces and abstractions for Ignixa FHIR Server</Description>
   </PropertyGroup>
 

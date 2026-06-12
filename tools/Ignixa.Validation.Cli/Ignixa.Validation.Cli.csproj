@@ -13,10 +13,10 @@
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-validator</ToolCommandName>
     <PackageId>Ignixa.Validation.Cli</PackageId>
-    <Version>0.1.0-preview</Version>
     <Description>CLI tool for validating FHIR resources using the Ignixa.Validation library. Supports file input, JSON string input, and formatted console output.</Description>
     <PackageTags>$(PackageTags);fhir;cli;tool;validation;validator</PackageTags>
     <PackageOutputPath>./nupkg</PackageOutputPath>

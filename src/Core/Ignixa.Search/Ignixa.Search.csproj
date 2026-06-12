@@ -12,6 +12,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>FHIR search parameter indexing and query infrastructure</Description>
   </PropertyGroup>
 

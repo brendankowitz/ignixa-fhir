@@ -13,6 +13,7 @@
   <!-- Source Generator metadata -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>Source generator for FhirPath function registration. Automatically generates SymbolTable.RegisterStandardFunctions() from [FhirPathFunction] attributes.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <DevelopmentDependency>true</DevelopmentDependency>

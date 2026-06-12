@@ -11,6 +11,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>FHIR specification data and structure providers (R4/R4B/R5/STU3)</Description>
   </PropertyGroup>
 

@@ -9,6 +9,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>NPM package management for FHIR Implementation Guides</Description>
   </PropertyGroup>
 

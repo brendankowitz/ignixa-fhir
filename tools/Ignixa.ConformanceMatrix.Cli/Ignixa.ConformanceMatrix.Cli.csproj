@@ -13,10 +13,10 @@
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-matrix</ToolCommandName>
     <PackageId>Ignixa.ConformanceMatrix.Cli</PackageId>
-    <Version>0.1.0-preview</Version>
     <Description>CLI tool for running FHIR TestScript conformance suites against a server and producing a conformance matrix report.</Description>
     <PackageTags>$(PackageTags);fhir;cli;tool;testscript;conformance</PackageTags>
     <PackageOutputPath>./nupkg</PackageOutputPath>

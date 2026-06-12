@@ -14,6 +14,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
     <PackageId>Ignixa.DeId</PackageId>
     <Description>FHIR data de-identification library supporting R4, R4B, R5, R6, and STU3 via Ignixa SDK</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

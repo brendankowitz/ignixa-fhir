@@ -9,6 +9,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>Writers for SQL on FHIR - Parquet and CSV output formats</Description>
   </PropertyGroup>
 

@@ -13,10 +13,10 @@
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-deid</ToolCommandName>
     <PackageId>Ignixa.DeId.Cli</PackageId>
-    <Version>0.1.0-preview</Version>
     <Description>CLI tool for de-identifying FHIR resources using configurable rules. Supports dateshift, redact, encrypt, cryptohash, substitute, perturb, and generalize operations.</Description>
     <PackageTags>$(PackageTags);fhir;cli;tool;deid;de-identification;privacy</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

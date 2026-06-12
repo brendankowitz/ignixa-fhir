@@ -9,8 +9,8 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <PackageId>Ignixa.FhirFakes</PackageId>
-    <Version>0.1.0-preview</Version>
     <Description>A comprehensive FHIR test data generation library for modeling patient populations and medical histories.</Description>
     <PackageTags>$(PackageTags);test-data;test-generation;fake-data;bogus;demographics</PackageTags>
     <!-- TODO: Enable after fixing XML documentation errors (CS1570) -->

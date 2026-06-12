@@ -6,9 +6,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Description>Shared gRPC contracts for Ignixa FHIR Server sidecar integration. Enables building custom sidecar services for audit, authorization (RBAC), metrics, and logging. Distributed as application-level package for internal use.</Description>
     <Authors>Ignixa Contributors</Authors>
-    <Version>1.0.0</Version>
     <PackageTags>fhir;grpc;sidecar;audit;rbac;metrics;logging;protobuf</PackageTags>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
   </PropertyGroup>
 
   <ItemGroup>

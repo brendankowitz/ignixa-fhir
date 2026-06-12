@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- ADR 2606: per-package stability versioning.
+       Must live in Directory.Build.targets (imported after the project body) so that
+       per-project PackageStability values are visible; Directory.Build.props is too early.
+       BasePackageVersion is supplied by CI; local builds keep GitVersion behavior.
+       CI must also pass -p:UpdateVersionProperties=false: GitVersion.MsBuild otherwise
+       overwrites PackageVersion at target-execution time, after this evaluation. -->
+  <PropertyGroup Condition="'$(BasePackageVersion)' != '' AND '$(IsPackable)' != 'false'">
+    <PackageStability Condition="'$(PackageStability)' == ''">alpha</PackageStability>
+    <PackageVersion Condition="'$(PackageStability)' == 'stable'">$(BasePackageVersion)</PackageVersion>
+    <PackageVersion Condition="'$(PackageStability)' != 'stable'">$(BasePackageVersion)-$(PackageStability)</PackageVersion>
+  </PropertyGroup>
+
+</Project>

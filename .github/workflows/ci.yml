@@ -61,53 +61,29 @@ jobs:
           mkdir -p ./core-packages
           mkdir -p ./internal-packages
 
+      # ADR 2606: auto-discovery via IsPackable; per-package pre-release suffix computed in
+      # Directory.Build.targets from PackageStability. UpdateVersionProperties=false stops
+      # GitVersion.MsBuild overwriting the computed PackageVersion at pack time.
       - name: Pack Core projects (public - NuGet.org)
         if: "${{ !inputs.skip_nuget }}"
         run: |
-          # Core libraries (src/Core/)
-          dotnet pack src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.Analyzers/Ignixa.Analyzers.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.NarrativeGenerator/Ignixa.NarrativeGenerator.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.Search/Ignixa.Search.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.SqlOnFhir.Writers/Ignixa.SqlOnFhir.Writers.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.TestScript/Ignixa.TestScript.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.TestScript.XUnit/Ignixa.TestScript.XUnit.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Ignixa.TestScript.FhirFakes/Ignixa.TestScript.FhirFakes.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          # Extensions
-          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Ignixa.Extensions.FirelySdk5.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          # CLI tools
-          dotnet pack tools/Ignixa.FhirFakes.Cli/Ignixa.FhirFakes.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack tools/Ignixa.Validation.Cli/Ignixa.Validation.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack tools/Ignixa.SqlOnFhir.Cli/Ignixa.SqlOnFhir.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack tools/Ignixa.ConformanceMatrix.Cli/Ignixa.ConformanceMatrix.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          # Sidecar contracts (for building custom sidecars)
-          dotnet pack src/Application/Ignixa.Sidecar.Contracts/Ignixa.Sidecar.Contracts.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          find src/Core tools src/Application/Ignixa.Sidecar.Contracts -name "*.csproj" -type f | sort | while read -r PROJECT; do
+            echo "Packing: $PROJECT"
+            dotnet pack "$PROJECT" --configuration Release --no-build --output ./core-packages \
+              -p:BasePackageVersion=${{ steps.build.outputs.nuget-version }} \
+              -p:UpdateVersionProperties=false
+          done
 
       - name: Pack Application projects (internal - GitHub Packages)
         if: "${{ !inputs.skip_nuget }}"
         run: |
-          # Application layer (src/Application/)
-          dotnet pack src/Application/Ignixa.Api/Ignixa.Api.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Application/Ignixa.Application/Ignixa.Application.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Application/Ignixa.Domain/Ignixa.Domain.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/Application/Ignixa.Conformance.Events/Ignixa.Conformance.Events.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          # Note: Ignixa.Sidecar.Contracts is packed in core-packages for public NuGet.org distribution
-          # DataLayer (src/DataLayer/)
-          dotnet pack src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/DataLayer/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/DataLayer/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
-          dotnet pack src/DataLayer/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          # Sidecar.Contracts is packed in core-packages for public NuGet.org distribution
+          find src/Application src/DataLayer -name "*.csproj" -type f -not -path "*Ignixa.Sidecar.Contracts*" | sort | while read -r PROJECT; do
+            echo "Packing: $PROJECT"
+            dotnet pack "$PROJECT" --configuration Release --no-build --output ./internal-packages \
+              -p:BasePackageVersion=${{ steps.build.outputs.nuget-version }} \
+              -p:UpdateVersionProperties=false
+          done
 
       - name: List Core packages
         if: "${{ !inputs.skip_nuget }}"

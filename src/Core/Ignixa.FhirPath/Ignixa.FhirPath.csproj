@@ -9,6 +9,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
     <Description>FHIRPath expression evaluation engine for FHIR resources</Description>
   </PropertyGroup>
 
