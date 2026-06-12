@@ -214,15 +214,11 @@ public sealed class SearchResolver(
         if (!string.IsNullOrEmpty(total))
             parameters.Add(new QueryParameter("_total", total));
 
-        var filterOptional = context.ArgumentOptional<string?>("_filter");
-        if (filterOptional.HasValue && !string.IsNullOrEmpty(filterOptional.Value))
-            parameters.Add(new QueryParameter("_filter", filterOptional.Value));
-
         // Forward all other arguments as FHIR search parameters
         foreach (var argument in context.Selection.Field.Arguments)
         {
             var argName = argument.Name;
-            if (argName is "_count" or "_cursor" or "_sort" or "_total" or "_filter" or "_reference")
+            if (argName is "_count" or "_cursor" or "_sort" or "_total" or "_reference")
                 continue;
 
             // FHIR system-level params start with '_' (e.g., _tag, _id, _lastUpdated).

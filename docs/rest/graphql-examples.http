@@ -51,7 +51,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(_id: \"example\") { id name { use family given } birthDate gender active } }"
+  "query": "{ Patient(_id: \"searchpatient1\") { id name { use family given } birthDate gender active } }"
 }
 
 ### 3.2 Read with nested complex types
@@ -59,7 +59,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(_id: \"example\") { id identifier { system value } telecom { system value use } address { line city state postalCode country } } }"
+  "query": "{ Patient(_id: \"searchpatient1\") { id identifier { system value } telecom { system value use } address { line city state postalCode country } } }"
 }
 
 ### 3.3 Read using GET method
@@ -216,7 +216,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id officialName: name(fhirpath: \"use = 'official'\") { family given } allNames: name { use family given } } }"
+  "query": "{ Patient(_id: \"example\") { id officialName: name(fhirpath: \"use = 'official'\") { family given } allNames: name { use family given } } }"
 }
 
 ### 9.2 Filter using exists()
@@ -224,7 +224,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id namesWithFamily: name(fhirpath: \"family.exists()\") { family given } } }"
+  "query": "{ Patient(_id: \"example\") { id namesWithFamily: name(fhirpath: \"family.exists()\") { family given } } }"
 }
 
 ### 9.3 Paginate within a list — offset and count
@@ -232,7 +232,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id firstTwoNames: name(_count: 2) { family given } remainingNames: name(_offset: 2) { family given } } }"
+  "query": "{ Patient(_id: \"example\") { id firstTwoNames: name(_count: 2) { family given } remainingNames: name(_offset: 2) { family given } } }"
 }
 
 ### ============================================================================
@@ -244,7 +244,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "query GetPatient($patientId: ID!) { Patient(id: $patientId) { id name { family given } birthDate } }",
+  "query": "query GetPatient($patientId: ID!) { Patient(_id: $patientId) { id name { family given } birthDate } }",
   "operationName": "GetPatient",
   "variables": {
     "patientId": "example"
@@ -256,11 +256,11 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "query SearchPatients($count: Int, $nameFilter: String) { PatientList(_count: $count, name: $nameFilter) { id name { family given } } }",
+  "query": "query SearchPatients($count: Int, $nameFilter: [String]) { PatientList(_count: $count, name: $nameFilter) { id name { family given } } }",
   "operationName": "SearchPatients",
   "variables": {
     "count": 5,
-    "nameFilter": "Smith"
+    "nameFilter": ["Smith"]
   }
 }
 
@@ -273,7 +273,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id name @first { family given } } }"
+  "query": "{ Patient(_id: \"example\") { id name @first { family given } } }"
 }
 
 ### 11.2 @singleton — assert single identifier
@@ -281,7 +281,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id identifier @first @singleton { system value } } }"
+  "query": "{ Patient(_id: \"example\") { id identifier @first @singleton { system value } } }"
 }
 
 ### 11.3 @flatten — promote children to parent level
@@ -289,7 +289,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id identifier @flatten { system value } active } }"
+  "query": "{ Patient(_id: \"example\") { id identifier @flatten { system value } active } }"
 }
 
 ### 11.4 @slice — split list by index
@@ -297,7 +297,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id name @slice(path: \"$index\") @flatten { given family } } }"
+  "query": "{ Patient(_id: \"example\") { id name @slice(path: \"$index\") @flatten { given family } } }"
 }
 
 ### 11.5 @skip / @include — standard GraphQL conditionals
@@ -305,7 +305,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "query GetPatient($showAddress: Boolean!) { Patient(id: \"example\") { id name { family } address @include(if: $showAddress) { city state } } }",
+  "query": "query GetPatient($showAddress: Boolean!) { Patient(_id: \"example\") { id name { family } address @include(if: $showAddress) { city state } } }",
   "variables": { "showAddress": false }
 }
 
@@ -362,12 +362,12 @@ Content-Type: application/json
 ### ADVANCED SEARCH
 ### ============================================================================
 
-### 14.1 Search with _filter for complex criteria
+### 14.1 Combined search criteria (multiple parameters AND, array values OR)
 POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ PatientList(_filter: \"name co 'john' and birthdate ge 1990-01-01\", _count: 10) { id name { family given } birthDate } }"
+  "query": "{ PatientList(name: [\"john\", \"jane\"], birthdate: \"ge1990-01-01\", _count: 10) { id name { family given } birthDate } }"
 }
 
 ### 14.2 Token search — identifier system|value
@@ -395,7 +395,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Patient(id: \"example\") { id meta { profile source versionId lastUpdated } } }"
+  "query": "{ Patient(_id: \"example\") { id meta { profile source versionId lastUpdated } } }"
 }
 
 ### ============================================================================
@@ -407,7 +407,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Condition(id: \"example\") { id onsetDateTime onsetString abatementDateTime code { text } } }"
+  "query": "{ Condition(_id: \"example\") { id onsetDateTime onsetString abatementDateTime code { text } } }"
 }
 
 ### 16.2 ServiceRequest with occurrence choice fields
@@ -415,7 +415,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ ServiceRequest(id: \"example\") { id occurrenceDateTime occurrencePeriod { start end } } }"
+  "query": "{ ServiceRequest(_id: \"example\") { id occurrenceDateTime occurrencePeriod { start end } } }"
 }
 
 ### ============================================================================
@@ -427,7 +427,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Encounter(id: \"example\") { id payloadVersion: extension(url: \"https://dsp-fhir.org/StructureDefinition/payload-version\") { major: extension(url: \"major\") { valueInteger } minor: extension(url: \"minor\") { valueInteger } revision: extension(url: \"revision\") { valueInteger } quality: extension(url: \"quality\") { valueCode } } callbackUrl: extension(url: \"https://dsp-fhir.org/StructureDefinition/external-callback-url\") { valueUrl } } }"
+  "query": "{ Encounter(_id: \"example\") { id payloadVersion: extension(url: \"https://dsp-fhir.org/StructureDefinition/payload-version\") { major: extension(url: \"major\") { valueInteger } minor: extension(url: \"minor\") { valueInteger } revision: extension(url: \"revision\") { valueInteger } quality: extension(url: \"quality\") { valueCode } } callbackUrl: extension(url: \"https://dsp-fhir.org/StructureDefinition/external-callback-url\") { valueUrl } } }"
 }
 
 ### 17.2 Extension with valueReference
@@ -435,19 +435,22 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Encounter(id: \"example\") { id turnRefs: extension(url: \"https://dsp-fhir.org/StructureDefinition/dsp-transcript-turn-ref\") { transcript: extension(url: \"transcript\") { valueReference { reference } } turn: extension(url: \"turn\") { valueInteger } } } }"
+  "query": "{ Encounter(_id: \"example\") { id turnRefs: extension(url: \"https://dsp-fhir.org/StructureDefinition/dsp-transcript-turn-ref\") { transcript: extension(url: \"transcript\") { valueReference { reference } } turn: extension(url: \"turn\") { valueInteger } } } }"
 }
 
 ### ============================================================================
 ### REFERENCE RESOLUTION — PRACTITIONER
 ### ============================================================================
 
-### 18.1 Encounter with resolved Practitioner participant
+### 18.1 Observation with resolved Practitioner performer
+# Note: Encounter.participant is a backbone element (typed as Element pending a
+# schema generation fix), so its children cannot be traversed yet. Reference
+# elements like Observation.performer resolve normally.
 POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "{ Encounter(id: \"example\") { id participant { individual { resource { ... on Practitioner { id name { given family } identifier { system value } qualification { code { coding { system code display } } } } } } } } }"
+  "query": "{ ObservationList(_count: 3) { id performer { reference resource(optional: true) { ... on Practitioner { id name { given family } identifier { system value } } } } } }"
 }
 
 ### ============================================================================
@@ -463,7 +466,7 @@ POST {{hostname}}/$graphql
 Content-Type: application/json
 
 {
-  "query": "query DSP($encId: ID!) { encounter: Encounter(id: $encId) { id status class { code display } period { start end } subject { resource { ... on Patient { id identifier { system value } name { given family } gender birthDate } } } reasonCode { coding { system code display } } payloadVersion: extension(url: \"https://dsp-fhir.org/StructureDefinition/payload-version\") { major: extension(url: \"major\") { valueInteger } minor: extension(url: \"minor\") { valueInteger } } callbackUrl: extension(url: \"https://dsp-fhir.org/StructureDefinition/external-callback-url\") { valueUrl } } conditions: ConditionList(encounter: $encId) { id code { coding { display } } clinicalStatus { coding { code } } } medications: MedicationRequestList(encounter: $encId) { id status intent medicationCodeableConcept { text coding { system code display } } } transcripts: DocumentReferenceList(encounter: $encId, category: \"https://dsp-fhir.org/CodeSystem/doc-category|transcript\") { id status type { coding { code display } } } }",
-  "variables": { "encId": "example" }
+  "query": "query DSP($encId: ID!, $encRef: [String]) { encounter: Encounter(_id: $encId) { id status class { code display } period { start end } subject { resource { ... on Patient { id identifier { system value } name { given family } gender birthDate } } } reasonCode { coding { system code display } } payloadVersion: extension(url: \"https://dsp-fhir.org/StructureDefinition/payload-version\") { major: extension(url: \"major\") { valueInteger } minor: extension(url: \"minor\") { valueInteger } } callbackUrl: extension(url: \"https://dsp-fhir.org/StructureDefinition/external-callback-url\") { valueUrl } } conditions: ConditionList(encounter: $encRef) { id code { coding { display } } clinicalStatus { coding { code } } } medications: MedicationRequestList(encounter: $encRef) { id status intent medicationCodeableConcept { text coding { system code display } } } transcripts: DocumentReferenceList(encounter: $encRef, category: \"https://dsp-fhir.org/CodeSystem/doc-category|transcript\") { id status type { coding { code display } } } }",
+  "variables": { "encId": "example", "encRef": ["example"] }
 }
 

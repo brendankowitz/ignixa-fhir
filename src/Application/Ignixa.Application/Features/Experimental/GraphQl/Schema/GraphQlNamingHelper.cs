@@ -27,9 +27,6 @@ internal static class GraphQlNamingHelper
     internal static string ToBackboneTypeName(string resourceType, string elementPath)
         => $"{resourceType}_{ToPascalCase(elementPath)}";
 
-    internal static string ToUnionTypeName(string parentPath, string elementName)
-        => $"{parentPath}_{ToPascalCase(elementName)}Union";
-
     internal static string ToConnectionTypeName(string resourceType)
         => $"{resourceType}Connection";
 

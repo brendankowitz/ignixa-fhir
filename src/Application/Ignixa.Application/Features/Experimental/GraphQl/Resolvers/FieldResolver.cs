@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 using HotChocolate;
 using HotChocolate.Resolvers;
 using Ignixa.Abstractions;
-using Ignixa.Application.Features.Experimental.GraphQl.Models;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
@@ -72,7 +72,8 @@ internal static class FieldResolver
         var fhirpathOpt = context.ArgumentOptional<string?>("fhirpath");
         if (fhirpathOpt.HasValue && !string.IsNullOrEmpty(fhirpathOpt.Value))
         {
-            var schemaProvider = context.Service<IFhirSchemaProvider>();
+            var fhirVersion = context.Service<IFhirRequestContextAccessor>().RequestContext?.FhirVersion ?? FhirVersion.R4;
+            var schemaProvider = context.Service<Func<FhirVersion, IFhirSchemaProvider>>()(fhirVersion);
             items = ApplyFhirPathFilter(items, fhirpathOpt.Value, schemaProvider, instanceType);
         }
 
@@ -216,7 +217,6 @@ internal static class FieldResolver
         var raw = context.Parent<object?>();
         return raw switch
         {
-            ChoiceElementValue cv => cv.Element,
             JsonElement je => je,
             _ => null,
         };

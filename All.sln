@@ -69,6 +69,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Rest", "Rest", "{5DB93B3E-6
 		docs\rest\operation-terminology.http = docs\rest\operation-terminology.http
 		docs\rest\operation-transform.http = docs\rest\operation-transform.http
 		docs\rest\operation-summary.http = docs\rest\operation-summary.http
+		docs\rest\graphql-examples.http = docs\rest\graphql-examples.http
+		docs\rest\operation-validate.http = docs\rest\operation-validate.http
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bench", "bench", "{760AB15A-8938-8D9B-BEDE-5CE1484B84C3}"

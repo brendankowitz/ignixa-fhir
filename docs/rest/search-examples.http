@@ -17,7 +17,7 @@ POST {{hostname}}
 Prefer: validation=minimum
 Content-Type: application/json
 
-< ./data/SearchDataBatch.json
+< ./data/search-data-batch.json
 
 ### Batch2
 POST {{hostname}}

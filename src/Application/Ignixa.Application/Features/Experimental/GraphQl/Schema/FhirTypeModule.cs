@@ -19,7 +19,6 @@ using Ignixa.Search.Indexing.SearchValues;
 using Microsoft.Extensions.Logging;
 using FhirIType = Ignixa.Abstractions.IType;
 using FhirITypeExtended = Ignixa.Abstractions.ITypeExtended;
-using FhirITypeReference = Ignixa.Abstractions.ITypeReference;
 using FhirIFhirSchemaProvider = Ignixa.Abstractions.IFhirSchemaProvider;
 using FhirFieldResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.FieldResolver;
 using AppResourceResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.ResourceResolver;
@@ -49,8 +48,6 @@ public sealed class FhirTypeModule(
 
     private record BackboneTypeInfo(string GraphQlName, FhirIType FhirType);
 
-    private record UnionTypeInfo(string GraphQlName, IReadOnlyList<string> MemberTypeCodes);
-
     public ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(
         IDescriptorContext context,
         CancellationToken cancellationToken)
@@ -64,7 +61,6 @@ public sealed class FhirTypeModule(
         var resourceTypeSet = new HashSet<string>(concreteResourceTypes, StringComparer.Ordinal);
 
         var backbones = new List<BackboneTypeInfo>();
-        var unions = new List<UnionTypeInfo>();
         var referencedDataTypes = new HashSet<string>(StringComparer.Ordinal);
         var visitedPaths = new HashSet<string>(StringComparer.Ordinal);
 
@@ -72,7 +68,7 @@ public sealed class FhirTypeModule(
         {
             var typeDef = schemaProvider.GetTypeDefinition(rt);
             if (typeDef is not null)
-                DiscoverNestedTypes(typeDef, rt, resourceTypeSet, backbones, unions, referencedDataTypes, visitedPaths);
+                DiscoverNestedTypes(typeDef, rt, resourceTypeSet, backbones, referencedDataTypes, visitedPaths);
         }
 
         foreach (var complexValueName in ComplexExtensionValueTypes)
@@ -91,7 +87,7 @@ public sealed class FhirTypeModule(
             var dtDef = schemaProvider.GetTypeDefinition(dtName);
             if (dtDef is null) continue;
             var beforeCount = referencedDataTypes.Count;
-            DiscoverNestedTypes(dtDef, dtName, resourceTypeSet, backbones, unions, referencedDataTypes, visitedPaths);
+            DiscoverNestedTypes(dtDef, dtName, resourceTypeSet, backbones, referencedDataTypes, visitedPaths);
             if (referencedDataTypes.Count > beforeCount)
             {
                 foreach (var newDt in referencedDataTypes)
@@ -112,9 +108,6 @@ public sealed class FhirTypeModule(
 
         foreach (var bb in backbones)
             types.Add(BuildPreDiscoveredBackboneType(bb.GraphQlName, bb.FhirType));
-
-        foreach (var u in unions)
-            types.Add(BuildPreDiscoveredUnionType(u.GraphQlName, u.MemberTypeCodes));
 
         foreach (var dtName in referencedDataTypes)
         {
@@ -154,7 +147,6 @@ public sealed class FhirTypeModule(
         string parentPath,
         HashSet<string> resourceTypeSet,
         List<BackboneTypeInfo> backbones,
-        List<UnionTypeInfo> unions,
         HashSet<string> referencedDataTypes,
         HashSet<string> visitedPaths)
     {
@@ -167,23 +159,15 @@ public sealed class FhirTypeModule(
 
             if (child.Info.IsChoiceElement && child is FhirITypeExtended choiceExt)
             {
-                var memberCodes = choiceExt.Types
-                    .Select(t => t.Code)
-                    .Where(schemaProvider.IsKnownType)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-
-                if (memberCodes.Count > 0)
+                foreach (var memberType in choiceExt.Types)
                 {
-                    var unionName = GraphQlNamingHelper.ToUnionTypeName(parentPath, elementName);
-                    if (visitedPaths.Add(unionName))
-                        unions.Add(new UnionTypeInfo(unionName, memberCodes));
-
-                    foreach (var code in memberCodes)
-                    {
-                        if (!resourceTypeSet.Contains(code))
-                            referencedDataTypes.Add(code);
-                    }
+                    var code = memberType.Code;
+                    if (string.IsNullOrEmpty(code) || !schemaProvider.IsKnownType(code))
+                        continue;
+                    if (IsPrimitiveTypeCode(code))
+                        continue;
+                    if (!resourceTypeSet.Contains(code))
+                        referencedDataTypes.Add(code);
                 }
 
                 continue;
@@ -202,7 +186,7 @@ public sealed class FhirTypeModule(
                     if (visitedPaths.Add(backboneName))
                     {
                         backbones.Add(new BackboneTypeInfo(backboneName, child));
-                        DiscoverNestedTypes(child, backboneName, resourceTypeSet, backbones, unions, referencedDataTypes, visitedPaths);
+                        DiscoverNestedTypes(child, backboneName, resourceTypeSet, backbones, referencedDataTypes, visitedPaths);
                     }
 
                     continue;
@@ -333,9 +317,8 @@ public sealed class FhirTypeModule(
                 .Type<NonNullType<StringType>>()
                 .Resolve(_ => resourceTypeName);
 
-            descriptor.IsOfType((ctx, obj) =>
-                obj is ChoiceElementValue cv && cv.TypeName == resourceTypeName
-                || obj is JsonElement je && je.TryGetProperty("resourceType", out var rt)
+            descriptor.IsOfType((_, obj) =>
+                obj is JsonElement je && je.TryGetProperty("resourceType", out var rt)
                     && rt.GetString() == resourceTypeName);
 
             if (fhirType is FhirITypeExtended extended)
@@ -415,7 +398,7 @@ public sealed class FhirTypeModule(
 
         if (child.Info.IsChoiceElement && child is FhirITypeExtended choiceExtended)
         {
-            AddChoiceElementField(descriptor, choiceExtended, elementName, parentPath);
+            AddChoiceElementField(descriptor, choiceExtended, elementName);
             return;
         }
 
@@ -540,23 +523,59 @@ public sealed class FhirTypeModule(
     private void AddChoiceElementField(
         IObjectTypeDescriptor descriptor,
         FhirITypeExtended element,
-        string elementName,
-        string parentPath)
+        string elementName)
     {
-        var unionName = GraphQlNamingHelper.ToUnionTypeName(parentPath, elementName);
+        var camelName = GraphQlNamingHelper.ToCamelCase(elementName);
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
 
-        var memberTypeCodes = element.Types
-            .Select(t => t.Code)
-            .Where(schemaProvider.IsKnownType)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        foreach (var memberType in element.Types)
+        {
+            var code = memberType.Code;
+            if (string.IsNullOrEmpty(code) || !schemaProvider.IsKnownType(code))
+                continue;
 
-        if (memberTypeCodes.Count == 0) return;
+            var fieldName = $"{camelName}{GraphQlNamingHelper.ToPascalCase(code)}";
+            if (!emitted.Add(fieldName))
+                continue;
 
-        var memberTypes = element.Types.ToList();
-        var fieldName = GraphQlNamingHelper.ToCamelCase(elementName);
-        var field = descriptor.Field(fieldName).Type(new NamedTypeNode(unionName));
-        field.Resolve(ctx => ResolveChoiceElement(ctx, elementName, memberTypes));
+            AddChoiceMemberField(descriptor, fieldName, code);
+        }
+    }
+
+    private void AddChoiceMemberField(
+        IObjectTypeDescriptor descriptor,
+        string fieldName,
+        string typeCode)
+    {
+        if (IsPrimitiveTypeCode(typeCode))
+        {
+            var graphQlTypeNode = FhirScalarMappings.GetGraphQlTypeNode(typeCode);
+            descriptor.Field(fieldName)
+                .Type(graphQlTypeNode)
+                .Resolve(ctx => FhirFieldResolver.ResolveField(ctx, fieldName));
+
+            var companionFieldName = $"_{fieldName}";
+            descriptor.Field(companionFieldName)
+                .Type(new NamedTypeNode("Element"))
+                .Resolve(ctx =>
+                {
+                    var parent = FhirFieldResolver.GetParentElement(ctx);
+                    if (parent?.ValueKind != JsonValueKind.Object) return null;
+                    return parent.Value.TryGetProperty(companionFieldName, out var value) ? value : null;
+                });
+
+            return;
+        }
+
+        descriptor.Field(fieldName)
+            .Type(new NamedTypeNode(MapFhirTypeToGraphQl(typeCode)))
+            .Resolve(ctx => FhirFieldResolver.ResolveRawJsonField(ctx, fieldName));
+    }
+
+    private bool IsPrimitiveTypeCode(string typeCode)
+    {
+        var def = schemaProvider.GetTypeDefinition(typeCode);
+        return def is not null && def.Info.IsPrimitive;
     }
 
     private static void AddReferenceField(
@@ -586,9 +605,7 @@ public sealed class FhirTypeModule(
             descriptor.Name(typeName);
             descriptor.Description($"FHIR {typeName} datatype");
 
-            descriptor.IsOfType((_, obj) =>
-                obj is ChoiceElementValue cv && cv.TypeName == typeName
-                || obj is JsonElement);
+            descriptor.IsOfType((_, obj) => obj is JsonElement);
 
             if (fhirType is FhirITypeExtended extended)
             {
@@ -609,16 +626,6 @@ public sealed class FhirTypeModule(
                 foreach (var child in extended.Children)
                     AddFieldForElement(descriptor, child, typeName);
             }
-        });
-    }
-
-    private UnionType BuildPreDiscoveredUnionType(string unionName, IReadOnlyList<string> memberTypeCodes)
-    {
-        return new UnionType(ud =>
-        {
-            ud.Name(unionName);
-            foreach (var code in memberTypeCodes)
-                ud.Type(new NamedTypeNode(MapFhirTypeToGraphQl(code)));
         });
     }
 
@@ -939,8 +946,6 @@ public sealed class FhirTypeModule(
             .Description("Sort criteria (e.g., \"-date\", \"name\")"));
         fieldDescriptor.Argument("_total", a => a.Type<StringType>()
             .Description("Total count mode: none | estimate | accurate"));
-        fieldDescriptor.Argument("_filter", a => a.Type<StringType>()
-            .Description("FHIR _filter expression for complex search criteria"));
     }
 
     private void AddResourceSearchArguments(
@@ -967,32 +972,6 @@ public sealed class FhirTypeModule(
                     ? $"FHIR search parameter: {param.Code}"
                     : param.Description));
         }
-    }
-
-    private static ChoiceElementValue? ResolveChoiceElement(
-        IResolverContext ctx,
-        string elementName,
-        IReadOnlyList<FhirITypeReference> memberTypes)
-    {
-        var parent = ctx.Parent<JsonElement>();
-        if (parent.ValueKind != JsonValueKind.Object) return null;
-
-        var camelName = GraphQlNamingHelper.ToCamelCase(elementName);
-
-        foreach (var memberType in memberTypes)
-        {
-            var code = memberType.Code;
-            if (string.IsNullOrEmpty(code)) continue;
-
-            var propertyName = $"{camelName}{char.ToUpperInvariant(code[0])}{code[1..]}";
-            if (parent.TryGetProperty(propertyName, out var value) &&
-                value.ValueKind != JsonValueKind.Null)
-            {
-                return new ChoiceElementValue(code, value);
-            }
-        }
-
-        return null;
     }
 
     private static void AddListNavigationArguments(IObjectFieldDescriptor fieldDescriptor)
