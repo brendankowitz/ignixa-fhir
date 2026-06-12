@@ -146,7 +146,7 @@ public partial class ViewDefinitionExportStreamWriter : IExportStreamWriter
             "DECIMAL" => new DataField<decimal?>(column.Name),
             "BOOLEAN" => new DataField<bool?>(column.Name),
             "DATE" => new DataField<DateTime?>(column.Name),
-            "DATETIME" => new DataField<DateTimeOffset?>(column.Name),
+            "DATETIME" => new DataField<DateTime?>(column.Name),
             null => new DataField<string>(column.Name), // No type specified - default to string
             _ => new DataField<string>(column.Name) // Unknown type - default to string
         };

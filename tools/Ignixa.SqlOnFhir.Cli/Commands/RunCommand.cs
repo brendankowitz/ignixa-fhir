@@ -317,7 +317,7 @@ internal static class RunCommand
         "INTEGER"  => new DataField<int?>(name),
         "DECIMAL"  => new DataField<decimal?>(name),
         "DATE"     => new DataField<DateTime?>(name),
-        "DATETIME" => new DataField<DateTimeOffset?>(name),
+        "DATETIME" => new DataField<DateTime?>(name),
         _          => new DataField<string>(name)
     };
 }

@@ -269,15 +269,15 @@ public partial class ParquetFileWriter : IAsyncDisposable
 
                 case "DATETIME":
                 {
-                    var dataField = (DataField<DateTimeOffset?>)field;
-                    var dateTimeOffsetValues = rawValues.Select(v => v switch
+                    var dataField = (DataField<DateTime?>)field;
+                    var dateTimeValues = rawValues.Select(v => v switch
                     {
-                        null => (DateTimeOffset?)null,
-                        DateTimeOffset dto => dto,
-                        DateTime dt => new DateTimeOffset(dt),
-                        _ => DateTimeOffset.TryParse(v.ToString(), out var result) ? result : (DateTimeOffset?)null
+                        null => (DateTime?)null,
+                        DateTimeOffset dto => dto.UtcDateTime,
+                        DateTime dt => dt,
+                        _ => DateTime.TryParse(v.ToString(), out var result) ? result : (DateTime?)null
                     }).ToArray();
-                    var column = new DataColumn(dataField, dateTimeOffsetValues);
+                    var column = new DataColumn(dataField, dateTimeValues);
                     await groupWriter.WriteColumnAsync(column, cancellationToken);
                     break;
                 }
