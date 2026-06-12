@@ -29,7 +29,6 @@ A package is never more stable than any package it depends on.
 | `Ignixa.Extensions.FirelySdk6` | Stable | `1.0.0` | Firely SDK interoperability shims for bidirectional conversion |
 | `Ignixa.FhirFakes` | Stable | `1.0.0` | A comprehensive FHIR test data generation library for modeling patient populations and medical histories. |
 | `Ignixa.FhirPath` | Stable | `1.0.0` | FHIRPath expression evaluation engine for FHIR resources |
-| `Ignixa.FhirPath.Generators` | Stable | `1.0.0` | Source generator for FhirPath function registration. Automatically generates SymbolTable.RegisterStandardFunctions() from [FhirPathFunction] attributes. |
 | `Ignixa.PackageManagement` | Stable | `1.0.0` | NPM package management for FHIR Implementation Guides |
 | `Ignixa.Search` | Stable | `1.0.0` | FHIR search parameter indexing and query infrastructure |
 | `Ignixa.Serialization` | Stable | `1.0.0` | High-performance FHIR JSON serialization |

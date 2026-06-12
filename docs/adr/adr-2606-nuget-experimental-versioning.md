@@ -122,7 +122,6 @@ Classification of **all** packable projects. "Forced" means the dependency rule 
 |---------|-----------|-----------|
 | **Ignixa.Abstractions** | stable | Forced: every stable package depends on it |
 | **Ignixa.Analyzers** | stable | Analyzer dependency of Serialization (stable); small, frozen API |
-| **Ignixa.FhirPath.Generators** | stable | Source generator used by FhirPath (stable); ships standalone |
 | **Ignixa.FhirPath** | stable | Production-ready, extensive test coverage |
 | **Ignixa.Specification** | stable | Core FHIR schema provider, stable API |
 | **Ignixa.Serialization** | stable | JSON serialization, stable API |
@@ -154,7 +153,7 @@ Classification of **all** packable projects. "Forced" means the dependency rule 
 
 All four tools hardcode `<Version>0.1.0-preview</Version>`; these must be removed in favor of `PackageStability`.
 
-**Previously unpublished projects:** `Ignixa.Api.OpenIddict` joins the internal feed via auto-discovery (defaults to alpha until classified), and `Ignixa.FhirPath.Generators` + `Ignixa.DeId.Cli` join the public feed (both were packable but absent from the old CI list). `tools/FhirPathPerfCheck` is a local perf harness, not a product — it gets `IsPackable=false`.
+**Previously unpublished projects:** `Ignixa.Api.OpenIddict` joins the internal feed via auto-discovery (defaults to alpha until classified), and `Ignixa.DeId.Cli` joins the public feed (packable but absent from the old CI list). `tools/FhirPathPerfCheck` (local perf harness) and `Ignixa.FhirPath.Generators` (build-time source generator whose output is compiled into FhirPath) are not products — both get `IsPackable=false`.
 
 The alpha tier is currently empty. It remains the **default** for any packable project that does not declare `PackageStability`, so new packages enter the catalog as alpha until explicitly classified.
 
@@ -235,14 +234,13 @@ Create `docs/site/docs/core-sdk/stability.md` with the stability matrix. **Gener
 - [x] Remove `NU5104` from the global `NoWarn` in `Directory.Build.props` (verified: the only pre-release NuGet dependency, `ModelContextProtocol.AspNetCore`, is consumed by internal alpha packages, so no scoped suppression needed)
 - [x] Add `<PackageStability>` to every packable project per the §5 tables
 - [x] Remove hardcoded `<Version>` from FhirFakes, Sidecar.Contracts, and all five CLI tools
-- [x] Set `IsPackable=false` on `tools/FhirPathPerfCheck`
-- [x] Add README.md to `Ignixa.FhirPath.Generators` (newly published; repo-wide `PackageReadmeFile` made pack fail without it)
+- [x] Set `IsPackable=false` on `tools/FhirPathPerfCheck` and `Ignixa.FhirPath.Generators`
 - [x] Guard tests in `Ignixa.RepoGuards.Tests` enforce the dependency-stability rule and explicit classification of public packages
 
 **Phase 2: CI Workflow**
 - [x] Replace pack steps with the find-based loops (§3), passing `-p:BasePackageVersion` and `-p:UpdateVersionProperties=false`
 - [x] Verify GitVersion.MsBuild does not override the computed `PackageVersion` (it does without `UpdateVersionProperties=false`; verified both ways)
-- [x] Diff the produced `.nupkg` set against today's published set — additions are exactly `Ignixa.FhirPath.Generators`, `Ignixa.DeId.Cli` (public) and `Ignixa.Api.OpenIddict` (internal); no removals
+- [x] Diff the produced `.nupkg` set against today's published set — additions are exactly `Ignixa.DeId.Cli` (public) and `Ignixa.Api.OpenIddict` (internal); no removals
 - [x] Inspect nuspec dependency versions across beta→beta and beta→stable edges (`TestScript.XUnit → TestScript 1.2.3-beta`; `DeId → FhirPath 1.2.3`)
 
 **Phase 3: Documentation**
