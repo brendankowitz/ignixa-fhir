@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -143,11 +143,11 @@ Classification of **all** packable projects. "Forced" means the dependency rule 
 | **Ignixa.Validation.Cli** | stable | Validation (stable) |
 | **Ignixa.SqlOnFhir.Cli** | stable | SqlOnFhir + Writers (stable) |
 | **Ignixa.FhirFakes.Cli** | stable | FhirFakes (stable); also depends on Validation (stable) |
-| **Ignixa.DeId.Cli** | beta | DeId (beta) — *not packed today; decide whether to publish or set `IsPackable=false`* |
+| **Ignixa.DeId.Cli** | beta | DeId (beta) — newly published; was packable but absent from the old CI list |
 
 All four tools hardcode `<Version>0.1.0-preview</Version>`; these must be removed in favor of `PackageStability`.
 
-**Unpublished projects requiring explicit opt-out:** `tools/FhirPathPerfCheck` and `src/Application/Ignixa.Api.OpenIddict` set no `IsPackable` (defaults to true) and are not in today's pack lists — both need `IsPackable=false` unless deliberately added to a feed.
+**Previously unpublished projects:** `Ignixa.Api.OpenIddict` joins the internal feed via auto-discovery (defaults to alpha until classified). `tools/FhirPathPerfCheck` is a local perf harness, not a product — it gets `IsPackable=false`.
 
 The alpha tier is currently empty. It remains the **default** for any packable project that does not declare `PackageStability`, so new packages enter the catalog as alpha until explicitly classified.
 
@@ -228,8 +228,8 @@ Create `docs/site/docs/core-sdk/stability.md` with the stability matrix. **Gener
 - [ ] Remove `NU5104` from the global `NoWarn` in `Directory.Build.props`; scope per-project if any project genuinely needs a pre-release NuGet dependency
 - [ ] Add `<PackageStability>` to every packable project per the §5 tables
 - [ ] Remove hardcoded `<Version>` from FhirFakes, Sidecar.Contracts, and all four CLI tools
-- [ ] Decide `Ignixa.Api.OpenIddict` and `Ignixa.DeId.Cli`: publish or `IsPackable=false`
 - [ ] Set `IsPackable=false` on `tools/FhirPathPerfCheck`
+- [ ] Note in release notes: `Ignixa.Api.OpenIddict` (internal feed) and `Ignixa.DeId.Cli` (NuGet.org, beta) are newly published via auto-discovery
 - [ ] Update descriptions/release notes for alpha packages
 
 **Phase 2: CI Workflow**
