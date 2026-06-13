@@ -444,6 +444,9 @@ public partial class ParquetExportStreamWriter : IExportStreamWriter
                 }
                 else
                 {
+                    // Parquet.Net dropped DateTimeOffset support: "DateTimeOffset support was dropped
+                    // due to numerous ambiguity issues, please use DateTime from now on."
+                    // See: https://github.com/aloneguid/parquet-dotnet/issues/294
                     var dataField = (DataField<DateTime?>)field;
                     var dateTimeValues = rawValues.Select(v => v switch
                     {
