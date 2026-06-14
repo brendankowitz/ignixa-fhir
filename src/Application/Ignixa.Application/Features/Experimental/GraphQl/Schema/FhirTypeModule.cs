@@ -21,6 +21,7 @@ using FhirIType = Ignixa.Abstractions.IType;
 using FhirITypeExtended = Ignixa.Abstractions.ITypeExtended;
 using FhirIFhirSchemaProvider = Ignixa.Abstractions.IFhirSchemaProvider;
 using FhirFieldResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.FieldResolver;
+using ReferenceResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.ReferenceResolver;
 using AppResourceResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.ResourceResolver;
 using AppSearchResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.SearchResolver;
 using AppMutationResolver = Ignixa.Application.Features.Experimental.GraphQl.Resolvers.MutationResolver;
@@ -654,54 +655,39 @@ public sealed class FhirTypeModule(
                     var parent = ctx.Parent<JsonElement>();
                     var reference = FhirFieldResolver.GetStringProperty(parent, "reference");
 
-                    if (string.IsNullOrEmpty(reference))
-                    {
-                        ReportUnsupportedReference(ctx, "<empty>", "the reference is empty");
-                        return null;
-                    }
-
-                    if (reference.StartsWith('#'))
-                    {
-                        ReportUnsupportedReference(ctx, reference, "contained reference resolution is not supported");
-                        return null;
-                    }
-
-                    if (reference.StartsWith("urn:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        ReportUnsupportedReference(ctx, reference, "urn reference resolution is not supported");
-                        return null;
-                    }
-
-                    var parsed = _referenceParser.Parse(reference);
-                    if (parsed.ResourceType is null)
-                    {
-                        ReportUnsupportedReference(ctx, reference, "a resource type and id could not be parsed from the reference");
-                        return null;
-                    }
-
-                    var key = new Models.ResourceKey(parsed.ResourceType, parsed.ResourceId);
-
-                    var typeFilter = ctx.ArgumentOptional<string?>("type");
-                    if (typeFilter.HasValue && typeFilter.Value is not null
-                        && !string.Equals(key.ResourceType, typeFilter.Value, StringComparison.Ordinal))
-                    {
-                        return null;
-                    }
+                    var typeFilterOpt = ctx.ArgumentOptional<string?>("type");
+                    var typeFilter = typeFilterOpt.HasValue ? typeFilterOpt.Value : null;
 
                     var dataLoader = ctx.DataLoader<ResourceDataLoader>();
-                    var result = await dataLoader.LoadAsync(key, ctx.RequestAborted);
 
-                    if (result is null && !IsOptionalReference(ctx))
+                    var isOptional = IsOptionalReference(ctx);
+
+                    var resolution = await ReferenceResolver.ResolveAsync(
+                        reference,
+                        isOptional,
+                        typeFilter,
+                        _referenceParser,
+                        key => dataLoader.LoadAsync(key, ctx.RequestAborted),
+                        ctx.RequestAborted);
+
+                    if (ReferenceResolver.ShouldReportError(resolution.Outcome, isOptional))
                     {
-                        ctx.ReportError(
-                            ErrorBuilder.New()
+                        ctx.ReportError(resolution.Outcome switch
+                        {
+                            ReferenceResolver.Outcome.NotSupported => ErrorBuilder.New()
+                                .SetMessage($"Reference '{(string.IsNullOrEmpty(reference) ? "<empty>" : reference)}' could not be resolved: {ReferenceResolver.DescribeUnsupported(reference)}")
+                                .SetCode("FHIR_REFERENCE_NOT_SUPPORTED")
+                                .SetPath(ctx.Path)
+                                .Build(),
+                            _ => ErrorBuilder.New()
                                 .SetMessage($"Reference '{reference}' could not be resolved")
                                 .SetCode("FHIR_REFERENCE_NOT_FOUND")
                                 .SetPath(ctx.Path)
-                                .Build());
+                                .Build(),
+                        });
                     }
 
-                    return result;
+                    return resolution.Resource;
                 });
         });
     }
@@ -710,19 +696,6 @@ public sealed class FhirTypeModule(
     {
         var isOptional = ctx.ArgumentOptional<bool?>("optional");
         return isOptional.HasValue && isOptional.Value == true;
-    }
-
-    private static void ReportUnsupportedReference(IResolverContext ctx, string reference, string reason)
-    {
-        if (IsOptionalReference(ctx))
-            return;
-
-        ctx.ReportError(
-            ErrorBuilder.New()
-                .SetMessage($"Reference '{reference}' could not be resolved: {reason}")
-                .SetCode("FHIR_REFERENCE_NOT_SUPPORTED")
-                .SetPath(ctx.Path)
-                .Build());
     }
 
     private static UnionType BuildResourceUnionType(IReadOnlyList<string> resourceTypes)

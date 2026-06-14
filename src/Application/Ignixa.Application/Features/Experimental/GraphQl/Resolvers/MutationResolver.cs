@@ -6,7 +6,6 @@
 using System.Text.Json;
 using HotChocolate;
 using Ignixa.Application.Features.Resource;
-using Ignixa.Domain.Exceptions;
 using Ignixa.Serialization.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
@@ -36,7 +35,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
                 ? FieldResolver.ParseResourceBytes(result.ResourceBytes) : null;
         }
         catch (OperationCanceledException) { throw; }
-        catch (FhirException ex) { throw MapFhirException(ex, $"Create {resourceType}"); }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Create {resourceType}", logger); }
     }
 
     public async Task<JsonElement?> UpdateAsync(
@@ -54,7 +53,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
                 ? FieldResolver.ParseResourceBytes(result.ResourceBytes) : null;
         }
         catch (OperationCanceledException) { throw; }
-        catch (FhirException ex) { throw MapFhirException(ex, $"Update {resourceType}/{id}"); }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Update {resourceType}/{id}", logger); }
     }
 
     public async Task<bool> DeleteAsync(
@@ -67,7 +66,7 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
             return await mediator.SendAsync(command, cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
-        catch (FhirException ex) { throw MapFhirException(ex, $"Delete {resourceType}/{id}"); }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Delete {resourceType}/{id}", logger); }
     }
 
     private static ResourceJsonNode ParseResourceJson(string resourceJson)
@@ -76,28 +75,6 @@ public sealed class MutationResolver(IMediator mediator, ILogger<MutationResolve
         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
         { throw CreateError("Invalid resource JSON", "INVALID_RESOURCE", ex); }
     }
-
-    private GraphQLException MapFhirException(FhirException exception, string operation)
-    {
-        var code = exception is ResourceNotFoundException ? "FHIR_NOT_FOUND" : CodeFromStatus(exception.StatusCode);
-        logger.LogWarning(exception, "GraphQL mutation {Operation} failed with status {StatusCode} ({Code})",
-            operation, exception.StatusCode, code);
-
-        return new GraphQLException(
-            ErrorBuilder.New()
-                .SetMessage(exception.Message)
-                .SetCode(code)
-                .SetException(exception)
-                .Build());
-    }
-
-    private static string CodeFromStatus(int statusCode) => statusCode switch
-    {
-        404 => "FHIR_NOT_FOUND",
-        409 or 412 => "FHIR_VERSION_CONFLICT",
-        400 => "INVALID_RESOURCE",
-        _ => "FHIR_OPERATION_FAILED",
-    };
 
     private static GraphQLException CreateError(string message, string code, Exception inner) =>
         new(ErrorBuilder.New().SetMessage(message).SetCode(code).SetException(inner).Build());

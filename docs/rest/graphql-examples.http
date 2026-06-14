@@ -9,7 +9,8 @@
 ###
 ### For tenant-scoped examples see graphql-examples.tenant.http.
 ###
-### Interactive IDE: Open {{hostname}}/graphql in a browser for Banana Cake Pop
+### Interactive IDE (opt-in, dev only): set Features:GraphQl:EnableGraphQlIde=true, then open
+### {{hostname}}/graphql in a browser for Banana Cake Pop (served behind the tenant/auth pipeline)
 ### ============================================================================
 
 ### 1.1 Get Admin Token (for authenticated endpoints)

@@ -12,6 +12,13 @@ public sealed class GraphQlExperimentalOptions
     public bool Enabled { get; set; } = true;
     public int MaxQueryDepth { get; set; } = 15;
     public bool EnableIntrospection { get; set; } = true;
+
+    /// <summary>
+    /// When true, mounts the interactive Banana Cake Pop GraphQL IDE at /graphql.
+    /// Defaults to false: the IDE is an unauthenticated query surface and should be
+    /// opt-in per deployment, independent of <see cref="EnableIntrospection"/>.
+    /// </summary>
+    public bool EnableGraphQlIde { get; set; }
     public int MaxPageSize { get; set; } = 1000;
     public int DefaultPageSize { get; set; } = 10;
     public bool EnableGetRequests { get; set; } = true;

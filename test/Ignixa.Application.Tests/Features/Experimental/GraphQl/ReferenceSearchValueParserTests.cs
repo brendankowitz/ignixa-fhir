@@ -10,11 +10,11 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
 
-public class ReferenceResolutionTests
+public class ReferenceSearchValueParserTests
 {
     private readonly IReferenceSearchValueParser _parser;
 
-    public ReferenceResolutionTests()
+    public ReferenceSearchValueParserTests()
     {
         var schemaProvider = Substitute.For<IFhirSchemaProvider>();
         schemaProvider.ResourceTypeNames.Returns(new HashSet<string> { "Patient", "Observation" });

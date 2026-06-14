@@ -49,6 +49,11 @@ public sealed class FhirGraphQlErrorFilter(
     {
         "FHIR_REFERENCE_NOT_FOUND" => IssueType.NotFound,
         "FHIR_NOT_FOUND" => IssueType.NotFound,
+        "FHIR_REFERENCE_NOT_SUPPORTED" => IssueType.NotSupported,
+        "FHIR_VERSION_CONFLICT" => IssueType.Conflict,
+        "INVALID_RESOURCE" => IssueType.Invalid,
+        "FHIRPATH_INVALID" => IssueType.Invalid,
+        "FHIR_OPERATION_FAILED" => IssueType.Exception,
         "FHIR_SINGLETON_VIOLATION" => IssueType.MultipleMatches,
         "FHIR_SYNTAX_ERROR" => IssueType.Invalid,
         "FHIR_INVALID_INSTANCE_QUERY" => IssueType.Invalid,

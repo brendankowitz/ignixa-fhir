@@ -8,6 +8,7 @@ using HotChocolate;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Specification.Generated;
+using NSubstitute;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
@@ -145,5 +146,26 @@ public class FieldResolverTests
         var result = FieldResolver.ApplyFhirPathFilter(items, "$index = 5", SchemaProvider, null).ToList();
 
         result.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenExpressionThatThrowsAtEvaluation_WhenFiltering_ThenThrowsGraphQLExceptionWithFhirPathInvalidCode()
+    {
+        // Arrange — the expression parses cleanly, but the schema provider throws while the
+        // evaluator resolves type metadata, simulating a FHIRPath evaluation-time failure.
+        var throwingSchema = Substitute.For<IFhirSchemaProvider>();
+        throwingSchema.GetTypeDefinition(Arg.Any<string>())
+            .Returns(_ => throw new InvalidOperationException("schema lookup blew up"));
+
+        var items = new[]
+        {
+            JsonSerializer.Deserialize<JsonElement>("""{"family":"Smith"}"""),
+        };
+
+        // Act & Assert — enumeration triggers the per-item evaluation
+        var ex = Should.Throw<GraphQLException>(() =>
+            FieldResolver.ApplyFhirPathFilter(items, "family.exists()", throwingSchema, "HumanName").ToList());
+
+        ex.Errors[0].Code.ShouldBe("FHIRPATH_INVALID");
     }
 }

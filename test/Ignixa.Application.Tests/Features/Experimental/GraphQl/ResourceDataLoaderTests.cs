@@ -9,6 +9,7 @@ using GreenDonut;
 using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Medino;
 using NSubstitute;
@@ -101,8 +102,10 @@ public class ResourceDataLoaderTests
     }
 
     [Fact]
-    public async Task GivenOneFaultingKey_WhenLoading_ThenFailureIsAttributedToThatKey()
+    public async Task GivenFaultingKey_WhenLoading_ThenPropagatesOriginalExceptionUnwrapped()
     {
+        // The loader must not wrap exceptions in InvalidOperationException; doing so
+        // discards FhirException semantics and contaminates the shared batch.
         var mediator = Substitute.For<IMediator>();
         var goodKey = new ResourceKey("Patient", "good");
         var badKey = new ResourceKey("Observation", "bad");
@@ -120,7 +123,25 @@ public class ResourceDataLoaderTests
         var ex = await Should.ThrowAsync<InvalidOperationException>(
             () => loader.LoadBatchPublicAsync([goodKey, badKey], CancellationToken.None));
 
-        ex.Message.ShouldContain("Observation/bad");
-        ex.InnerException.ShouldBeOfType<InvalidOperationException>();
+        // Original exception is surfaced directly, not re-wrapped.
+        ex.Message.ShouldBe("corrupt resource bytes");
+        ex.InnerException.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenFhirException_WhenLoading_ThenPropagatesFhirExceptionType()
+    {
+        // FhirException semantics must survive batch loading so the error filter can map them.
+        var mediator = Substitute.For<IMediator>();
+        var key = new ResourceKey("Patient", "forbidden");
+
+        mediator
+            .SendAsync(Arg.Is<GetResourceQuery>(q => q.ResourceType == "Patient" && q.Id == "forbidden"), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ForbiddenException("Access denied"));
+
+        var loader = new TestableResourceDataLoader(mediator);
+
+        await Should.ThrowAsync<ForbiddenException>(
+            () => loader.LoadBatchPublicAsync([key], CancellationToken.None));
     }
 }

@@ -16,6 +16,7 @@ using Ignixa.Application.Features.Experimental.Configuration;
 using Ignixa.Application.Features.Experimental.GraphQl.Resolvers;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
@@ -23,6 +24,7 @@ using Medino;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
@@ -306,9 +308,9 @@ public class SearchResolverTests
     }
 
     [Fact]
-    public async Task GivenNegativeCount_WhenSearching_ThenClampsToZero()
+    public async Task GivenNegativeCount_WhenSearching_ThenClampsToOne()
     {
-        // Arrange
+        // Arrange — the lower clamp bound is 1 to avoid a degenerate empty-but-not-last page
         var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
         resolverContext.ArgumentOptional<int?>("_count").Returns(new Optional<int?>(-5));
 
@@ -324,7 +326,30 @@ public class SearchResolverTests
         builder.Received(1).Build(
             "Patient",
             Arg.Is<IReadOnlyList<QueryParameter>>(p =>
-                p.Any(q => q.Name == "_count" && q.Value == "0")),
+                p.Any(q => q.Name == "_count" && q.Value == "1")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenZeroCount_WhenSearching_ThenClampsToOne()
+    {
+        // Arrange
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+        resolverContext.ArgumentOptional<int?>("_count").Returns(new Optional<int?>(0));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_count" && q.Value == "1")),
             Arg.Any<FhirISchema?>());
     }
 
@@ -542,5 +567,121 @@ public class SearchResolverTests
 
         // Assert
         result.Offset.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GivenConnectionSearchWithoutTotalArgument_WhenSearching_ThenRequestsAccurateTotal()
+    {
+        // Arrange — the connection path must request an accurate total so count is populated
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Any(q => q.Name == "_total" && q.Value == "accurate")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenListSearchWithoutTotalArgument_WhenSearching_ThenDoesNotRequestTotal()
+    {
+        // Arrange — the list path should NOT inject _total
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchListAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.All(q => q.Name != "_total")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenExplicitTotalArgument_WhenConnectionSearching_ThenDoesNotOverrideUserTotal()
+    {
+        // Arrange — a user-supplied _total wins over the connection default
+        var (mediator, builderFactory, builder, contextAccessor, resolverContext) = CreateMocks();
+        resolverContext.ArgumentOptional<string?>("_total").Returns(new Optional<string?>("none"));
+
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new SearchResourcesResult(ToAsyncEnumerable([])));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act
+        await resolver.SearchAsync("Patient", resolverContext, CancellationToken.None);
+
+        // Assert
+        builder.Received(1).Build(
+            "Patient",
+            Arg.Is<IReadOnlyList<QueryParameter>>(p =>
+                p.Count(q => q.Name == "_total") == 1 &&
+                p.Any(q => q.Name == "_total" && q.Value == "none")),
+            Arg.Any<FhirISchema?>());
+    }
+
+    [Fact]
+    public async Task GivenFhirException_WhenSearching_ThenThrowsCodedGraphQLException()
+    {
+        // Arrange
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new BadRequestException("Unsupported search parameter"));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act & Assert
+        var ex = await Should.ThrowAsync<GraphQLException>(
+            () => resolver.SearchAsync("Patient", resolverContext, CancellationToken.None));
+        ex.Errors[0].Code.ShouldBe("INVALID_RESOURCE");
+        ex.Errors[0].Message.ShouldBe("Unsupported search parameter");
+    }
+
+    [Fact]
+    public async Task GivenFhirException_WhenListSearching_ThenThrowsCodedGraphQLException()
+    {
+        // Arrange
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ResourceNotSupportedException("Patient"));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act & Assert
+        var ex = await Should.ThrowAsync<GraphQLException>(
+            () => resolver.SearchListAsync("Patient", resolverContext, CancellationToken.None));
+        ex.Errors[0].Code.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenNonFhirException_WhenSearching_ThenPropagatesUncaught()
+    {
+        // Arrange — non-FHIR exceptions are left for the error filter to log and mask
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks();
+        mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("database offline"));
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act & Assert
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => resolver.SearchAsync("Patient", resolverContext, CancellationToken.None));
     }
 }

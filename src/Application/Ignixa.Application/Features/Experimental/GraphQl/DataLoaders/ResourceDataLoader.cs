@@ -37,27 +37,15 @@ public class ResourceDataLoader(
         ResourceKey key,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var query = new GetResourceQuery(key.ResourceType, key.ResourceId);
-            var entry = await mediator.SendAsync(query, cancellationToken).ConfigureAwait(false);
+        var query = new GetResourceQuery(key.ResourceType, key.ResourceId);
+        var entry = await mediator.SendAsync(query, cancellationToken).ConfigureAwait(false);
 
-            if (entry is not null && !entry.IsDeleted)
-            {
-                var json = FieldResolver.ParseResourceBytes(entry.ResourceBytes);
-                return (key, json);
-            }
+        if (entry is not null && !entry.IsDeleted)
+        {
+            var json = FieldResolver.ParseResourceBytes(entry.ResourceBytes);
+            return (key, json);
+        }
 
-            return (key, null);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"Failed to load reference '{key.ResourceType}/{key.ResourceId}': {ex.Message}", ex);
-        }
+        return (key, null);
     }
 }

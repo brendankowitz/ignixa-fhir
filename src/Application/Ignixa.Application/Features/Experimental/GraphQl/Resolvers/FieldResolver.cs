@@ -141,6 +141,15 @@ internal static class FieldResolver
             {
                 throw;
             }
+            catch (Exception ex)
+            {
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage($"Error evaluating FHIRPath expression '{expression}': {ex.Message}")
+                        .SetCode("FHIRPATH_INVALID")
+                        .SetException(ex)
+                        .Build());
+            }
         });
     }
 

@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Serialization.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -19,12 +20,17 @@ public sealed class ResourceResolver(IMediator mediator, ILogger<ResourceResolve
     {
         logger.LogDebug("GraphQL resolving {ResourceType}/{Id}", resourceType, id);
 
-        var result = await mediator.SendAsync(new GetResourceQuery(resourceType, id), cancellationToken);
+        try
+        {
+            var result = await mediator.SendAsync(new GetResourceQuery(resourceType, id), cancellationToken);
 
-        if (result is null || result.IsDeleted)
-            return null;
+            if (result is null || result.IsDeleted)
+                return null;
 
-        return FieldResolver.ParseResourceBytes(result.ResourceBytes);
+            return FieldResolver.ParseResourceBytes(result.ResourceBytes);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Read {resourceType}/{id}", logger); }
     }
 }
 

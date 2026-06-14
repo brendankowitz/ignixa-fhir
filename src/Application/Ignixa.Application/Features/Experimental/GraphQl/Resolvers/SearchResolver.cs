@@ -13,6 +13,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
+using Ignixa.Serialization.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -35,20 +36,25 @@ public sealed class SearchResolver(
 
         logger.LogDebug("GraphQL list search {ResourceType}", resourceType);
 
-        var query = new SearchResourcesQuery(resourceType, searchOptions);
-        var result = await mediator.SendAsync(query, cancellationToken);
-
-        var entries = new List<JsonElement>();
-        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+        try
         {
-            if (!entry.IsDeleted)
-                entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
+            var query = new SearchResourcesQuery(resourceType, searchOptions);
+            var result = await mediator.SendAsync(query, cancellationToken);
 
-            if (entries.Count >= searchOptions.MaxItemCount)
-                break;
+            var entries = new List<JsonElement>();
+            await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+            {
+                if (!entry.IsDeleted)
+                    entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
+
+                if (entries.Count >= searchOptions.MaxItemCount)
+                    break;
+            }
+
+            return entries;
         }
-
-        return entries;
+        catch (OperationCanceledException) { throw; }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Search {resourceType}", logger); }
     }
 
     public async Task<SearchConnectionResult> SearchAsync(
@@ -56,25 +62,30 @@ public sealed class SearchResolver(
         IResolverContext graphQlContext,
         CancellationToken cancellationToken)
     {
-        var searchOptions = BuildSearchOptions(resourceType, graphQlContext);
+        var searchOptions = BuildSearchOptions(resourceType, graphQlContext, requestAccurateTotal: true);
 
         logger.LogDebug("GraphQL searching {ResourceType}", resourceType);
 
-        var query = new SearchResourcesQuery(resourceType, searchOptions);
-        var result = await mediator.SendAsync(query, cancellationToken);
-
-        var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
-        var offset = DecodeOffset(searchOptions.ContinuationToken);
-
-        return new SearchConnectionResult
+        try
         {
-            Count = result.Total,
-            Offset = offset,
-            Pagesize = searchOptions.MaxItemCount,
-            Edges = edges,
-            First = ContinuationToken.Encode(0, searchOptions.MaxItemCount),
-            Next = hasMore ? ContinuationToken.Encode(offset + searchOptions.MaxItemCount, searchOptions.MaxItemCount) : null,
-        };
+            var query = new SearchResourcesQuery(resourceType, searchOptions);
+            var result = await mediator.SendAsync(query, cancellationToken);
+
+            var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+            var offset = DecodeOffset(searchOptions.ContinuationToken);
+
+            return new SearchConnectionResult
+            {
+                Count = result.Total,
+                Offset = offset,
+                Pagesize = searchOptions.MaxItemCount,
+                Edges = edges,
+                First = ContinuationToken.Encode(0, searchOptions.MaxItemCount),
+                Next = hasMore ? ContinuationToken.Encode(offset + searchOptions.MaxItemCount, searchOptions.MaxItemCount) : null,
+            };
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Search {resourceType}", logger); }
     }
 
     public async Task<IReadOnlyList<JsonElement>> SearchReverseListAsync(
@@ -92,20 +103,25 @@ public sealed class SearchResolver(
             "GraphQL reverse search {TargetType} via {Param}={SourceType}/{SourceId}",
             targetResourceType, referenceParamName, sourceResourceType, sourceResourceId);
 
-        var query = new SearchResourcesQuery(targetResourceType, searchOptions);
-        var result = await mediator.SendAsync(query, cancellationToken);
-
-        var entries = new List<JsonElement>();
-        await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+        try
         {
-            if (!entry.IsDeleted)
-                entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
+            var query = new SearchResourcesQuery(targetResourceType, searchOptions);
+            var result = await mediator.SendAsync(query, cancellationToken);
 
-            if (entries.Count >= searchOptions.MaxItemCount)
-                break;
+            var entries = new List<JsonElement>();
+            await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
+            {
+                if (!entry.IsDeleted)
+                    entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
+
+                if (entries.Count >= searchOptions.MaxItemCount)
+                    break;
+            }
+
+            return entries;
         }
-
-        return entries;
+        catch (OperationCanceledException) { throw; }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Reverse search {targetResourceType}", logger); }
     }
 
     public async Task<SearchConnectionResult> SearchReverseAsync(
@@ -117,27 +133,32 @@ public sealed class SearchResolver(
         CancellationToken cancellationToken)
     {
         var additionalParams = new[] { new QueryParameter(referenceParamName, $"{sourceResourceType}/{sourceResourceId}") };
-        var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams);
+        var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams, requestAccurateTotal: true);
 
         logger.LogDebug(
             "GraphQL reverse connection search {TargetType} via {Param}={SourceType}/{SourceId}",
             targetResourceType, referenceParamName, sourceResourceType, sourceResourceId);
 
-        var query = new SearchResourcesQuery(targetResourceType, searchOptions);
-        var result = await mediator.SendAsync(query, cancellationToken);
-
-        var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
-        var offset = DecodeOffset(searchOptions.ContinuationToken);
-
-        return new SearchConnectionResult
+        try
         {
-            Count = result.Total,
-            Offset = offset,
-            Pagesize = searchOptions.MaxItemCount,
-            Edges = edges,
-            First = ContinuationToken.Encode(0, searchOptions.MaxItemCount),
-            Next = hasMore ? ContinuationToken.Encode(offset + searchOptions.MaxItemCount, searchOptions.MaxItemCount) : null,
-        };
+            var query = new SearchResourcesQuery(targetResourceType, searchOptions);
+            var result = await mediator.SendAsync(query, cancellationToken);
+
+            var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+            var offset = DecodeOffset(searchOptions.ContinuationToken);
+
+            return new SearchConnectionResult
+            {
+                Count = result.Total,
+                Offset = offset,
+                Pagesize = searchOptions.MaxItemCount,
+                Edges = edges,
+                First = ContinuationToken.Encode(0, searchOptions.MaxItemCount),
+                Next = hasMore ? ContinuationToken.Encode(offset + searchOptions.MaxItemCount, searchOptions.MaxItemCount) : null,
+            };
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Reverse search {targetResourceType}", logger); }
     }
 
     private static async Task<(List<SearchEdge> Edges, bool HasMore)> CollectEdgesAsync(
@@ -186,7 +207,8 @@ public sealed class SearchResolver(
     private SearchOptions BuildSearchOptions(
         string resourceType,
         IResolverContext context,
-        IReadOnlyList<QueryParameter>? additionalParameters = null)
+        IReadOnlyList<QueryParameter>? additionalParameters = null,
+        bool requestAccurateTotal = false)
     {
         var requestContext = contextAccessor.RequestContext;
         var fhirVersion = requestContext?.FhirVersion ?? FhirVersion.R4;
@@ -197,7 +219,7 @@ public sealed class SearchResolver(
         var graphQlOptions = options.Value.Features.GraphQl;
         var countOptional = context.ArgumentOptional<int?>("_count");
         var count = countOptional.HasValue ? countOptional.Value ?? graphQlOptions.DefaultPageSize : graphQlOptions.DefaultPageSize;
-        count = Math.Clamp(count, 0, graphQlOptions.MaxPageSize);
+        count = Math.Clamp(count, 1, graphQlOptions.MaxPageSize);
         parameters.Add(new QueryParameter("_count", count.ToString()));
 
         var cursorOptional = context.ArgumentOptional<string?>("_cursor");
@@ -213,6 +235,8 @@ public sealed class SearchResolver(
         var total = totalOptional.HasValue ? totalOptional.Value : null;
         if (!string.IsNullOrEmpty(total))
             parameters.Add(new QueryParameter("_total", total));
+        else if (requestAccurateTotal)
+            parameters.Add(new QueryParameter("_total", "accurate"));
 
         // Forward all other arguments as FHIR search parameters
         foreach (var argument in context.Selection.Field.Arguments)

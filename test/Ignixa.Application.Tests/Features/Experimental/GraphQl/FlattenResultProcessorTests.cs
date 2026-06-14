@@ -363,6 +363,108 @@ public class FlattenResultProcessorTests
     }
 
     [Fact]
+    public void GivenFirstOnEmptyList_WhenProcessing_ThenSetsToNull()
+    {
+        // Arrange
+        var query = "{ name @first { given } }";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = new List<object?>(),
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert
+        data["name"].ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenFirstOnNonEmptyList_WhenProcessing_ThenReplacesWithFirstElement()
+    {
+        // Arrange
+        var query = "{ name @first { given } }";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = new List<object?>
+            {
+                new Dictionary<string, object?> { ["given"] = "Peter" },
+                new Dictionary<string, object?> { ["given"] = "Jim" },
+            },
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert
+        var first = data["name"].ShouldBeOfType<Dictionary<string, object?>>();
+        first["given"].ShouldBe("Peter");
+    }
+
+    [Fact]
+    public void GivenFirstOnNonList_WhenProcessing_ThenLeavesValueUnchanged()
+    {
+        // Arrange — @first on a scalar is a no-op
+        var query = "{ name @first { given } }";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = "not-a-list",
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert
+        data["name"].ShouldBe("not-a-list");
+    }
+
+    [Fact]
+    public void GivenSingletonOnNonList_WhenProcessing_ThenLeavesValueUnchanged()
+    {
+        // Arrange — @singleton on a scalar is a no-op (no assertion, no unwrap)
+        var query = "{ name @singleton { given } }";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = "not-a-list",
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert
+        data["name"].ShouldBe("not-a-list");
+    }
+
+    [Fact]
+    public void GivenFlattenAndSliceOnSameField_WhenProcessing_ThenSlicesBeforeFlatten()
+    {
+        // Arrange — @slice runs first (promoting suffixed children to the parent and removing
+        // the field), so @flatten then has nothing left to flatten. The slice output survives.
+        var query = """{ name @flatten @slice(path: "use") { given } }""";
+        var document = Utf8GraphQLParser.Parse(query);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = new List<object?>
+            {
+                new Dictionary<string, object?> { ["use"] = "official", ["given"] = "Peter" },
+                new Dictionary<string, object?> { ["use"] = "usual", ["given"] = "Jim" },
+            },
+        };
+
+        // Act
+        FlattenResultProcessor.Process(document, null, data);
+
+        // Assert — slice-before-flatten: suffixed keys present, original field removed
+        data.ShouldNotContainKey("name");
+        data["given.official"].ShouldBe("Peter");
+        data["given.usual"].ShouldBe("Jim");
+    }
+
+    [Fact]
     public void GivenSliceWithColludingSuffix_WhenProcessing_ThenDisambiguatesDeterministically()
     {
         // Arrange — two items share the same discriminator value, so suffixes collide

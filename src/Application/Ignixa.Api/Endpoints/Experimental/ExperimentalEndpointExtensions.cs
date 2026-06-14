@@ -3,7 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Configuration;
+using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -67,9 +69,14 @@ public static class ExperimentalEndpointExtensions
         {
             app.MapGraphQlEndpoints(configureTenantGroup);
 
-            if (options.Features.GraphQl.EnableIntrospection)
+            if (options.Features.GraphQl.EnableGraphQlIde)
             {
-                app.MapGraphQL("/graphql", schemaName: "fhir_r4");
+                var deploymentVersion = options.Features.GraphQl.WarmupVersions.FirstOrDefault(FhirVersion.R4);
+                var schemaName = GraphQlNamingHelper.GetSchemaName(deploymentVersion);
+
+                var ideGroup = app.MapGroup("/graphql");
+                configureTenantGroup?.Invoke(ideGroup);
+                ideGroup.MapGraphQL(path: "/", schemaName: schemaName);
             }
         }
 

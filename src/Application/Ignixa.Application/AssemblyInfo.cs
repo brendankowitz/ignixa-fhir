@@ -6,3 +6,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Ignixa.Application.Tests")]
+[assembly: InternalsVisibleTo("Ignixa.Api")]
