@@ -1,6 +1,6 @@
 # Feature: High-Fidelity Typed Models
 
-**Status**: Proposed
+**Status**: Decided
 **Created**: 2026-06-13
 
 ## Problem Statement
@@ -26,7 +26,7 @@ Neither surface gives application developers (or plugin/extension authors) the *
 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
-| [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | Viable | Roslyn source generator emits per-version strongly-typed partial classes *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. Spike (21 tests) validated the hard parts: facade and FHIRPath runtime agree exactly. |
+| [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | Merged | Roslyn source generator emits per-version strongly-typed partial classes *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. Spike (21 tests) validated the hard parts: facade and FHIRPath runtime agree exactly. |
 
 ### Future investigation candidates
 
@@ -36,4 +36,4 @@ Neither surface gives application developers (or plugin/extension authors) the *
 
 ## Decision
 
-*No ADR yet - investigations in progress*
+Proposed in [adr-2606-typed-models](adr-2606-typed-models.md): adopt source-generated POCO facades as zero-copy views over the JSON/`IElement` runtime, packaged one assembly per FHIR version with version-distinct namespaces. Validated by the spike (facade and FHIRPath runtime agree exactly). Remaining work is generator engineering, not open design.
