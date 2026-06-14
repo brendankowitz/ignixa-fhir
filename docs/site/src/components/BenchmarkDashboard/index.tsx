@@ -80,6 +80,12 @@ const CATEGORY_MAP: Record<string, string> = {
   SqlOnFhirEndToEndCsv: 'SqlOnFhir-EndToEnd',
   SqlOnFhirEndToEndNdjson: 'SqlOnFhir-EndToEnd',
   SqlOnFhirEndToEndParquet: 'SqlOnFhir-EndToEnd',
+  IgnixaEvalSimplePrecompiled: 'Eval-Simple',
+  FirelyEvalSimplePrecompiled: 'Eval-Simple',
+  IgnixaEvalComplexPrecompiled: 'Eval-Complex',
+  FirelyEvalComplexPrecompiled: 'Eval-Complex',
+  IgnixaEvalSearchParamPrecompiled: 'Eval-SearchParam',
+  FirelyEvalSearchParamPrecompiled: 'Eval-SearchParam',
 };
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
@@ -95,6 +101,9 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'SqlOnFhir-Evaluate': 'Evaluating ViewDefinitions against FHIR resources to produce tabular rows (flatten, forEach, WHERE).',
   'SqlOnFhir-Export': 'Writing pre-evaluated rows to output formats: CSV, NDJSON, and Parquet.',
   'SqlOnFhir-EndToEnd': 'Full pipeline: evaluate ViewDefinition + write output (CSV/NDJSON/Parquet).',
+  'Eval-Simple': 'Apples-to-apples evaluation: both engines pre-compile the expression once, benchmark measures evaluation only (Patient.name.family).',
+  'Eval-Complex': 'Apples-to-apples evaluation of a where()+first() expression; both engines pre-compiled, eval only.',
+  'Eval-SearchParam': 'Apples-to-apples evaluation of an Observation.component search-parameter expression; both engines pre-compiled, eval only.',
 };
 
 function detectImplementation(method: string, displayInfo: string): 'Ignixa' | 'Firely' | 'Hybrid' {

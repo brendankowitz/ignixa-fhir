@@ -44,6 +44,26 @@ public class FhirPathBenchmarks
     private FhirPathParser _ignixaParserOptimized = null!;
     private FhirPathCompiler _firelyCompiler = null!;
 
+    // Ignixa pre-compiled (AST + delegate resolved once, matching Select() minus the cache lookups)
+    private FhirPathDelegateCompiler _ignixaDelegateCompiler = null!;
+    private FhirPathEvaluator _ignixaEvaluator = null!;
+    private Ignixa.FhirPath.Expressions.Expression _ignixaSimpleAst = null!;
+    private Ignixa.FhirPath.Expressions.Expression _ignixaComplexAst = null!;
+    private Ignixa.FhirPath.Expressions.Expression _ignixaSearchParamAst = null!;
+    private Func<IElement, Ignixa.FhirPath.Evaluation.EvaluationContext, IEnumerable<IElement>>? _ignixaSimpleDelegate;
+    private Func<IElement, Ignixa.FhirPath.Evaluation.EvaluationContext, IEnumerable<IElement>>? _ignixaComplexDelegate;
+    private Func<IElement, Ignixa.FhirPath.Evaluation.EvaluationContext, IEnumerable<IElement>>? _ignixaSearchParamDelegate;
+    private Ignixa.FhirPath.Evaluation.EvaluationContext _ignixaPatientCtx = null!;
+    private Ignixa.FhirPath.Evaluation.EvaluationContext _ignixaObservationCtx = null!;
+
+    // Firely pre-compiled (CompiledExpression resolved once)
+    private CompiledExpression _firelySimpleCompiled = null!;
+    private CompiledExpression _firelyComplexCompiled = null!;
+    private CompiledExpression _firelySearchParamCompiled = null!;
+    private Hl7.FhirPath.EvaluationContext _firelyEvalCtxPrecompiled = null!;
+    private Hl7.Fhir.Model.PocoNode _firelyPatientPocoNode = null!;
+    private Hl7.Fhir.Model.PocoNode _firelyObservationPocoNode = null!;
+
     private const string ComplexExpression = "Patient.name.where(use='official').given.first()";
     private const string SimpleExpression = "Patient.name.family";
     private const string ArrayExpression = "Patient.name[0].given";
@@ -84,6 +104,29 @@ public class FhirPathBenchmarks
         _hybridObservationTyped = new IgnixaElementAdapter(_firelyObservationTyped);
 
         WarmupCaches();
+
+        _ignixaEvaluator = new FhirPathEvaluator();
+        _ignixaDelegateCompiler = new FhirPathDelegateCompiler(_ignixaEvaluator);
+
+        _ignixaSimpleAst = _ignixaParser.Parse(SimpleExpression);
+        _ignixaComplexAst = _ignixaParser.Parse(ComplexExpression);
+        _ignixaSearchParamAst = _ignixaParser.Parse(SearchParamExpression);
+        _ignixaSimpleDelegate = _ignixaDelegateCompiler.TryCompile(_ignixaSimpleAst);
+        _ignixaComplexDelegate = _ignixaDelegateCompiler.TryCompile(_ignixaComplexAst);
+        _ignixaSearchParamDelegate = _ignixaDelegateCompiler.TryCompile(_ignixaSearchParamAst);
+
+        _ignixaPatientCtx = new Ignixa.FhirPath.Evaluation.EvaluationContext() with { Resource = _ignixaPatientTyped, RootResource = _ignixaPatientTyped };
+        _ignixaObservationCtx = new Ignixa.FhirPath.Evaluation.EvaluationContext() with { Resource = _ignixaObservationTyped, RootResource = _ignixaObservationTyped };
+
+        _firelyEvalCtxPrecompiled = Hl7.FhirPath.EvaluationContext.CreateDefault();
+        // CompiledExpression operates on PocoNode. ITypedElement.Select does input.ToPocoNode(...)
+        // on every call; hoist that same conversion into setup so the benchmark measures
+        // evaluation only.
+        _firelyPatientPocoNode = _firelyPatientTyped.ToPocoNode(rootName: _firelyPatientTyped.Location);
+        _firelyObservationPocoNode = _firelyObservationTyped.ToPocoNode(rootName: _firelyObservationTyped.Location);
+        _firelySimpleCompiled = _firelyCompiler.Compile(SimpleExpression);
+        _firelyComplexCompiled = _firelyCompiler.Compile(ComplexExpression);
+        _firelySearchParamCompiled = _firelyCompiler.Compile(SearchParamExpression);
     }
 
     private void WarmupCaches()
@@ -242,6 +285,50 @@ public class FhirPathBenchmarks
     {
         return _hybridPatientTyped.Scalar(ScalarExpression);
     }
+
+    // ========== NORMALIZED EVALUATION (both engines pre-compiled; measures eval only) ==========
+
+    private static IElement[] IgnixaEval(
+        Func<IElement, Ignixa.FhirPath.Evaluation.EvaluationContext, IEnumerable<IElement>>? compiled,
+        FhirPathEvaluator evaluator,
+        Ignixa.FhirPath.Expressions.Expression ast,
+        IElement input,
+        Ignixa.FhirPath.Evaluation.EvaluationContext ctx)
+    {
+        return compiled != null
+            ? compiled(input, ctx).ToArray()
+            : evaluator.Evaluate(input, ast, ctx).ToArray();
+    }
+
+    [Benchmark(Description = "Ignixa: Eval simple (pre-compiled, eval only)")]
+    [BenchmarkCategory("Eval-Simple")]
+    public IElement[] IgnixaEvalSimplePrecompiled()
+        => IgnixaEval(_ignixaSimpleDelegate, _ignixaEvaluator, _ignixaSimpleAst, _ignixaPatientTyped, _ignixaPatientCtx);
+
+    [Benchmark(Description = "Firely: Eval simple (pre-compiled, eval only)")]
+    [BenchmarkCategory("Eval-Simple")]
+    public SdkITypedElement[] FirelyEvalSimplePrecompiled()
+        => _firelySimpleCompiled(_firelyPatientPocoNode, _firelyEvalCtxPrecompiled).ToArray();
+
+    [Benchmark(Description = "Ignixa: Eval complex (pre-compiled, eval only)")]
+    [BenchmarkCategory("Eval-Complex")]
+    public IElement[] IgnixaEvalComplexPrecompiled()
+        => IgnixaEval(_ignixaComplexDelegate, _ignixaEvaluator, _ignixaComplexAst, _ignixaPatientTyped, _ignixaPatientCtx);
+
+    [Benchmark(Description = "Firely: Eval complex (pre-compiled, eval only)")]
+    [BenchmarkCategory("Eval-Complex")]
+    public SdkITypedElement[] FirelyEvalComplexPrecompiled()
+        => _firelyComplexCompiled(_firelyPatientPocoNode, _firelyEvalCtxPrecompiled).ToArray();
+
+    [Benchmark(Description = "Ignixa: Eval searchparam (pre-compiled, eval only)")]
+    [BenchmarkCategory("Eval-SearchParam")]
+    public IElement[] IgnixaEvalSearchParamPrecompiled()
+        => IgnixaEval(_ignixaSearchParamDelegate, _ignixaEvaluator, _ignixaSearchParamAst, _ignixaObservationTyped, _ignixaObservationCtx);
+
+    [Benchmark(Description = "Firely: Eval searchparam (pre-compiled, eval only)")]
+    [BenchmarkCategory("Eval-SearchParam")]
+    public SdkITypedElement[] FirelyEvalSearchParamPrecompiled()
+        => _firelySearchParamCompiled(_firelyObservationPocoNode, _firelyEvalCtxPrecompiled).ToArray();
 
     [GlobalCleanup]
     public void Cleanup()
