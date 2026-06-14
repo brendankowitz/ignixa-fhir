@@ -54,87 +54,60 @@ internal class SqlOnFhirEvaluationVisitor
         if (resourceList.Count == 0)
             return [];
 
-        if (!HasTopLevelUnionAllWithoutForEach(viewDef))
+        var unionAllIndex = IndexOfBatchOrderedUnionAllSelect(viewDef);
+        if (unionAllIndex < 0)
             return resourceList.SelectMany(r => Evaluate(viewDef, r, variables));
 
-        return EvaluateBatchWithUnionAllOrdering(viewDef, resourceList, variables);
+        return EvaluateBatchWithUnionAllOrdering(viewDef, unionAllIndex, resourceList, variables);
     }
 
-    private static bool HasTopLevelUnionAllWithoutForEach(ViewDefinitionExpression viewDef)
+    private static int IndexOfBatchOrderedUnionAllSelect(ViewDefinitionExpression viewDef)
     {
-        return viewDef.Select.Any(s =>
-            !s.UnionAll.IsEmpty &&
-            s.ForEach == null &&
-            s.ForEachOrNull == null &&
-            s.Repeat.IsEmpty &&
-            s.Columns.IsEmpty &&
-            s.NestedSelect.IsEmpty &&
-            s.UnionAll.All(branch =>
-                branch.ForEach == null &&
-                branch.ForEachOrNull == null &&
-                branch.Repeat.IsEmpty));
+        for (int i = 0; i < viewDef.Select.Length; i++)
+            if (IsBatchOrderedUnionAllSelect(viewDef.Select[i]))
+                return i;
+        return -1;
     }
+
+    private static bool IsBatchOrderedUnionAllSelect(SelectExpression s)
+        => !s.UnionAll.IsEmpty
+           && s.ForEach == null
+           && s.ForEachOrNull == null
+           && s.Repeat.IsEmpty
+           && s.Columns.IsEmpty
+           && s.NestedSelect.IsEmpty
+           && s.UnionAll.All(branch =>
+                branch.ForEach == null
+                && branch.ForEachOrNull == null
+                && branch.Repeat.IsEmpty);
 
     private IEnumerable<Dictionary<string, object?>> EvaluateBatchWithUnionAllOrdering(
         ViewDefinitionExpression viewDef,
+        int selectIndex,
         List<IElement> resources,
         IReadOnlyDictionary<string, string>? variables)
     {
-        var unionAllSelect = viewDef.Select.First(s =>
-            !s.UnionAll.IsEmpty &&
-            s.ForEach == null &&
-            s.ForEachOrNull == null &&
-            s.Repeat.IsEmpty);
-
-        var otherSelects = viewDef.Select.Where(s => s != unionAllSelect).ToImmutableArray();
+        var unionAllSelect = viewDef.Select[selectIndex];
 
         var result = new List<Dictionary<string, object?>>();
 
+        // SQL UNION ALL semantics: evaluate every resource through one branch before the next.
+        // Each branch is evaluated as a standalone single-branch view so WHERE clauses, sibling
+        // selects, and nested selects keep their normal per-resource behaviour — only the branch
+        // dimension is reordered to the outer loop.
         foreach (var branch in unionAllSelect.UnionAll)
         {
+            var singleBranchSelect = unionAllSelect with { UnionAll = [branch] };
+            var branchView = viewDef with { Select = viewDef.Select.SetItem(selectIndex, singleBranchSelect) };
+
             foreach (var resource in resources)
             {
-                var context = CreateEvaluationContext(viewDef, resource, variables);
-
-                var skip = false;
-                foreach (var where in viewDef.Where)
-                {
-                    if (!EvaluateWhere(where, resource, context))
-                    {
-                        skip = true;
-                        break;
-                    }
-                }
-                if (skip) continue;
-
-                var baseRow = EvaluateColumns(unionAllSelect.Columns, resource, context);
-                var branchRows = EvaluateSelect(branch, resource, context);
-
-                foreach (var branchRow in branchRows)
-                {
-                    var merged = new Dictionary<string, object?>(baseRow);
-                    foreach (var kvp in branchRow) merged[kvp.Key] = kvp.Value;
-                    result.Add(merged);
-                }
+                var context = CreateEvaluationContext(branchView, resource, variables);
+                result.AddRange(EvaluateViewDefinition(branchView, resource, context));
             }
         }
 
-        if (otherSelects.IsEmpty)
-            return result;
-
-        var finalRows = new List<Dictionary<string, object?>>();
-        foreach (var row in result)
-        {
-            var rows = new List<Dictionary<string, object?>> { row };
-            foreach (var select in otherSelects)
-            {
-                var resource = resources[0];
-                var context = CreateEvaluationContext(viewDef, resource, variables);
-                rows = MergeSelectGroup(rows, select, resource, context);
-            }
-            finalRows.AddRange(rows);
-        }
-        return finalRows;
+        return result;
     }
 
     private static EvaluationContext CreateEvaluationContext(

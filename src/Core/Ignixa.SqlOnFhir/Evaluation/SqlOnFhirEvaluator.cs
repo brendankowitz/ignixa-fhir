@@ -81,15 +81,25 @@ public class SqlOnFhirEvaluator
         ArgumentNullException.ThrowIfNull(resources);
 
         var resourceType = viewDefinitionNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
-        var cacheKey = $"{resourceType}_{viewDefinitionNode.GetHashCode()}";
 
-        if (!_compiledViewDefinitions.TryGetValue(cacheKey, out var viewExpr))
+        try
         {
-            viewExpr = ViewDefinitionExpressionParser.Parse(viewDefinitionNode);
-            _compiledViewDefinitions[cacheKey] = viewExpr;
-        }
+            var cacheKey = $"{resourceType}_{viewDefinitionNode.GetHashCode()}";
 
-        return _visitor.EvaluateBatch(viewExpr, resources, variables);
+            if (!_compiledViewDefinitions.TryGetValue(cacheKey, out var viewExpr))
+            {
+                viewExpr = ViewDefinitionExpressionParser.Parse(viewDefinitionNode);
+                _compiledViewDefinitions[cacheKey] = viewExpr;
+            }
+
+            return _visitor.EvaluateBatch(viewExpr, resources, variables);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to evaluate ViewDefinition for resource type '{resourceType}'",
+                ex);
+        }
     }
 
     /// <summary>

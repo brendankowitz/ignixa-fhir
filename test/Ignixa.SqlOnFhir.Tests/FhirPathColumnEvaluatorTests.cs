@@ -33,6 +33,8 @@ public class SqlOnFhirEvaluatorTests
     };
     private static readonly IFhirSchemaProvider _schemaProvider =
         FhirSpecificationExtensions.FromVersionString("4.0.1").GetSchemaProvider();
+    private static readonly string[] _batchUnionAllExpectedIds = ["pt1", "pt2", "pt1", "pt2"];
+    private static readonly string[] _batchUnionAllExpectedSources = ["a", "a", "b", "b"];
 
     [Fact]
     public void GivenSimpleColumnPath_WhenEvaluated_ThenReturnsValue()
@@ -594,6 +596,37 @@ public class SqlOnFhirEvaluatorTests
         // Assert
         Assert.Single(rows);
         Assert.Equal("p3", rows[0]["id"]);
+    }
+
+    [Fact]
+    public void GivenSiblingSelectAndUnionAllAcrossResources_WhenBatchEvaluated_ThenEachRowKeepsItsOwnResourceColumns()
+    {
+        // Regression: batch UNION ALL ordering must evaluate sibling selects against each
+        // row's originating resource (not resources[0]) and order branch-major across resources.
+        var pt1 = CreateTypedElement(new Dictionary<string, object?> { { "resourceType", "Patient" }, { "id", "pt1" } });
+        var pt2 = CreateTypedElement(new Dictionary<string, object?> { { "resourceType", "Patient" }, { "id", "pt2" } });
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "select": [
+                { "column": [{ "name": "id", "path": "id", "type": "id" }] },
+                {
+                  "unionAll": [
+                    { "column": [{ "name": "source", "path": "'a'", "type": "string" }] },
+                    { "column": [{ "name": "source", "path": "'b'", "type": "string" }] }
+                  ]
+                }
+              ]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.EvaluateBatch(sourceNode, [pt1, pt2]).ToList();
+
+        Assert.Equal(4, rows.Count);
+        Assert.Equal(_batchUnionAllExpectedIds, rows.Select(r => r["id"]?.ToString()).ToArray());
+        Assert.Equal(_batchUnionAllExpectedSources, rows.Select(r => r["source"]?.ToString()).ToArray());
     }
 
     private static IElement CreateTypedElement(Dictionary<string, object?> data)
