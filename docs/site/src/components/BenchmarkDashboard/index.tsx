@@ -63,6 +63,20 @@ const CATEGORY_MAP: Record<string, string> = {
   IgnixaScalar: 'Execution-Scalar',
   FirelyScalar: 'Execution-Scalar',
   HybridScalar: 'Execution-Scalar',
+  SqlOnFhirParsePatientView: 'SqlOnFhir-Parse',
+  SqlOnFhirEvaluatePatient: 'SqlOnFhir-Evaluate',
+  SqlOnFhirEvaluateObservation: 'SqlOnFhir-Evaluate',
+  SqlOnFhirEvaluatePatientWithWhere: 'SqlOnFhir-Evaluate',
+  SqlOnFhirEvaluateBatch: 'SqlOnFhir-Evaluate',
+  SqlOnFhirExportCsv: 'SqlOnFhir-Export',
+  SqlOnFhirExportObservationCsv: 'SqlOnFhir-Export',
+  SqlOnFhirExportNdjson: 'SqlOnFhir-Export',
+  SqlOnFhirExportObservationNdjson: 'SqlOnFhir-Export',
+  SqlOnFhirExportParquet: 'SqlOnFhir-Export',
+  SqlOnFhirExportObservationParquet: 'SqlOnFhir-Export',
+  SqlOnFhirEndToEndCsv: 'SqlOnFhir-EndToEnd',
+  SqlOnFhirEndToEndNdjson: 'SqlOnFhir-EndToEnd',
+  SqlOnFhirEndToEndParquet: 'SqlOnFhir-EndToEnd',
 };
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
@@ -73,13 +87,17 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'Execution-SearchParam': 'Search parameter extraction from resources. Tests real-world FHIR search scenarios.',
   'Execution-Scalar': 'Scalar value extraction like Patient.birthDate. Tests primitive value access.',
   'Hybrid': 'Firely SDK parsing + Ignixa FHIRPath engine. Demonstrates drop-in FHIRPath performance improvement.',
+  'SqlOnFhir-Parse': 'Parsing SQL on FHIR ViewDefinition JSON into compiled expression trees with FHIRPath compilation.',
+  'SqlOnFhir-Evaluate': 'Evaluating ViewDefinitions against FHIR resources to produce tabular rows (flatten, forEach, WHERE).',
+  'SqlOnFhir-Export': 'Writing pre-evaluated rows to output formats: CSV, NDJSON, and Parquet.',
+  'SqlOnFhir-EndToEnd': 'Full pipeline: evaluate ViewDefinition + write output (CSV/NDJSON/Parquet).',
 };
 
 function detectImplementation(method: string, displayInfo: string): 'Ignixa' | 'Firely' | 'Hybrid' {
   if (method.startsWith('Hybrid') || displayInfo.toLowerCase().includes('hybrid')) {
     return 'Hybrid';
   }
-  if (method.startsWith('Ignixa') || displayInfo.toLowerCase().includes('ignixa')) {
+  if (method.startsWith('Ignixa') || method.startsWith('SqlOnFhir') || displayInfo.toLowerCase().includes('ignixa') || displayInfo.toLowerCase().includes('sqlonfhir')) {
     return 'Ignixa';
   }
   return 'Firely';

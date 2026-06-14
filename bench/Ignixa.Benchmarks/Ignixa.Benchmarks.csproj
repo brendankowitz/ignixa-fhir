@@ -20,6 +20,8 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir.Writers\Ignixa.SqlOnFhir.Writers.csproj" />
   </ItemGroup>
 
   <ItemGroup>
