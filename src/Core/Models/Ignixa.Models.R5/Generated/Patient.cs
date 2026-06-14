@@ -30,6 +30,11 @@ public sealed class Patient : Ignixa.Models.Patient
     {
     }
 
+    public Patient(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     [JsonIgnore]
     public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
 

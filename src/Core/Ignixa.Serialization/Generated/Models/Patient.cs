@@ -29,6 +29,11 @@ public class Patient : DomainResourceJsonNode
     {
     }
 
+    public Patient(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     [JsonIgnore]
     public bool? Active
     {

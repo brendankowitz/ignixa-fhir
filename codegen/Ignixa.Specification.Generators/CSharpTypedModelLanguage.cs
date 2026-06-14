@@ -743,6 +743,13 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             sb.AppendLine("    {");
             sb.AppendLine("    }");
             sb.AppendLine();
+            // Required by JsonNodeConverter (Activator.CreateInstance with (JsonObject, null)) and the
+            // BaseJsonNode constructor guard test; base resource facades live in the Serialization assembly.
+            sb.AppendLine($"    public {typeName}(JsonObject jsonObject, FhirVersion? fhirVersion = null)");
+            sb.AppendLine("        : base(jsonObject, fhirVersion)");
+            sb.AppendLine("    {");
+            sb.AppendLine("    }");
+            sb.AppendLine();
         }
         else
         {

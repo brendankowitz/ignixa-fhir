@@ -30,6 +30,11 @@ public sealed class Observation : Ignixa.Models.Observation
     {
     }
 
+    public Observation(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     // fallback: Reference
     [JsonIgnore]
     public JsonNode? BodyStructure

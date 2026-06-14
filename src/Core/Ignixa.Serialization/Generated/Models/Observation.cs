@@ -29,6 +29,11 @@ public class Observation : DomainResourceJsonNode
     {
     }
 
+    public Observation(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     // fallback: Reference
     [JsonIgnore]
     public JsonArray? BasedOn
