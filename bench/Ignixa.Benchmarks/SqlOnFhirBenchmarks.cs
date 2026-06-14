@@ -30,6 +30,10 @@ public class SqlOnFhirBenchmarks
     private List<Dictionary<string, object?>> _preEvaluatedPatientRows = null!;
     private List<Dictionary<string, object?>> _preEvaluatedObservationRows = null!;
     private string _tempDir = null!;
+    private ParquetSchema _patientParquetSchema = null!;
+    private Dictionary<string, string> _patientColumnTypeMap = null!;
+    private ParquetSchema _observationParquetSchema = null!;
+    private Dictionary<string, string> _observationColumnTypeMap = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -131,6 +135,46 @@ public class SqlOnFhirBenchmarks
 
         _tempDir = Path.Combine(Path.GetTempPath(), "ignixa-bench-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(_tempDir);
+
+        _patientParquetSchema = new ParquetSchema(
+            new Parquet.Schema.DataField<string>("id"),
+            new Parquet.Schema.DataField<bool?>("active"),
+            new Parquet.Schema.DataField<string>("gender"),
+            new Parquet.Schema.DataField<string>("birthDate"),
+            new Parquet.Schema.DataField<string>("family"),
+            new Parquet.Schema.DataField<string>("given"));
+
+        _patientColumnTypeMap = new Dictionary<string, string>
+        {
+            ["id"] = "STRING",
+            ["active"] = "BOOLEAN",
+            ["gender"] = "STRING",
+            ["birthDate"] = "STRING",
+            ["family"] = "STRING",
+            ["given"] = "STRING"
+        };
+
+        _observationParquetSchema = new ParquetSchema(
+            new Parquet.Schema.DataField<string>("id"),
+            new Parquet.Schema.DataField<string>("status"),
+            new Parquet.Schema.DataField<string>("date"),
+            new Parquet.Schema.DataField<string>("subject_ref"),
+            new Parquet.Schema.DataField<string>("code"),
+            new Parquet.Schema.DataField<string>("display"),
+            new Parquet.Schema.DataField<decimal?>("value"),
+            new Parquet.Schema.DataField<string>("unit"));
+
+        _observationColumnTypeMap = new Dictionary<string, string>
+        {
+            ["id"] = "STRING",
+            ["status"] = "STRING",
+            ["date"] = "STRING",
+            ["subject_ref"] = "STRING",
+            ["code"] = "STRING",
+            ["display"] = "STRING",
+            ["value"] = "DECIMAL",
+            ["unit"] = "STRING"
+        };
     }
 
     [GlobalCleanup]
@@ -213,7 +257,7 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Export-CSV")]
     public async Task<long> SqlOnFhirExportCsv()
     {
-        var path = Path.Combine(_tempDir, $"patient-{Guid.NewGuid():N}.csv");
+        var path = Path.Combine(_tempDir, "patient.csv");
         await using var writer = new CsvFileWriter(path, NullLogger.Instance);
         foreach (var row in _preEvaluatedPatientRows)
         {
@@ -227,7 +271,7 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Export-CSV")]
     public async Task<long> SqlOnFhirExportObservationCsv()
     {
-        var path = Path.Combine(_tempDir, $"observation-{Guid.NewGuid():N}.csv");
+        var path = Path.Combine(_tempDir, "observation.csv");
         await using var writer = new CsvFileWriter(path, NullLogger.Instance);
         foreach (var row in _preEvaluatedObservationRows)
         {
@@ -243,7 +287,7 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Export-NDJSON")]
     public async Task<long> SqlOnFhirExportNdjson()
     {
-        var path = Path.Combine(_tempDir, $"patient-{Guid.NewGuid():N}.ndjson");
+        var path = Path.Combine(_tempDir, "patient.ndjson");
         await using var writer = new NdjsonFileWriter(path, NullLogger.Instance);
         foreach (var row in _preEvaluatedPatientRows)
         {
@@ -257,7 +301,7 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Export-NDJSON")]
     public async Task<long> SqlOnFhirExportObservationNdjson()
     {
-        var path = Path.Combine(_tempDir, $"observation-{Guid.NewGuid():N}.ndjson");
+        var path = Path.Combine(_tempDir, "observation.ndjson");
         await using var writer = new NdjsonFileWriter(path, NullLogger.Instance);
         foreach (var row in _preEvaluatedObservationRows)
         {
@@ -273,26 +317,8 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Export-Parquet")]
     public async Task<long> SqlOnFhirExportParquet()
     {
-        var path = Path.Combine(_tempDir, $"patient-{Guid.NewGuid():N}.parquet");
-        var schema = new ParquetSchema(
-            new Parquet.Schema.DataField<string>("id"),
-            new Parquet.Schema.DataField<bool?>("active"),
-            new Parquet.Schema.DataField<string>("gender"),
-            new Parquet.Schema.DataField<string>("birthDate"),
-            new Parquet.Schema.DataField<string>("family"),
-            new Parquet.Schema.DataField<string>("given"));
-
-        var columnTypeMap = new Dictionary<string, string>
-        {
-            ["id"] = "STRING",
-            ["active"] = "BOOLEAN",
-            ["gender"] = "STRING",
-            ["birthDate"] = "STRING",
-            ["family"] = "STRING",
-            ["given"] = "STRING"
-        };
-
-        await using var writer = new ParquetFileWriter(path, schema, NullLogger.Instance, columnTypeMap);
+        var path = Path.Combine(_tempDir, "patient.parquet");
+        await using var writer = new ParquetFileWriter(path, _patientParquetSchema, NullLogger.Instance, _patientColumnTypeMap);
         foreach (var row in _preEvaluatedPatientRows)
         {
             await writer.WriteRowAsync(row);
@@ -305,30 +331,8 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Export-Parquet")]
     public async Task<long> SqlOnFhirExportObservationParquet()
     {
-        var path = Path.Combine(_tempDir, $"observation-{Guid.NewGuid():N}.parquet");
-        var schema = new ParquetSchema(
-            new Parquet.Schema.DataField<string>("id"),
-            new Parquet.Schema.DataField<string>("status"),
-            new Parquet.Schema.DataField<string>("date"),
-            new Parquet.Schema.DataField<string>("subject_ref"),
-            new Parquet.Schema.DataField<string>("code"),
-            new Parquet.Schema.DataField<string>("display"),
-            new Parquet.Schema.DataField<decimal?>("value"),
-            new Parquet.Schema.DataField<string>("unit"));
-
-        var columnTypeMap = new Dictionary<string, string>
-        {
-            ["id"] = "STRING",
-            ["status"] = "STRING",
-            ["date"] = "STRING",
-            ["subject_ref"] = "STRING",
-            ["code"] = "STRING",
-            ["display"] = "STRING",
-            ["value"] = "DECIMAL",
-            ["unit"] = "STRING"
-        };
-
-        await using var writer = new ParquetFileWriter(path, schema, NullLogger.Instance, columnTypeMap);
+        var path = Path.Combine(_tempDir, "observation.parquet");
+        await using var writer = new ParquetFileWriter(path, _observationParquetSchema, NullLogger.Instance, _observationColumnTypeMap);
         foreach (var row in _preEvaluatedObservationRows)
         {
             await writer.WriteRowAsync(row);
@@ -344,7 +348,7 @@ public class SqlOnFhirBenchmarks
     public async Task<long> SqlOnFhirEndToEndCsv()
     {
         var rows = _evaluator.Evaluate(_patientFlattenView, _patientElement).ToList();
-        var path = Path.Combine(_tempDir, $"e2e-{Guid.NewGuid():N}.csv");
+        var path = Path.Combine(_tempDir, "e2e.csv");
         await using var writer = new CsvFileWriter(path, NullLogger.Instance);
         foreach (var row in rows)
         {
@@ -359,7 +363,7 @@ public class SqlOnFhirBenchmarks
     public async Task<long> SqlOnFhirEndToEndNdjson()
     {
         var rows = _evaluator.Evaluate(_patientFlattenView, _patientElement).ToList();
-        var path = Path.Combine(_tempDir, $"e2e-{Guid.NewGuid():N}.ndjson");
+        var path = Path.Combine(_tempDir, "e2e.ndjson");
         await using var writer = new NdjsonFileWriter(path, NullLogger.Instance);
         foreach (var row in rows)
         {
@@ -374,26 +378,8 @@ public class SqlOnFhirBenchmarks
     public async Task<long> SqlOnFhirEndToEndParquet()
     {
         var rows = _evaluator.Evaluate(_patientFlattenView, _patientElement).ToList();
-        var path = Path.Combine(_tempDir, $"e2e-{Guid.NewGuid():N}.parquet");
-        var schema = new ParquetSchema(
-            new Parquet.Schema.DataField<string>("id"),
-            new Parquet.Schema.DataField<bool?>("active"),
-            new Parquet.Schema.DataField<string>("gender"),
-            new Parquet.Schema.DataField<string>("birthDate"),
-            new Parquet.Schema.DataField<string>("family"),
-            new Parquet.Schema.DataField<string>("given"));
-
-        var columnTypeMap = new Dictionary<string, string>
-        {
-            ["id"] = "STRING",
-            ["active"] = "BOOLEAN",
-            ["gender"] = "STRING",
-            ["birthDate"] = "STRING",
-            ["family"] = "STRING",
-            ["given"] = "STRING"
-        };
-
-        await using var writer = new ParquetFileWriter(path, schema, NullLogger.Instance, columnTypeMap);
+        var path = Path.Combine(_tempDir, "e2e.parquet");
+        await using var writer = new ParquetFileWriter(path, _patientParquetSchema, NullLogger.Instance, _patientColumnTypeMap);
         foreach (var row in rows)
         {
             await writer.WriteRowAsync(row);
