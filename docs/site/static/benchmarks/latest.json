@@ -1,6 +1,13 @@
 {
-  "latestRun": "claude-update-perf-dashboard-benchmarks-ec679d9",
+  "latestRun": "claude-update-perf-dashboard-benchmarks-3f3f46b",
   "runs": [
+    {
+      "directory": "claude-update-perf-dashboard-benchmarks-3f3f46b",
+      "branch": "claude/update-perf-dashboard-benchmarks",
+      "commit": "3f3f46b1d3bca34e25c09a4e86c919c7114e5bba",
+      "timestamp": "2026-06-14T14:48:37Z",
+      "run_number": "14"
+    },
     {
       "directory": "claude-update-perf-dashboard-benchmarks-ec679d9",
       "branch": "claude/update-perf-dashboard-benchmarks",

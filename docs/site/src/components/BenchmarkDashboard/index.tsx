@@ -694,7 +694,7 @@ export default function BenchmarkDashboard(): JSX.Element {
       <section className={styles.summarySection}>
         <h2>Latest Run Summary</h2>
         <div className={styles.comparisonGrid}>
-          {latestComparison.map((comp) => (
+          {latestComparison.filter((comp) => !comp.isAntiPattern).map((comp) => (
             <div key={comp.category} className={styles.comparisonCard}>
               <h3>{comp.category}</h3>
               <div className={styles.speedupBadge}>
@@ -867,8 +867,10 @@ export default function BenchmarkDashboard(): JSX.Element {
             <tbody>
               {processedData
                 .filter((b) => {
-                  // Use same file as comparison summary (FhirPath benchmarks)
-                  const latestFile = benchmarkFiles.find(f => f.filename.includes('FhirPathBenchmarks'))
+                  // Use the NEWEST FhirPath run, same as the comparison summary
+                  // (benchmarkFiles is sorted oldest-first, so .find() returns the oldest baseline).
+                  const fhirPathFiles = benchmarkFiles.filter(f => f.filename.includes('FhirPathBenchmarks'));
+                  const latestFile = fhirPathFiles[fhirPathFiles.length - 1]
                     || benchmarkFiles[benchmarkFiles.length - 1];
                   return b.runId === latestFile?.filename;
                 })
