@@ -94,20 +94,19 @@ public class OfficialSqlOnFhirTestRunner
         Assert.NotNull(sqlTestCase);
         Assert.NotNull(testFile);
 
-        // Skip experimental decimal boundary tests (precision preservation issue with JSON parsing)
-        if (fileName == "fn_boundary" && sqlTestCase.Title.Contains("decimal", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
+        // Previously skipped: decimal boundary tests (precision preservation issue with JSON parsing)
+        // Re-enabled: System.Text.Json preserves decimal scale via ToJsonString() → "1.0" → decimal.Parse preserves scale=1
+        // if (fileName == "fn_boundary" && sqlTestCase.Title.Contains("decimal", StringComparison.OrdinalIgnoreCase))
+        // {
+        //     return;
+        // }
 
-        // Skip row_index unionAll cross-resource ordering test: per-resource evaluation produces
-        // the correct %rowIndex=0 values but in per-resource order (pt1-a, pt1-b, pt2-a, ...)
-        // rather than SQL UNION ALL order (pt1-a, pt2-a, pt3-a, pt1-b, ...).
-        // The %rowIndex semantics are correct; this is a batch-evaluation ordering artefact.
-        if (fileName == "row_index" && sqlTestCase.Title == "%rowIndex in unionAll without forEach")
-        {
-            return;
-        }
+        // Previously skipped: row_index unionAll cross-resource ordering test
+        // Re-testing to check current behavior
+        // if (fileName == "row_index" && sqlTestCase.Title == "%rowIndex in unionAll without forEach")
+        // {
+        //     return;
+        // }
 
         // Skip tests without a ViewDefinition
         if (sqlTestCase.ViewNode == null)
