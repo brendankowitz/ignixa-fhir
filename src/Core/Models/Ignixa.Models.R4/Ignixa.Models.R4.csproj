@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Ignixa.Models.R4</RootNamespace>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageStability>alpha</PackageStability>
+    <Description>FHIR R4 strongly-typed POCO facades over the Ignixa element/JSON runtime (opt-in). Subclasses the shared Ignixa.Models base layer in Ignixa.Serialization.</Description>
+    <PackageTags>FHIR;HL7;Models;POCO;R4</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

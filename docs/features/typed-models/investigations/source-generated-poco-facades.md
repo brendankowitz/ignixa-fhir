@@ -1,8 +1,10 @@
 # Investigation: Source-Generated POCO Facades
 
 **Feature**: typed-models
-**Status**: In Progress
+**Status**: Implemented (R4) — see [ADR-2606](../adr-2606-typed-models.md)
 **Created**: 2026-06-13
+
+> **Implemented (2026-06-14).** Built as the tenth `ILanguage` over `DefinitionCollection` (not the Roslyn `IIncrementalGenerator` originally sketched here — see ADR-2606 *Generator Mechanism*). Shipped for R4 as `src/Models/Ignixa.Models.R4`. The "open questions" below are kept as a historical record; most are now resolved — value-set enums (`required`+expandable bindings), BackboneElement facades, and primitive/decimal fidelity (see [primitive-fidelity](primitive-fidelity.md)) are done. Still open: multi-version fan-out, `contentReference`, enums-in-collections, and `AsVersion<T>`.
 
 ## Approach
 

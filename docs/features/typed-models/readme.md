@@ -1,6 +1,6 @@
 # Feature: High-Fidelity Typed Models
 
-**Status**: Decided
+**Status**: Implemented (R4 + R5, shared-base)
 **Created**: 2026-06-13
 
 ## Problem Statement
@@ -26,7 +26,8 @@ Neither surface gives application developers (or plugin/extension authors) the *
 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
-| [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | Merged | Roslyn source generator emits per-version strongly-typed partial classes *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. Spike (21 tests) validated the hard parts: facade and FHIRPath runtime agree exactly. |
+| [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | Implemented | Generator emits per-version strongly-typed facades *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. Built as the tenth `ILanguage` over `DefinitionCollection`; shipped for R4. |
+| [primitive-fidelity](investigations/primitive-fidelity.md) | Complete | Empirical characterization of `decimal`/date round-trip: untouched JSON is byte-exact, `decimal?` is faithful within `System.Decimal`'s range, dates-as-`string` lossless. Resolved by a raw-`JsonNode` escape-hatch accessor for decimals. |
 
 ### Future investigation candidates
 
@@ -36,4 +37,4 @@ Neither surface gives application developers (or plugin/extension authors) the *
 
 ## Decision
 
-Proposed in [adr-2606-typed-models](adr-2606-typed-models.md): adopt source-generated POCO facades as zero-copy views over the JSON/`IElement` runtime, packaged one assembly per FHIR version with version-distinct namespaces. Validated by the spike (facade and FHIRPath runtime agree exactly). Remaining work is generator engineering, not open design.
+Accepted and implemented across two ADRs: [adr-2606-typed-models](adr-2606-typed-models.md) (source-generated facades as zero-copy views over the JSON/`IElement` runtime — the core model) and [adr-2608-shared-base-models](adr-2608-shared-base-models.md) (shared base + per-version subclasses via inheritance, superseding 2606's one-assembly-per-version packaging). The generator is the tenth `ILanguage` in `codegen/Ignixa.Specification.Generators`, emitting checked-in source via a multi-version classification pass. Shipped for **R4 + R5**: a shared base layer in `Ignixa.Serialization` (namespace `Ignixa.Models`) plus opt-in per-version packages `src/Core/Models/Ignixa.Models.{R4,R5}` that inherit it. Identical types live once; version subclasses add only deltas; cross-version code targets the base (`As<R4.Patient>()` / `AsVersion(FhirVersion)`). Proven by `test/Ignixa.Models.R4.Tests` (47) and `test/Ignixa.Models.Tests` (cross-version + classification, 13); the throwaway spike has been retired. Remaining work is breadth (R4B/STU3/R6 fan-out) and a few edge cases (`contentReference`, enums-in-collections, alias ergonomics), not open design.
