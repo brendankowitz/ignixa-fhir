@@ -39,32 +39,8 @@ public class SqlOnFhirEvaluator
         IElement resource,
         IReadOnlyDictionary<string, string>? variables = null)
     {
-        ArgumentNullException.ThrowIfNull(viewDefinitionNode);
         ArgumentNullException.ThrowIfNull(resource);
-
-        try
-        {
-            // Use a cache key based on the resource type from the ViewDefinition
-            var resourceType = viewDefinitionNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
-            var cacheKey = $"{resourceType}_{viewDefinitionNode.GetHashCode()}";
-
-            // Get or compile the ViewDefinitionExpression
-            if (!_compiledViewDefinitions.TryGetValue(cacheKey, out var viewExpr))
-            {
-                viewExpr = ViewDefinitionExpressionParser.Parse(viewDefinitionNode);
-                _compiledViewDefinitions[cacheKey] = viewExpr;
-            }
-
-            // Use the visitor to evaluate
-            return _visitor.Evaluate(viewExpr, resource, variables);
-        }
-        catch (Exception ex)
-        {
-            var resourceType = viewDefinitionNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
-            throw new InvalidOperationException(
-                $"Failed to evaluate ViewDefinition for resource type '{resourceType}'",
-                ex);
-        }
+        return EvaluateBatch(viewDefinitionNode, [resource], variables);
     }
 
     /// <summary>
