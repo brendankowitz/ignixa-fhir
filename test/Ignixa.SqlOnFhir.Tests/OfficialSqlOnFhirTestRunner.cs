@@ -94,21 +94,7 @@ public class OfficialSqlOnFhirTestRunner
         Assert.NotNull(sqlTestCase);
         Assert.NotNull(testFile);
 
-        // Previously skipped: decimal boundary tests (precision preservation issue with JSON parsing)
-        // Re-enabled: System.Text.Json preserves decimal scale via ToJsonString() → "1.0" → decimal.Parse preserves scale=1
-        // if (fileName == "fn_boundary" && sqlTestCase.Title.Contains("decimal", StringComparison.OrdinalIgnoreCase))
-        // {
-        //     return;
-        // }
-
-        // Previously skipped: row_index unionAll cross-resource ordering test
-        // Re-testing to check current behavior
-        // if (fileName == "row_index" && sqlTestCase.Title == "%rowIndex in unionAll without forEach")
-        // {
-        //     return;
-        // }
-
-        // Skip tests without a ViewDefinition
+        // Skip tests without a ViewDefinition (none currently exist in the spec suite)
         if (sqlTestCase.ViewNode == null)
         {
             return;
@@ -203,13 +189,8 @@ public class OfficialSqlOnFhirTestRunner
                 }
             }
 
-            // Run evaluator for each resource
-            var actualResults = new List<Dictionary<string, object?>>();
-            foreach (var resource in resources)
-            {
-                var rows = _evaluator.Evaluate(sqlTestCase.ViewNode, resource);
-                actualResults.AddRange(rows);
-            }
+            // Run evaluator for all resources with batch semantics (correct UNION ALL ordering)
+            var actualResults = _evaluator.EvaluateBatch(sqlTestCase.ViewNode, resources).ToList();
 
             // Compare with expected results
             AssertRowsEqual(sqlTestCase.ExpectedRows, actualResults, sqlTestCase.ExpectedColumns);

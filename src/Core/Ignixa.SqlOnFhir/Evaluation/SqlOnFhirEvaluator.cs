@@ -68,6 +68,31 @@ public class SqlOnFhirEvaluator
     }
 
     /// <summary>
+    /// Evaluates a ViewDefinition against multiple FHIR resources with correct UNION ALL ordering.
+    /// When a top-level select contains unionAll without forEach, results are ordered by branch
+    /// across all resources (SQL UNION ALL semantics) rather than per-resource interleaving.
+    /// </summary>
+    public IEnumerable<Dictionary<string, object?>> EvaluateBatch(
+        ISourceNavigator viewDefinitionNode,
+        IEnumerable<IElement> resources,
+        IReadOnlyDictionary<string, string>? variables = null)
+    {
+        ArgumentNullException.ThrowIfNull(viewDefinitionNode);
+        ArgumentNullException.ThrowIfNull(resources);
+
+        var resourceType = viewDefinitionNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
+        var cacheKey = $"{resourceType}_{viewDefinitionNode.GetHashCode()}";
+
+        if (!_compiledViewDefinitions.TryGetValue(cacheKey, out var viewExpr))
+        {
+            viewExpr = ViewDefinitionExpressionParser.Parse(viewDefinitionNode);
+            _compiledViewDefinitions[cacheKey] = viewExpr;
+        }
+
+        return _visitor.EvaluateBatch(viewExpr, resources, variables);
+    }
+
+    /// <summary>
     /// Clears the compiled ViewDefinition expression cache.
     /// </summary>
     public void ClearCache()
