@@ -14,7 +14,7 @@ using Parquet.Schema;
 namespace Ignixa.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
+[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
 [RankColumn]
 [MarkdownExporter]
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1002:Do not expose generic lists", Justification = "BenchmarkDotNet requires concrete return types to prevent dead-code elimination")]

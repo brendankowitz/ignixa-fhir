@@ -23,7 +23,7 @@ using Ignixa.Extensions.FirelySdk;
 namespace Ignixa.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
+[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
 [RankColumn]
 [MarkdownExporter]
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA1001:Types that own disposable fields should be disposable", Justification = "BenchmarkDotNet handles cleanup via GlobalCleanup")]

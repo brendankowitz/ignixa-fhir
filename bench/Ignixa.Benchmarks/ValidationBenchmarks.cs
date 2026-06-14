@@ -17,7 +17,7 @@ namespace Ignixa.Benchmarks;
 /// Target: Fast tier less than 25ms, Spec tier less than 200ms.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
+[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
 [RankColumn]
 [MarkdownExporter]
 public class ValidationBenchmarks

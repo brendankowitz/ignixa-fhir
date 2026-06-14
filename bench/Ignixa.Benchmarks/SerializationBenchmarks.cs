@@ -10,7 +10,7 @@ using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 namespace Ignixa.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
+[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net10_0)]
 [RankColumn]
 [MarkdownExporter]
 public class SerializationBenchmarks
