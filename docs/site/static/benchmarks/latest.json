@@ -1,6 +1,13 @@
 {
-  "latestRun": "dev-perf-test-pipeline-2ff690d7",
+  "latestRun": "claude-update-perf-dashboard-benchmarks-ec679d9",
   "runs": [
+    {
+      "directory": "claude-update-perf-dashboard-benchmarks-ec679d9",
+      "branch": "claude/update-perf-dashboard-benchmarks",
+      "commit": "ec679d9caa2c0378fba8196f39442885afb2a362",
+      "timestamp": "2026-06-14T06:41:39Z",
+      "run_number": "12"
+    },
     {
       "directory": "baseline-release-0.0.137-benchmarks-98f3a8a",
       "branch": "baseline/release-0.0.137-benchmarks",

@@ -49,12 +49,29 @@ Measures FHIRPath expression parsing, compilation, and execution performance.
 - Ignixa: Parse (with optimizations) - Optimized parsing with constant folding
 - Firely: Compile FHIRPath expression - Firely SDK compilation time
 
-**Execution Benchmarks** (using pre-compiled expressions):
-- Simple FHIRPath (`Patient.name.family`) - Basic property access
-- Array indexing (`Patient.name[0].given`) - Array element access
-- Complex navigation (`Patient.name.where(use='official').given.first()`) - Filtering and navigation
-- Search parameter extraction (`Observation.component.where(code.coding.code='8480-6').valueQuantity.value`) - Real-world search parameter use case
-- Scalar extraction (`Patient.birthDate`) - Single value extraction
+**Evaluation Benchmarks — apples-to-apples (`Eval-*`):** *the recommended Ignixa-vs-Firely comparison.*
+Both engines pre-compile the expression once and operate on an already-materialized model, so the benchmark isolates evaluation cost only:
+- Simple (`Patient.name.family`)
+- Complex (`Patient.name.where(use='official').given.first()`)
+- Search parameter (`Observation.component.where(code.coding.code='8480-6').valueQuantity.value`)
+
+**Execution Benchmarks (`Execution-*`) — real-world `.Select(string)` usage:**
+These exercise the full call pattern (`Ignixa: IElement.Select`, `Firely: ITypedElement.Select`, and Hybrid). The Ignixa series reflects its cached `Select()`; the Hybrid series is Firely parsing + the Ignixa engine.
+
+:::warning Firely source-backed anti-pattern
+The **Firely** series in the `Execution-*` categories calls `ITypedElement.Select(string)` on a **source-backed** element (a resource parsed via `FhirJsonNode`). In Firely 6.x that extension runs `input.ToPocoNode(...)` on **every call**, re-materializing a `PocoNode` graph from the source tree each time. The result is dominated by that per-call model bridging — not by FHIRPath evaluation — and is a known performance anti-pattern.
+
+For the fair engine-to-engine comparison, use the `Eval-*` categories (both sides pre-compiled, model materialized once). To avoid the tax in real Firely code, hold a POCO-backed element and reuse a pre-compiled `CompiledExpression`.
+:::
+
+### SqlOnFhir Benchmarks
+
+Measures the SQL-on-FHIR ViewDefinition pipeline:
+- `SqlOnFhir-Parse` - Deserialize ViewDefinition JSON to a source node (no FHIRPath compilation)
+- `SqlOnFhir-Compile` - Compile a ViewDefinition to an expression tree (includes FHIRPath compilation of every column/where/forEach path). The "FHIRPath paths only" benchmark isolates the wrapper overhead, which is a small fraction of total compile cost — ViewDefinition compilation is dominated by FHIRPath compilation.
+- `SqlOnFhir-Evaluate` - Evaluate ViewDefinitions against resources (flatten, forEach, WHERE, batch)
+- `SqlOnFhir-Export` - Write pre-evaluated rows to CSV, NDJSON, and Parquet
+- `SqlOnFhir-EndToEnd` - Full pipeline: evaluate + write per output format
 
 ### Serialization Benchmarks
 
@@ -122,7 +139,7 @@ Artifacts are retained for 90 days.
 - **Fast JSON parsing**: Uses System.Text.Json (optimized for .NET 9)
 - **Low memory allocation**: JsonNode-based architecture avoids POCO overhead
 - **Direct property access**: `MutableNode["property"]` is very fast
-- **FHIRPath integration**: Tight integration with IElement pattern and delegate compilation
+- **FHIRPath integration**: Evaluates directly over the native `IElement` model with AST + delegate compilation caching — no per-call conversion between element models. See the `Eval-*` dashboard categories for the apples-to-apples engine comparison.
 
 ### Firely SDK Strengths
 
