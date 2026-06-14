@@ -3,13 +3,18 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using BenchmarkDotNet.Attributes;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Ignixa.SqlOnFhir.Evaluation;
+using Ignixa.SqlOnFhir.Expressions;
+using Ignixa.SqlOnFhir.Parsing;
 using Ignixa.SqlOnFhir.Writers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Parquet.Schema;
+using FhirPathExpr = Ignixa.FhirPath.Expressions.Expression;
 
 namespace Ignixa.Benchmarks;
 
@@ -24,6 +29,8 @@ public class SqlOnFhirBenchmarks
     private IElement _observationElement = null!;
     private IElement[] _bundlePatients = null!;
     private SqlOnFhirEvaluator _evaluator = null!;
+    private FhirPathParser _fhirPathParser = null!;
+    private string[] _patientViewPaths = null!;
     private ISourceNavigator _patientFlattenView = null!;
     private ISourceNavigator _observationView = null!;
     private ISourceNavigator _patientDemographicsView = null!;
@@ -53,11 +60,16 @@ public class SqlOnFhirBenchmarks
 
         var bundleNode = ResourceJsonNode.Parse(bundleJson);
         var bundleElement = (IElement)bundleNode.ToElement(schemaProvider);
-        _bundlePatients = Enumerable.Range(0, 10)
-            .Select(_ => _patientElement)
+        _bundlePatients = bundleElement.Children("entry")
+            .SelectMany(e => e.Children("resource"))
+            .Where(r => r.InstanceType == "Patient")
             .ToArray();
+        if (_bundlePatients.Length != 10)
+            throw new InvalidOperationException($"Expected 10 patients, got {_bundlePatients.Length}");
 
         _evaluator = new SqlOnFhirEvaluator();
+        _fhirPathParser = new FhirPathParser();
+        _patientViewPaths = ["id", "active", "gender", "birthDate", "name", "family", "given.first()"];
 
         _patientFlattenView = CreateViewDefinitionNode("""
             {
@@ -188,7 +200,7 @@ public class SqlOnFhirBenchmarks
 
     // ========== VIEW DEFINITION PARSING ==========
 
-    [Benchmark(Description = "SqlOnFhir: Parse ViewDefinition (Patient flatten)")]
+    [Benchmark(Description = "SqlOnFhir: Parse ViewDefinition JSON to source node (no compile)")]
     [BenchmarkCategory("SqlOnFhir", "Parse")]
     public ISourceNavigator SqlOnFhirParsePatientView()
     {
@@ -214,6 +226,34 @@ public class SqlOnFhirBenchmarks
               ]
             }
             """);
+    }
+
+    // ========== VIEW DEFINITION COMPILATION ==========
+
+    [Benchmark(Description = "SqlOnFhir: Compile ViewDefinition (Patient, 7 FHIRPath exprs)")]
+    [BenchmarkCategory("SqlOnFhir", "Compile")]
+    public ViewDefinitionExpression SqlOnFhirCompilePatientView()
+    {
+        return ViewDefinitionExpressionParser.Parse(_patientFlattenView);
+    }
+
+    [Benchmark(Description = "SqlOnFhir: Compile ViewDefinition (Observation, forEach + 8 exprs)")]
+    [BenchmarkCategory("SqlOnFhir", "Compile")]
+    public ViewDefinitionExpression SqlOnFhirCompileObservationView()
+    {
+        return ViewDefinitionExpressionParser.Parse(_observationView);
+    }
+
+    [Benchmark(Description = "SqlOnFhir: Compile FHIRPath paths only (7 exprs, no ViewDef wrapper)")]
+    [BenchmarkCategory("SqlOnFhir", "Compile")]
+    public FhirPathExpr[] SqlOnFhirCompileFhirPathPathsOnly()
+    {
+        var result = new FhirPathExpr[_patientViewPaths.Length];
+        for (var i = 0; i < _patientViewPaths.Length; i++)
+        {
+            result[i] = _fhirPathParser.Parse(_patientViewPaths[i]);
+        }
+        return result;
     }
 
     // ========== VIEW EVALUATION ==========
@@ -243,12 +283,7 @@ public class SqlOnFhirBenchmarks
     [BenchmarkCategory("SqlOnFhir", "Evaluate")]
     public List<Dictionary<string, object?>> SqlOnFhirEvaluateBatch()
     {
-        var allRows = new List<Dictionary<string, object?>>();
-        foreach (var patient in _bundlePatients)
-        {
-            allRows.AddRange(_evaluator.Evaluate(_patientFlattenView, patient));
-        }
-        return allRows;
+        return _evaluator.EvaluateBatch(_patientFlattenView, _bundlePatients).ToList();
     }
 
     // ========== EXPORT: CSV ==========
