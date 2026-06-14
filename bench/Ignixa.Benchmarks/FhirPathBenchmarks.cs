@@ -137,12 +137,6 @@ public class FhirPathBenchmarks
         _ = _ignixaObservationTyped.Select(SearchParamExpression).ToArray();
         _ = _ignixaPatientTyped.Scalar(ScalarExpression);
 
-        _ = _firelyPatientTyped.Select(SimpleExpression).ToArray();
-        _ = _firelyPatientTyped.Select(ArrayExpression).ToArray();
-        _ = _firelyPatientTyped.Select(ComplexExpression).ToArray();
-        _ = _firelyObservationTyped.Select(SearchParamExpression).ToArray();
-        _ = _firelyPatientTyped.Scalar(ScalarExpression);
-
         _ = _hybridPatientTyped.Select(SimpleExpression).ToArray();
         _ = _hybridPatientTyped.Select(ArrayExpression).ToArray();
         _ = _hybridPatientTyped.Select(ComplexExpression).ToArray();
@@ -186,25 +180,11 @@ public class FhirPathBenchmarks
         return _ignixaPatientTyped.Select(SimpleExpression).ToArray();
     }
 
-    [Benchmark(Description = "Firely: Simple FHIRPath (Patient.name.family)")]
-    [BenchmarkCategory("Execution-Simple")]
-    public SdkITypedElement[] FirelySimple()
-    {
-        return _firelyPatientTyped.Select(SimpleExpression).ToArray();
-    }
-
     [Benchmark(Description = "Ignixa: Array indexing (Patient.name[0].given)")]
     [BenchmarkCategory("Execution-Array")]
     public IElement[] IgnixaArray()
     {
         return _ignixaPatientTyped.Select(ArrayExpression).ToArray();
-    }
-
-    [Benchmark(Description = "Firely: Array indexing (Patient.name[0].given)")]
-    [BenchmarkCategory("Execution-Array")]
-    public SdkITypedElement[] FirelyArray()
-    {
-        return _firelyPatientTyped.Select(ArrayExpression).ToArray();
     }
 
     [Benchmark(Description = "Ignixa: Complex navigation (where + first)")]
@@ -214,13 +194,6 @@ public class FhirPathBenchmarks
         return _ignixaPatientTyped.Select(ComplexExpression).ToArray();
     }
 
-    [Benchmark(Description = "Firely: Complex navigation (where + first)")]
-    [BenchmarkCategory("Execution-Complex")]
-    public SdkITypedElement[] FirelyComplex()
-    {
-        return _firelyPatientTyped.Select(ComplexExpression).ToArray();
-    }
-
     [Benchmark(Description = "Ignixa: Search parameter extraction (component value)")]
     [BenchmarkCategory("Execution-SearchParam")]
     public IElement[] IgnixaSearchParam()
@@ -228,25 +201,11 @@ public class FhirPathBenchmarks
         return _ignixaObservationTyped.Select(SearchParamExpression).ToArray();
     }
 
-    [Benchmark(Description = "Firely: Search parameter extraction (component value)")]
-    [BenchmarkCategory("Execution-SearchParam")]
-    public SdkITypedElement[] FirelySearchParam()
-    {
-        return _firelyObservationTyped.Select(SearchParamExpression).ToArray();
-    }
-
     [Benchmark(Description = "Ignixa: Scalar extraction (Patient.birthDate)")]
     [BenchmarkCategory("Execution-Scalar")]
     public object? IgnixaScalar()
     {
         return _ignixaPatientTyped.Scalar(ScalarExpression);
-    }
-
-    [Benchmark(Description = "Firely: Scalar extraction (Patient.birthDate)")]
-    [BenchmarkCategory("Execution-Scalar")]
-    public object? FirelyScalar()
-    {
-        return _firelyPatientTyped.Scalar(ScalarExpression);
     }
 
     // ========== HYBRID: Firely deserialization + Ignixa FHIRPath engine ==========
