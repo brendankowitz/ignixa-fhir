@@ -56,7 +56,7 @@ internal class SqlOnFhirEvaluationVisitor
 
         var unionAllIndex = IndexOfBatchOrderedUnionAllSelect(viewDef);
         if (unionAllIndex < 0)
-            return resourceList.SelectMany(r => Evaluate(viewDef, r, variables));
+            return resourceList.SelectMany(r => Evaluate(viewDef, r, variables)).ToList();
 
         return EvaluateBatchWithUnionAllOrdering(viewDef, unionAllIndex, resourceList, variables);
     }

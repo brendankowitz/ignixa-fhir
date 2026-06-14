@@ -35,6 +35,9 @@ public class SqlOnFhirEvaluatorTests
         FhirSpecificationExtensions.FromVersionString("4.0.1").GetSchemaProvider();
     private static readonly string[] _batchUnionAllExpectedIds = ["pt1", "pt2", "pt1", "pt2"];
     private static readonly string[] _batchUnionAllExpectedSources = ["a", "a", "b", "b"];
+    private static readonly string[] _batchWhereExpectedIds = ["pt1", "pt1"];
+    private static readonly string[] _batchWhereExpectedSources = ["a", "b"];
+    private static readonly string[] _multiGivenNames = ["Alice", "Bob"];
 
     [Fact]
     public void GivenSimpleColumnPath_WhenEvaluated_ThenReturnsValue()
@@ -627,6 +630,74 @@ public class SqlOnFhirEvaluatorTests
         Assert.Equal(4, rows.Count);
         Assert.Equal(_batchUnionAllExpectedIds, rows.Select(r => r["id"]?.ToString()).ToArray());
         Assert.Equal(_batchUnionAllExpectedSources, rows.Select(r => r["source"]?.ToString()).ToArray());
+    }
+
+    [Fact]
+    public void GivenWhereClauseAndUnionAllAcrossResources_WhenBatchEvaluated_ThenWhereFiltersPerResourceInEveryBranch()
+    {
+        // The batch ordering rebuilds a single-branch sub-view per branch; the top-level WHERE
+        // must survive that rebuild and filter each resource in every branch. pt2 is inactive and
+        // must contribute zero rows to both branch 'a' and branch 'b'.
+        var pt1 = CreateTypedElement(new Dictionary<string, object?> { { "resourceType", "Patient" }, { "id", "pt1" }, { "active", true } });
+        var pt2 = CreateTypedElement(new Dictionary<string, object?> { { "resourceType", "Patient" }, { "id", "pt2" }, { "active", false } });
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "where": [{ "path": "active = true" }],
+              "select": [
+                { "column": [{ "name": "id", "path": "id", "type": "id" }] },
+                {
+                  "unionAll": [
+                    { "column": [{ "name": "source", "path": "'a'", "type": "string" }] },
+                    { "column": [{ "name": "source", "path": "'b'", "type": "string" }] }
+                  ]
+                }
+              ]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.EvaluateBatch(sourceNode, [pt1, pt2]).ToList();
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(_batchWhereExpectedIds, rows.Select(r => r["id"]?.ToString()).ToArray());
+        Assert.Equal(_batchWhereExpectedSources, rows.Select(r => r["source"]?.ToString()).ToArray());
+    }
+
+    [Fact]
+    public void GivenNoResources_WhenBatchEvaluated_ThenReturnsEmptyNotNull()
+    {
+        var viewJson = """
+            { "resource": "Patient", "select": [{ "column": [{ "name": "id", "path": "id", "type": "id" }] }] }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.EvaluateBatch(sourceNode, Array.Empty<IElement>()).ToList();
+
+        Assert.Empty(rows);
+    }
+
+    [Fact]
+    public void GivenEvaluationFailureOnFallbackPath_WhenBatchEvaluated_ThenWrapsInInvalidOperationExceptionWithContext()
+    {
+        // The non-unionAll path returns a fallback over per-resource Evaluate. It must be eager so
+        // failures surface inside the evaluator's try/catch and are wrapped with resource-type context,
+        // not thrown raw at enumeration time. A collection=false column over a multi-valued path throws.
+        var patient = CreateTypedElement(new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p1" },
+            { "name", new object[] { new Dictionary<string, object?> { { "given", _multiGivenNames } } } }
+        });
+
+        var viewJson = """
+            { "resource": "Patient", "select": [{ "column": [{ "name": "given", "path": "name.given", "type": "string" }] }] }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _evaluator.EvaluateBatch(sourceNode, [patient]).ToList());
+        Assert.Contains("Failed to evaluate ViewDefinition for resource type 'Patient'", ex.Message, StringComparison.Ordinal);
     }
 
     private static IElement CreateTypedElement(Dictionary<string, object?> data)
