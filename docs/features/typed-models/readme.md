@@ -26,7 +26,7 @@ Neither surface gives application developers (or plugin/extension authors) the *
 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
-| [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | In Progress | Roslyn source generator emits per-version strongly-typed partial classes that are *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. |
+| [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | Viable | Roslyn source generator emits per-version strongly-typed partial classes *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. Spike (21 tests) validated the hard parts: facade and FHIRPath runtime agree exactly. |
 
 ### Future investigation candidates
 

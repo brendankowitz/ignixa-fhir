@@ -122,15 +122,35 @@ Firely is the high-fidelity reference, and studying it sharpens *what not to cop
 
 **The divergence that protects our architecture:** Firely is *POCO-primary → element-derived*. Ignixa is *JSON/element-primary → facade-derived*. Adopting Firely's data-owning POCOs would reintroduce a second source of truth (object graph vs JSON), the round-trip-fidelity problems ADR-2510 avoided, and a reflection-heavy serialization path we don't need. By generating **facades over `JsonObject`** instead, we get Firely's *ergonomics* while keeping Ignixa's *element-primary, schema-driven, multi-version-in-one-runtime* core. We borrow Firely's packaging shape (per-version assemblies) and its generator-from-StructureDefinition discipline — not its data model.
 
-### Open questions to resolve before an ADR
+Note: `src/Core/Extensions/Ignixa.Extensions.FirelySdk5` and `.FirelySdk6` already adapt Firely `ISourceNode` *into* our `IElement` runtime — prior art for the `firely-interop-adapter` alternative (input bridging exists; it is not a typed-model story).
 
-- **Primitive/shadow duality**: expose Firely-style paired properties (`BirthDateElement` + `BirthDate`) or a single richer primitive wrapper that lazily reads `_birthDate`?
-- **Choice types (`value[x]`)**: generate per-variant accessors (`ValueQuantity`, `ValueString`) plus a discriminated accessor? Confirm alignment with the existing choice-element semantics in `IElement.Children`.
-- **Coverage scope for v1**: full resource set, or core resources + common datatypes first (matching the current hand-written set) to bound the initial generator effort?
-- **Generator inputs**: reuse the exact StructureDefinition source feeding `*CoreSchemaProvider.g.cs`, and decide build-time generation vs checked-in generated output (as `Ignixa.Specification/Generated/` does today).
-- **Performance**: confirm facade allocation/access cost is acceptable vs raw `IElement` on hot paths (facades should never be forced onto the core request path — they are opt-in).
-- **Cross-version surface**: do we ship generated common-subset interfaces (`IPatient`) in v1, or defer them and rely on `IElement` + concrete per-version types until a real cross-version consumer asks? Where does `AsVersion<T>` stop being a safe reinterpret and require an explicit `IVersionConverter`?
+### Prototype validation (spike)
+
+A throwaway spike under `spike/typed-models/` (`Ignixa.Models.R4` + `Ignixa.Models.R5` + tests, 21 passing) validated the approach against its hardest parts. **The thesis survived; no architectural flaw surfaced.** Findings:
+
+- **Zero-copy view holds.** `R4.Patient` and `R5.Patient` wrap the *same* parsed `JsonObject` (`ReferenceEquals` true); unknown extensions and the `_birthDate` shadow survive a parse→typed-mutation→serialize round-trip byte-intact. `As<R5.Patient>()` over the same node is a pointer, not a copy.
+- **Runtime agreement is exact (the headline).** Seven tests assert the typed facade agrees with `resource.ToElement(R4 schema)` + FHIRPath over the same node: `patient.BirthDate` == `Scalar("Patient.birthDate")`; the wrapper's `_birthDate` extensions == `Select("Patient.birthDate.extension")`; `obs.ValueQuantity` == `Select("Observation.value.ofType(Quantity)")`, with the negative case (`valueString` ⇒ `ofType(Quantity)` empty) proving `ofType` genuinely discriminates. There is no second source of truth to drift — both lenses read the same JSON and the same FHIR shadow/choice conventions.
+- **Primitives need a SEPARATE template.** A FHIR primitive spans two sibling keys on the parent (`birthDate` + `_birthDate`), so the wrapper cannot derive from `BaseJsonNode` (which assumes one `JsonObject`). The spike's `PrimitiveElement<T>` is backed by `(JsonObject parent, string name)` and owns the `_name` shadow lifecycle (lazily created, pruned when empty). Patient exposes Firely-style paired `BirthDateElement` + `BirthDate`. The generator therefore emits **two accessor templates** — complex-datatype (`BaseJsonNode`) and primitive (`PrimitiveElement<T>`).
+- **Choice types are straightforward.** Per-variant suffixed accessors + a `ValueType` discriminator + a clear-siblings setter; not fiddly.
+
+### Open questions — status after the spike
+
+Resolved by the spike:
+- ~~Primitive/shadow duality~~ → paired `BirthDateElement`/`BirthDate` over a `(parent, name)`-backed `PrimitiveElement<T>`; **not** a `BaseJsonNode` subclass. *Wart to settle:* the spike's `Extension` getter eagerly materializes the shadow on read — generated facades need a read-only/lazy-add view so reads don't dirty the JSON.
+- ~~Choice types~~ → per-variant accessors + discriminator + clear-on-set; agrees with `IElement.Children("value")` and `ofType`.
+
+New, concrete requirements the spike surfaced (for the ADR/generator spec):
+- **Ctor contract is exact and dual:** resource facades need a non-public `(JsonObject)` ctor (for `As<T>()`'s reflection fallback); datatype facades need a public `(JsonObject, FhirVersion?)` ctor (for `GetListProperty`/`GetComplexProperty`). Better: generated facades register into `ResourceTypeRegistry` to skip reflection entirely, and `As<T>()` should stop deriving expected type from string-munging the type name.
+- **CA1720:** choice discriminator members named after FHIR primitive types (`String`, `Object`, ...) trip `CA1720` under warnings-as-errors. Generated file headers must suppress it or adopt a naming policy.
+- **Cache coherency:** after a typed mutation, `resource.InvalidateCaches()` is required before re-deriving `IElement` (`ToElement` caches). Decide whether facade setters call it automatically (couples facade to cache) or it stays an explicit, documented contract.
+
+Still open (genuinely undecided):
+- **Coverage scope for v1**: full resource set, or core resources + common datatypes first?
+- **Generator inputs / output**: reuse the StructureDefinition source feeding `*CoreSchemaProvider.g.cs`; build-time generation vs checked-in output.
+- **Primitive typing fidelity**: spike used bare `string` for `birthDate`; confirm real `FhirDateTime`/`instant` parsing (`DateTimeOffset`) matches the runtime's `IElement.Value` typing.
+- **Performance**: facade allocation/access cost vs raw `IElement` on hot paths (unmeasured; facades stay off the core request path regardless).
+- **Cross-version surface**: ship generated common-subset interfaces (`IPatient`) in v1 or defer? Where does `AsVersion<T>` stop being a safe reinterpret and require an explicit `IVersionConverter`?
 
 ## Verdict
 
-*Pending evaluation* — strongest candidate so far: it delivers the requested fidelity while preserving the two non-negotiables (single-runtime multi-version, JSON-as-truth) and stays fully opt-in/pluggable. Compare against `materialized-poco-graph` (higher ergonomics, but dual source-of-truth) and `firely-interop-adapter` (fastest, but reintroduces the rejected dependency) before drafting an ADR.
+**Viable — green light for the approach.** The spike put the design through its three hardest parts (primitive/shadow duality, `value[x]` choice, and runtime agreement) and it held: facade and schema-aware `IElement` agree exactly because there is a single JSON source of truth. It delivers the requested fidelity while preserving both non-negotiables (single-runtime multi-version, JSON-as-truth) and stays fully opt-in/pluggable. What remains is generator-engineering scope (two accessor templates, ctor/registry contract, CA1720, cache seam, coverage), not an architectural question. Recommend drafting an ADR scoped to those generator decisions, weighed against `materialized-poco-graph` (higher ergonomics, dual source-of-truth) and `firely-interop-adapter` (fastest, reintroduces the rejected dependency).

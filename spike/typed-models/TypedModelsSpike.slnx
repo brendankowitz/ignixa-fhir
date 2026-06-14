@@ -1,0 +1,11 @@
+<Solution>
+  <Project Path="../../src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj" />
+  <Project Path="../../src/Core/Ignixa.Analyzers/Ignixa.Analyzers.csproj" />
+  <Project Path="../../src/Core/Ignixa.FhirPath.Generators/Ignixa.FhirPath.Generators.csproj" />
+  <Project Path="../../src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj" />
+  <Project Path="../../src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj" />
+  <Project Path="../../src/Core/Ignixa.Specification/Ignixa.Specification.csproj" />
+  <Project Path="Ignixa.Models.R4/Ignixa.Models.R4.csproj" />
+  <Project Path="Ignixa.Models.R5/Ignixa.Models.R5.csproj" />
+  <Project Path="Ignixa.Models.Spike.Tests/Ignixa.Models.Spike.Tests.csproj" />
+</Solution>
