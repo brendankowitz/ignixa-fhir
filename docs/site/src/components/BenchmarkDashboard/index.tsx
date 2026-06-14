@@ -259,7 +259,9 @@ export default function BenchmarkDashboard(): JSX.Element {
           const benchmarkTypes = [
             'FhirPathBenchmarks',
             'NavigationBenchmarks',
-            'SerializationBenchmarks'
+            'SerializationBenchmarks',
+            'SqlOnFhirBenchmarks',
+            'ValidationBenchmarks'
           ];
 
           for (const benchType of benchmarkTypes) {
@@ -427,13 +429,16 @@ export default function BenchmarkDashboard(): JSX.Element {
       return [];
     }
 
-    // Use FhirPath benchmarks for the summary (it has Ignixa vs Firely comparisons)
-    const latestFile = benchmarkFiles.find(f => f.filename.includes('FhirPathBenchmarks'))
+    // Use the NEWEST FhirPath run for the summary (benchmarkFiles is sorted oldest-first,
+    // so .find() would return the oldest baseline and miss newer categories like Eval-*).
+    const fhirPathFiles = benchmarkFiles.filter(f => f.filename.includes('FhirPathBenchmarks'));
+    const latestFile = fhirPathFiles[fhirPathFiles.length - 1]
       || benchmarkFiles[benchmarkFiles.length - 1];
     console.log('Latest file for comparison:', latestFile.filename);
 
     const comparisons: Array<{
       category: string;
+      isAntiPattern: boolean;
       ignixaMethod: string;
       firelyMethod: string;
       hybridMethod?: string;
@@ -468,6 +473,7 @@ export default function BenchmarkDashboard(): JSX.Element {
       if (ignixa && firely) {
         comparisons.push({
           category,
+          isAntiPattern: category.startsWith('Execution-'),
           ignixaMethod: ignixa.method,
           firelyMethod: firely.method,
           hybridMethod: hybrid?.method,
@@ -483,7 +489,12 @@ export default function BenchmarkDashboard(): JSX.Element {
     }
 
     console.log('Comparisons generated:', comparisons.length, comparisons);
-    return comparisons.sort((a, b) => b.speedup - a.speedup);
+    // Headline the apples-to-apples comparisons (Eval-*, Compilation) first; push the
+    // source-backed Execution-* anti-pattern cards to the end.
+    return comparisons.sort((a, b) => {
+      if (a.isAntiPattern !== b.isAntiPattern) return a.isAntiPattern ? 1 : -1;
+      return b.speedup - a.speedup;
+    });
   }, [processedData, benchmarkFiles]);
 
   function extractBaseName(displayInfo: string): string {
@@ -690,6 +701,16 @@ export default function BenchmarkDashboard(): JSX.Element {
                 <span className={styles.speedupValue}>{formatMultiplier(comp.speedup)}</span>
                 <span className={styles.speedupLabel}>faster</span>
               </div>
+              {comp.isAntiPattern && (
+                <div style={{ fontSize: '0.75rem', color: '#e67e22', marginTop: '0.25rem', lineHeight: 1.3 }}>
+                  ⚠ Firely source-backed <code>Select(string)</code> anti-pattern — this gap is per-call model bridging, not evaluation. See the <strong>Eval-*</strong> cards for the apples-to-apples engine comparison.
+                </div>
+              )}
+              {comp.category.startsWith('Eval-') && (
+                <div style={{ fontSize: '0.75rem', color: '#27ae60', marginTop: '0.25rem', lineHeight: 1.3 }}>
+                  ✓ Apples-to-apples: both engines pre-compiled, evaluation only.
+                </div>
+              )}
               <div className={styles.comparisonDetails}>
                 <div className={styles.detailRow}>
                   <span className={styles.ignixa}>Ignixa:</span>
