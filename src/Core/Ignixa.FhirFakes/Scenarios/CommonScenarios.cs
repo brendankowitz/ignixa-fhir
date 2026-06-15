@@ -42,6 +42,33 @@ public static class CommonScenarios
     }
 
     /// <summary>
+    /// Records vital signs whose values are appropriate for the patient's age, using
+    /// <see cref="GrowthReference"/> medians for height, weight, and BMI (so a toddler is not
+    /// recorded at an adult height) and age-banded blood pressure.
+    /// </summary>
+    /// <param name="ageYears">The patient's age in years at the time of the visit.</param>
+    /// <param name="sex">The patient's sex ("male"/"female"); unknown averages the two references.</param>
+    /// <returns>A function that configures a ScenarioBuilder with age-appropriate observations.</returns>
+    public static Func<ScenarioBuilder, ScenarioBuilder> RecordAgeAppropriateVitalSigns(int ageYears, string? sex = null)
+    {
+        var height = GrowthReference.MedianHeightCm(ageYears, sex);
+        var weight = GrowthReference.MedianWeightKg(ageYears, sex);
+        var bmi = GrowthReference.MedianBmi(ageYears, sex);
+
+        // Children run lower blood pressures than adults; band roughly at age 13.
+        var (sysLow, sysHigh, diaLow, diaHigh) = ageYears < 13
+            ? (90m, 110m, 55m, 70m)
+            : (110m, 130m, 70m, 85m);
+
+        return builder => builder
+            .AddObservation(VitalSigns.BodyHeight, minValue: height * 0.97m, maxValue: height * 1.03m, unit: "cm", unitCode: "cm")
+            .AddObservation(VitalSigns.BodyWeight, minValue: weight * 0.90m, maxValue: weight * 1.10m, unit: "kg", unitCode: "kg")
+            .AddObservation(VitalSigns.BMI, minValue: bmi * 0.92m, maxValue: bmi * 1.08m, unit: "kg/m2", unitCode: "kg/m2")
+            .AddObservation(VitalSigns.BloodPressureSystolic, minValue: sysLow, maxValue: sysHigh, unit: "mmHg", unitCode: "mm[Hg]")
+            .AddObservation(VitalSigns.BloodPressureDiastolic, minValue: diaLow, maxValue: diaHigh, unit: "mmHg", unitCode: "mm[Hg]");
+    }
+
+    /// <summary>
     /// Orders a Comprehensive Metabolic Panel (CMP) diagnostic report.
     /// This is a standard lab panel that includes electrolytes, kidney function, liver function, and glucose.
     /// </summary>

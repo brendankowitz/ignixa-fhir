@@ -46,10 +46,12 @@ public sealed class PediatricWellnessSchedule : ILifecycleEvent
         // Create a wellness visit using the existing scenario infrastructure
         var builder = new ScenarioBuilder(schemaProvider);
 
-        // Add the wellness visit encounter and growth vital signs (height, weight, BMI, BP)
+        // Add the wellness visit encounter and age-appropriate growth vitals (height, weight, BMI, BP)
         builder
             .AddWellnessVisit($"Pediatric wellness visit - age {context.CurrentAge}")
-            .AddSubScenario(CommonScenarios.RecordVitalSigns(), "Record Vitals");
+            .AddSubScenario(
+                CommonScenarios.RecordAgeAppropriateVitalSigns(context.CurrentAge, context.GetAttribute<string>("gender")),
+                "Record Vitals");
 
         // Execute the scenario states against our context
         var states = builder.GetStates();

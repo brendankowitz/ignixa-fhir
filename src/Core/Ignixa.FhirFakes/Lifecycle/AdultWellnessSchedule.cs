@@ -60,10 +60,12 @@ public sealed class AdultWellnessSchedule : ILifecycleEvent
             _ => $"Young adult wellness visit - age {context.CurrentAge}"
         };
 
-        // Add the wellness visit encounter and standard vital signs (height, weight, BMI, BP)
+        // Add the wellness visit encounter and age-appropriate vital signs (height, weight, BMI, BP)
         builder
             .AddWellnessVisit(visitDescription)
-            .AddSubScenario(CommonScenarios.RecordVitalSigns(), "Record Vitals");
+            .AddSubScenario(
+                CommonScenarios.RecordAgeAppropriateVitalSigns(context.CurrentAge, context.GetAttribute<string>("gender")),
+                "Record Vitals");
 
         // Age-appropriate lab panels (USPSTF):
         //  - 40+: comprehensive metabolic panel (diabetes / kidney function screening)
