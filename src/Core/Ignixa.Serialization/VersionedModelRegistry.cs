@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
@@ -39,7 +40,24 @@ public static class VersionedModelRegistry
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
         ArgumentNullException.ThrowIfNull(factory);
 
+        AssertFactoryProducesMatchingType(resourceType, factory);
+
         Factories[(resourceType, version)] = factory;
+    }
+
+    [Conditional("DEBUG")]
+    private static void AssertFactoryProducesMatchingType(string resourceType, Func<JsonObject, ResourceJsonNode> factory)
+    {
+        // ResourceType reads from the JSON, so it cannot distinguish a wrong-type factory. The CLR
+        // type identity can: generated facades are named exactly after the resource ("Patient");
+        // hand-written ones carry a "JsonNode" suffix ("BundleJsonNode"). Compare the produced CLR
+        // type's simple name (suffix stripped) to the registered resource type.
+        var probe = factory(new JsonObject { ["resourceType"] = resourceType });
+        string producedTypeName = probe.GetType().Name.Replace("JsonNode", string.Empty, StringComparison.Ordinal);
+        Debug.Assert(
+            string.Equals(producedTypeName, resourceType, StringComparison.Ordinal),
+            $"VersionedModelRegistry factory for '{resourceType}' produced a '{probe.GetType().Name}'. "
+            + "The factory is mis-wired to the wrong typed model.");
     }
 
     /// <summary>

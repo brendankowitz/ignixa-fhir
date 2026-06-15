@@ -27,7 +27,7 @@ Restructure the typed models into a **shared base layer + per-version subclasses
 - **Less duplication**: identical types live once. R4+R5 produced 71 base types (37 base-only, 34 subclassed); 23 elements were Incompatible across R4/R5 (e.g. `Attachment.size` `unsignedInt`→`integer64`, the `value[x]` choice families) and correctly split per version.
 - **Classification churn is accepted**: adding a divergent version can demote a base element to per-version. Detected by the classifier and the regen-drift guard.
 - **Consumer ergonomics**: identical types are referenced as `Ignixa.Models.X` (the version package's internal `global using` alias does not export); version-specific types as `Ignixa.Models.{Version}.X`. Documented; a `using` alias to a version namespace is blocked by the entry-point class name (`R4`/`R5`) — renaming those to `R4Models`/`R5Models` would restore aliasing (follow-up).
-- **`AsVersion` is lazy**: `[ModuleInitializer]` self-registration fires only once a version assembly is loaded; multi-tenant callers relying purely on `AsVersion` must reference the package or call the explicit `Register()`.
+- **`AsVersion` registration is lazy, and a miss throws**: `[ModuleInitializer]` self-registration fires only once a version assembly is loaded, so multi-tenant callers relying purely on `AsVersion` must reference the package or call the explicit `Register()`. On a registry miss `AsVersion` throws `InvalidOperationException` (with an actionable message) rather than returning a silently wrong-typed node — a mistyped facade is a correctness bug, not a usable fallback. Best-effort callers use `TryAsVersion(version, out node)`, which returns `false` and leaves the node unmodified on a miss.
 
 ## Implementation status
 

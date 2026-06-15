@@ -83,7 +83,7 @@ Core parse stays version-agnostic and behaves exactly as today: it lands on `Res
    ```csharp
    Ignixa.Models.Patient p = node.AsVersion(FhirVersion.R4);   // returns the base-typed instance for that version
    ```
-   Backed by a **version-aware registry** (`(resourceType, FhirVersion) → factory`). Each version package **self-registers** its types on load (via `[ModuleInitializer]` or an explicit `R4Models.Register()`), so the enum API lights up only for referenced version packages. Returns the instance typed as the shared base (`Ignixa.Models.Patient`) with `FhirVersion` stamped; deltas are reached with a further `As<R4.Patient>()`.
+   Backed by a **version-aware registry** (`(resourceType, FhirVersion) → factory`). Each version package **self-registers** its types on load (via `[ModuleInitializer]` or an explicit `R4Models.Register()`), so the enum API lights up only for referenced version packages. Returns the instance typed as the shared base (`Ignixa.Models.Patient`) with `FhirVersion` stamped; deltas are reached with a further `As<R4.Patient>()`. On a registry **miss** (the owning version package was never referenced/registered) `AsVersion` **throws `InvalidOperationException`** rather than returning the original node with the version stamped — silently handing back a wrong-typed facade would be a correctness bug. A best-effort `node.TryAsVersion(FhirVersion, out var versioned)` is provided for callers that can tolerate a miss: it returns `false` and yields the node unmodified.
 
 A generic `As<T>(FhirVersion)` overload is intentionally **not** provided — `As<R4.Patient>()` already carries the version in the type.
 

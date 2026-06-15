@@ -70,6 +70,62 @@ public sealed class GraduatedAdditionsTests
     }
 
     [Fact]
+    public void GivenTwoPatientContacts_WhenOneRemoved_ThenItIsGoneFromTheBackboneArray()
+    {
+        var patient = ResourceJsonNode.Parse("""{ "resourceType": "Patient" }""").As<Ignixa.Models.R4.Patient>();
+        patient.Contact.Add(new Ignixa.Models.PatientContact { Name = new Ignixa.Models.HumanName { Family = "First" } });
+        patient.Contact.Add(new Ignixa.Models.PatientContact { Name = new Ignixa.Models.HumanName { Family = "Second" } });
+        patient.Contact.Count.ShouldBe(2);
+
+        patient.Contact.RemoveAt(0);
+
+        patient.Contact.Count.ShouldBe(1);
+        patient.Contact[0].Name!.Family.ShouldBe("Second");
+        patient.MutableNode["contact"]!.AsArray().Count.ShouldBe(1);
+
+        var reparsed = ResourceJsonNode.Parse(patient.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Patient>();
+        reparsed.Contact.Count.ShouldBe(1);
+        reparsed.Contact[0].Name!.Family.ShouldBe("Second");
+    }
+
+    [Fact]
+    public void GivenObservationComponent_WhenTypedChoiceMemberSet_ThenNestedBackboneRoundTrips()
+    {
+        // Observation.component is a nested backbone with its OWN value[x] choice. The choice lives on
+        // the version-specific component facade (Ignixa.Models.R4.ObservationComponent), so view the
+        // component's backing node through that facade: read its discriminator/variant, switch the
+        // active variant, and confirm it writes through to the nested array and survives a reparse.
+        var obs = ResourceJsonNode.Parse(
+            """
+            {
+              "resourceType": "Observation",
+              "status": "final",
+              "component": [
+                { "code": { "text": "systolic" }, "valueString": "high" }
+              ]
+            }
+            """).As<Ignixa.Models.R4.Observation>();
+
+        obs.Component.Count.ShouldBe(1);
+        var component = new Ignixa.Models.R4.ObservationComponent(obs.Component[0].MutableNode);
+
+        component.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.String);
+        component.ValueString.ShouldBe("high");
+
+        // Switch the nested choice to a Quantity through the component facade.
+        component.ValueQuantity = new Ignixa.Models.Quantity { Unit = "mmHg" };
+
+        component.MutableNode["valueString"].ShouldBeNull();
+        component.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.Quantity);
+        component.ValueQuantity!.Unit.ShouldBe("mmHg");
+
+        var reparsed = ResourceJsonNode.Parse(obs.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Observation>();
+        var reparsedComponent = new Ignixa.Models.R4.ObservationComponent(reparsed.Component[0].MutableNode);
+        reparsedComponent.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.Quantity);
+        reparsedComponent.ValueQuantity!.Unit.ShouldBe("mmHg");
+    }
+
+    [Fact]
     public void GivenHighPrecisionQuantity_WhenReadViaValueRaw_ThenPrecisionBeyondDecimalIsPreserved()
     {
         // 40 significant digits - well beyond System.Decimal's ~28-29 digit capacity.

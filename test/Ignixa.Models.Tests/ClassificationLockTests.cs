@@ -79,4 +79,24 @@ public sealed class ClassificationLockTests
         // The INCOMPATIBLE element is omitted from the base so the base stays Liskov-substitutable.
         typeof(Attachment).GetProperty("Size").ShouldBeNull();
     }
+
+    [Fact]
+    public void GivenAdditiveElement_WhenClassified_ThenItLivesOnlyOnTheVersionThatIntroducedIt()
+    {
+        // Observation.bodyStructure is ADDITIVE: introduced in R5, absent from R4. It must surface
+        // on the R5 subclass only -- never promoted onto the shared base (that would lie to R4
+        // callers) and never appear on the R4 subclass. This locks the Additive bucket, which the
+        // Identical (base-only) and Incompatible (retyped) cases above do not cover.
+        PropertyInfo? r5BodyStructure = typeof(Ignixa.Models.R5.Observation)
+            .GetProperty("BodyStructure", BindingFlags.Public | BindingFlags.Instance);
+
+        r5BodyStructure.ShouldNotBeNull();
+        r5BodyStructure!.DeclaringType.ShouldBe(typeof(Ignixa.Models.R5.Observation));
+
+        // Absent from the shared base (declared OR inherited).
+        typeof(Observation).GetProperty("BodyStructure").ShouldBeNull();
+
+        // Absent from the R4 subclass too (R4 Observation has no bodyStructure element).
+        typeof(Ignixa.Models.R4.Observation).GetProperty("BodyStructure").ShouldBeNull();
+    }
 }

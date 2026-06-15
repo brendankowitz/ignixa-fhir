@@ -144,9 +144,11 @@ public sealed class PrimitiveFidelityTests
         // OBSERVED: a magnitude beyond System.Decimal's range (~7.9e28) cannot be represented at all;
         // GetValue<decimal> THROWS (rather than rounding). A FHIR decimal is unbounded in magnitude,
         // so decimal? is not merely lossy but unusable for very large values -- it errors the read.
+        // The specific type is InvalidOperationException: JsonValue.GetValue<decimal?>() rejects a
+        // number outside decimal's range (verified actual type; not OverflowException/FormatException).
         var quantity = ParseQuantity("1e40");
 
-        Should.Throw<Exception>(() => _ = quantity.Value);
+        Should.Throw<InvalidOperationException>(() => _ = quantity.Value);
     }
 
     // =============================================================================================
@@ -206,6 +208,46 @@ public sealed class PrimitiveFidelityTests
         quantity.SetProperty("value", JsonNode.Parse(rawText));
 
         quantity.MutableNode.ToJsonString().ShouldContain($"\"value\":{rawText}");
+    }
+
+    [Fact]
+    public void GivenValueRawSetterWithHighPrecisionToken_WhenSerializedAndReparsed_ThenTokenSurvivesByteForByte()
+    {
+        // Exercises the generated ValueRaw SETTER (the prior tests only read ValueRaw). Assigning a
+        // raw JsonNode bypasses JsonValue.Create(decimal), so a 35-significant-digit token survives a
+        // serialize -> reparse round-trip byte-for-byte -- proving the setter does not coerce to decimal.
+        const string rawText = "0.12345678901234567890123456789012345"; // 35 sig digits
+        var quantity = new Ignixa.Models.Quantity(new JsonObject());
+
+        quantity.ValueRaw = JsonNode.Parse(rawText);
+
+        var serialized = quantity.MutableNode.ToJsonString();
+        serialized.ShouldContain($"\"value\":{rawText}");
+
+        var reparsed = new Ignixa.Models.Quantity((JsonObject)JsonNode.Parse(serialized)!);
+        reparsed.ValueRaw!.ToJsonString().ShouldBe(rawText);
+    }
+
+    [Fact]
+    public void GivenValueRawSetThenReadAsDecimal_ThenDecimalProjectionRoundsPerDocumentedLimit()
+    {
+        // After ValueRaw stores a token beyond decimal's ~28-29 digit capacity, reading the typed
+        // Value (decimal?) rounds to that limit -- the documented lossy projection. The rounded text
+        // is strictly shorter than the raw token and differs from it (the final retained digit may
+        // round up, so it is NOT necessarily a prefix). ValueRaw still holds the full token verbatim.
+        const string rawText = "0.12345678901234567890123456789012345"; // 35 sig digits
+        var quantity = new Ignixa.Models.Quantity(new JsonObject());
+
+        quantity.ValueRaw = JsonNode.Parse(rawText);
+
+        decimal? value = quantity.Value;
+        value.ShouldNotBeNull();
+        var rounded = value.Value.ToString(CultureInfo.InvariantCulture);
+        rounded.Length.ShouldBeLessThan(rawText.Length);
+        rounded.ShouldNotBe(rawText);
+
+        // The raw escape-hatch is untouched by the lossy decimal read.
+        quantity.ValueRaw!.ToJsonString().ShouldBe(rawText);
     }
 
     // =============================================================================================

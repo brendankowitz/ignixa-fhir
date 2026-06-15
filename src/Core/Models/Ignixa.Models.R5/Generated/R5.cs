@@ -23,6 +23,7 @@ public static class R5
     public const FhirVersion Version = FhirVersion.R5;
 
     /// <summary>Deserializes JSON straight to the requested resource's view, stamped with this version.</summary>
+    /// <exception cref="InvalidCastException">The parsed resource's <c>resourceType</c> does not match <typeparamref name="T"/>.</exception>
     public static T Parse<T>(string json)
         where T : ResourceJsonNode
     {
@@ -44,6 +45,7 @@ public static class R5
 public static class R5Extensions
 {
     /// <summary>Reinterprets an existing node as its R5 view (zero-copy).</summary>
+    /// <exception cref="InvalidCastException">The node's <c>resourceType</c> does not match <typeparamref name="T"/>.</exception>
     public static T AsR5<T>(this ResourceJsonNode node)
         where T : ResourceJsonNode
     {

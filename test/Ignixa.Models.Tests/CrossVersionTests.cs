@@ -112,8 +112,10 @@ public sealed class CrossVersionTests
 
         // The same node read through the R4 int? accessor cannot represent the value: reading it as
         // a 32-bit int throws (the value does not fit), proving the R4 facade would lose/refuse it.
+        // The specific type is InvalidOperationException: JsonValue.GetValue<int?>() rejects a number
+        // that does not fit the target (verified against the real read path, not OverflowException).
         var r4 = new Ignixa.Models.R4.Attachment(node);
-        Should.Throw<Exception>(() => _ = r4.Size);
+        Should.Throw<InvalidOperationException>(() => _ = r4.Size);
     }
 
     // -- AsVersion(FhirVersion) runtime dispatch --------------------------------------------------
@@ -148,5 +150,54 @@ public sealed class CrossVersionTests
         // Dispatch returns the instance; a further As<R5.Patient>() reaches the version view.
         Ignixa.Models.R5.Patient r5 = dispatched.As<Ignixa.Models.R5.Patient>();
         r5.BirthDate.ShouldBe("1974-12-25");
+    }
+
+    // -- AsVersion / TryAsVersion on an UNREGISTERED resource type --------------------------------
+
+    private const string DeviceJson =
+        """{ "resourceType": "Device", "id": "x" }""";
+
+    [Fact]
+    public void GivenUnregisteredResourceType_WhenAsVersion_ThenThrowsInvalidOperationException()
+    {
+        // Device has no generated typed facade, so it is never registered for ANY version. This is
+        // deterministic regardless of module-init order. AsVersion must throw rather than hand back a
+        // silently mistyped node: a wrong-typed facade is a correctness bug, not a usable fallback.
+        var node = ResourceJsonNode.Parse(DeviceJson);
+
+        Should.Throw<InvalidOperationException>(() => node.AsVersion(FhirVersion.R4));
+    }
+
+    [Fact]
+    public void GivenUnregisteredResourceType_WhenTryAsVersion_ThenReturnsFalseAndLeavesNodeUntouched()
+    {
+        var node = ResourceJsonNode.Parse(DeviceJson);
+        FhirVersion? originalVersion = node.FhirVersion;
+
+        bool ok = node.TryAsVersion(FhirVersion.R4, out var versioned);
+
+        ok.ShouldBeFalse();
+        ReferenceEquals(versioned, node).ShouldBeTrue();
+        versioned.FhirVersion.ShouldBe(originalVersion); // NOT mutated on a miss.
+    }
+
+    // -- INCOMPATIBLE divergence UNDER MUTATION: write long via R5, read int via R4 ----------------
+
+    [Fact]
+    public void GivenSizeWrittenThroughR5Long_WhenReadThroughR4Int_ThenItThrowsInvalidOperationException()
+    {
+        // Write a byte count > int.MaxValue through the R5 long? setter (a CLR-long-backed JsonValue),
+        // then read the SAME backing node through the R4 int? accessor. This exercises divergence under
+        // MUTATION (not just a parsed literal): the value cannot be represented as a 32-bit int, so the
+        // read throws InvalidOperationException (verified actual type from JsonValue.GetValue<int?>()).
+        const long largeSize = 5_000_000_000L; // > int.MaxValue (2_147_483_647)
+        var node = new JsonObject { ["contentType"] = "application/octet-stream" };
+
+        var r5 = new Ignixa.Models.R5.Attachment(node);
+        r5.Size = largeSize;
+        r5.Size.ShouldBe(largeSize);
+
+        var r4 = new Ignixa.Models.R4.Attachment(node);
+        Should.Throw<InvalidOperationException>(() => _ = r4.Size);
     }
 }

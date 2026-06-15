@@ -19,6 +19,9 @@ internal sealed class GenerationContext
     private readonly DefinitionCollection _definitions;
     private readonly Dictionary<string, string> _enumFiles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> _valueSetEnumCodes = new(StringComparer.Ordinal);
+    private readonly List<string> _valueSetDowngrades = [];
+    private readonly List<string> _jsonNodeFallbacks = [];
+    private readonly List<string> _droppedChoiceVariants = [];
 
     public GenerationContext(DefinitionCollection definitions, CSharpTypedModelConfig config, string ns)
     {
@@ -37,6 +40,23 @@ internal sealed class GenerationContext
 
     public IReadOnlyDictionary<string, string> EnumFiles => _enumFiles;
 
+    /// <summary>Value-set enums that fell back to <c>string</c> (collision / invalid identifier / empty expansion).</summary>
+    public IReadOnlyList<string> ValueSetDowngrades => _valueSetDowngrades;
+
+    /// <summary>Elements emitted as a raw <c>JsonNode</c>/<c>JsonArray</c> fallback (no typed accessor), with FHIR type code.</summary>
+    public IReadOnlyList<string> JsonNodeFallbacks => _jsonNodeFallbacks;
+
+    /// <summary>Choice <c>[x]</c> variants dropped because the variant type has no typed facade.</summary>
+    public IReadOnlyList<string> DroppedChoiceVariants => _droppedChoiceVariants;
+
+    /// <summary>Records a raw JsonNode fallback emitted for an untyped element.</summary>
+    public void RecordJsonNodeFallback(string elementContext, string fhirTypeCode)
+        => _jsonNodeFallbacks.Add($"{elementContext} ({fhirTypeCode})");
+
+    /// <summary>Records a choice variant dropped because its type has no typed facade.</summary>
+    public void RecordDroppedChoiceVariant(string elementContext, string fhirTypeCode)
+        => _droppedChoiceVariants.Add($"{elementContext} ({fhirTypeCode})");
+
     /// <summary>
     /// Records a choice discriminator enum for emission to its own file. The supplied declaration is
     /// wrapped in the standard auto-generated file template. Idempotent per enum name.
@@ -50,9 +70,11 @@ internal sealed class GenerationContext
     }
 
     /// <summary>
-    /// Resolves a value-set enum name for a required code-bound element (Enhancement B). Returns
-    /// null (fall back to string) when the value set cannot be expanded to a finite code set or when
-    /// the derived name collides with an existing enum that has a different code set.
+    /// Resolves a value-set enum name for a required code-bound element. Returns null (the caller
+    /// falls back to <c>string</c>) when the value set cannot be expanded to a finite code set, when a
+    /// code has no valid C# member name, or when the derived name collides with an existing enum that
+    /// has a different code set. Every null path is recorded in <see cref="ValueSetDowngrades"/> so it
+    /// surfaces in the end-of-run summary.
     /// </summary>
     public string? TryResolveValueSetEnum(ElementDefinition element, string elementContext)
     {
@@ -67,7 +89,8 @@ internal sealed class GenerationContext
         var concepts = ExpandConcepts(valueSetUrl);
         if (concepts.Count == 0)
         {
-            // Unexpandable / huge value set (e.g. all-languages): keep the element as string.
+            // Unexpandable / limited / huge value set (e.g. all-languages): keep the element as string.
+            RecordValueSetDowngrade(elementContext, $"'{enumName}' ({valueSetUrl}) expanded to no usable codes");
             return null;
         }
 
@@ -79,7 +102,7 @@ internal sealed class GenerationContext
             string member = CodeToEnumMember(concept.Code);
             if (!IsValidIdentifier(member))
             {
-                Console.WriteLine($"  ! Value-set '{enumName}' for {elementContext} has code '{concept.Code}' with no valid C# member name; falling back to string");
+                RecordValueSetDowngrade(elementContext, $"'{enumName}' code '{concept.Code}' has no valid C# member name");
                 return null;
             }
 
@@ -95,7 +118,7 @@ internal sealed class GenerationContext
                 return enumName;
             }
 
-            Console.WriteLine($"  ! Value-set enum name collision: '{enumName}' for {elementContext} ({valueSetUrl}) has a different code set than the first binding; falling back to string");
+            RecordValueSetDowngrade(elementContext, $"'{enumName}' ({valueSetUrl}) has a different code set than the first binding");
             return null;
         }
 
@@ -105,18 +128,22 @@ internal sealed class GenerationContext
         return enumName;
     }
 
+    private void RecordValueSetDowngrade(string elementContext, string reason)
+    {
+        string entry = $"{elementContext}: {reason}; falling back to string";
+        _valueSetDowngrades.Add(entry);
+        Console.WriteLine($"  ! Value-set downgrade for {entry}");
+    }
+
     private List<(string Code, string? Display, string? System)> ExpandConcepts(string valueSetUrl)
     {
-        ValueSet? vs;
-        try
-        {
-            vs = _definitions.ExpandVs(valueSetUrl).Result;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"  ! Failed to expand value set {valueSetUrl}: {ex.Message}");
-            return [];
-        }
+        // DefinitionCollection.ExpandVs already swallows every terminology/expansion exception
+        // internally and returns null (and null for a limited expansion). There is therefore no
+        // distinct "threw" signal to catch here: a null/empty result means "deliberately
+        // unexpandable, too-large, or failed to fetch", all of which the caller treats as a string
+        // downgrade (recorded in the summary). The expansion is synchronous over the offline package
+        // cache, so we block on the task rather than thread async through the whole emit tree.
+        ValueSet? vs = _definitions.ExpandVs(valueSetUrl).GetAwaiter().GetResult();
 
         if (vs?.Expansion?.Contains is { Count: > 0 } contains)
         {

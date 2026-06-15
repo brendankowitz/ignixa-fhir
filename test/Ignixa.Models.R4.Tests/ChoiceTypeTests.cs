@@ -83,6 +83,22 @@ public sealed class ChoiceTypeTests
     }
 
     [Fact]
+    public void GivenActiveValueVariant_WhenSetToNull_ThenKeyRemovedAndDiscriminatorIsNone()
+    {
+        // Clearing the active typed variant (set it to null) must remove the JSON key entirely, drop
+        // the discriminator back to None, and leave no raw Value node -- the choice becomes absent.
+        var obs = ResourceJsonNode.Parse(ObservationQuantityJson).As<Ignixa.Models.R4.Observation>();
+        obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.Quantity);
+
+        obs.ValueQuantity = null;
+
+        obs.MutableNode["valueQuantity"].ShouldBeNull();
+        obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.None);
+        obs.Value.ShouldBeNull();
+        obs.ValueQuantity.ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenValueQuantity_WhenSettingCodeableConcept_ThenOnlyOneVariantRemains()
     {
         var obs = ResourceJsonNode.Parse(ObservationQuantityJson).As<Ignixa.Models.R4.Observation>();

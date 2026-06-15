@@ -41,13 +41,31 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     ];
 
     /// <summary>
-    /// Generated base-type names that would collide with a hand-written <c>*JsonNode</c> facade's
-    /// short name. The base layer lives in namespace <c>Ignixa.Models</c> and the hand-written facades
-    /// in <c>Ignixa.Serialization.Models</c> (different names: <c>BundleJsonNode</c> vs <c>Bundle</c>),
-    /// so there is no CLR collision today; this guard exists so an accidental name overlap surfaces
-    /// rather than silently shadowing a server-critical facade.
+    /// Resource types that already have a hand-written facade in <c>Ignixa.Serialization</c> or
+    /// <c>Ignixa.Application</c> (the <c>*JsonNode</c> classes the request pipeline depends on). The
+    /// generated base layer (namespace <c>Ignixa.Models</c>) emits a facade named exactly after the
+    /// resource (<c>Bundle</c>), so it would NOT collide with the hand-written <c>BundleJsonNode</c> at
+    /// the CLR level. This guard is nonetheless ACTIVE: it stops the generator from emitting a base
+    /// facade for any resource the server already models by hand, so the two never diverge and a
+    /// consumer reaching for, say, <c>Bundle</c> handling is steered to the single server-critical
+    /// implementation rather than a parallel generated one. The skip logs and continues (see
+    /// <see cref="ExportMultiVersion"/>). Sourced from the hand-written resource facades under
+    /// <c>src/Core/Ignixa.Serialization/Models/*JsonNode.cs</c> and
+    /// <c>src/Application/**/Models/*JsonNode.cs</c>.
     /// </summary>
-    private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
+    {
+        "Bundle",
+        "OperationOutcome",
+        "Parameters",
+        "Provenance",
+        "SearchParameter",
+        "CapabilityStatement",
+        "StructureDefinition",
+        "StructureMap",
+        "ConceptMap",
+        "Composition",
+    };
 
     /// <summary>Gets the language name.</summary>
     public string Name => LanguageName;
@@ -75,7 +93,11 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// </summary>
     /// <param name="config">The shared configuration (allow-lists, datatype closure flag).</param>
     /// <param name="versions">Ordered (version, definitions, output-dir) tuples for each target version.</param>
-    /// <param name="baseOutputDir">Output directory for the shared base layer (Serialization Generated/Models).</param>
+    /// <param name="baseOutputDir">
+    /// Output directory for the shared base layer, i.e.
+    /// <c>src/Core/Ignixa.Serialization/Generated/Models</c> (the per-version subclass directories come
+    /// from each tuple's <c>OutputDir</c>).
+    /// </param>
     public void ExportMultiVersion(
         CSharpTypedModelConfig config,
         IReadOnlyList<(string Version, DefinitionCollection Definitions, string OutputDir)> versions,
@@ -149,11 +171,18 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             File.WriteAllText(Path.Combine(baseOutputDir, $"{enumName}.cs"), enumCode, Encoding.UTF8);
         }
 
+        // Contexts whose downgrade/fallback counters feed the end-of-run summary.
+        var summaryContexts = new List<(string Label, GenerationContext Context)>
+        {
+            (BaseNamespace, baseEnumContext),
+        };
+
         // --- Per-version layers -----------------------------------------------------------------
         foreach (var (version, definitions, outputDir) in versions)
         {
             string versionNamespace = $"{BaseNamespace}.{version}";
             var versionEnumContext = new GenerationContext(definitions, config, versionNamespace);
+            summaryContexts.Add((versionNamespace, versionEnumContext));
 
             int versionTypeCount = 0;
             var registrations = new List<(string ResourceType, string TypeName)>();
@@ -220,6 +249,42 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         foreach (string summary in incompatibleSummary.OrderBy(x => x, StringComparer.Ordinal))
         {
             Console.WriteLine($"    incompatible: {summary}");
+        }
+
+        WriteDowngradeSummary(summaryContexts);
+    }
+
+    /// <summary>
+    /// Prints every place a typed accessor was NOT produced, aggregated across the base layer and each
+    /// version layer: value-set enum downgrades to <c>string</c>, raw <c>JsonNode</c> fallbacks (with
+    /// the FHIR type code), and dropped choice <c>[x]</c> variants. Regenerating therefore surfaces the
+    /// full coverage gap rather than burying it in interleaved per-element log lines.
+    /// </summary>
+    private static void WriteDowngradeSummary(IReadOnlyList<(string Label, GenerationContext Context)> contexts)
+    {
+        int valueSetTotal = contexts.Sum(c => c.Context.ValueSetDowngrades.Count);
+        int fallbackTotal = contexts.Sum(c => c.Context.JsonNodeFallbacks.Count);
+        int droppedChoiceTotal = contexts.Sum(c => c.Context.DroppedChoiceVariants.Count);
+
+        Console.WriteLine();
+        Console.WriteLine("Coverage downgrades (no typed accessor produced):");
+        Console.WriteLine($"  value-set enum -> string: {valueSetTotal}");
+        Console.WriteLine($"  JsonNode fallbacks: {fallbackTotal}");
+        Console.WriteLine($"  dropped choice variants: {droppedChoiceTotal}");
+
+        foreach (var (label, context) in contexts)
+        {
+            WriteDowngradeSection(label, "value-set->string", context.ValueSetDowngrades);
+            WriteDowngradeSection(label, "JsonNode fallback", context.JsonNodeFallbacks);
+            WriteDowngradeSection(label, "dropped choice variant", context.DroppedChoiceVariants);
+        }
+    }
+
+    private static void WriteDowngradeSection(string label, string kind, IReadOnlyList<string> entries)
+    {
+        foreach (string entry in entries.OrderBy(x => x, StringComparer.Ordinal))
+        {
+            Console.WriteLine($"    [{label}] {kind}: {entry}");
         }
     }
 
@@ -393,6 +458,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             return;
         }
 
+        context.RecordJsonNodeFallback($"{typeName}.{jsonName}", fhirTypeCode);
         EmitFallback(body, memberNames.Allocate(ToPascalCase(jsonName)), jsonName, fhirTypeCode, isArray);
     }
 
@@ -563,6 +629,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
             if (!isPrimitive && !isComplexInList)
             {
+                context.RecordDroppedChoiceVariant($"{typeName}.{baseName}[x]", code);
                 continue;
             }
 
@@ -845,6 +912,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         sb.AppendLine($"    public const FhirVersion Version = FhirVersion.{version};");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Deserializes JSON straight to the requested resource's view, stamped with this version.</summary>");
+        sb.AppendLine("    /// <exception cref=\"InvalidCastException\">The parsed resource's <c>resourceType</c> does not match <typeparamref name=\"T\"/>.</exception>");
         sb.AppendLine("    public static T Parse<T>(string json)");
         sb.AppendLine("        where T : ResourceJsonNode");
         sb.AppendLine("    {");
@@ -869,6 +937,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         sb.AppendLine($"public static class {version}Extensions");
         sb.AppendLine("{");
         sb.AppendLine($"    /// <summary>Reinterprets an existing node as its {version} view (zero-copy).</summary>");
+        sb.AppendLine("    /// <exception cref=\"InvalidCastException\">The node's <c>resourceType</c> does not match <typeparamref name=\"T\"/>.</exception>");
         sb.AppendLine($"    public static T As{version}<T>(this ResourceJsonNode node)");
         sb.AppendLine("        where T : ResourceJsonNode");
         sb.AppendLine("    {");

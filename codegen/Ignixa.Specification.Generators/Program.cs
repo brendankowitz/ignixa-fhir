@@ -35,7 +35,9 @@ string defaultOutputDir = mode switch
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "validation-terminology" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Validation", "Generated"),
     "narrative-template" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.NarrativeGenerator", "Generated"),
-    "typed-model" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Models", $"Ignixa.Models.{fhirVersion.ToUpperInvariant()}", "Generated"),
+
+    // NOTE: typed-model has no arm here: that mode short-circuits to RunTypedModelMultiVersion
+    // (which owns its own output paths), so this switch never runs for it.
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
 };
 
