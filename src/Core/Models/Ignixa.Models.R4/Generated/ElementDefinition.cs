@@ -663,7 +663,8 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
         }
         else
         {
-            MutableNode[key] = value;
+            // A JsonNode can have only one parent; clone if it is already attached elsewhere.
+            MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
 
@@ -1301,7 +1302,8 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
         }
         else
         {
-            MutableNode[key] = value;
+            // A JsonNode can have only one parent; clone if it is already attached elsewhere.
+            MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
 
@@ -1459,7 +1461,8 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
         }
         else
         {
-            MutableNode[key] = value;
+            // A JsonNode can have only one parent; clone if it is already attached elsewhere.
+            MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
 
@@ -1617,7 +1620,8 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
         }
         else
         {
-            MutableNode[key] = value;
+            // A JsonNode can have only one parent; clone if it is already attached elsewhere.
+            MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
 
@@ -2255,7 +2259,8 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
         }
         else
         {
-            MutableNode[key] = value;
+            // A JsonNode can have only one parent; clone if it is already attached elsewhere.
+            MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
 

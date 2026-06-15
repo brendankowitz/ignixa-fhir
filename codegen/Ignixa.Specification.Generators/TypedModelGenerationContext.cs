@@ -106,7 +106,11 @@ internal sealed class GenerationContext
                 return null;
             }
 
-            memberNames.Add(member);
+            if (!memberNames.Add(member))
+            {
+                RecordValueSetDowngrade(elementContext, $"'{enumName}' member name collision '{member}' (code '{concept.Code}')");
+                return null;
+            }
         }
 
         var codeSet = new HashSet<string>(concepts.Select(c => c.Code), StringComparer.Ordinal);

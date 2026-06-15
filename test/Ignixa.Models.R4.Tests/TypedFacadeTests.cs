@@ -114,4 +114,23 @@ public sealed class TypedFacadeTests
         a.Gender.ShouldBe(Ignixa.Models.AdministrativeGender.Female);
         ReferenceEquals(a.MutableNode, b.MutableNode).ShouldBeTrue();
     }
+
+    [Fact]
+    public void GivenComplexValueAlreadyAttached_WhenAssignedToAnotherParent_ThenItIsClonedNotThrown()
+    {
+        var cc = new Ignixa.Models.CodeableConcept(
+            new System.Text.Json.Nodes.JsonObject { ["text"] = "Married" });
+
+        var p1 = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""").As<Ignixa.Models.R4.Patient>();
+        var p2 = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""").As<Ignixa.Models.R4.Patient>();
+
+        p1.MaritalStatus = cc; // attaches cc.MutableNode under p1
+
+        // cc.MutableNode now has a parent; a naive assignment would throw "node already has a parent".
+        Should.NotThrow(() => p2.MaritalStatus = cc);
+
+        p1.MaritalStatus!.MutableNode["text"]!.GetValue<string>().ShouldBe("Married");
+        p2.MaritalStatus!.MutableNode["text"]!.GetValue<string>().ShouldBe("Married");
+        ReferenceEquals(p1.MaritalStatus!.MutableNode, p2.MaritalStatus!.MutableNode).ShouldBeFalse();
+    }
 }

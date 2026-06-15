@@ -747,7 +747,8 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         body.AppendLine("        }");
         body.AppendLine("        else");
         body.AppendLine("        {");
-        body.AppendLine("            MutableNode[key] = value;");
+        body.AppendLine("            // A JsonNode can have only one parent; clone if it is already attached elsewhere.");
+        body.AppendLine("            MutableNode[key] = value.Parent is null ? value : value.DeepClone();");
         body.AppendLine("        }");
         body.AppendLine("    }");
         body.AppendLine();

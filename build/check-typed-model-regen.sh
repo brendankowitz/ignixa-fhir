@@ -25,9 +25,16 @@ generated_dirs=(
 )
 
 snapshot() {
+    # sha256sum on Linux; shasum -a 256 on macOS. Guard the empty-dir case so xargs does not
+    # block on stdin when find yields nothing.
+    local sha_cmd="sha256sum"
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        sha_cmd="shasum -a 256"
+    fi
+
     for dir in "${generated_dirs[@]}"; do
-        if [ -d "$dir" ]; then
-            find "$dir" -type f -print0 | sort -z | xargs -0 sha256sum
+        if [ -d "$dir" ] && [ -n "$(find "$dir" -type f -print -quit)" ]; then
+            find "$dir" -type f -print0 | sort -z | xargs -0 $sha_cmd
         fi
     done
 }

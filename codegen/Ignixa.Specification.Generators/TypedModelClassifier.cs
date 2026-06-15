@@ -334,7 +334,7 @@ internal sealed class TypedModelClassifier
                 return false;
             }
 
-            if (definitions.ResourcesByName.TryGetValue(baseName, out var baseSd))
+            if (definitions.ResourcesByName.TryGetValue(baseName, out var baseSd) && baseSd is not null)
             {
                 baseUrl = baseSd.BaseDefinition;
             }

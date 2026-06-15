@@ -84,9 +84,13 @@ public abstract class BaseJsonNode : IMutableJsonNode
         }
         else
         {
-            _internalNode[name] = value;
+            _internalNode[name] = Reparentable(value);
         }
     }
+
+    // A JsonNode can have only one parent; assigning one that is already attached elsewhere throws.
+    // Clone in that case so reusing a model instance across parents copies rather than crashes.
+    private static JsonNode Reparentable(JsonNode value) => value.Parent is null ? value : value.DeepClone();
 
     protected T? GetProperty<T>(string name)
     {
@@ -105,7 +109,7 @@ public abstract class BaseJsonNode : IMutableJsonNode
         }
         else if (value is JsonNode jsonNodeValue)
         {
-            MutableNode[name] = jsonNodeValue;
+            MutableNode[name] = Reparentable(jsonNodeValue);
         }
         else
         {
