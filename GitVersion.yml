@@ -1,3 +1,8 @@
 workflow: TrunkBased/preview1
 assembly-versioning-scheme: MajorMinorPatch
-next-version: 0.5.0
+# Recognize release/X.Y.Z tags as version sources so the version auto-increments
+# from the last release instead of repo height. Per-commit bumps via commit message:
+#   +semver: major | minor | patch | none
+# Do NOT add next-version alongside tag-prefix: GitVersion 6 throws "Failed to parse"
+# when both are set.
+tag-prefix: 'release/'
