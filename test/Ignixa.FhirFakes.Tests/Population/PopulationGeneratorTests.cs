@@ -376,4 +376,19 @@ public class PopulationGeneratorTests
 
         return null;
     }
+
+    [Fact]
+    public void GivenPopulation_WhenGenerating_ThenPatientsHaveVitalSignObservations()
+    {
+        // Arrange
+        var generator = new PopulationGenerator(_schemaProvider);
+
+        // Act
+        var contexts = generator.Generate("Massachusetts", 20).ToList();
+
+        // Assert - wellness visits across the cohort must record observations,
+        // otherwise population data has no vitals or labs at all.
+        var totalObservations = contexts.Sum(c => c.Observations.Count);
+        totalObservations.ShouldBeGreaterThan(0, "population wellness visits should record vital sign observations");
+    }
 }

@@ -9,6 +9,7 @@ using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Lifecycle;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification;
 using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
@@ -121,10 +122,7 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
                 "Type2Diabetes",
                 40..90,
                 diabetesRisk,
-                sp => new ScenarioBuilder(sp)
-                    .AddConditionOnset(FhirCode.Conditions.DiabetesType2)
-                    .AddMedicationOrder(FhirCode.Medications.Metformin500mg)
-            );
+                DiabetesOnsetScenario);
         }
 
         // Essential Hypertension (age 35+)
@@ -177,4 +175,15 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
             // (Cancer management is complex - defer to future implementation)
         }
     }
+
+    /// <summary>
+    /// Builds the Type 2 Diabetes onset scenario applied when a population patient develops diabetes:
+    /// diagnosis, monitoring labs (HbA1c and fasting glucose), and first-line medication.
+    /// </summary>
+    internal static ScenarioBuilder DiabetesOnsetScenario(IFhirSchemaProvider schemaProvider) =>
+        new ScenarioBuilder(schemaProvider)
+            .AddConditionOnset(FhirCode.Conditions.DiabetesType2)
+            .AddObservation(ObservationState.HemoglobinA1c())
+            .AddObservation(ObservationState.BloodGlucose())
+            .AddMedicationOrder(FhirCode.Medications.Metformin500mg);
 }

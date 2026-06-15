@@ -3,8 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.FhirFakes.Lifecycle;
+using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Abstractions;
@@ -499,6 +501,92 @@ public class PatientLifecycleGeneratorTests
         condition.HasOccurred.ShouldBeFalse();
         condition.IsApplicable(10).ShouldBeTrue();
     }
+
+    #endregion
+
+    #region Wellness Visit Observation Tests
+
+    [Fact]
+    public void GivenPediatricWellnessSchedule_WhenExecuted_ThenRecordsGrowthVitals()
+    {
+        // Arrange
+        var schedule = new PediatricWellnessSchedule();
+        var context = NewPatientContext(birthYear: 2018, currentYear: 2024); // age 6
+
+        // Act
+        schedule.Execute(context, _schemaProvider);
+
+        // Assert - a growth chart needs body height and weight recorded at each visit
+        context.Observations.ShouldNotBeEmpty();
+        var loincCodes = ObservationLoincCodes(context);
+        loincCodes.ShouldContain("8302-2", "pediatric wellness visit should record body height");
+        loincCodes.ShouldContain("29463-7", "pediatric wellness visit should record body weight");
+    }
+
+    [Fact]
+    public void GivenAdultWellnessSchedule_WhenExecutedForYoungAdult_ThenRecordsVitalSigns()
+    {
+        // Arrange
+        var schedule = new AdultWellnessSchedule();
+        var context = NewPatientContext(birthYear: 1994, currentYear: 2024); // age 30
+
+        // Act
+        schedule.Execute(context, _schemaProvider);
+
+        // Assert
+        context.Observations.ShouldNotBeEmpty();
+        ObservationLoincCodes(context).ShouldContain("8302-2", "adult wellness visit should record vital signs");
+    }
+
+    [Fact]
+    public void GivenAdultWellnessSchedule_WhenExecutedForOlderAdult_ThenOrdersLabPanels()
+    {
+        // Arrange
+        var schedule = new AdultWellnessSchedule();
+        var context = NewPatientContext(birthYear: 1969, currentYear: 2024); // age 55
+
+        // Act
+        schedule.Execute(context, _schemaProvider);
+
+        // Assert - adults 45+ should receive metabolic and lipid panels (DiagnosticReports)
+        context.DiagnosticReports.ShouldNotBeEmpty("adults 45+ should receive lab panels at wellness visits");
+    }
+
+    [Fact]
+    public void GivenDiabetesOnsetScenario_WhenConditionOccurs_ThenRecordsHbA1cAndGlucose()
+    {
+        // Arrange - force the diabetes onset scenario that population generation applies
+        var condition = new ProbabilisticConditionOnset(
+            "Type2Diabetes",
+            onsetAges: 40..90,
+            probability: 1.0,
+            scenarioFactory: PopulationGenerator.DiabetesOnsetScenario);
+        var context = NewPatientContext(birthYear: 1969, currentYear: 2024); // age 55
+
+        // Act
+        condition.Execute(context, _schemaProvider);
+
+        // Assert - a diagnosed diabetic needs monitoring labs, not just a diagnosis and a pill
+        var loincCodes = ObservationLoincCodes(context);
+        loincCodes.ShouldContain("4548-4", "diabetes onset should record HbA1c");
+        loincCodes.ShouldContain("2339-0", "diabetes onset should record blood glucose");
+    }
+
+    private ScenarioContext NewPatientContext(int birthYear, int currentYear)
+    {
+        var context = new ScenarioContext
+        {
+            BirthDate = new DateTime(birthYear, 1, 1),
+            CurrentTime = new DateTime(currentYear, 1, 1)
+        };
+        context.Patient = new SchemaBasedFhirResourceFaker(_schemaProvider).Generate("Patient");
+        return context;
+    }
+
+    private static List<string?> ObservationLoincCodes(ScenarioContext context) =>
+        context.Observations
+            .Select(o => o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>())
+            .ToList();
 
     #endregion
 }
