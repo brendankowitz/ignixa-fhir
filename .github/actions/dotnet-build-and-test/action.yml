@@ -67,7 +67,7 @@ runs:
       shell: bash
 
     - name: Build solution
-      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }}
+      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal /p:Version=${{ steps.gitversion.outputs.semVer }}
       shell: bash
 
     - name: Run unit tests
