@@ -1963,6 +1963,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         public object? Value => null;
         public string Location => string.Empty;
         public IType? Type { get; }
+        public bool HasPrimitiveValue => false;
 
         public IReadOnlyList<IElement> Children(string? name = null)
         {

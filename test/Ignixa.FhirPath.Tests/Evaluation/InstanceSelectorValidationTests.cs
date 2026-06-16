@@ -71,7 +71,7 @@ public class InstanceSelectorValidationTests
         // The property name should be preserved (without backticks)
         var birthDate = result[0].Children("birth-date").SingleOrDefault();
         birthDate.ShouldNotBeNull();
-        birthDate.Value.ShouldBe("@2020-01-01");
+        birthDate.Value.ShouldBe("2020-01-01");
     }
 
     [Fact]
@@ -152,6 +152,7 @@ public class InstanceSelectorValidationTests
         public object Value { get; }
         public string Location => string.Empty;
         public IType? Type => null;
+        public bool HasPrimitiveValue => true;
         public IReadOnlyList<IElement> Children(string? name = null) => [];
         public T? Meta<T>() where T : class => null;
     }

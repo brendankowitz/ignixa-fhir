@@ -1195,6 +1195,11 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return VisitAndCollect(expression, context, ctx => _analyzer.VisitIndexer(expression, ctx));
         }
 
+        public FhirPathTypeSet VisitInstanceSelector(InstanceSelectorExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitInstanceSelector(expression, ctx));
+        }
+
         public FhirPathTypeSet VisitParenthesized(ParenthesizedExpression expression, AnalysisContext context)
         {
             return VisitAndCollect(expression, context, ctx => _analyzer.VisitParenthesized(expression, ctx));
