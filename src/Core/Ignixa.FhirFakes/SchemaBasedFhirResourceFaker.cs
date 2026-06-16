@@ -66,6 +66,12 @@ public class SchemaBasedFhirResourceFaker
     /// </summary>
     public string? Tag => _tag;
 
+    /// <summary>
+    /// Controls how densely generated resources are populated. Defaults to
+    /// <see cref="GenerationDensity.Minimal"/>, which preserves the required-only behavior.
+    /// </summary>
+    public GenerationDensity Density { get; set; } = GenerationDensity.Minimal;
+
     public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider)
     {
         _schemaProvider = schemaProvider;
@@ -217,27 +223,23 @@ public class SchemaBasedFhirResourceFaker
             // For choice elements, we need to pick a type and append it to the element name
             var (actualElementName, actualElement) = ResolveChoiceElement(child);
 
-            // Required elements: always add
-            if (child.IsRequired)
+            // Minimal/Realistic: required elements only. Maximal: required plus optional.
+            if (!ShouldPopulate(child))
             {
-                var value = GenerateElementValue(actualElement, resourceType, depth: 0);
-                if (value is not null)
-                {
-                    root[actualElementName] = value;
-                }
-                else
-                {
-                    // For required fields that failed to generate (e.g., BackboneElement with only optional children),
-                    // add a minimal placeholder to satisfy cardinality requirements
-                    if (!actualElement.Info.IsPrimitive)
-                    {
-                        root[actualElementName] = new JsonObject();
-                    }
-                }
+                continue;
             }
 
-            // Optional elements: never populate (deterministic behavior for test stability)
-            // If tests need optional fields, use PatientBuilder or manually set them after generation
+            var value = GenerateElementValue(actualElement, resourceType, depth: 0);
+            if (value is not null)
+            {
+                root[actualElementName] = value;
+            }
+            else if (child.IsRequired && !actualElement.Info.IsPrimitive)
+            {
+                // Placeholders satisfy required cardinality only; optional elements that
+                // cannot generate a value are simply skipped.
+                root[actualElementName] = new JsonObject();
+            }
         }
 
         var json = root.ToJsonString();
@@ -444,29 +446,26 @@ public class SchemaBasedFhirResourceFaker
             // Handle choice elements
             var (actualElementName, actualElement) = ResolveChoiceElement(child);
 
-            // Required elements: ALWAYS add, even at deep nesting levels
-            // This ensures BackboneElements in arrays have their required nested fields populated
-            if (child.IsRequired)
+            // Minimal/Realistic: required only. Maximal: required plus optional.
+            // The depth guard above bounds optional complex children too.
+            if (!ShouldPopulate(child))
             {
-                var value = GenerateElementValue(actualElement, currentTypeName, depth + 1);
-                if (value is not null)
-                {
-                    obj[actualElementName] = value;
-                    hasContent = true;
-                }
-                else
-                {
-                    // For required fields that failed to generate (e.g., unsupported complex types),
-                    // add a minimal placeholder to satisfy cardinality requirements
-                    if (!actualElement.Info.IsPrimitive)
-                    {
-                        obj[actualElementName] = new JsonObject();
-                        hasContent = true;
-                    }
-                }
+                continue;
             }
-            // Optional elements: never populate (deterministic behavior for test stability)
-            // If tests need optional fields, use PatientBuilder or manually set them after generation
+
+            var value = GenerateElementValue(actualElement, currentTypeName, depth + 1);
+            if (value is not null)
+            {
+                obj[actualElementName] = value;
+                hasContent = true;
+            }
+            else if (child.IsRequired && !actualElement.Info.IsPrimitive)
+            {
+                // Placeholders satisfy required cardinality only; optional elements that
+                // cannot generate a value are simply skipped.
+                obj[actualElementName] = new JsonObject();
+                hasContent = true;
+            }
         }
 
         return hasContent ? obj : null;
@@ -1034,6 +1033,12 @@ public class SchemaBasedFhirResourceFaker
     #endregion
 
     #region Helper Methods
+
+    /// <summary>
+    /// Determines whether an element should be populated for the current <see cref="Density"/>.
+    /// Required elements are always populated; optional elements only under <see cref="GenerationDensity.Maximal"/>.
+    /// </summary>
+    private bool ShouldPopulate(IType child) => child.IsRequired || Density == GenerationDensity.Maximal;
 
     /// <summary>
     /// Applies the configured tag to a resource's meta.tag array.
