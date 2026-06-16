@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -10,6 +11,11 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
+        // Emit UTF-8 so non-ASCII patient names and status glyphs render correctly in
+        // terminals, redirected output, and notebook runners (e.g. runme.dev), which decode
+        // captured output as UTF-8. Guarded: setting this throws when no console is attached.
+        try { Console.OutputEncoding = new UTF8Encoding(false); } catch { /* no console */ }
+
         var rootCommand = new RootCommand("SQL on FHIR - Process FHIR resources using ViewDefinitions");
 
         AddFhirVersionCommands(rootCommand, "stu3", new STU3CoreSchemaProvider());
