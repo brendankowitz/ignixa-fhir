@@ -97,13 +97,14 @@ public sealed class DefaultNameGenerationStrategy : INameGenerationStrategy
     public (string GivenName, string FamilyName) GenerateName(
         string gender,
         IReadOnlyDictionary<string, object> profileAttributes,
-        string? countryCode)
+        string? countryCode,
+        Bogus.Randomizer randomizer)
     {
         // Map country code to Bogus locale
         var locale = GetLocaleForCountry(countryCode);
 
         // Delegate to LocalBasedNameGenerator with locale
-        return _nameGenerator.GenerateName(locale, gender);
+        return _nameGenerator.GenerateName(locale, gender, randomizer);
     }
 
     /// <summary>

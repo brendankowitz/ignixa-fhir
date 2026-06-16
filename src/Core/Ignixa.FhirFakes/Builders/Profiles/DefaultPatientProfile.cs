@@ -69,7 +69,7 @@ public sealed class DefaultPatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city)
+    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city, Bogus.Randomizer randomizer)
     {
         // Default profile has no specific attributes to sample
         return new Dictionary<string, object>();

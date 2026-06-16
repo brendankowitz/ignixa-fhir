@@ -29,6 +29,11 @@ public static class PatientBuilderFactory
     /// Creates a PatientBuilder with profile-aware demographics and name generation.
     /// </summary>
     /// <param name="schemaProvider">The FHIR schema provider for the desired FHIR version</param>
+    /// <param name="seed">
+    /// Optional seed for reproducible generation. When provided, the builder uses a seeded
+    /// randomizer so that same-seed, same-config <c>Build()</c> calls are byte-reproducible
+    /// (except <c>meta.lastUpdated</c>). When null, behavior is unchanged (non-deterministic).
+    /// </param>
     /// <returns>A PatientBuilder instance with demographics support and profile-aware name generation</returns>
     /// <example>
     /// <code>
@@ -48,11 +53,13 @@ public static class PatientBuilderFactory
     ///     .Build();
     /// </code>
     /// </example>
-    public static PatientBuilder Create(IFhirSchemaProvider schemaProvider)
+    public static PatientBuilder Create(IFhirSchemaProvider schemaProvider, int? seed = null)
     {
-        return new PatientBuilder(
+        var builder = new PatientBuilder(
             schemaProvider,
             _demographics.Value,
             _nameGenerator.Value);
+
+        return seed is { } seedValue ? builder.WithSeed(seedValue) : builder;
     }
 }

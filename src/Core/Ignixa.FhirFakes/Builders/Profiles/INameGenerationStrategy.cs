@@ -21,9 +21,11 @@ public interface INameGenerationStrategy
     /// <param name="gender">The patient's gender (e.g., "male", "female", "other", "unknown")</param>
     /// <param name="profileAttributes">Profile-specific attributes (e.g., race for US Core, indigenous status for AU Base)</param>
     /// <param name="countryCode">The country code from the profile (e.g., "US", "AU", "NL")</param>
+    /// <param name="randomizer">Seeded randomizer used to make name generation deterministic</param>
     /// <returns>A tuple containing the generated given (first) name and family (last) name</returns>
     (string GivenName, string FamilyName) GenerateName(
         string gender,
         IReadOnlyDictionary<string, object> profileAttributes,
-        string? countryCode);
+        string? countryCode,
+        Bogus.Randomizer randomizer);
 }

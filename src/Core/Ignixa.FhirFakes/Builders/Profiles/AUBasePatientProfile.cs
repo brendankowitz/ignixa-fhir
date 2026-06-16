@@ -123,14 +123,15 @@ public sealed class AUBasePatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city)
+    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city, Bogus.Randomizer randomizer)
     {
         ArgumentNullException.ThrowIfNull(city);
+        ArgumentNullException.ThrowIfNull(randomizer);
 
         var attributes = new Dictionary<string, object>();
 
         // Sample indigenous status from city's distribution
-        attributes[IndigenousStatusAttribute] = SampleIndigenousStatus(city);
+        attributes[IndigenousStatusAttribute] = SampleIndigenousStatus(city, randomizer);
 
         return attributes;
     }
@@ -139,6 +140,7 @@ public sealed class AUBasePatientProfile : IPatientProfile
     /// Samples an Australian Indigenous Status code from the city's distribution.
     /// </summary>
     /// <param name="city">Australian city demographics</param>
+    /// <param name="randomizer">The seeded randomizer used for weighted sampling</param>
     /// <returns>Indigenous status code ("1", "2", "3", "4", or "9")</returns>
     /// <remarks>
     /// Uses weighted random sampling based on the city's indigenous status distribution from Attributes.
@@ -151,14 +153,14 @@ public sealed class AUBasePatientProfile : IPatientProfile
     /// - 4: Neither Aboriginal nor Torres Strait Islander
     /// - 9: Not stated/inadequately described
     /// </remarks>
-    private static string SampleIndigenousStatus(CityDemographics city)
+    private static string SampleIndigenousStatus(CityDemographics city, Bogus.Randomizer randomizer)
     {
         // Try to get indigenous status distribution from city attributes
         if (city.Attributes.TryGetValue(IndigenousStatusDistributionKey, out var data)
             && data is Dictionary<string, double> distribution
             && distribution.Count > 0)
         {
-            var random = Random.Shared.NextDouble();
+            var random = randomizer.Double();
             var cumulative = 0.0;
 
             foreach (var (code, probability) in distribution)
@@ -175,7 +177,7 @@ public sealed class AUBasePatientProfile : IPatientProfile
         }
 
         // Fall back to national Australian demographics (approx 3.3% indigenous)
-        var randomValue = Random.Shared.NextDouble();
+        var randomValue = randomizer.Double();
 
         if (randomValue < 0.028)
             return "1"; // Aboriginal but not Torres Strait Islander

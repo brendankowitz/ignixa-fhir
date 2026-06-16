@@ -51,6 +51,7 @@ public class SchemaBasedFhirResourceFaker
     private readonly IFhirSchemaProvider _schemaProvider;
     private readonly Faker _faker;
     private readonly Random _random;
+    private readonly int? _seed;
     private string? _tag;
 
     /// <summary>
@@ -70,6 +71,25 @@ public class SchemaBasedFhirResourceFaker
         _schemaProvider = schemaProvider;
         _faker = new Faker();
         _random = new Random();
+    }
+
+    /// <summary>
+    /// Creates a faker whose randomness is seeded for reproducible generation.
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider for the desired FHIR version.</param>
+    /// <param name="seed">The seed applied to the internal randomizers and propagated to the Patient builder.</param>
+    /// <remarks>
+    /// The seed is propagated to the <see cref="PatientBuilder"/> created by
+    /// <see cref="CreatePatient"/> and <see cref="CreateSeattlePatient"/> so the base Patient
+    /// generation path is reproducible. The generic <see cref="Generate(string)"/> path is seeded
+    /// via the internal randomizers only.
+    /// </remarks>
+    public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider, int seed)
+    {
+        _schemaProvider = schemaProvider;
+        _faker = new Faker { Random = new Randomizer(seed) };
+        _random = new Random(seed);
+        _seed = seed;
     }
 
     /// <summary>
@@ -103,7 +123,7 @@ public class SchemaBasedFhirResourceFaker
     /// </example>
     public ResourceJsonNode CreatePatient(Action<PatientBuilder>? configure = null)
     {
-        var builder = PatientBuilderFactory.Create(_schemaProvider);
+        var builder = PatientBuilderFactory.Create(_schemaProvider, _seed);
 
         // Apply tag from faker if set
         if (_tag is not null)
@@ -132,7 +152,7 @@ public class SchemaBasedFhirResourceFaker
     /// </example>
     public ResourceJsonNode CreateSeattlePatient(Action<PatientBuilder>? configure = null)
     {
-        var builder = PatientBuilderFactory.Create(_schemaProvider)
+        var builder = PatientBuilderFactory.Create(_schemaProvider, _seed)
             .FromSeattle();
 
         // Apply tag from faker if set

@@ -35,15 +35,16 @@ public class LocalBasedNameGenerator
     /// </summary>
     /// <param name="locale">Bogus locale code (e.g., "en", "es_MX", "zh_CN", "ja")</param>
     /// <param name="gender">Gender ("male" or "female")</param>
+    /// <param name="randomizer">Seeded randomizer used to make name generation deterministic</param>
     /// <returns>Tuple of (FirstName, LastName)</returns>
     /// <example>
     /// var generator = new LocalBasedNameGenerator();
-    /// var (first, last) = generator.GenerateName("es_MX", "female");
+    /// var (first, last) = generator.GenerateName("es_MX", "female", new Bogus.Randomizer(42));
     /// // Result: ("Maria", "Garcia")
     /// </example>
-    public (string FirstName, string LastName) GenerateName(string locale, string gender)
+    public (string FirstName, string LastName) GenerateName(string locale, string gender, Bogus.Randomizer randomizer)
     {
-        var faker = new Faker(locale);
+        var faker = new Faker(locale) { Random = randomizer };
 
         var bogusGender = gender.ToUpperInvariant() switch
         {

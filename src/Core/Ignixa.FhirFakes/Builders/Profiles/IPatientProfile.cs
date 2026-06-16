@@ -82,9 +82,10 @@ public interface IPatientProfile
     bool ValidateAttributes(IReadOnlyDictionary<string, object> attributes);
 
     /// <summary>
-    /// Samples profile-specific attributes from city demographics.
+    /// Samples profile-specific attributes from city demographics using the supplied randomizer.
     /// </summary>
     /// <param name="city">The city demographics to sample from</param>
+    /// <param name="randomizer">The seeded randomizer that is the sole source of randomness for sampling</param>
     /// <returns>Dictionary of attribute key-value pairs for this profile</returns>
     /// <remarks>
     /// Each profile implementation is responsible for sampling its own required attributes.
@@ -92,6 +93,9 @@ public interface IPatientProfile
     /// - US Core samples ethnicity from the city's ethnicity distribution
     /// - AU Base samples indigenous status from the city's indigenous status distribution
     /// - Default profile returns an empty dictionary
+    ///
+    /// The randomizer is threaded in (rather than using <c>Random.Shared</c>) so that callers
+    /// can make profile attribute sampling reproducible from a seed.
     /// </remarks>
-    Dictionary<string, object> SampleProfileAttributes(CityDemographics city);
+    Dictionary<string, object> SampleProfileAttributes(CityDemographics city, Bogus.Randomizer randomizer);
 }

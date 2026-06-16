@@ -38,11 +38,12 @@ public sealed class AUBaseNameGenerationStrategy : INameGenerationStrategy
     public (string GivenName, string FamilyName) GenerateName(
         string gender,
         IReadOnlyDictionary<string, object> profileAttributes,
-        string? countryCode)
+        string? countryCode,
+        Bogus.Randomizer randomizer)
     {
         // For Australian patients, use English locale directly
         // This generates appropriate Anglo-Australian names which represent
         // the majority population demographic in Australia
-        return _nameGenerator.GenerateName("en_AU", gender);
+        return _nameGenerator.GenerateName("en_AU", gender, randomizer);
     }
 }

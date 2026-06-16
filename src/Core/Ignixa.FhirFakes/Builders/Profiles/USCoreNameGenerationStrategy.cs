@@ -70,7 +70,8 @@ public sealed class USCoreNameGenerationStrategy : INameGenerationStrategy
     public (string GivenName, string FamilyName) GenerateName(
         string gender,
         IReadOnlyDictionary<string, object> profileAttributes,
-        string? countryCode)
+        string? countryCode,
+        Bogus.Randomizer randomizer)
     {
         // Extract ethnicity from profile attributes, default to "White" for backward compatibility
         var ethnicity = profileAttributes.TryGetValue(USCorePatientProfile.UsCoreRaceAttribute, out var ethnicityValue)
@@ -83,6 +84,6 @@ public sealed class USCoreNameGenerationStrategy : INameGenerationStrategy
         var locale = EthnicityToLocale.GetValueOrDefault(ethnicity, "en");
 
         // Delegate to LocalBasedNameGenerator with locale
-        return _nameGenerator.GenerateName(locale, gender);
+        return _nameGenerator.GenerateName(locale, gender, randomizer);
     }
 }

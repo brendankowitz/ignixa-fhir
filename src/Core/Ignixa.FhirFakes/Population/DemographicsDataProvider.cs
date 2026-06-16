@@ -472,18 +472,20 @@ public class DemographicsDataProvider
     /// Delegates to the city's profile for profile-specific attribute sampling.
     /// </summary>
     /// <param name="city">City demographics</param>
+    /// <param name="randomizer">The seeded randomizer used for profile attribute sampling</param>
     /// <returns>Dictionary of profile-specific attributes</returns>
     /// <example>
     /// For US cities: { "ethnicity": "White" }
     /// For AU cities: { "indigenousStatus": "4" }
     /// </example>
-    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city)
+    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city, Bogus.Randomizer randomizer)
     {
         ArgumentNullException.ThrowIfNull(city);
+        ArgumentNullException.ThrowIfNull(randomizer);
 
         // Delegate to the city's profile for attribute sampling
         var profile = city.GetProfile();
-        return profile.SampleProfileAttributes(city);
+        return profile.SampleProfileAttributes(city, randomizer);
     }
 
     private string SampleFromDistribution(Dictionary<string, double> distribution)

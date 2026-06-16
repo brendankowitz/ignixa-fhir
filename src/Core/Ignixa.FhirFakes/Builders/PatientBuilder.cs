@@ -45,7 +45,7 @@ namespace Ignixa.FhirFakes.Builders;
 [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
 public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 {
-    private readonly Faker _faker = new();
+    private Faker _faker = new();
     private readonly LocalBasedNameGenerator? _nameGenerator;
     private readonly DemographicsDataProvider? _demographics;
 
@@ -162,6 +162,23 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
         _demographics = demographics;
         _nameGenerator = nameGenerator;
+    }
+
+    /// <summary>
+    /// Seeds the builder's randomness so that <see cref="Build"/> is reproducible.
+    /// </summary>
+    /// <param name="seed">The seed value for the underlying randomizer.</param>
+    /// <returns>This builder for method chaining.</returns>
+    /// <remarks>
+    /// Seeding is opt-in. When set, the builder uses a single seeded <see cref="Bogus.Randomizer"/>
+    /// as the sole source of randomness (names, address, BMI, telecom, and the default id).
+    /// Given the same seed and the same explicit configuration, <see cref="Build"/> produces
+    /// byte-identical JSON except for the server-managed <c>meta.lastUpdated</c> wall-clock value.
+    /// </remarks>
+    public PatientBuilder WithSeed(int seed)
+    {
+        _faker = new Faker { Random = new Randomizer(seed) };
+        return this;
     }
 
     // === Demographic Configuration ===
@@ -651,7 +668,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         _profile = city.GetProfile();
 
         // Sample profile-specific attributes
-        var sampledAttributes = _demographics.SampleProfileAttributes(city);
+        var sampledAttributes = _demographics.SampleProfileAttributes(city, _faker.Random);
         foreach (var (key, value) in sampledAttributes)
         {
             _profileAttributes[key] = value;
@@ -708,7 +725,8 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         var (given, family) = _profile.NameGenerationStrategy.GenerateName(
             gender,
             _profileAttributes,
-            _profile.CountryCode);
+            _profile.CountryCode,
+            _faker.Random);
         _givenName = given;
         _familyName = family;
 
@@ -722,12 +740,12 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     /// <returns>This builder for method chaining</returns>
     public PatientBuilder WithRealisticBMI()
     {
-        var random = Random.Shared.NextDouble();
+        var random = _faker.Random.Double();
         _bmi = random switch
         {
-            < 0.35 => (decimal)Random.Shared.Next(19, 25),  // Normal (35%)
-            < 0.69 => (decimal)Random.Shared.Next(25, 30),  // Overweight (34%)
-            _ => (decimal)Random.Shared.Next(30, 42)        // Obese (31%)
+            < 0.35 => (decimal)_faker.Random.Int(19, 24),  // Normal (35%)
+            < 0.69 => (decimal)_faker.Random.Int(25, 29),  // Overweight (34%)
+            _ => (decimal)_faker.Random.Int(30, 41)        // Obese (31%)
         };
         return this;
     }
@@ -745,7 +763,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         var patientJson = new JsonObject
         {
             ["resourceType"] = "Patient",
-            ["id"] = Id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? _faker.Random.Guid().ToString(),
             ["meta"] = BuildMeta(),
             ["gender"] = _gender ?? PatientBuilderConstants.Gender.Unknown,
             ["birthDate"] = _birthDateString ?? CalculateBirthDate().ToString("yyyy-MM-dd"),
@@ -821,7 +839,8 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
                 var (given, family) = _profile.NameGenerationStrategy.GenerateName(
                     gender,
                     _profileAttributes,
-                    _profile.CountryCode);
+                    _profile.CountryCode,
+                    _faker.Random);
                 _givenName ??= given;
                 _familyName ??= family;
             }
@@ -944,7 +963,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
     private JsonArray BuildTelecom()
     {
-        var phoneNumber = $"{_areaCode}-{Random.Shared.Next(100, 1000)}-{Random.Shared.Next(1000, 10000)}";
+        var phoneNumber = $"{_areaCode}-{_faker.Random.Int(100, 999)}-{_faker.Random.Int(1000, 9999)}";
         var telecomJson = new JsonObject
         {
             ["system"] = "phone",

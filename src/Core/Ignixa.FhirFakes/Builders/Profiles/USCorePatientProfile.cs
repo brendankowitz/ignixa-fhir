@@ -184,14 +184,15 @@ public sealed class USCorePatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city)
+    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city, Bogus.Randomizer randomizer)
     {
         ArgumentNullException.ThrowIfNull(city);
+        ArgumentNullException.ThrowIfNull(randomizer);
 
         var attributes = new Dictionary<string, object>();
 
         // Sample ethnicity from city's ethnicity distribution
-        attributes[UsCoreRaceAttribute] = SampleEthnicity(city);
+        attributes[UsCoreRaceAttribute] = SampleEthnicity(city, randomizer);
 
         return attributes;
     }
@@ -200,20 +201,21 @@ public sealed class USCorePatientProfile : IPatientProfile
     /// Samples an ethnicity based on the city's ethnicity distribution.
     /// </summary>
     /// <param name="city">City demographics containing ethnicity distribution</param>
+    /// <param name="randomizer">The seeded randomizer used for weighted sampling</param>
     /// <returns>Ethnicity value (e.g., "White", "Black", "Hispanic", "Asian")</returns>
     /// <remarks>
     /// Uses weighted random sampling based on the city's ethnicity distribution from Attributes.
     /// If no distribution is provided, returns a default US ethnicity ("White").
     /// If the distribution probabilities don't sum to 1.0, falls back to the first key.
     /// </remarks>
-    private static string SampleEthnicity(CityDemographics city)
+    private static string SampleEthnicity(CityDemographics city, Bogus.Randomizer randomizer)
     {
         // Try to get ethnicity distribution from city attributes
         if (city.Attributes.TryGetValue(EthnicityDistributionKey, out var data)
             && data is Dictionary<string, double> distribution
             && distribution.Count > 0)
         {
-            var random = Random.Shared.NextDouble();
+            var random = randomizer.Double();
             var cumulative = 0.0;
 
             foreach (var (ethnicity, probability) in distribution)

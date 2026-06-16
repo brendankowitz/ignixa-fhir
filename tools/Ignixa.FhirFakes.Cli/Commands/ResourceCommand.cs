@@ -54,13 +54,14 @@ internal static class ResourceCommand
             var edgeCasesEnabled = parseResult.GetResult(edgeCasesOption) is not null;
             var edgeCasesValue = parseResult.GetValue(edgeCasesOption);
             var selectors = ParseSelectors(edgeCasesValue);
-            var seed = parseResult.GetValue(seedOption) ?? (edgeCasesEnabled ? GenerateSeed() : 0);
+            var explicitSeed = parseResult.GetValue(seedOption);
+            var seed = explicitSeed ?? (edgeCasesEnabled ? GenerateSeed() : 0);
 
-            if (edgeCasesEnabled && parseResult.GetValue(seedOption) is null)
+            if (edgeCasesEnabled && explicitSeed is null)
                 Console.WriteLine($"Seed: {seed}  (pass --seed {seed} to replay)");
 
             await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder,
-                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed);
+                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed, explicitSeed);
         });
 
         return resourceCommand;
@@ -89,7 +90,8 @@ internal static class ResourceCommand
         bool validate,
         bool edgeCasesEnabled,
         string[] selectors,
-        int seed)
+        int seed,
+        int? explicitSeed)
     {
         try
         {
@@ -102,7 +104,7 @@ internal static class ResourceCommand
 
             if (resourceType.Equals("Patient", StringComparison.OrdinalIgnoreCase))
             {
-                var builder = PatientBuilderFactory.Create(schemaProvider);
+                var builder = PatientBuilderFactory.Create(schemaProvider, explicitSeed);
 
                 if (!string.IsNullOrEmpty(firstname))
                     builder.WithGivenName(firstname);

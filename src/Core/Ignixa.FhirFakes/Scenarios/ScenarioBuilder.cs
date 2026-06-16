@@ -214,7 +214,7 @@ public sealed class ScenarioBuilder
                 configure(builder);
                 return builder;
             },
-            PatientBuilderFactory.Create)
+            sp => PatientBuilderFactory.Create(sp))
         {
             StartDate = startDate
         });
@@ -252,7 +252,7 @@ public sealed class ScenarioBuilder
                 configure?.Invoke(builder);
                 return builder;
             },
-            PatientBuilderFactory.Create)
+            sp => PatientBuilderFactory.Create(sp))
         {
             StartDate = startDate
         });
@@ -301,7 +301,7 @@ public sealed class ScenarioBuilder
                 configure?.Invoke(builder);
                 return builder;
             },
-            PatientBuilderFactory.Create)
+            sp => PatientBuilderFactory.Create(sp))
         {
             StartDate = startDate
         });
