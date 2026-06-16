@@ -28,6 +28,7 @@ FHIR validation is critical for production servers but must balance correctness,
 | [integration-summary](investigations/integration-summary.md) | Complete | FastPathValidator integration in Application layer (CreateOrUpdateResourceHandler) |
 | [depth-refactor](investigations/depth-refactor.md) | In Progress | Consolidate ValidationTier/Mode into single ValidationDepth enum |
 | [hapi-message-format](investigations/hapi-message-format.md) | Complete | HAPI FHIR OperationOutcome structure for ecosystem compatibility |
+| [primitive-value-validation-gap](investigations/primitive-value-validation-gap.md) | Viable | Non-choice primitives use loose TypeCheck instead of strict FhirPrimitiveValidator — control chars, empty strings, invalid calendar dates accepted. Found by fhir-faker edge-case mode |
 
 ## Decision
 
