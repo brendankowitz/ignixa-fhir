@@ -19,10 +19,7 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        // Emit UTF-8 so non-ASCII patient names and status glyphs render correctly in
-        // terminals, redirected output, and notebook runners (e.g. runme.dev), which decode
-        // captured output as UTF-8. Guarded: setting this throws when no console is attached.
-        try { Console.OutputEncoding = new UTF8Encoding(false); } catch { /* no console */ }
+        TryEnableUtf8ConsoleOutput();
 
         // Create root command
         var rootCommand = new RootCommand("FHIR Fakes - Generate and model FHIR test data");
@@ -38,6 +35,27 @@ class Program
         AddFhirVersionCommands(rootCommand, "r6", new R6CoreSchemaProvider());
 
         return await rootCommand.Parse(args).InvokeAsync();
+    }
+
+    /// <summary>
+    /// Emit UTF-8 so non-ASCII patient names and status glyphs render correctly in terminals,
+    /// redirected output, and notebook runners (e.g. runme.dev), which decode captured output as
+    /// UTF-8. Best-effort: setting the encoding throws when no console is attached (fully
+    /// redirected), so the failure is swallowed and surfaced via the return value.
+    /// </summary>
+    /// <returns><c>true</c> if the encoding was set; <c>false</c> if no console was available.</returns>
+    internal static bool TryEnableUtf8ConsoleOutput()
+    {
+        try
+        {
+            Console.OutputEncoding = new UTF8Encoding(false);
+            return true;
+        }
+        catch (Exception)
+        {
+            // No console attached or the platform doesn't allow changing the encoding.
+            return false;
+        }
     }
 
     /// <summary>
