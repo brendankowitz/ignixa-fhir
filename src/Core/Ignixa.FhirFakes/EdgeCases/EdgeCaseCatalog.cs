@@ -66,7 +66,13 @@ public sealed class EdgeCaseCatalog
             return true;
         }
 
-        return string.Equals(strategy.Family.ToString(), selector, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(strategy.Family.ToString(), selector, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Allow category-prefix matching so "string" selects "string.max-length", "string.injection-like", etc.
+        return strategy.Category.StartsWith(selector + ".", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RegisterBuiltIns()
@@ -82,5 +88,10 @@ public sealed class EdgeCaseCatalog
         Register(new FarPastTemporalStrategy());
         Register(new FarFutureTemporalStrategy());
         Register(new PartialPrecisionTemporalStrategy());
+        Register(new MaxLengthStringStrategy());
+        Register(new InjectionLikeStringStrategy());
+        Register(new ControlCharsStringStrategy());
+        Register(new EmptyPresentStringStrategy());
+        Register(new WhitespaceOnlyStringStrategy());
     }
 }

@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Bogus;
 using Ignixa.FhirFakes.Builders.Profiles;
+using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -91,6 +92,12 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
     private readonly Dictionary<string, object> _profileAttributes = new();
+
+    // Edge-case configuration
+    private bool _edgeCasesEnabled;
+    private IEnumerable<string>? _edgeCaseSelectors;
+    private int? _edgeCaseSeed;
+    private int? _baseSeed; // set by WithSeed for deriving edge-case seed
 
     // === Public Read-Only Access to Configured Values ===
     // These enable PopulationGenerator and other consumers to access sampled demographics
@@ -178,6 +185,37 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     public PatientBuilder WithSeed(int seed)
     {
         _faker = new Faker { Random = new Randomizer(seed) };
+        _baseSeed = seed;
+        return this;
+    }
+
+    /// <summary>
+    /// The mutation manifest from the most recent <see cref="Build"/> call that had edge cases enabled.
+    /// Null when edge cases were not enabled, or before the first Build().
+    /// </summary>
+    public MutationManifest? LastEdgeCaseManifest { get; private set; }
+
+    /// <summary>
+    /// Enables edge-case perturbation on the next <see cref="Build"/> call.
+    /// Edge cases are applied after the resource is fully constructed.
+    /// </summary>
+    /// <param name="seed">
+    /// Optional seed for the edge-case pipeline. When omitted, the seed is derived from
+    /// <see cref="WithSeed"/> if set (using the same base seed value), otherwise a random
+    /// seed is drawn from the builder's randomizer. Providing an explicit seed here or via
+    /// <see cref="WithSeed"/> makes the full build end-to-end reproducible.
+    /// </param>
+    /// <param name="selectors">
+    /// Optional family or category selectors (e.g., "temporal", "unicode.rtl").
+    /// When null or empty, all registered strategies are applied.
+    /// Matching is case-insensitive.
+    /// </param>
+    /// <returns>This builder for method chaining.</returns>
+    public PatientBuilder WithEdgeCases(int? seed = null, IEnumerable<string>? selectors = null)
+    {
+        _edgeCasesEnabled = true;
+        _edgeCaseSelectors = selectors;
+        _edgeCaseSeed = seed;
         return this;
     }
 
@@ -822,10 +860,26 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
             patientJson["identifier"] = BuildIdentifiers();
         }
 
-        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(patientJson);
+        var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>(patientJson);
+        ApplyEdgeCasesIfEnabled(resource);
+        return resource;
     }
 
     // === Private Helper Methods ===
+
+    private void ApplyEdgeCasesIfEnabled(ResourceJsonNode resource)
+    {
+        if (!_edgeCasesEnabled)
+        {
+            return;
+        }
+
+        var effectiveSeed = _edgeCaseSeed ?? _baseSeed ?? _faker.Random.Int();
+        var catalog = EdgeCaseCatalog.CreateDefault();
+        var strategies = catalog.Resolve(_edgeCaseSelectors);
+        var pipeline = new EdgeCasePipeline(effectiveSeed);
+        LastEdgeCaseManifest = pipeline.Apply(resource, strategies);
+    }
 
     private void CalculateDerivedFields()
     {

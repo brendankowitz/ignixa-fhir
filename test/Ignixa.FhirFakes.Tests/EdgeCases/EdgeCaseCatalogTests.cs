@@ -19,7 +19,7 @@ public class EdgeCaseCatalogTests
 
         all.ShouldContain(s => s.Family == EdgeCaseFamily.Unicode);
         all.ShouldContain(s => s.Family == EdgeCaseFamily.Temporal);
-        all.Count.ShouldBe(11);
+        all.Count.ShouldBe(16);
     }
 
     [Fact]

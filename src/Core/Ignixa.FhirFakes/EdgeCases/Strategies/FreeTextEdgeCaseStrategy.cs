@@ -24,10 +24,10 @@ public abstract class FreeTextEdgeCaseStrategy : IEdgeCaseStrategy
     public abstract string Category { get; }
 
     /// <inheritdoc />
-    public EdgeCaseFamily Family => EdgeCaseFamily.Unicode;
+    public virtual EdgeCaseFamily Family => EdgeCaseFamily.Unicode;
 
     /// <inheritdoc />
-    public ValidityIntent Intent => ValidityIntent.PreservesValidity;
+    public virtual ValidityIntent Intent => ValidityIntent.PreservesValidity;
 
     /// <inheritdoc />
     public bool CanApply(MutationTarget target)

@@ -38,11 +38,26 @@ public sealed class EdgeCasePipeline
     /// manifest of every change.
     /// </summary>
     public MutationManifest Apply(ResourceJsonNode resource, IReadOnlyList<IEdgeCaseStrategy> strategies)
+        => Apply(resource, strategies, includeNonValidityPreserving: false);
+
+    /// <summary>
+    /// Walks the resource, applies eligible strategies per <paramref name="includeNonValidityPreserving"/>,
+    /// mutates the resource in place, and returns a manifest of every change.
+    /// When <paramref name="includeNonValidityPreserving"/> is <see langword="false"/> the behaviour is
+    /// identical to <see cref="Apply(ResourceJsonNode, IReadOnlyList{IEdgeCaseStrategy})"/>.
+    /// </summary>
+    public MutationManifest Apply(
+        ResourceJsonNode resource,
+        IReadOnlyList<IEdgeCaseStrategy> strategies,
+        bool includeNonValidityPreserving)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(strategies);
 
-        var eligible = strategies.Where(s => s.Intent == ValidityIntent.PreservesValidity).ToList();
+        var eligible = includeNonValidityPreserving
+            ? strategies.ToList()
+            : strategies.Where(s => s.Intent == ValidityIntent.PreservesValidity).ToList();
+
         var records = new List<MutationRecord>();
 
         if (eligible.Count > 0)
