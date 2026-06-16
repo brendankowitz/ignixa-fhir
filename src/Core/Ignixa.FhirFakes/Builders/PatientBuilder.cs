@@ -931,14 +931,16 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
     private DateTime CalculateBirthDate()
     {
-        if (_birthYear.HasValue)
-        {
-            return new DateTime(_birthYear.Value, 7, 1);
-        }
+        // Anchor on the birth year (explicit, or derived from the target age); default to age 30.
+        var year = _birthYear ?? AgeHelper.BirthYearFromAge(_age ?? 30);
 
-        // Default: age 30, assuming mid-year birthday
-        var defaultBirthYear = AgeHelper.BirthYearFromAge(30);
-        return new DateTime(defaultBirthYear, 7, 1);
+        // Randomize the calendar day within that year so generated patients don't all share the
+        // same birthday (previously every patient was pinned to July 1). Honors an explicitly
+        // supplied month/day, and uses the seeded Bogus faker so generation stays deterministic.
+        var month = _birthMonth ?? _faker.Random.Int(1, 12);
+        var day = _birthDay ?? _faker.Random.Int(1, DateTime.DaysInMonth(year, month));
+
+        return new DateTime(year, month, day);
     }
 
     private JsonArray BuildName()

@@ -44,6 +44,29 @@ public class PatientBuilderTests
     }
 
     [Fact]
+    public void GivenManyPatientsFromAge_WhenBuilding_ThenBirthdaysVaryAndAreValidFullDates()
+    {
+        // Regression: previously every age-derived patient was pinned to the same calendar day
+        // (July 1 / Jan 1), so a whole population shared one birthday. Build a batch and assert the
+        // day actually varies and each value is a real yyyy-MM-dd date.
+        var birthDates = Enumerable.Range(0, 50)
+            .Select(_ => PatientBuilderFactory.Create(_schemaProvider)
+                .WithAge(40)
+                .Build()
+                .MutableNode["birthDate"]!.GetValue<string>())
+            .ToList();
+
+        foreach (var d in birthDates)
+        {
+            d.Length.ShouldBe(10);
+            DateTime.TryParse(d, out _).ShouldBeTrue($"'{d}' should be a valid date");
+        }
+
+        var distinctMonthDays = birthDates.Select(d => d[5..]).Distinct().Count();
+        distinctMonthDays.ShouldBeGreaterThan(5);
+    }
+
+    [Fact]
     public void GivenSimpleBuilder_WhenUsingSelectorPattern_ThenCreatesPatient()
     {
         // Arrange & Act
