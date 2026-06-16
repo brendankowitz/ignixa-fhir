@@ -373,19 +373,8 @@ public class JsonNodeMutator : IJsonNodeMutator
     /// <returns>JsonValue representation</returns>
     private static JsonNode? SerializePrimitive(object value)
     {
-        return value switch
-        {
-            string s => JsonValue.Create(s),
-            int i => JsonValue.Create(i),
-            long l => JsonValue.Create(l),
-            bool b => JsonValue.Create(b),
-            decimal d => JsonValue.Create(d),
-            double db => JsonValue.Create(db),
-            float f => JsonValue.Create(f),
-            DateTime dt => JsonValue.Create(dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
-            DateTimeOffset dto => JsonValue.Create(dto.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
-            _ => JsonNode.Parse(JsonSerializer.Serialize(value))
-        };
+        // Shared FHIRPath-primitive -> JSON contract (see ElementJsonConverter).
+        return ElementJsonConverter.ToJsonValue(value);
     }
 
     /// <summary>

@@ -42,7 +42,7 @@ public sealed class SourceNodeInstanceFactory(ISchema schema) : IInstanceFactory
         // result behaves like any other primitive (HasPrimitiveValue, scalar Value).
         if (definition.Info.IsPrimitive
             && elements is [{ Name: "value", Values: [var primitiveValue] }]
-            && ToJsonNode(primitiveValue) is JsonValue primitiveNode)
+            && ElementJsonConverter.ToJsonNode(primitiveValue) is JsonValue primitiveNode)
         {
             var primitiveSource = JsonNodeSourceNode.Create(primitiveNode, typeName);
             return new SchemaAwareElement(primitiveSource, _schema, definition, typeName);
@@ -52,7 +52,7 @@ public sealed class SourceNodeInstanceFactory(ISchema schema) : IInstanceFactory
         foreach (var element in elements)
         {
             var nodes = element.Values
-                .Select(ToJsonNode)
+                .Select(ElementJsonConverter.ToJsonNode)
                 .Where(n => n is not null)
                 .Select(n => n!)
                 .ToList();
@@ -68,56 +68,4 @@ public sealed class SourceNodeInstanceFactory(ISchema schema) : IInstanceFactory
         var source = JsonNodeSourceNode.Create(obj, typeName);
         return new SchemaAwareElement(source, _schema, definition, typeName);
     }
-
-    /// <summary>
-    /// Converts an evaluated FHIRPath value element to a JSON node. Source-node-backed
-    /// values expose their underlying JSON via <c>Meta&lt;JsonNode&gt;()</c> and are
-    /// cloned verbatim; primitive literals fall back to their scalar value.
-    /// </summary>
-    private static JsonNode? ToJsonNode(IElement value)
-    {
-        var backing = value.Meta<JsonNode>();
-        if (backing is not null)
-        {
-            return backing.DeepClone();
-        }
-
-        if (value.Value is { } scalar)
-        {
-            return ToJsonValue(scalar);
-        }
-
-        // Non-source-backed complex value: rebuild from its children by element name.
-        var obj = new JsonObject();
-        foreach (var group in value.Children().GroupBy(c => c.Name))
-        {
-            if (string.IsNullOrEmpty(group.Key))
-            {
-                continue;
-            }
-
-            var nodes = group.Select(ToJsonNode).Where(n => n is not null).Select(n => n!).ToList();
-            if (nodes.Count == 1)
-            {
-                obj[group.Key] = nodes[0];
-            }
-            else if (nodes.Count > 1)
-            {
-                obj[group.Key] = new JsonArray([.. nodes]);
-            }
-        }
-
-        return obj.Count > 0 ? obj : null;
-    }
-
-    private static JsonNode ToJsonValue(object value) => value switch
-    {
-        string s => JsonValue.Create(s),
-        bool b => JsonValue.Create(b),
-        int i => JsonValue.Create(i),
-        long l => JsonValue.Create(l),
-        decimal d => JsonValue.Create(d),
-        double db => JsonValue.Create(db),
-        _ => JsonValue.Create(value.ToString())!,
-    };
 }
