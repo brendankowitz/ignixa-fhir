@@ -4,7 +4,9 @@ using System.Text.Json;
 using Ignixa.FhirFakes.Cli.Discovery;
 using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Builders;
+using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
@@ -26,6 +28,8 @@ internal static class ResourceCommand
         var surnameOption = new Option<string?>("--surname") { Description = "Patient surname" };
         var fromOption = new Option<string?>("--from") { Description = "City to generate from" };
         var validateOption = new Option<bool>("--validate") { Description = "Validate generated resource against schema", DefaultValueFactory = _ => false };
+        var edgeCasesOption = new Option<string?>("--edge-cases") { Description = "Enable edge-case perturbation. Optionally specify comma-separated selectors (families or categories).", Arity = ArgumentArity.ZeroOrOne };
+        var seedOption = new Option<int?>("--seed") { Description = "Seed for reproducible edge-case generation" };
 
         resourceCommand.Arguments.Add(resourceTypeArg);
         resourceCommand.Arguments.Add(stateNameArg);
@@ -34,6 +38,8 @@ internal static class ResourceCommand
         resourceCommand.Options.Add(surnameOption);
         resourceCommand.Options.Add(fromOption);
         resourceCommand.Options.Add(validateOption);
+        resourceCommand.Options.Add(edgeCasesOption);
+        resourceCommand.Options.Add(seedOption);
 
         resourceCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -44,10 +50,31 @@ internal static class ResourceCommand
             var surname = parseResult.GetValue(surnameOption);
             var from = parseResult.GetValue(fromOption);
             var validate = parseResult.GetValue(validateOption);
-            await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder, firstname, surname, from, validate);
+
+            var edgeCasesEnabled = parseResult.GetResult(edgeCasesOption) is not null;
+            var edgeCasesValue = parseResult.GetValue(edgeCasesOption);
+            var selectors = ParseSelectors(edgeCasesValue);
+            var seed = parseResult.GetValue(seedOption) ?? (edgeCasesEnabled ? GenerateSeed() : 0);
+
+            if (edgeCasesEnabled && parseResult.GetValue(seedOption) is null)
+                Console.WriteLine($"Seed: {seed}  (pass --seed {seed} to replay)");
+
+            await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder,
+                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed);
         });
 
         return resourceCommand;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
+    private static int GenerateSeed() => Random.Shared.Next();
+
+    private static string[] ParseSelectors(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        return value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     private static async Task HandleResourceCommand(
@@ -59,11 +86,13 @@ internal static class ResourceCommand
         string? firstname,
         string? surname,
         string? from,
-        bool validate)
+        bool validate,
+        bool edgeCasesEnabled,
+        string[] selectors,
+        int seed)
     {
         try
         {
-            // Ensure output directory exists
             Directory.CreateDirectory(outFolder);
 
             JsonSerializerOptions options = new()
@@ -73,30 +102,26 @@ internal static class ResourceCommand
 
             if (resourceType.Equals("Patient", StringComparison.OrdinalIgnoreCase))
             {
-                // Use PatientBuilder
                 var builder = PatientBuilderFactory.Create(schemaProvider);
 
                 if (!string.IsNullOrEmpty(firstname))
                     builder.WithGivenName(firstname);
-                
+
                 if (!string.IsNullOrEmpty(surname))
                     builder.WithFamilyName(surname);
 
                 if (!string.IsNullOrEmpty(from))
                 {
-                    // Try to find city in known cities
                     var city = StateDiscovery.FindCity(from);
                     if (city != null)
-                    {
                         builder.FromCity(city);
-                    }
                     else
-                    {
                         builder.WithCity(from);
-                    }
                 }
 
                 var patient = builder.Build();
+                var manifest = ApplyEdgeCases(patient, edgeCasesEnabled, selectors, seed);
+
                 var id = patient.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                 var filename = $"{fhirVersion}-patient-{id}.json";
                 var outputPath = Path.Combine(outFolder, filename);
@@ -106,52 +131,40 @@ internal static class ResourceCommand
 
                 Console.WriteLine($"✓ Generated Patient: {outputPath}");
 
-                // Validate the generated resource
-                if (validate)
+                if (manifest is not null)
                 {
-                    var validationResult = ValidationHelper.ValidateResource(patient.MutableNode, schemaProvider);
-                    if (!validationResult.IsValid)
-                    {
-                        Console.WriteLine($"\n⚠️  Validation Issues Detected:");
-                        ValidationHelper.DisplayResults(validationResult, "Patient", fhirVersion, verbose: false);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"✓ Validation passed");
-                    }
+                    PrintEdgeCaseSummary(manifest);
+                    await WriteManifestAsync(outputPath, manifest);
                 }
+
+                if (validate)
+                    RunValidation(patient.MutableNode, schemaProvider, "Patient", fhirVersion);
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
-                // Use ObservationState factory method
                 var observationState = StateDiscovery.CreateObservationState(stateName);
                 if (observationState == null)
                 {
                     Console.WriteLine($"✗ Unknown observation state: {stateName}");
                     Console.WriteLine("Available states:");
                     foreach (var name in StateDiscovery.GetObservationStateNames())
-                    {
                         Console.WriteLine($"  - {name}");
-                    }
                     return;
                 }
 
-                // Create a minimal scenario to execute the state
                 var faker = new SchemaBasedFhirResourceFaker(schemaProvider);
                 var context = new Ignixa.FhirFakes.Scenarios.ScenarioContext();
-                
-                // Create a minimal patient
                 var patient = PatientBuilderFactory.Create(schemaProvider).Build();
                 context.Patient = patient;
 
-                // Execute the observation state
                 observationState.Execute(context, faker);
 
-                // Get the last resource (the observation) - use count instead of LastOrDefault
                 var allResources = context.AllResources;
                 if (allResources.Count > 0)
                 {
                     var observation = allResources[allResources.Count - 1];
+                    var manifest = ApplyEdgeCases(observation, edgeCasesEnabled, selectors, seed);
+
                     var id = observation.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                     var filename = $"{fhirVersion}-observation-{stateName}-{id}.json";
                     var outputPath = Path.Combine(outFolder, filename);
@@ -161,20 +174,14 @@ internal static class ResourceCommand
 
                     Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
 
-                    // Validate the generated resource
-                    if (validate)
+                    if (manifest is not null)
                     {
-                        var validationResult = ValidationHelper.ValidateResource(observation.MutableNode, schemaProvider);
-                        if (!validationResult.IsValid)
-                        {
-                            Console.WriteLine($"\n⚠️  Validation Issues Detected:");
-                            ValidationHelper.DisplayResults(validationResult, "Observation", fhirVersion, verbose: false);
-                        }
-                        else
-                        {
-                            Console.WriteLine($"✓ Validation passed");
-                        }
+                        PrintEdgeCaseSummary(manifest);
+                        await WriteManifestAsync(outputPath, manifest);
                     }
+
+                    if (validate)
+                        RunValidation(observation.MutableNode, schemaProvider, "Observation", fhirVersion);
                 }
             }
             else
@@ -186,6 +193,44 @@ internal static class ResourceCommand
         catch (Exception ex)
         {
             Console.WriteLine($"✗ Error: {ex.Message}");
+        }
+    }
+
+    private static MutationManifest? ApplyEdgeCases(ResourceJsonNode resource, bool enabled, string[] selectors, int seed)
+    {
+        if (!enabled)
+            return null;
+
+        var catalog = EdgeCaseCatalog.CreateDefault();
+        var strategies = catalog.Resolve(selectors);
+        var pipeline = new EdgeCasePipeline(seed);
+        return pipeline.Apply(resource, strategies);
+    }
+
+    private static async Task WriteManifestAsync(string resourcePath, MutationManifest manifest)
+    {
+        var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
+        await File.WriteAllTextAsync(manifestPath, manifest.ToJson());
+    }
+
+    private static void PrintEdgeCaseSummary(MutationManifest manifest)
+    {
+        Console.WriteLine($"  Edge cases: seed={manifest.Seed}, mutations={manifest.Mutations.Count}");
+        foreach (var group in manifest.Mutations.GroupBy(m => m.Category))
+            Console.WriteLine($"    {group.Key}: {group.Count()}");
+    }
+
+    private static void RunValidation(System.Text.Json.Nodes.JsonNode node, IFhirSchemaProvider schemaProvider, string resourceType, string fhirVersion)
+    {
+        var validationResult = ValidationHelper.ValidateResource(node, schemaProvider);
+        if (!validationResult.IsValid)
+        {
+            Console.WriteLine($"\n⚠️  Validation Issues Detected:");
+            ValidationHelper.DisplayResults(validationResult, resourceType, fhirVersion, verbose: false);
+        }
+        else
+        {
+            Console.WriteLine($"✓ Validation passed");
         }
     }
 }
