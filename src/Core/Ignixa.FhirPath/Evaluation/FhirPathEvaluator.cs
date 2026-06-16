@@ -1850,41 +1850,35 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [];
         }
 
-        // Resolve type name (handle namespace prefix like "FHIR.Identifier")
         var typeName = expression.TypeName;
 
-        // Lookup type definition from schema if available
-        var typeDefinition = context.Schema?.GetTypeDefinition(typeName);
-
-        // For empty object initializer (e.g., "Period {:}"), create empty complex element
-        if (expression.IsEmpty)
-        {
-            return [new ComplexElement(typeName, typeName, [], typeDefinition)];
-        }
-
-        // Evaluate all element assignments
-        var children = new List<(string name, IElement element)>();
-
+        // Evaluate element assignments. Per spec: an element whose value evaluates
+        // to an empty collection is omitted. Handles {:} / {} as zero elements.
+        var elements = new List<InstanceElement>();
         foreach (var assignment in expression.Elements)
         {
-            // Evaluate the value expression for this element
             var values = EvaluateExpression(context.Focus, assignment.ValueExpression, context).ToList();
-
-            // Per spec: If element value is empty collection, don't add the element
             if (values.Count == 0)
             {
                 continue;
             }
 
-            // Add each value as a child (supports cardinality > 1)
-            foreach (var value in values)
-            {
-                children.Add((assignment.ElementName, value));
-            }
+            elements.Add(new InstanceElement(assignment.ElementName, values));
         }
 
-        // Create and return the new complex element with type metadata
-        return [new ComplexElement(typeName, typeName, children, typeDefinition)];
+        // Preferred path: hand construction to the host's model/type system.
+        if (context.InstanceFactory is { } factory)
+        {
+            var created = factory.Create(typeName, expression.NamespacePrefix, elements);
+            return created is null ? [] : [created];
+        }
+
+        // Fallback (no factory wired): transient, navigation-only node with no
+        // round-trip and no schema-driven type metadata. See investigation doc.
+        var children = elements
+            .SelectMany(e => e.Values.Select(v => (e.Name, v)))
+            .ToList();
+        return [new ComplexElement(typeName, typeName, children)];
     }
 
     private IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");

@@ -147,10 +147,11 @@ public record EvaluationContext
     public Action<NodeEvaluationEntry>? NodeEvaluationHandler { get; init; }
 
     /// <summary>
-    /// Optional FHIR schema provider for type metadata lookup.
-    /// Used by instance selectors to attach type information to created elements.
+    /// Optional host-provided factory for instance-selector object creation.
+    /// When set, the engine delegates construction; otherwise it falls back to a
+    /// transient, navigation-only node. Replaces the former Schema property.
     /// </summary>
-    public ISchema? Schema { get; init; }
+    public IInstanceFactory? InstanceFactory { get; init; }
 
     /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).
@@ -307,11 +308,11 @@ public record EvaluationContext
     }
 
     /// <summary>
-    /// Creates a new context with the specified FHIR schema provider.
+    /// Creates a new context with the specified instance-creation factory.
     /// </summary>
-    public EvaluationContext WithSchema(ISchema schema)
+    public EvaluationContext WithInstanceFactory(IInstanceFactory instanceFactory)
     {
-        return this with { Schema = schema };
+        return this with { InstanceFactory = instanceFactory };
     }
 
     /// <summary>

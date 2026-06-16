@@ -498,76 +498,134 @@ public class InstanceSelectorTests
 
     #endregion
 
-    #region Schema Attachment Tests
+    #region Instance Factory Seam (spike)
 
     [Fact]
-    public void GivenSchemaInContext_WhenInstanceSelector_ThenAttachesTypeMetadata()
+    public void GivenInstanceFactory_WhenInstanceSelector_ThenDelegatesConstruction()
     {
         // Arrange
         var expression = "Coding { system: 'http://example.org', code: 'c1' }";
         var ast = _parser.Parse(expression);
-        var root = CreateIntegerElement(1);
-
-        // Create context with R4 schema
-        var schema = new Ignixa.Specification.Generated.R4CoreSchemaProvider();
+        var factory = new RecordingInstanceFactory();
         var context = new EvaluationContext()
-            .WithFocus(root)
-            .WithSchema(schema);
+            .WithFocus(CreateIntegerElement(1))
+            .WithInstanceFactory(factory);
+
+        // Act
+        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert - the engine handed construction to the factory with the right inputs
+        Assert.Equal(1, factory.CallCount);
+        Assert.Equal("Coding", factory.LastTypeName);
+        Assert.Null(factory.LastNamespacePrefix);
+        var expectedNames = new[] { "system", "code" };
+        Assert.Equal(expectedNames, factory.LastElements.Select(e => e.Name).ToArray());
+
+        // ...and returned the factory's node, which the engine navigates normally
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+        Assert.Equal("http://example.org", result[0].Children("system").Single().Value);
+        Assert.Equal("c1", result[0].Children("code").Single().Value);
+    }
+
+    [Fact]
+    public void GivenInstanceFactoryReturningNull_WhenInstanceSelector_ThenResultIsEmpty()
+    {
+        // Arrange - host cannot construct the type
+        var ast = _parser.Parse("Coding { code: 'c1' }");
+        var context = new EvaluationContext()
+            .WithFocus(CreateIntegerElement(1))
+            .WithInstanceFactory(new NullInstanceFactory());
 
         // Act
         var result = ast.AcceptVisitor(_evaluator, context).ToList();
 
         // Assert
-        Assert.Single(result);
-        Assert.Equal("Coding", result[0].InstanceType);
-
-        // Verify Type metadata is attached
-        Assert.NotNull(result[0].Type);
-        Assert.Equal("Coding", result[0].Type!.Info.Name);
+        Assert.Empty(result);
     }
 
     [Fact]
-    public void GivenNoSchemaInContext_WhenInstanceSelector_ThenTypeIsNull()
+    public void GivenNamespacePrefix_WhenInstanceSelector_ThenFactoryReceivesPrefix()
+    {
+        // Arrange - namespace prefix is now flowed to the factory (was dropped before)
+        var ast = _parser.Parse("FHIR.Coding { code: 'c1' }");
+        var factory = new RecordingInstanceFactory();
+        var context = new EvaluationContext()
+            .WithFocus(CreateIntegerElement(1))
+            .WithInstanceFactory(factory);
+
+        // Act
+        _ = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert
+        Assert.Equal("Coding", factory.LastTypeName);
+        Assert.Equal("FHIR", factory.LastNamespacePrefix);
+    }
+
+    [Fact]
+    public void GivenNoFactory_WhenInstanceSelector_ThenFallsBackToTransientNode()
     {
         // Arrange
         var expression = "Coding { system: 'http://example.org', code: 'c1' }";
         var ast = _parser.Parse(expression);
-        var root = CreateIntegerElement(1);
 
-        // Act - no schema in context
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        // Act - no factory wired
+        var result = _evaluator.Evaluate(CreateIntegerElement(1), ast).ToList();
 
-        // Assert
+        // Assert - fallback node is navigable but carries no schema-driven type metadata
         Assert.Single(result);
         Assert.Equal("Coding", result[0].InstanceType);
-
-        // Verify Type is null when no schema provided
+        Assert.Equal("http://example.org", result[0].Children("system").Single().Value);
         Assert.Null(result[0].Type);
     }
 
-    [Fact]
-    public void GivenUnknownTypeWithSchema_WhenInstanceSelector_ThenTypeIsNull()
+    private sealed class RecordingInstanceFactory : IInstanceFactory
     {
-        // Arrange - using a completely made-up type that doesn't exist in FHIR
-        var expression = "CompletelyMadeUpType { field: 'value' }";
-        var ast = _parser.Parse(expression);
-        var root = CreateIntegerElement(1);
+        public int CallCount { get; private set; }
+        public string? LastTypeName { get; private set; }
+        public string? LastNamespacePrefix { get; private set; }
+        public IReadOnlyList<InstanceElement> LastElements { get; private set; } = [];
 
-        // Create context with R4 schema
-        var schema = new Ignixa.Specification.Generated.R4CoreSchemaProvider();
-        var context = new EvaluationContext()
-            .WithFocus(root)
-            .WithSchema(schema);
+        public IElement? Create(string typeName, string? namespacePrefix, IReadOnlyList<InstanceElement> elements)
+        {
+            CallCount++;
+            LastTypeName = typeName;
+            LastNamespacePrefix = namespacePrefix;
+            LastElements = elements;
 
-        // Act
-        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+            var children = elements.SelectMany(e => e.Values.Select(v => (e.Name, v))).ToList();
+            return new FactoryNode(typeName, children);
+        }
+    }
 
-        // Assert
-        Assert.Single(result);
-        Assert.Equal("CompletelyMadeUpType", result[0].InstanceType);
+    private sealed class NullInstanceFactory : IInstanceFactory
+    {
+        public IElement? Create(string typeName, string? namespacePrefix, IReadOnlyList<InstanceElement> elements) => null;
+    }
 
-        // Verify Type is null for unknown types
-        Assert.Null(result[0].Type);
+    private sealed class FactoryNode : IElement
+    {
+        private readonly List<(string name, IElement element)> _children;
+
+        public FactoryNode(string instanceType, List<(string name, IElement element)> children)
+        {
+            InstanceType = instanceType;
+            _children = children;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType { get; }
+        public object? Value => null;
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public bool HasPrimitiveValue => false;
+
+        public IReadOnlyList<IElement> Children(string? name = null) =>
+            name == null
+                ? _children.Select(c => c.element).ToList()
+                : _children.Where(c => c.name == name).Select(c => c.element).ToList();
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion
