@@ -199,14 +199,30 @@ Built the native backing and proved it:
 - Tests: `SourceNodeInstanceFactoryTests` (5) — navigable typed node, JSON
   round-trip, empty object, unknown-type→null, System-namespace→null. Green.
 
-Not yet done:
+### Integration (2026-06-16)
 
-- **Wiring**: no `EvaluationContext` construction site sets `InstanceFactory`
-  yet — instance selectors still hit the `ComplexElement` fallback in production.
+Wiring strategy: **explicit per-call injection** at schema-bearing sites.
+
+- **Validation invariants wired**: `FhirPathInvariantCheck` builds a lazy
+  `EvaluationContext().WithInstanceFactory(new SourceNodeInstanceFactory(_schema))`
+  and passes it to `Evaluate`. Validation suite green (489/490; the one failure
+  is a pre-existing wall-clock flake on a `Minimal`-depth timing test that
+  doesn't run invariants — passes in isolation at 270ms).
 - **Analyzer type inference** (gap #3): `FhirPathAnalyzer.VisitInstanceSelector`
-  still inherits the `default!` no-op.
-- **Special `value` element** (gap #1): primitive *target* types using the
-  `value` element name aren't special-cased in the factory yet.
+  now infers the declared type (resolves via schema; falls back to the type name
+  for unknowns) and still visits child value expressions. Analyzer tests green.
+- **Special `value` element** (gap #1): `SourceNodeInstanceFactory` now produces
+  a primitive node (not a complex object) when the target type is primitive and
+  the sole element is `value` — e.g. `code { value: 'final' }` → primitive `code`.
+
+Still deferred:
+
+- **Mapping engine wiring**: `FhirMappingLanguage.FhirPathIntegration` has no
+  `ISchema` in scope (ctor takes only a cache flag); wiring it means threading a
+  schema through the mapping engine. The FHIR Mapping Language has its own
+  `create` mechanism, so this is lower priority — deferred.
+- **Namespace `System.` construction**: factory declines it; no consumer needs
+  System-type construction yet.
 
 ## Verdict
 

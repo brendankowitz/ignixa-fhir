@@ -696,6 +696,29 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         return result;
     }
 
+    public override FhirPathTypeSet VisitInstanceSelector(InstanceSelectorExpression expression, AnalysisContext context)
+    {
+        var result = new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
+
+        foreach (var element in expression.Elements)
+        {
+            element.ValueExpression.AcceptVisitor(visitor, context);
+        }
+
+        var typeDef = _schema.GetTypeDefinition(expression.TypeName);
+        if (typeDef != null)
+        {
+            result.AddType(typeDef, false, expression.TypeName);
+        }
+        else
+        {
+            result.AddPrimitiveType(expression.TypeName);
+        }
+
+        return result;
+    }
+
     public override FhirPathTypeSet VisitEmpty(EmptyExpression expression, AnalysisContext context)
     {
         return new FhirPathTypeSet();

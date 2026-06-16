@@ -78,6 +78,23 @@ public class SourceNodeInstanceFactoryTests
     }
 
     [Fact]
+    public void GivenPrimitiveTypeWithValueElement_WhenCreate_ThenReturnsPrimitiveNode()
+    {
+        // Arrange - per spec, primitive target types carry their value via "value"
+        var elements = new[] { new InstanceElement("value", [Prim("final", "string")]) };
+
+        // Act
+        var result = _factory.Create("code", null, elements);
+
+        // Assert - a primitive node, not a complex object with a "value" child
+        Assert.NotNull(result);
+        Assert.Equal("code", result!.InstanceType);
+        Assert.True(result.HasPrimitiveValue);
+        Assert.Equal("final", result.Value);
+        Assert.Empty(result.Children());
+    }
+
+    [Fact]
     public void GivenUnknownType_WhenCreate_ThenReturnsNull()
     {
         var result = _factory.Create("CompletelyMadeUpType", null, []);

@@ -37,6 +37,17 @@ public sealed class SourceNodeInstanceFactory(ISchema schema) : IInstanceFactory
             return null;
         }
 
+        // Per spec, primitive target types carry their value via the special "value"
+        // element. Build a primitive value node rather than a complex object so the
+        // result behaves like any other primitive (HasPrimitiveValue, scalar Value).
+        if (definition.Info.IsPrimitive
+            && elements is [{ Name: "value", Values: [var primitiveValue] }]
+            && ToJsonNode(primitiveValue) is JsonValue primitiveNode)
+        {
+            var primitiveSource = JsonNodeSourceNode.Create(primitiveNode, typeName);
+            return new SchemaAwareElement(primitiveSource, _schema, definition, typeName);
+        }
+
         var obj = new JsonObject();
         foreach (var element in elements)
         {

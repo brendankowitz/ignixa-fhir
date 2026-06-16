@@ -32,6 +32,7 @@ public class FhirPathInvariantCheck : IValidationCheck
     private readonly IReadOnlyList<string> _appliesTo;
     private readonly ILogger? _logger;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
+    private readonly Lazy<EvaluationContext> _evaluationContext;
     private readonly Lazy<FhirPath.Expressions.Expression?> _compiledExpression;
 
     /// <summary>
@@ -74,6 +75,11 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         // Lazy compilation - parse FHIRPath expression only when first needed
         _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
+
+        // Instance selectors (Type { ... }) delegate object construction to a
+        // schema-backed factory so created instances are first-class nodes.
+        _evaluationContext = new Lazy<EvaluationContext>(() =>
+            new EvaluationContext().WithInstanceFactory(new SourceNodeInstanceFactory(_schema)));
         _compiledExpression = new Lazy<FhirPath.Expressions.Expression?>(() =>
         {
             try
@@ -183,8 +189,8 @@ public class FhirPathInvariantCheck : IValidationCheck
             // Evaluate the FHIRPath expression. When tree-context scope has been seeded
             // (resource roots and contained recursion), supply %resource / %rootResource /
             // resolve() so root-referencing invariants (dom-*, bdl-*) evaluate correctly.
-            // When scope is unseeded (some direct callers/tests), fall back to context-free
-            // evaluation, which defaults %resource to the constrained element as before.
+            // When scope is unseeded (some direct callers/tests), fall back to a bare context,
+            // which defaults %resource to the constrained element as before.
             var result = _evaluator.Value.Evaluate(element, expression, BuildEvaluationContext(state));
 
             // Convert result to boolean
@@ -260,22 +266,24 @@ public class FhirPathInvariantCheck : IValidationCheck
     }
 
     /// <summary>
-    /// Builds the FHIRPath evaluation context from the validation scope. Returns null when no
-    /// resource scope has been seeded, preserving context-free evaluation for direct callers.
+    /// Builds the FHIRPath evaluation context from the validation scope. Always carries the
+    /// instance factory so instance selectors (<c>Type { ... }</c>) construct schema-backed nodes;
+    /// resource scope (%resource / %rootResource / resolve()) is layered on when seeded.
     /// </summary>
-    private static EvaluationContext? BuildEvaluationContext(ValidationState state)
+    private EvaluationContext BuildEvaluationContext(ValidationState state)
     {
         var scope = state.Scope;
         if (scope.Resource is null)
         {
-            return null;
+            return _evaluationContext.Value;
         }
 
         return new FhirEvaluationContext
         {
             Resource = scope.Resource,
             RootResource = scope.RootResource,
-            ElementResolver = scope.Resolver
+            ElementResolver = scope.Resolver,
+            InstanceFactory = _evaluationContext.Value.InstanceFactory
         };
     }
 
