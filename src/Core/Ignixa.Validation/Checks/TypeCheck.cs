@@ -125,6 +125,22 @@ public class TypeCheck : IValidationCheck
                     location));
         }
 
+        // Delegate value-content validation to the strict shared validator so non-choice primitives
+        // get the same always-invalid rules as choice elements (empty-string rejection, calendar-date
+        // validity, component ranges, integer range, JSON-kind). TypeCheck retains the
+        // id/uri/url/oid/uuid/canonical format checks above, which FhirPrimitiveValidator does not cover.
+        //
+        // dateTime carries a documented depth-graded format leniency (bug #210-4): loose timezone
+        // precision is accepted at Spec/Compatibility and rejected only at Full. TypeCheck already
+        // applied that depth-aware dateTime format check above, so suppress the delegate's strict
+        // dateTime format regex except at Full depth; calendar validity still applies at every depth.
+        var enforceStrictDateFormat = _expectedType != "dateTime" || settings.Depth == ValidationDepth.Full;
+        if (!FhirPrimitiveValidator.TryValidate(fieldNode, _expectedType, enforceStrictDateFormat, out var primitiveReason))
+        {
+            return ValidationResult.Failure(
+                ValidationIssue.InvariantFailure("type-1", primitiveReason!, location));
+        }
+
         return ValidationResult.Success();
     }
 

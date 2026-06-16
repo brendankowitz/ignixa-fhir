@@ -790,4 +790,151 @@ public class TypeCheckTests
             result.Issues.ShouldBeEmpty();
         }
     }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenEmptyButPresentString_WhenValidating_ThenReturnsType1Error()
+    {
+        // Arrange - empty-but-present family is spec-invalid (base string regex requires >=1 char)
+        var json = JsonNode.Parse("""{"resourceType":"Patient","name":[{"family":""}]}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Code.ShouldBe("type-1");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenInvalidCalendarDate_WhenValidating_ThenReturnsType1Error()
+    {
+        // Arrange - February 31st is an impossible calendar date
+        var json = JsonNode.Parse("""{"resourceType":"Patient","birthDate":"2000-02-31"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("birthDate", "date");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Code.ShouldBe("type-1");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenOutOfRangeMonth_WhenValidating_ThenReturnsType1Error()
+    {
+        // Arrange - month 13 does not exist
+        var json = JsonNode.Parse("""{"resourceType":"Patient","birthDate":"2000-13"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("birthDate", "date");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Code.ShouldBe("type-1");
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenNonEmptyString_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - guard: ordinary string value must still pass after stricter delegation
+        var json = JsonNode.Parse("""{"resourceType":"Patient","name":[{"family":"Smith"}]}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Theory]
+    [InlineData("2000-02-29")] // valid leap day
+    [InlineData("2000")] // valid partial precision (year only)
+    [InlineData("2000-06")] // valid partial precision (year-month)
+    public void GivenValidDate_WhenValidating_ThenReturnsSuccess(string dateValue)
+    {
+        // Arrange
+        var json = JsonNode.Parse($$"""{"resourceType":"Patient","birthDate":"{{dateValue}}"}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("birthDate", "date");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue($"date '{dateValue}' should be valid");
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenWhitespaceOnlyString_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - whitespace-only is valid per the FHIR string regex [ \r\n\t\S]+ (caveat locked in)
+        var json = JsonNode.Parse("""{"resourceType":"Patient","name":[{"family":"   "}]}""");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Trait("Category", "Regression")]
+    [Fact]
+    public void GivenControlCharString_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - control chars match \S in the FHIR string regex; NOT a hard type violation (caveat)
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"a\\u0007b\"}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
 }

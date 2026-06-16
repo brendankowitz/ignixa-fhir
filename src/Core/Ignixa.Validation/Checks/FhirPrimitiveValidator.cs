@@ -70,6 +70,23 @@ public static class FhirPrimitiveValidator
     /// <param name="reason">On failure, a human-readable explanation.</param>
     /// <returns>True if valid (or not applicable); false if the value violates the type rules.</returns>
     public static bool TryValidate(IElement element, string fhirType, out string? reason)
+        => TryValidate(element, fhirType, enforceStrictDateFormat: true, out reason);
+
+    /// <summary>
+    /// Validates the primitive value, with control over the strict date-family <em>format</em> regex.
+    /// </summary>
+    /// <param name="element">The element carrying the primitive value.</param>
+    /// <param name="fhirType">The declared FHIR primitive type.</param>
+    /// <param name="enforceStrictDateFormat">
+    /// When false, the strict date/dateTime/time/instant <em>format</em> regex is skipped while the
+    /// depth-independent rules (empty-string rejection, calendar-date validity, numeric kind/range)
+    /// still apply. Lets a caller that already applies its own depth-graded date format (e.g.
+    /// <see cref="TypeCheck"/>'s dateTime leniency, bug #210-4) add the always-invalid checks without
+    /// re-imposing strict format.
+    /// </param>
+    /// <param name="reason">On failure, a human-readable explanation.</param>
+    /// <returns>True if valid (or not applicable); false if the value violates the type rules.</returns>
+    public static bool TryValidate(IElement element, string fhirType, bool enforceStrictDateFormat, out string? reason)
     {
         reason = null;
         if (!PrimitiveTypes.Contains(fhirType))
@@ -147,11 +164,11 @@ public static class FhirPrimitiveValidator
                     return false;
                 }
 
-                return ValidateStringFormat(text, fhirType, out reason);
+                return ValidateStringFormat(text, fhirType, enforceStrictDateFormat, out reason);
         }
     }
 
-    private static bool ValidateStringFormat(string text, string fhirType, out string? reason)
+    private static bool ValidateStringFormat(string text, string fhirType, bool enforceStrictDateFormat, out string? reason)
     {
         reason = null;
         var pattern = fhirType switch
@@ -163,7 +180,7 @@ public static class FhirPrimitiveValidator
             _ => null,
         };
 
-        if (pattern is not null && !pattern.IsMatch(text))
+        if (enforceStrictDateFormat && pattern is not null && !pattern.IsMatch(text))
         {
             reason = $"value '{text}' is not a valid FHIR {fhirType}";
             return false;
