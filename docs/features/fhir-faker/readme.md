@@ -14,6 +14,7 @@ Test data generation library for creating realistic FHIR resources across versio
 | [scenario-builder](investigations/scenario-builder.md) | Viable | 2025-12-05 | CareTeam support, custom identifiers, StateId pattern |
 | [state-id-pattern](investigations/state-id-pattern.md) | Viable | 2025-12-05 | Cross-state resource references using StateId |
 | [improvements-summary](investigations/improvements-summary.md) | Complete | 2025-12-02 | Implementation summary of cross-version compatibility work |
+| [adversarial-data-generation](investigations/adversarial-data-generation.md) | In Progress | 2026-06-16 | Edge-case/adversarial generation mode (unicode, temporal, boundary, cardinality) to fuzz pipelines & validators |
 
 ## Overview
 
