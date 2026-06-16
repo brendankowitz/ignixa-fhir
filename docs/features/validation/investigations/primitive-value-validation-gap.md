@@ -13,9 +13,17 @@ calendar-date validity) for **choice elements only** (`value[x]`). For ordinary 
 elements — the overwhelming majority, e.g. `Patient.name.family` (string), `Patient.birthDate`
 (date) — it runs a *different, weaker* checker that accepts values the FHIR spec forbids.
 
-Concretely, a generated Patient with control characters in `name.family`, an empty-but-present
-`family`, or (by the same path) an impossible calendar date in `birthDate` passes validation with
-zero issues.
+Concretely, a generated Patient with an empty-but-present `family`, or (by the same path) an
+impossible calendar date in `birthDate` (e.g. `2000-02-31`, `2000-13`), passes validation with zero
+issues.
+
+> **Correction (control characters).** An earlier draft listed control characters in string fields as
+> a third hard gap. That was overstated. The published FHIR R4 `string` value regex is `[ \r\n\t\S]+`;
+> `\S` matches C0 control characters, so control chars are **not** a hard type violation — the
+> spec's "avoid characters below U+0020" guidance is prose-level SHOULD, not enforced by the type.
+> The strict `FhirPrimitiveValidator` also accepts them. So `string.control-chars` passing is
+> acceptable; rejecting control chars would be an optional Warning-level enhancement, out of scope
+> for this fix. The two **unambiguous** Error-level gaps are empty-string and invalid-calendar-date.
 
 ## Root cause: two divergent primitive validators, only one wired broadly
 
@@ -45,9 +53,10 @@ ordinary elements.
 
 ## Specific gaps in `TypeCheck` (non-choice primitive path)
 
-1. **String character grammar not enforced.** `GetValidationByType` returns `"string" => true`
-   (`TypeCheck.cs:179`). FHIR `string` is `[\r\n\t -￿]+` — C0 control characters
-   (U+0000, U+0007, U+001B, …) are illegal but accepted. Same for `code`/`markdown`.
+1. **(Caveat, not a hard gap) String character handling.** `GetValidationByType` returns
+   `"string" => true` (`TypeCheck.cs:179`). Per the literal FHIR `string` regex `[ \r\n\t\S]+`, this is
+   acceptable for control characters (see Correction above). The only string-content rule actually
+   missing here is the empty-string one — covered next.
 2. **Empty string accepted.** An empty-but-present primitive passes. `TypeCheck.cs:106-108` even
    carries a comment that "An empty string … should be validated against the type's rules," but the
    code does not do it — `FhirPrimitiveValidator.cs:144` is the one that actually rejects it.
@@ -68,18 +77,19 @@ mutations=15  (string.control-chars: 6, string.empty-present: 1, string.whitespa
 ✓ Validation passed
 ```
 MayViolate string strategies fired on free-text (`string`-typed) fields and the validator reported
-no issues. `string.whitespace-only` passing is actually **correct** (FHIR base `string` permits
-whitespace; only `code`/`id` forbid it), but `control-chars` and `empty-present` passing are genuine
-spec violations the validator missed.
+no issues. `string.whitespace-only` and `string.control-chars` passing are actually **correct** for
+`string`-typed fields (FHIR base `string` permits whitespace and, per `[ \r\n\t\S]+`, control chars;
+only `code`/`id` forbid whitespace). The genuine spec violation the validator missed is
+`empty-present` — and, by the same loose path, invalid calendar dates on `date`/`dateTime` elements.
 
 ## Impact
 
 - **Severity: moderate.** Structural/cardinality/type-kind validation is intact (a number-where-a-
   string-belongs is still caught by `TypeCheck`'s JSON-kind check). The gap is in *value-content*
   conformance for non-choice primitives.
-- A FHIR server can ingest and persist resources with control characters in text fields, empty
-  primitives, and impossible dates — which then flow to clients, search indexing, and round-trip
-  serialization. This is exactly the #280/#281 class (bad bytes surviving the pipeline).
+- A FHIR server can ingest and persist resources with empty primitives and impossible dates — which
+  then flow to clients, search indexing, and round-trip serialization. This is the #281 class
+  (bad temporal values surviving the pipeline).
 - The inconsistency (choice elements strict, everything else loose) is a correctness/parity bug
   against the FHIR spec and against the validator's own stated intent.
 
@@ -98,16 +108,19 @@ spec violations the validator missed.
 
 ## Recommendation
 
-Option 1. Unify on `FhirPrimitiveValidator` for all primitive elements by having `TypeCheck` delegate
-value-content validation to it. Add regression tests to `TypeCheckTests` for: control chars in a
-`string` field, empty-but-present primitive, and an invalid calendar date in `birthDate` — all
-expected to fail. Keep `whitespace-only` on `string` passing (it is valid) but ensure `code`/`id`
-whitespace is rejected via the shared validator.
+Option 1, **additively**. `TypeCheck` keeps its existing checks (JSON-kind, and the `id`/`uri`/`url`/
+`oid`/`uuid`/`canonical` format checks that `FhirPrimitiveValidator` does **not** cover) and *also*
+delegates value-content validation to `FhirPrimitiveValidator`. The net effect is strictly more
+rejections: empty primitives, invalid calendar dates, out-of-range date components, and stricter
+integer/date-family rules now apply to non-choice elements too — matching what choice elements
+already get. Add regression tests to `TypeCheckTests` for: empty-but-present primitive and an invalid
+calendar date (`2000-02-31`, `2000-13`) → expected to fail; valid values (incl. partial dates like
+`2000`, leap `2000-02-29`) → still pass. `whitespace-only`/`control-chars` on `string` stay passing
+(valid). Control-char rejection, if ever wanted, is a separate Warning-level enhancement.
 
 This is a validation-engine change, independent of the faker. The faker's edge-case mode did its job:
 it surfaced a real, previously-untested conformance gap on its first adversarial run, and the
-`string.control-chars` / `string.empty-present` strategies should become regression fixtures for the
-fix.
+`string.empty-present` strategy should become a regression fixture for the fix.
 
 ## Verdict
 
