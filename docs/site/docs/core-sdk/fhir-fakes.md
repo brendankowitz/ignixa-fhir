@@ -364,12 +364,56 @@ The `--ndjson` format creates separate files for each resource type (Patient.ndj
 
 ### Resource Command
 
-Generate random resources based on schema:
+Generate individual resources based on schema. This command now supports edge-case perturbation, seeded reproducibility, and density control.
 
 ```bash
 # Generate a random Patient resource
 ignixa-fakes r4 resource Patient --out ./output
+
+# Generate with explicit demographics
+ignixa-fakes r4 resource Patient --out ./output --firstname Jane --surname Doe --from Boston
+
+# Generate a seeded, reproducible Patient
+ignixa-fakes r4 resource Patient --out ./output --seed 42
+
+# Generate with all edge-case families applied and validate the result
+ignixa-fakes r4 resource Patient --out ./output --edge-cases --seed 42 --validate
+
+# Apply only the unicode and temporal families
+ignixa-fakes r4 resource Patient --out ./output --edge-cases unicode,temporal --seed 42
+
+# Apply a single category
+ignixa-fakes r4 resource Patient --out ./output --edge-cases unicode.rtl --seed 42
+
+# Include non-validity-preserving strategies (MayViolate / AlwaysInvalid) for negative testing
+ignixa-fakes r4 resource Patient --out ./output --edge-cases --include-invalid --validate
+
+# Generate an Observation in a specific clinical state
+ignixa-fakes r4 resource Observation BloodGlucose --out ./output
+
+# Generate any resource type at maximal density (all optional elements populated)
+ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximal
 ```
+
+**Exit codes for scripting / CI:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Runtime error (generation or I/O failure, or `--validate` failed without `--include-invalid`) |
+| `2` | Usage error (invalid arguments, unknown `--edge-cases` selector, unknown `--density` value, unsupported resource type) |
+
+When `--edge-cases` is specified without `--seed`, the CLI prints the auto-generated seed so you can replay the run:
+
+```
+Seed: 1234567890  (pass --seed 1234567890 to replay)
+```
+
+**Output files:**
+
+For Patient and Observation (minimal density), the output filename is `{version}-patient-{id}.json` or `{version}-observation-{stateName}-{id}.json`. For non-minimal density or other resource types, the filename is `{version}-{resourcetype}-{density}-{id}.json`.
+
+When edge cases are applied, a sidecar `.manifest.json` file is written alongside the resource file (see [Edge-Case Manifest](#edge-case-manifest)).
 
 ### Command Reference
 
@@ -377,8 +421,248 @@ ignixa-fakes r4 resource Patient --out ./output
 |---------|---------|
 | `scenario <name>` | `--out`, `--resolved-references`, `--validate` |
 | `population` | `--out`, `--from`, `--count`, `--resolved-references`, `--ndjson` |
-| `resource <type>` | `--out` |
+| `resource <type> [stateName]` | `--out`, `--firstname`, `--surname`, `--from`, `--validate`, `--edge-cases [selectors]`, `--seed`, `--include-invalid`, `--density`, `--verbose` |
 | `help scenarios` | Lists all available predefined scenarios |
+
+## Deterministic / Reproducible Generation
+
+All three generation surfaces support seeded, byte-reproducible output.
+
+**Determinism contract:** the same seed plus the same configuration produces byte-identical JSON on every run, with one exception — `meta.lastUpdated` is stamped with the wall-clock time by the schema-based generator and therefore differs between runs even with an identical seed.
+
+### PatientBuilder
+
+Call `WithSeed(int)` on the builder, or pass `seed` to the factory:
+
+```csharp
+using Ignixa.FhirFakes.Builders;
+
+// Via factory (recommended)
+var patient = PatientBuilderFactory.Create(schemaProvider, seed: 42)
+    .WithAge(35)
+    .WithGender(g => g.Female)
+    .Build();
+
+// Via builder method
+var patient = PatientBuilderFactory.Create(schemaProvider)
+    .WithSeed(42)
+    .WithAge(35)
+    .Build();
+```
+
+`WithSeed(int)` sets the underlying `Bogus.Randomizer` for names, addresses, phone numbers, BMI, and the default id. When combined with `WithEdgeCases`, the edge-case pipeline derives its seed from the same base value unless you override it explicitly.
+
+### SchemaBasedFhirResourceFaker
+
+Pass a seed to the constructor. The seed is propagated to any `PatientBuilder` created internally (`CreatePatient`, `CreateSeattlePatient`):
+
+```csharp
+var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 42)
+{
+    Density = GenerationDensity.Maximal
+};
+
+var patient = faker.Generate("Patient");
+var observation = faker.Generate("Observation");
+```
+
+### CLI
+
+Pass `--seed` to the `resource` command. When `--edge-cases` is active and no `--seed` is provided, a seed is drawn at runtime and printed to stdout for replay:
+
+```bash
+# Explicit seed — fully reproducible
+ignixa-fakes r4 resource Patient --out ./output --seed 42
+
+# Auto seed with edge cases — printed to stdout
+ignixa-fakes r4 resource Patient --out ./output --edge-cases
+# Seed: 1234567890  (pass --seed 1234567890 to replay)
+```
+
+---
+
+## Edge-Case / Fuzz Data Generation
+
+Edge-case generation produces *valid-but-hostile* FHIR resources that stress parsers, validators, rendering layers, and data pipelines without requiring a separate fuzzing harness. It is layered over the existing realistic generators as a seeded decorator pass and is entirely opt-in.
+
+### Concept
+
+After a resource is fully constructed, the `EdgeCasePipeline` walks the schema-typed element tree and applies one eligible strategy per leaf. Targeting is schema-driven: the pipeline knows each leaf's FHIR type (`string`, `date`, `dateTime`, etc.) and whether it carries a required binding. This means:
+
+- Free-text string and markdown fields receive unicode and string-boundary mutations.
+- Date and dateTime fields receive temporal mutations.
+- Bound codes, system URIs, reference values, and ids are never mutated.
+
+### Edge-Case Catalog
+
+The default catalog ships three families containing 15 strategies. Select by family name or individual category name (case-insensitive).
+
+**`unicode` family** — mutates unbound `string` / `markdown` leaves:
+
+| Category | Description | `ValidityIntent` |
+|---|---|---|
+| `unicode.cjk` | Replaces text with CJK (Chinese/Japanese/Korean) characters | `PreservesValidity` |
+| `unicode.rtl` | Replaces text with right-to-left script (Arabic / Hebrew) | `PreservesValidity` |
+| `unicode.combining` | Appends combining diacritical marks to each base character | `PreservesValidity` |
+| `unicode.emoji` | Injects emoji (including ZWJ sequences and surrogate pairs) | `PreservesValidity` |
+| `unicode.zero-width` | Injects zero-width characters (U+200B, U+200C, U+200D, U+FEFF) between code points | `PreservesValidity` |
+| `unicode.multi-script-long` | Replaces text with a long (~40-fragment) string mixing Latin, CJK, RTL, Cyrillic, and emoji | `PreservesValidity` |
+
+**`temporal` family** — mutates `date` / `dateTime` leaves:
+
+| Category | Description | `ValidityIntent` |
+|---|---|---|
+| `temporal.leap-year` | Sets the date to Feb 29 of a leap year | `PreservesValidity` |
+| `temporal.year-boundary` | Sets the date to Dec 31 or Jan 1 | `PreservesValidity` |
+| `temporal.far-past` | Sets the date to a far-past but spec-valid date (e.g., `0001-01-01`) | `PreservesValidity` |
+| `temporal.far-future` | Sets the date to a far-future but spec-valid date (e.g., `9999-12-31`) | `PreservesValidity` |
+| `temporal.partial-precision` | Reduces date to year-only (`yyyy`) or year-month (`yyyy-MM`) precision | `PreservesValidity` |
+
+**`string` family** (`StringBoundary`) — mutates unbound `string` / `markdown` leaves:
+
+| Category | Description | `ValidityIntent` |
+|---|---|---|
+| `string.max-length` | Replaces text with a 4096-character ASCII string | `PreservesValidity` |
+| `string.injection-like` | Replaces text with SQL/HTML/template-injection-resembling payloads (robustness testing, not a security feature) | `PreservesValidity` |
+| `string.control-chars` | Injects C0 control characters — these are disallowed by the FHIR `string` grammar | `MayViolate` |
+| `string.whitespace-only` | Sets text to whitespace-only — may fail profile validation | `MayViolate` |
+| `string.empty-present` | Sets text to empty string — unconditionally invalid per FHIR spec | `AlwaysInvalid` |
+
+**Validity by default.** The pipeline applies only `PreservesValidity` strategies unless `--include-invalid` (CLI) is set or `includeNonValidityPreserving: true` is passed directly to `EdgeCasePipeline.Apply`. Opting in enables `MayViolate` and `AlwaysInvalid` strategies for negative testing.
+
+**`string.injection-like` note:** the payloads (SQL fragments, HTML, template expressions) are plain FHIR `string` values. They test that downstream renderers and storage layers handle hostile content correctly. This is a correctness-robustness feature, not a security testing tool.
+
+**Families not yet implemented:** `Cardinality` and `Structural` are defined in `EdgeCaseFamily` and reserved for future strategies.
+
+### Library Usage
+
+```csharp
+using Ignixa.FhirFakes.Builders;
+using Ignixa.FhirFakes.EdgeCases;
+
+// Apply all strategies with an auto-derived seed (derived from WithSeed if set)
+var builder = PatientBuilderFactory.Create(schemaProvider, seed: 42)
+    .WithAge(45)
+    .WithEdgeCases();
+
+var patient = builder.Build();
+var manifest = builder.LastEdgeCaseManifest; // non-null after Build()
+
+// Apply only the unicode family
+var builder2 = PatientBuilderFactory.Create(schemaProvider, seed: 42)
+    .WithEdgeCases(selectors: ["unicode"]);
+
+// Apply a specific category with an explicit edge-case seed
+var builder3 = PatientBuilderFactory.Create(schemaProvider)
+    .WithEdgeCases(seed: 99, selectors: ["unicode.rtl", "temporal"]);
+
+// Include non-validity-preserving strategies (for negative testing)
+// Use EdgeCasePipeline directly or the CLI --include-invalid flag;
+// PatientBuilder.WithEdgeCases does not expose this flag — the pipeline default
+// is PreservesValidity-only. Pass includeNonValidityPreserving to EdgeCasePipeline
+// directly when you need that behaviour in code.
+```
+
+`WithEdgeCases(int? seed = null, IEnumerable<string>? selectors = null)` parameters:
+
+| Parameter | Behaviour when omitted |
+|-----------|----------------------|
+| `seed` | Derived from `WithSeed` if set; otherwise drawn from the builder's randomizer |
+| `selectors` | All registered strategies are applied |
+
+After calling `Build()`, read the manifest from `PatientBuilder.LastEdgeCaseManifest`.
+
+### Edge-Case Manifest
+
+Every resource generated with edge cases emits a `MutationManifest`. The CLI writes it as a sidecar file alongside the resource (e.g., `r4-patient-{id}.manifest.json`). In code, it is available as `PatientBuilder.LastEdgeCaseManifest`.
+
+Manifest JSON structure:
+
+```json
+{
+  "resourceId": "a1b2c3d4-...",
+  "seed": 1234567890,
+  "mutations": [
+    {
+      "category": "unicode.cjk",
+      "path": "name[0].family",
+      "before": "Smith",
+      "after": "山田太郎",
+      "description": "Replaced free-text with CJK characters"
+    },
+    {
+      "category": "temporal.leap-year",
+      "path": "birthDate",
+      "before": "1979-03-15",
+      "after": "2000-02-29",
+      "description": "Set date to Feb 29 of a leap year"
+    }
+  ]
+}
+```
+
+The manifest is a replay record. To reproduce the exact output, re-run `EdgeCasePipeline` with the same `seed` against the same input resource and strategy set.
+
+### Extending the Catalog
+
+Register custom strategies against the catalog before passing it to the pipeline:
+
+```csharp
+using Ignixa.FhirFakes.EdgeCases;
+
+var catalog = EdgeCaseCatalog.CreateDefault();
+catalog.Register(new MyCustomStrategy());
+
+var strategies = catalog.Resolve(selectors: null); // all strategies including custom
+var pipeline = new EdgeCasePipeline(seed: 42, schemaProvider);
+var manifest = pipeline.Apply(resource, strategies);
+```
+
+---
+
+## Generation Density
+
+`GenerationDensity` controls which elements `SchemaBasedFhirResourceFaker.Generate` emits. It is a generation concern separate from the edge-case catalog.
+
+| Value | Behaviour |
+|-------|-----------|
+| `Minimal` | Required elements only. This is the default. |
+| `Realistic` | Currently behaves identically to `Minimal` (reserved for future realistic optional-field selection). |
+| `Maximal` | Required elements plus every optional element populated. |
+
+### Library Usage
+
+```csharp
+var faker = new SchemaBasedFhirResourceFaker(schemaProvider)
+{
+    Density = GenerationDensity.Maximal
+};
+
+var fullyPopulatedPatient = faker.Generate("Patient");
+var fullyPopulatedAllergyIntolerance = faker.Generate("AllergyIntolerance");
+```
+
+Or with a seed:
+
+```csharp
+var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 42)
+{
+    Density = GenerationDensity.Maximal
+};
+```
+
+### CLI
+
+Pass `--density minimal|realistic|maximal` to the `resource` command:
+
+```bash
+ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximal
+ignixa-fakes r4 resource Patient --out ./output --density maximal --seed 42
+```
+
+**Important:** when `--density` is `realistic` or `maximal`, the `resource` command uses the schema-based generator for any resource type and **ignores** `--firstname`, `--surname`, `--from`, and the Observation `stateName` specialisation. The filename includes the density label: `{version}-{resourcetype}-{density}-{id}.json`.
+
+---
 
 ## FHIR Version Support
 

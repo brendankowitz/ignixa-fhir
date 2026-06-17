@@ -27,14 +27,20 @@ The FHIR Faker library generates synthetic FHIR resources for testing and develo
 
 ## Current Status
 
-- Layer 1: 100% complete (SchemaBasedFhirResourceFaker)
-- Layer 2: 75% complete (ScenarioBuilder with 15+ state types)
+- Layer 1: 100% complete (SchemaBasedFhirResourceFaker; density control; seeded generation)
+- Layer 2: 75% complete (ScenarioBuilder with 15+ state types; PatientBuilder seeding and edge-case decoration)
 - Layer 3: 5% complete (concept only)
 - Layer 4: 0% complete (planned)
+- Edge-case subsystem: complete (`unicode`, `temporal`, `string` families; extensible catalog; seeded pipeline; manifest output; CLI integration via `--edge-cases`, `--seed`, `--include-invalid`)
 
 ## Key Components
 
-- `SchemaBasedFhirResourceFaker` - Core resource generator
+- `SchemaBasedFhirResourceFaker` - Core resource generator; exposes `Density` property (`Minimal` / `Realistic` / `Maximal`) and a seeded constructor for reproducible output
+- `PatientBuilder` / `PatientBuilderFactory` - Fluent builder with `WithSeed(int)` for reproducible generation and `WithEdgeCases(int? seed, IEnumerable<string>? selectors)` for opt-in edge-case perturbation
+- `EdgeCaseCatalog` - Extensible registry of edge-case strategies; create the default set via `EdgeCaseCatalog.CreateDefault()`; select by family (`unicode`, `temporal`, `string`) or category (`unicode.rtl`, `temporal.leap-year`, etc.)
+- `EdgeCasePipeline` - Seeded decorator that walks the schema-typed element tree and applies one eligible strategy per leaf; emits a `MutationManifest` for replay
+- `MutationManifest` / `MutationRecord` - Structured record of every applied mutation (category, path, before, after, description); serialises to JSON via `ToJson()`
+- `GenerationDensity` enum - `Minimal` (required only, default), `Realistic` (currently identical to Minimal), `Maximal` (all optional elements populated)
 - `ScenarioBuilder` - Fluent API for clinical scenarios
 - `ImmunizationState` - Gold standard for version-aware resource generation
 - `FhirVersionHelper` - Cross-version compatibility utilities
