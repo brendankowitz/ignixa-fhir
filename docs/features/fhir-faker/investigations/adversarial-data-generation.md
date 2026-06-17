@@ -39,9 +39,9 @@ So: **mutation/decorator is the mechanism; an extensible category catalog is the
 
 ```
 Core generator (functional core, unchanged except one new axis)
-  + GenerationDensity { Minimal | Realistic | Maximal }   ← single contained core change
+  + GenerationDensity { Minimal | Realistic | Maximize }   ← single contained core change
         │
-        ▼  realistic (or maximal) resource
+        ▼  realistic (or maximize) resource
 Edge-case decorator pipeline            ← new: Core/Ignixa.FhirFakes/EdgeCases/
   • IEdgeCaseStrategy registry (built-in + user-registered)
   • seeded selection + application (own Randomizer)
@@ -72,7 +72,7 @@ public interface IEdgeCaseStrategy
 - **Most strategies are field-level mutators** that walk the resource tree and perturb matching
   elements (unicode, temporal, string-boundary, optional-stripping).
 - **A few are resource-level** (maximal cardinality, deep structural nesting) and lean on the core's
-  `GenerationDensity.Maximal` rather than mutating.
+  `GenerationDensity.Maximize` rather than mutating.
 - `MutationTarget` carries the schema type for the element, so a strategy targets *string* fields for
   unicode and *date* fields for temporal — it never drops a CJK string into a required-bound `code`.
 
@@ -103,7 +103,7 @@ builder.WithEdgeCases(c => c.Only("unicode.rtl", "temporal.leap-year"));
 | `unicode` | `cjk`, `rtl`, `combining`, `emoji`, `zero-width`, `multi-script-long` | mutate string fields | PreservesValidity |
 | `temporal` | `leap-year`, `year-boundary`, `far-past`, `far-future`, `partial-precision`, `tz-extreme` | mutate date/dateTime fields | PreservesValidity |
 | `string` | `max-length`, `empty-present`, `whitespace-only`, `control-chars`, `injection-like` | mutate free-text fields | PreservesValidity* |
-| `cardinality` | `all-optional-omitted`, `every-optional-present` | omit-strip / `Maximal` density | PreservesValidity |
+| `cardinality` | `all-optional-omitted`, `every-optional-present` | omit-strip / `Maximize` density | PreservesValidity |
 | `structural` | `deep-nesting`, `contained-resources`, `forEach-heavy` | synthesize | MayViolate |
 
 \* `string.injection-like` is **robustness testing** (does the pipeline mangle a value that *looks*
@@ -217,7 +217,7 @@ buckets, round-trip pass/fail. Without this signal, "edge-case interestingness" 
 
 **Phase 2:**
 5. `string` and `cardinality` families
-6. `GenerationDensity { Minimal | Realistic | Maximal }` axis in the core (enables `every-optional-present`)
+6. `GenerationDensity { Minimal | Realistic | Maximize }` axis in the core (enables `every-optional-present`)
 7. Public custom-strategy registration API
 8. CI round-trip gate in the E2E project (ingest → store → retrieve → search, byte-stable)
 9. `structural` family (synthesis-heavy; hardest; gate behind `--include-invalid` where it `MayViolate`)

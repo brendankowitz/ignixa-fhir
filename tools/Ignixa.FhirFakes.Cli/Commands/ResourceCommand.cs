@@ -31,7 +31,7 @@ internal static class ResourceCommand
         var edgeCasesOption = new Option<string?>("--edge-cases") { Description = "Enable edge-case perturbation. Optionally specify comma-separated selectors (families or categories).", Arity = ArgumentArity.ZeroOrOne };
         var seedOption = new Option<int?>("--seed") { Description = "Seed for reproducible edge-case generation" };
         var includeInvalidOption = new Option<bool>("--include-invalid") { Description = "Include non-validity-preserving (MayViolate/AlwaysInvalid) strategies when edge-cases are enabled", DefaultValueFactory = _ => false };
-        var densityOption = new Option<string?>("--density") { Description = "Generation density: minimal|realistic|maximal (default minimal). realistic/maximal use the schema generator for ANY resource type and therefore IGNORE --firstname/--surname/--from and the Observation stateName specialization. realistic currently behaves identically to minimal." };
+        var densityOption = new Option<string?>("--density") { Description = "Generation density: minimal|realistic|maximize (default minimal). realistic/maximize use the schema generator for ANY resource type and therefore IGNORE --firstname/--surname/--from and the Observation stateName specialization. realistic currently behaves identically to minimal." };
         var verboseOption = new Option<bool>("--verbose") { Description = "Print full exception details (type and stack trace) on error", DefaultValueFactory = _ => false };
 
         resourceCommand.Arguments.Add(resourceTypeArg);
@@ -67,7 +67,7 @@ internal static class ResourceCommand
 
             if (!TryParseDensity(parseResult.GetValue(densityOption), out var density))
             {
-                await Console.Error.WriteLineAsync($"✗ Invalid --density value '{parseResult.GetValue(densityOption)}'. Use minimal, realistic, or maximal.");
+                await Console.Error.WriteLineAsync($"✗ Invalid --density value '{parseResult.GetValue(densityOption)}'. Use minimal, realistic, or maximize.");
                 Environment.ExitCode = 2;
                 return;
             }

@@ -183,7 +183,7 @@ public class SchemaBasedFhirResourceFaker
     /// <summary>
     /// Generates a fake FHIR resource by resource type name. Population is governed by
     /// <see cref="Density"/>: required elements only by default (Minimal/Realistic); under
-    /// <see cref="GenerationDensity.Maximal"/> every optional element is included as well. Inclusion
+    /// <see cref="GenerationDensity.Maximize"/> every optional element is included as well. Inclusion
     /// is deterministic for a given density — optionals are never sampled at random.
     /// </summary>
     public ResourceJsonNode Generate(string resourceType)
@@ -230,7 +230,7 @@ public class SchemaBasedFhirResourceFaker
             // For choice elements, we need to pick a type and append it to the element name
             var (actualElementName, actualElement) = ResolveChoiceElement(child);
 
-            // Minimal/Realistic: required elements only. Maximal: required plus optional.
+            // Minimal/Realistic: required elements only. Maximize: required plus optional.
             if (!ShouldPopulate(child))
             {
                 continue;
@@ -453,7 +453,7 @@ public class SchemaBasedFhirResourceFaker
             // Handle choice elements
             var (actualElementName, actualElement) = ResolveChoiceElement(child);
 
-            // Minimal/Realistic: required only. Maximal: required plus optional.
+            // Minimal/Realistic: required only. Maximize: required plus optional.
             // The depth guard above bounds optional complex children too.
             if (!ShouldPopulate(child))
             {
@@ -1043,9 +1043,9 @@ public class SchemaBasedFhirResourceFaker
 
     /// <summary>
     /// Determines whether an element should be populated for the current <see cref="Density"/>.
-    /// Required elements are always populated; optional elements only under <see cref="GenerationDensity.Maximal"/>.
+    /// Required elements are always populated; optional elements only under <see cref="GenerationDensity.Maximize"/>.
     /// </summary>
-    private bool ShouldPopulate(IType child) => child.IsRequired || Density == GenerationDensity.Maximal;
+    private bool ShouldPopulate(IType child) => child.IsRequired || Density == GenerationDensity.Maximize;
 
     /// <summary>
     /// Applies the configured tag to a resource's meta.tag array.
