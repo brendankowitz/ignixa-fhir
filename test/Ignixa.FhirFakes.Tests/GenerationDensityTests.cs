@@ -16,8 +16,8 @@ namespace Ignixa.FhirFakes.Tests;
 
 /// <summary>
 /// Tests for the <see cref="GenerationDensity"/> axis on <see cref="SchemaBasedFhirResourceFaker"/>.
-/// Verifies that Minimal preserves required-only behavior, Maximize populates optional elements,
-/// Realistic is equivalent to Minimal, and Maximize generation terminates and validates.
+/// Verifies that Minimal preserves required-only behavior, Maximum populates optional elements,
+/// Realistic is equivalent to Minimal, and Maximum generation terminates and validates.
 /// </summary>
 public class GenerationDensityTests
 {
@@ -54,40 +54,40 @@ public class GenerationDensityTests
     }
 
     [Fact]
-    public void GivenMaximizeDensity_WhenGeneratingPatient_ThenOptionalGenderIsPresent()
+    public void GivenMaximumDensity_WhenGeneratingPatient_ThenOptionalGenderIsPresent()
     {
-        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximize };
+        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximum };
 
         var patient = faker.Generate("Patient");
 
         patient.MutableNode["gender"].ShouldNotBeNull(
-            "Patient.gender is optional and should be populated under Maximize density");
+            "Patient.gender is optional and should be populated under Maximum density");
     }
 
     [Fact]
-    public void GivenMaximizeDensity_WhenGeneratingObservation_ThenOptionalBodySiteIsPresent()
+    public void GivenMaximumDensity_WhenGeneratingObservation_ThenOptionalBodySiteIsPresent()
     {
-        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximize };
+        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximum };
 
         var observation = faker.Generate("Observation");
 
         observation.MutableNode["bodySite"].ShouldNotBeNull(
-            "Observation.bodySite is optional and should be populated under Maximize density");
+            "Observation.bodySite is optional and should be populated under Maximum density");
     }
 
     [Fact]
-    public void GivenMaximizeDensity_WhenGeneratingPatient_ThenPopulatesMoreElementsThanMinimal()
+    public void GivenMaximumDensity_WhenGeneratingPatient_ThenPopulatesMoreElementsThanMinimal()
     {
         var minimal = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Minimal }
             .Generate("Patient");
-        var maximal = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximize }
+        var maximal = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximum }
             .Generate("Patient");
 
         var minimalKeys = ((JsonObject)minimal.MutableNode).Count;
         var maximalKeys = ((JsonObject)maximal.MutableNode).Count;
 
         maximalKeys.ShouldBeGreaterThan(minimalKeys,
-            "Maximize density should populate strictly more top-level elements than Minimal");
+            "Maximum density should populate strictly more top-level elements than Minimal");
     }
 
     [Theory]
@@ -95,9 +95,9 @@ public class GenerationDensityTests
     [InlineData("Observation")]
     [InlineData("Questionnaire")]
     [InlineData("Bundle")]
-    public void GivenMaximizeDensity_WhenGeneratingNestedTypes_ThenTerminatesWithoutThrowing(string resourceType)
+    public void GivenMaximumDensity_WhenGeneratingNestedTypes_ThenTerminatesWithoutThrowing(string resourceType)
     {
-        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 7) { Density = GenerationDensity.Maximize };
+        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 7) { Density = GenerationDensity.Maximum };
 
         var resource = Should.NotThrow(() => faker.Generate(resourceType));
 
@@ -138,9 +138,9 @@ public class GenerationDensityTests
     }
 
     [Fact]
-    public void GivenMaximizeDensity_WhenGeneratingPatient_ThenStillValidates()
+    public void GivenMaximumDensity_WhenGeneratingPatient_ThenStillValidates()
     {
-        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximize };
+        var faker = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximum };
 
         var patient = faker.Generate("Patient");
         var errors = ValidateResource(patient).Issues
@@ -148,7 +148,7 @@ public class GenerationDensityTests
             .ToList();
 
         errors.ShouldBeEmpty(
-            $"Maximize Patient should remain valid. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+            $"Maximum Patient should remain valid. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
     }
 
     private ValidationResult ValidateResource(ResourceJsonNode resource)

@@ -391,8 +391,8 @@ ignixa-fakes r4 resource Patient --out ./output --edge-cases --include-invalid -
 # Generate an Observation in a specific clinical state
 ignixa-fakes r4 resource Observation BloodGlucose --out ./output
 
-# Generate any resource type at maximize density (all optional elements populated)
-ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximize
+# Generate any resource type at maximum density (all optional elements populated)
+ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximum
 ```
 
 **Exit codes for scripting / CI:**
@@ -459,7 +459,7 @@ Pass a seed to the constructor. The seed is propagated to any `PatientBuilder` c
 ```csharp
 var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 42)
 {
-    Density = GenerationDensity.Maximize
+    Density = GenerationDensity.Maximum
 };
 
 var patient = faker.Generate("Patient");
@@ -628,14 +628,14 @@ var manifest = pipeline.Apply(resource, strategies);
 |-------|-----------|
 | `Minimal` | Required elements only. This is the default. |
 | `Realistic` | Currently behaves identically to `Minimal` (reserved for future realistic optional-field selection). |
-| `Maximize` | Required elements plus every optional element populated. |
+| `Maximum` | Required elements plus every optional element populated. |
 
 ### Library Usage
 
 ```csharp
 var faker = new SchemaBasedFhirResourceFaker(schemaProvider)
 {
-    Density = GenerationDensity.Maximize
+    Density = GenerationDensity.Maximum
 };
 
 var fullyPopulatedPatient = faker.Generate("Patient");
@@ -647,20 +647,20 @@ Or with a seed:
 ```csharp
 var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 42)
 {
-    Density = GenerationDensity.Maximize
+    Density = GenerationDensity.Maximum
 };
 ```
 
 ### CLI
 
-Pass `--density minimal|realistic|maximize` to the `resource` command:
+Pass `--density minimal|realistic|maximum` to the `resource` command:
 
 ```bash
-ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximize
-ignixa-fakes r4 resource Patient --out ./output --density maximize --seed 42
+ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximum
+ignixa-fakes r4 resource Patient --out ./output --density maximum --seed 42
 ```
 
-**Important:** when `--density` is `realistic` or `maximize`, the `resource` command uses the schema-based generator for any resource type and **ignores** `--firstname`, `--surname`, `--from`, and the Observation `stateName` specialisation. The filename includes the density label: `{version}-{resourcetype}-{density}-{id}.json`.
+**Important:** when `--density` is `realistic` or `maximum`, the `resource` command uses the schema-based generator for any resource type and **ignores** `--firstname`, `--surname`, `--from`, and the Observation `stateName` specialisation. The filename includes the density label: `{version}-{resourcetype}-{density}-{id}.json`.
 
 ---
 

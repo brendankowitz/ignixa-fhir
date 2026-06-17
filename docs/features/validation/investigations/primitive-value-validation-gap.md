@@ -70,7 +70,7 @@ invalid-calendar-date cases), confirming they are incidental, not a specified de
 
 ## Evidence (reproduced)
 
-`ignixa-fakes r4 resource Observation --density maximize --edge-cases string,unicode --seed 5
+`ignixa-fakes r4 resource Observation --density maximum --edge-cases string,unicode --seed 5
 --include-invalid --validate` →
 ```
 mutations=15  (string.control-chars: 6, string.empty-present: 1, string.whitespace-only: 2, …)

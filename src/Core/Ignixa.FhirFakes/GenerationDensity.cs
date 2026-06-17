@@ -28,5 +28,5 @@ public enum GenerationDensity
     /// Required elements PLUS every optional element populated.
     /// Maps to the "every-optional-present" cardinality edge case.
     /// </summary>
-    Maximize
+    Maximum
 }
