@@ -3,23 +3,18 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Frozen;
 using Bogus;
 
 namespace Ignixa.FhirFakes.EdgeCases.Strategies;
 
 /// <summary>
-/// Base for Unicode-family strategies. Gates application to an allowlist of FHIR free-text element
-/// names so a CJK/RTL/emoji value is never dropped into a bound code, system URL, reference, or id.
+/// Base for Unicode-family strategies. Gates application by FHIR type: only unbound free-text
+/// primitives (<c>string</c>/<c>markdown</c>) are eligible, so a CJK/RTL/emoji value is never
+/// dropped into a bound code, system URL, reference, or id. The schema supplies the type, so every
+/// free-text field is reachable without an element-name allowlist.
 /// </summary>
 public abstract class FreeTextEdgeCaseStrategy : IEdgeCaseStrategy
 {
-    private static readonly FrozenSet<string> FreeTextElements = new[]
-    {
-        "family", "given", "prefix", "suffix", "text", "display", "title", "line",
-        "city", "district", "state", "note", "comment", "description", "label",
-    }.ToFrozenSet(StringComparer.Ordinal);
-
     /// <inheritdoc />
     public abstract string Category { get; }
 
@@ -33,7 +28,7 @@ public abstract class FreeTextEdgeCaseStrategy : IEdgeCaseStrategy
     public bool CanApply(MutationTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        return FreeTextElements.Contains(target.ElementName);
+        return target.InstanceType is "string" or "markdown" && !target.IsRequiredBound;
     }
 
     /// <inheritdoc />

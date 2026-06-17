@@ -15,11 +15,12 @@ public class EdgeCaseEndToEndTests
     [Fact]
     public void GivenGeneratedPatient_WhenAllStrategiesApplied_ThenRequiredFieldsRemainAndMutationsRecorded()
     {
-        var faker = new SchemaBasedFhirResourceFaker(new R4CoreSchemaProvider());
+        var schemaProvider = new R4CoreSchemaProvider();
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider);
         var patient = faker.CreatePatient(p => p.WithGivenName("John").WithFamilyName("Smith"));
         var strategies = EdgeCaseCatalog.CreateDefault().All();
 
-        var manifest = new EdgeCasePipeline(12345).Apply(patient, strategies);
+        var manifest = new EdgeCasePipeline(12345, schemaProvider).Apply(patient, strategies);
 
         patient.MutableNode["gender"].ShouldNotBeNull();
         patient.MutableNode["birthDate"].ShouldNotBeNull();

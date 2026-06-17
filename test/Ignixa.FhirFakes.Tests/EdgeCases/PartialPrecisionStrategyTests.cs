@@ -4,9 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.RegularExpressions;
-using System.Text.Json.Nodes;
 using Bogus;
-using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.EdgeCases.Strategies;
 using Shouldly;
 
@@ -16,13 +14,20 @@ public class PartialPrecisionStrategyTests
 {
     private static readonly Regex FhirPartialDateRegex = new(@"^\d{4}(-\d{2})?$", RegexOptions.CultureInvariant);
 
+    private static string PatientWithBirthDate(string birthDate) => $$"""
+        {
+          "resourceType": "Patient",
+          "id": "pp-test",
+          "birthDate": "{{birthDate}}",
+          "name": [{ "family": "Smith" }]
+        }
+        """;
+
     [Fact]
     public void GivenFullDateValue_WhenPartialPrecisionApplied_ThenResultIsYearOnlyOrYearMonth()
     {
-        const string input = "1990-03-15";
         var strategy = new PartialPrecisionTemporalStrategy();
-        var parent = new JsonObject { { "birthDate", input } };
-        var target = new PropertyTarget(parent, "birthDate", "birthDate", input);
+        var target = EdgeCaseTargetFactory.AtPath(PatientWithBirthDate("1990-03-15"), "Patient.birthDate");
 
         for (var seed = 0; seed < 10; seed++)
         {
@@ -37,10 +42,8 @@ public class PartialPrecisionStrategyTests
     [Fact]
     public void GivenYearOnlyValue_WhenPartialPrecisionApplied_ThenResultIsStillYear()
     {
-        const string input = "1990";
         var strategy = new PartialPrecisionTemporalStrategy();
-        var parent = new JsonObject { { "birthDate", input } };
-        var target = new PropertyTarget(parent, "birthDate", "birthDate", input);
+        var target = EdgeCaseTargetFactory.AtPath(PatientWithBirthDate("1990"), "Patient.birthDate");
 
         for (var seed = 0; seed < 10; seed++)
         {
@@ -56,10 +59,8 @@ public class PartialPrecisionStrategyTests
     [Fact]
     public void GivenYearMonthValue_WhenPartialPrecisionApplied_ThenResultIsYearOnlyOrSameYearMonth()
     {
-        const string input = "1990-03";
         var strategy = new PartialPrecisionTemporalStrategy();
-        var parent = new JsonObject { { "birthDate", input } };
-        var target = new PropertyTarget(parent, "birthDate", "birthDate", input);
+        var target = EdgeCaseTargetFactory.AtPath(PatientWithBirthDate("1990-03"), "Patient.birthDate");
 
         for (var seed = 0; seed < 10; seed++)
         {
@@ -74,10 +75,8 @@ public class PartialPrecisionStrategyTests
     [Fact]
     public void GivenPartialPrecisionStrategy_WhenCanApplyOnDate_ThenTrue()
     {
-        const string input = "1990-03-15";
         var strategy = new PartialPrecisionTemporalStrategy();
-        var parent = new JsonObject { { "birthDate", input } };
-        var target = new PropertyTarget(parent, "birthDate", "birthDate", input);
+        var target = EdgeCaseTargetFactory.AtPath(PatientWithBirthDate("1990-03-15"), "Patient.birthDate");
 
         var canApply = strategy.CanApply(target);
 
@@ -87,10 +86,8 @@ public class PartialPrecisionStrategyTests
     [Fact]
     public void GivenPartialPrecisionStrategy_WhenCanApplyOnFreeText_ThenFalse()
     {
-        const string input = "Smith";
         var strategy = new PartialPrecisionTemporalStrategy();
-        var parent = new JsonObject { { "family", input } };
-        var target = new PropertyTarget(parent, "family", "family", input);
+        var target = EdgeCaseTargetFactory.AtPath(PatientWithBirthDate("1990-03-15"), "Patient.name[0].family");
 
         var canApply = strategy.CanApply(target);
 

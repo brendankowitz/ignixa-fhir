@@ -165,7 +165,7 @@ internal static class ResourceCommand
                 }
 
                 var patient = builder.Build();
-                var manifest = ApplyEdgeCases(patient, edgeCasesEnabled, selectors, seed, includeInvalid);
+                var manifest = ApplyEdgeCases(schemaProvider, patient, edgeCasesEnabled, selectors, seed, includeInvalid);
 
                 var id = patient.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                 var filename = $"{fhirVersion}-patient-{id}.json";
@@ -209,7 +209,7 @@ internal static class ResourceCommand
                 if (allResources.Count > 0)
                 {
                     var observation = allResources[allResources.Count - 1];
-                    var manifest = ApplyEdgeCases(observation, edgeCasesEnabled, selectors, seed, includeInvalid);
+                    var manifest = ApplyEdgeCases(schemaProvider, observation, edgeCasesEnabled, selectors, seed, includeInvalid);
 
                     var id = observation.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                     var filename = $"{fhirVersion}-observation-{stateName}-{id}.json";
@@ -273,7 +273,7 @@ internal static class ResourceCommand
             : new SchemaBasedFhirResourceFaker(schemaProvider) { Density = density };
 
         var resource = faker.Generate(resourceType);
-        var manifest = ApplyEdgeCases(resource, edgeCasesEnabled, selectors, seed, includeInvalid);
+        var manifest = ApplyEdgeCases(schemaProvider, resource, edgeCasesEnabled, selectors, seed, includeInvalid);
 
         var id = resource.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
         var filename = $"{fhirVersion}-{resourceType.ToLowerInvariant()}-{density.ToString().ToLowerInvariant()}-{id}.json";
@@ -294,7 +294,7 @@ internal static class ResourceCommand
             RunValidation(resource.MutableNode, schemaProvider, resourceType, fhirVersion, includeInvalid);
     }
 
-    private static MutationManifest? ApplyEdgeCases(ResourceJsonNode resource, bool enabled, string[] selectors, int seed, bool includeInvalid)
+    private static MutationManifest? ApplyEdgeCases(IFhirSchemaProvider schemaProvider, ResourceJsonNode resource, bool enabled, string[] selectors, int seed, bool includeInvalid)
     {
         if (!enabled)
             return null;
@@ -309,7 +309,7 @@ internal static class ResourceCommand
             Environment.ExitCode = 2;
         }
 
-        var pipeline = new EdgeCasePipeline(seed);
+        var pipeline = new EdgeCasePipeline(seed, schemaProvider);
         return pipeline.Apply(resource, strategies, includeInvalid);
     }
 

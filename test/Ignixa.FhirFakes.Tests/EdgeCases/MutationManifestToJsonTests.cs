@@ -28,7 +28,7 @@ public class MutationManifestToJsonTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["unicode"]);
         var resource = ResourceJsonNode.Parse(SampleJson);
 
-        var manifest = new EdgeCasePipeline(42).Apply(resource, strategies);
+        var manifest = new EdgeCasePipeline(42, EdgeCaseTargetFactory.Schema).Apply(resource, strategies);
         var json = JsonNode.Parse(manifest.ToJson());
 
         json!["resourceId"].ShouldNotBeNull();
@@ -43,7 +43,7 @@ public class MutationManifestToJsonTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["unicode"]);
         var resource = ResourceJsonNode.Parse(SampleJson);
 
-        var manifest = new EdgeCasePipeline(7).Apply(resource, strategies);
+        var manifest = new EdgeCasePipeline(7, EdgeCaseTargetFactory.Schema).Apply(resource, strategies);
         var json = JsonNode.Parse(manifest.ToJson());
         var mutations = json!["mutations"]?.AsArray();
 

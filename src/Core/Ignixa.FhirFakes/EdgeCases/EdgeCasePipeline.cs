@@ -5,6 +5,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Bogus;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.EdgeCases;
@@ -16,20 +17,24 @@ namespace Ignixa.FhirFakes.EdgeCases;
 /// </summary>
 /// <remarks>
 /// Determinism contract: the same seed, the same input resource, and the same ordered strategy set
-/// produce byte-identical mutated JSON and an identical manifest. The walker yields targets in a
-/// stable order and the RNG is drawn from only for targets that have an applicable strategy.
+/// produce byte-identical mutated JSON and an identical manifest. Targets are enumerated from the
+/// schema-typed element tree in a stable order and the RNG is drawn from only for targets that have
+/// an applicable strategy.
 /// </remarks>
 [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
 public sealed class EdgeCasePipeline
 {
     private readonly int _seed;
     private readonly Randomizer _rng;
+    private readonly IFhirSchemaProvider _schemaProvider;
 
-    /// <summary>Creates a pipeline with a dedicated seeded randomizer.</summary>
-    public EdgeCasePipeline(int seed)
+    /// <summary>Creates a pipeline with a dedicated seeded randomizer and the schema used to type targets.</summary>
+    public EdgeCasePipeline(int seed, IFhirSchemaProvider schemaProvider)
     {
+        ArgumentNullException.ThrowIfNull(schemaProvider);
         _seed = seed;
         _rng = new Randomizer(seed);
+        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -71,7 +76,7 @@ public sealed class EdgeCasePipeline
 
     private void ApplyToTargets(ResourceJsonNode resource, List<IEdgeCaseStrategy> eligible, List<MutationRecord> records)
     {
-        foreach (var target in ResourceTreeWalker.Walk(resource))
+        foreach (var target in ElementTreeEnumerator.Enumerate(resource, _schemaProvider))
         {
             TryApplyOne(target, eligible, records);
         }

@@ -76,7 +76,7 @@ public class StringBoundaryStrategyTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
         var resource = ResourceJsonNode.Parse(SampleJson);
 
-        var manifest = new EdgeCasePipeline(42).Apply(resource, strategies);
+        var manifest = new EdgeCasePipeline(42, EdgeCaseTargetFactory.Schema).Apply(resource, strategies);
 
         manifest.Mutations.ShouldContain(m => m.Category == "string.max-length" || m.Category == "string.injection-like");
     }
@@ -87,7 +87,7 @@ public class StringBoundaryStrategyTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
         var resource = ResourceJsonNode.Parse(SampleJson);
 
-        var manifest = new EdgeCasePipeline(42).Apply(resource, strategies);
+        var manifest = new EdgeCasePipeline(42, EdgeCaseTargetFactory.Schema).Apply(resource, strategies);
 
         manifest.Mutations.ShouldNotContain(m => m.Category == "string.control-chars" || m.Category == "string.empty-present" || m.Category == "string.whitespace-only");
     }
@@ -100,7 +100,7 @@ public class StringBoundaryStrategyTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
         var resource = ResourceJsonNode.Parse(SampleJson);
 
-        var manifest = new EdgeCasePipeline(42).Apply(resource, strategies, includeNonValidityPreserving: true);
+        var manifest = new EdgeCasePipeline(42, EdgeCaseTargetFactory.Schema).Apply(resource, strategies, includeNonValidityPreserving: true);
 
         manifest.Mutations.ShouldNotBeEmpty();
     }
@@ -111,10 +111,10 @@ public class StringBoundaryStrategyTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
 
         var r1 = ResourceJsonNode.Parse(SampleJson);
-        var m1 = new EdgeCasePipeline(99).Apply(r1, strategies);
+        var m1 = new EdgeCasePipeline(99, EdgeCaseTargetFactory.Schema).Apply(r1, strategies);
 
         var r2 = ResourceJsonNode.Parse(SampleJson);
-        var m2 = new EdgeCasePipeline(99).Apply(r2, strategies, includeNonValidityPreserving: false);
+        var m2 = new EdgeCasePipeline(99, EdgeCaseTargetFactory.Schema).Apply(r2, strategies, includeNonValidityPreserving: false);
 
         m1.ToJson().ShouldBe(m2.ToJson());
         r1.MutableNode.ToJsonString().ShouldBe(r2.MutableNode.ToJsonString());
@@ -128,12 +128,14 @@ public class StringBoundaryStrategyTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
         var resource = ResourceJsonNode.Parse(SampleJson);
 
-        new EdgeCasePipeline(7).Apply(resource, strategies, includeNonValidityPreserving: true);
+        new EdgeCasePipeline(7, EdgeCaseTargetFactory.Schema).Apply(resource, strategies, includeNonValidityPreserving: true);
 
+        // gender (bound code), identifier.system / coding.system (uri) and coding.code (code) are
+        // not free-text strings, so string strategies must leave them untouched. identifier.value
+        // IS a string and is legitimately mutable, so it is not asserted here.
         resource.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
         var identifier = resource.MutableNode["identifier"]?.AsArray()?[0]?.AsObject();
         identifier?["system"]?.GetValue<string>().ShouldBe("http://example.org/mrn");
-        identifier?["value"]?.GetValue<string>().ShouldBe("MRN-999");
         var coding = identifier?["type"]?.AsObject()?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("MR");
         coding?["system"]?.GetValue<string>().ShouldBe("http://hl7.org/fhir/v2/0203");
@@ -147,10 +149,10 @@ public class StringBoundaryStrategyTests
         var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
 
         var r1 = ResourceJsonNode.Parse(SampleJson);
-        var m1 = new EdgeCasePipeline(1234).Apply(r1, strategies, includeNonValidityPreserving: true);
+        var m1 = new EdgeCasePipeline(1234, EdgeCaseTargetFactory.Schema).Apply(r1, strategies, includeNonValidityPreserving: true);
 
         var r2 = ResourceJsonNode.Parse(SampleJson);
-        var m2 = new EdgeCasePipeline(1234).Apply(r2, strategies, includeNonValidityPreserving: true);
+        var m2 = new EdgeCasePipeline(1234, EdgeCaseTargetFactory.Schema).Apply(r2, strategies, includeNonValidityPreserving: true);
 
         r1.MutableNode.ToJsonString().ShouldBe(r2.MutableNode.ToJsonString());
         m1.ToJson().ShouldBe(m2.ToJson());

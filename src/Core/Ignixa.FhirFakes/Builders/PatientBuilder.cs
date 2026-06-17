@@ -877,7 +877,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         var effectiveSeed = _edgeCaseSeed ?? _baseSeed ?? _faker.Random.Int();
         var catalog = EdgeCaseCatalog.CreateDefault();
         var strategies = catalog.Resolve(_edgeCaseSelectors);
-        var pipeline = new EdgeCasePipeline(effectiveSeed);
+        var pipeline = new EdgeCasePipeline(effectiveSeed, SchemaProvider);
         LastEdgeCaseManifest = pipeline.Apply(resource, strategies);
     }
 
