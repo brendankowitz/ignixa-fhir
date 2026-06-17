@@ -47,8 +47,8 @@ public class PatientBuilderTests
     public void GivenManyPatientsFromAge_WhenBuilding_ThenBirthdaysVaryAndAreValidFullDates()
     {
         // Regression: previously every age-derived patient was pinned to the same calendar day
-        // (July 1 / Jan 1), so a whole population shared one birthday. Build a batch and assert the
-        // day actually varies and each value is a real yyyy-MM-dd date.
+        // (July 1, i.e. month 7 day 1), so a whole population shared one birthday. Build a batch and
+        // assert the day actually varies and each value is a real yyyy-MM-dd date.
         var birthDates = Enumerable.Range(0, 50)
             .Select(_ => PatientBuilderFactory.Create(_schemaProvider)
                 .WithAge(40)
@@ -64,6 +64,99 @@ public class PatientBuilderTests
 
         var distinctMonthDays = birthDates.Select(d => d[5..]).Distinct().Count();
         distinctMonthDays.ShouldBeGreaterThan(5);
+    }
+
+    [Fact]
+    public void GivenSameSeed_WhenBuildingPatients_ThenBirthDatesAreIdentical()
+    {
+        // Arrange & Act
+        var first = PatientBuilderFactory.Create(_schemaProvider, 12345)
+            .WithAge(40)
+            .Build()
+            .MutableNode["birthDate"]!.GetValue<string>();
+
+        var second = PatientBuilderFactory.Create(_schemaProvider, 12345)
+            .WithAge(40)
+            .Build()
+            .MutableNode["birthDate"]!.GetValue<string>();
+
+        // Assert
+        second.ShouldBe(first);
+    }
+
+    [Fact]
+    public void GivenAgeRequested_WhenBuildingBatch_ThenComputedAgeIsExact()
+    {
+        // Arrange
+        const int requestedAge = 40;
+        var asOf = DateTime.UtcNow;
+
+        // Act
+        var birthDates = Enumerable.Range(0, 50)
+            .Select(i => PatientBuilderFactory.Create(_schemaProvider, 1000 + i)
+                .WithAge(requestedAge)
+                .Build()
+                .MutableNode["birthDate"]!.GetValue<string>())
+            .ToList();
+
+        // Assert
+        foreach (var d in birthDates)
+        {
+            var birthDate = DateTime.Parse(d);
+            AgeAsOf(birthDate, asOf).ShouldBe(requestedAge, $"'{d}' should resolve to age {requestedAge}");
+        }
+    }
+
+    [Fact]
+    public void GivenExplicitBirthYear_WhenBuildingBatch_ThenYearHonoredAndDayVaries()
+    {
+        // Act
+        var birthDates = Enumerable.Range(0, 50)
+            .Select(i => PatientBuilderFactory.Create(_schemaProvider, 2000 + i)
+                .WithBirthYear(1980)
+                .Build()
+                .MutableNode["birthDate"]!.GetValue<string>())
+            .ToList();
+
+        // Assert
+        foreach (var d in birthDates)
+        {
+            d.ShouldStartWith("1980-");
+            DateTime.TryParse(d, out _).ShouldBeTrue($"'{d}' should be a valid date");
+        }
+
+        var distinctMonthDays = birthDates.Select(d => d[5..]).Distinct().Count();
+        distinctMonthDays.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
+    public void GivenLeapYearBirthDate_WhenItOccurs_ThenDateIsValidAndNeverThrows()
+    {
+        // 2000 is a leap year; a seeded batch will land on Feb 29 in some cases. Every produced
+        // value must parse and clamp correctly so no DateTime construction throws.
+        var birthDates = Enumerable.Range(0, 100)
+            .Select(i => PatientBuilderFactory.Create(_schemaProvider, 3000 + i)
+                .WithBirthYear(2000)
+                .Build()
+                .MutableNode["birthDate"]!.GetValue<string>())
+            .ToList();
+
+        foreach (var d in birthDates)
+        {
+            d.ShouldStartWith("2000-");
+            DateTime.TryParse(d, out _).ShouldBeTrue($"'{d}' should be a valid date");
+        }
+    }
+
+    private static int AgeAsOf(DateTime birthDate, DateTime asOf)
+    {
+        var age = asOf.Year - birthDate.Year;
+        if (asOf < birthDate.AddYears(age))
+        {
+            age--;
+        }
+
+        return age;
     }
 
     [Fact]
@@ -251,10 +344,10 @@ public class PatientBuilderTests
             .WithAge(45)  // Override auto-generated age
             .Build();
 
-        // Assert
+        // Assert: the overridden age is honored exactly (birth year is solved from the randomized
+        // month/day, so it is not necessarily today.Year - 45).
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
-        var expectedYear = AgeHelper.BirthYearFromAge(45);
-        birthDate.ShouldStartWith(expectedYear.ToString());
+        AgeAsOf(DateTime.Parse(birthDate!), DateTime.UtcNow).ShouldBe(45);
     }
 
     [Fact]

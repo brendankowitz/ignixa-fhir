@@ -60,9 +60,10 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         name?["family"]?.GetValue<string>().ShouldBe("Smith");
         name?["given"]?[0]?.GetValue<string>().ShouldBe("John");
 
-        // Verify birth year is approximately 45 years ago
+        // Verify the requested age is honored exactly (birth year is solved from the randomized
+        // month/day, so it is not necessarily today.Year - 45).
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
-        birthDate.ShouldStartWith(AgeHelper.BirthYearFromAge(45).ToString());
+        AgeFromBirthDate(DateTime.Parse(birthDate!)).ShouldBe(45);
     }
 
     [Fact]
@@ -235,10 +236,22 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         // Act
         var patient = _faker.CreateSeattlePatient(p => p.WithAge(35));
 
-        // Assert
+        // Assert: the overridden age is honored exactly (birth year is solved from the randomized
+        // month/day, so it is not necessarily today.Year - 35).
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
-        var expectedYear = AgeHelper.BirthYearFromAge(35);
-        birthDate.ShouldStartWith(expectedYear.ToString());
+        AgeFromBirthDate(DateTime.Parse(birthDate!)).ShouldBe(35);
+    }
+
+    private static int AgeFromBirthDate(DateTime birthDate)
+    {
+        var today = DateTime.UtcNow;
+        var age = today.Year - birthDate.Year;
+        if (today < birthDate.AddYears(age))
+        {
+            age--;
+        }
+
+        return age;
     }
 
     [Fact]

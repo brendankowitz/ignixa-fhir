@@ -32,6 +32,18 @@ internal static class AgeHelper
     }
 
     /// <summary>
+    /// Derives the birth year so that a person born on the given <paramref name="month"/>/<paramref name="day"/>
+    /// is exactly <paramref name="age"/> years old as of today (UTC). Unlike <see cref="BirthYearFromAge(int)"/>,
+    /// this uses the actual month/day rather than a July-1 assumption.
+    /// </summary>
+    internal static int BirthYearFromAge(int age, int month, int day)
+    {
+        var today = DateTime.UtcNow;
+        var hasHadBirthdayThisYear = month < today.Month || (month == today.Month && day <= today.Day);
+        return hasHadBirthdayThisYear ? today.Year - age : today.Year - age - 1;
+    }
+
+    /// <summary>
     /// Calculates approximate age from a birth year, assuming mid-year birthday (July 1).
     /// Uses calendar-correct <see cref="DateTime.AddYears"/> arithmetic to avoid off-by-one errors.
     /// </summary>
