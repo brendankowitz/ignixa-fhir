@@ -74,4 +74,81 @@ public class EdgeCaseCatalogTests
         resolved.ShouldAllBe(s => s.Family == EdgeCaseFamily.Unicode);
         resolved.ShouldNotBeEmpty();
     }
+
+    [Fact]
+    public void GivenUnknownSelector_WhenResolvingWithUnmatched_ThenEmptyResultAndUnmatchedReported()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve(["nonsense"], out var unmatched);
+
+        resolved.ShouldBeEmpty();
+        unmatched.ShouldContain("nonsense");
+    }
+
+    [Fact]
+    public void GivenMixedSelectors_WhenResolving_ThenUnionOfMatchingStrategiesReturned()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve(["unicode", "temporal.leap-year"]);
+
+        resolved.Count.ShouldBe(7);
+        resolved.ShouldContain(s => s.Family == EdgeCaseFamily.Unicode);
+        resolved.ShouldContain(s => s.Category == "temporal.leap-year");
+    }
+
+    [Fact]
+    public void GivenWhitespaceAndEmptySelectors_WhenResolving_ThenAllStrategiesReturned()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve([" ", ""]);
+
+        resolved.Count.ShouldBe(catalog.All().Count);
+    }
+
+    [Fact]
+    public void GivenSpecificUnicodeCategory_WhenResolving_ThenExactlyThatOneStrategy()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve(["unicode.rtl"]);
+
+        resolved.Count.ShouldBe(1);
+        resolved[0].Category.ShouldBe("unicode.rtl");
+        resolved[0].Family.ShouldBe(EdgeCaseFamily.Unicode);
+    }
+
+    [Fact]
+    public void GivenSpecificTemporalCategory_WhenResolving_ThenExactlyThatOneStrategy()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve(["temporal.far-future"]);
+
+        resolved.Count.ShouldBe(1);
+        resolved[0].Category.ShouldBe("temporal.far-future");
+    }
+
+    [Fact]
+    public void GivenTemporalFamilySelector_WhenResolving_ThenOnlyTemporalStrategiesReturned()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve(["temporal"]);
+
+        resolved.ShouldNotBeEmpty();
+        resolved.ShouldAllBe(s => s.Family == EdgeCaseFamily.Temporal);
+    }
+
+    [Fact]
+    public void GivenUnknownSelector_WhenResolvingWithoutUnmatched_ThenEmptyResultReturned()
+    {
+        var catalog = EdgeCaseCatalog.CreateDefault();
+
+        var resolved = catalog.Resolve(["totally-unknown"]);
+
+        resolved.ShouldBeEmpty();
+    }
 }

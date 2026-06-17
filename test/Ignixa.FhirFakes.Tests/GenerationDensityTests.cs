@@ -103,6 +103,8 @@ public class GenerationDensityTests
 
         resource.ShouldNotBeNull();
         resource.ResourceType.ShouldBe(resourceType);
+        MeasureMaxDepth(resource.MutableNode).ShouldBeLessThanOrEqualTo(50,
+            "Generated tree nesting depth should be finite and bounded");
     }
 
     [Fact]
@@ -113,11 +115,26 @@ public class GenerationDensityTests
         var realistic = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 11) { Density = GenerationDensity.Realistic }
             .Generate("Patient");
 
-        var minimalKeys = ((JsonObject)minimal.MutableNode).Select(kvp => kvp.Key).OrderBy(k => k, StringComparer.Ordinal);
-        var realisticKeys = ((JsonObject)realistic.MutableNode).Select(kvp => kvp.Key).OrderBy(k => k, StringComparer.Ordinal);
+        RemoveNonDeterministicFields(minimal.MutableNode);
+        RemoveNonDeterministicFields(realistic.MutableNode);
 
-        realisticKeys.ShouldBe(minimalKeys,
-            "Realistic density currently behaves identically to Minimal (required-only)");
+        minimal.MutableNode.ToJsonString().ShouldBe(realistic.MutableNode.ToJsonString(),
+            "Realistic density currently behaves identically to Minimal (required-only) — full JSON content should match");
+    }
+
+    [Fact]
+    public void GivenRealisticDensity_WhenGeneratingObservation_ThenBehavesIdenticallyToMinimal()
+    {
+        var minimal = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 12) { Density = GenerationDensity.Minimal }
+            .Generate("Observation");
+        var realistic = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 12) { Density = GenerationDensity.Realistic }
+            .Generate("Observation");
+
+        RemoveNonDeterministicFields(minimal.MutableNode);
+        RemoveNonDeterministicFields(realistic.MutableNode);
+
+        minimal.MutableNode.ToJsonString().ShouldBe(realistic.MutableNode.ToJsonString(),
+            "Realistic density currently behaves identically to Minimal (required-only) — full JSON content should match");
     }
 
     [Fact]
@@ -144,5 +161,37 @@ public class GenerationDensityTests
         var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         return schema.Validate(sourceNode.ToElement(_schemaProvider), settings, new ValidationState());
+    }
+
+    private static int MeasureMaxDepth(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+            return 1 + (obj.Any() ? obj.Max(kvp => MeasureMaxDepth(kvp.Value)) : 0);
+        if (node is JsonArray arr)
+            return 1 + (arr.Any() ? arr.Max(item => MeasureMaxDepth(item)) : 0);
+        return 1;
+    }
+
+    private static void RemoveNonDeterministicFields(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            if (obj["meta"] is JsonObject metaObj)
+            {
+                metaObj.Remove("lastUpdated");
+            }
+
+            foreach (var kvp in obj.ToList())
+            {
+                RemoveNonDeterministicFields(kvp.Value);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                RemoveNonDeterministicFields(item);
+            }
+        }
     }
 }

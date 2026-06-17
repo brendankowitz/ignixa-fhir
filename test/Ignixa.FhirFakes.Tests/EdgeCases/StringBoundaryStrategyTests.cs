@@ -154,6 +154,7 @@ public class StringBoundaryStrategyTests
 
         r1.MutableNode.ToJsonString().ShouldBe(r2.MutableNode.ToJsonString());
         m1.ToJson().ShouldBe(m2.ToJson());
+        m1.Mutations.Count.ShouldBeGreaterThan(0);
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

@@ -44,6 +44,7 @@ public partial class EdgeCasePipelineTests
 
         first.MutableNode.ToJsonString().ShouldBe(second.MutableNode.ToJsonString());
         firstManifest.ToJson().ShouldBe(secondManifest.ToJson());
+        firstManifest.Mutations.Count.ShouldBeGreaterThan(0);
     }
 
     [Fact]
@@ -97,6 +98,35 @@ public partial class EdgeCasePipelineTests
         var manifest = new EdgeCasePipeline(1).Apply(resource, strategies);
 
         manifest.Mutations.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenFixedInputAndSeed_WhenApplied_ThenProducesKnownGoldenOutput()
+    {
+        const string goldenJson = """
+            {
+              "resourceType": "Patient",
+              "id": "golden-001",
+              "gender": "male",
+              "birthDate": "1990-03-15",
+              "name": [
+                { "family": "Smith", "given": ["John"] }
+              ]
+            }
+            """;
+        var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["temporal", "unicode"]);
+        var resource = ResourceJsonNode.Parse(goldenJson);
+
+        var manifest = new EdgeCasePipeline(7777).Apply(resource, strategies);
+
+        manifest.Mutations.Count.ShouldBe(3);
+        manifest.Mutations[0].Category.ShouldBe("temporal.far-future");
+        manifest.Mutations[0].Path.ShouldBe("birthDate");
+        manifest.Mutations[0].After.ShouldBe("2999-06-15");
+        manifest.Mutations[1].Path.ShouldBe("name[0].family");
+        manifest.Mutations[1].Category.ShouldBe("unicode.zero-width");
+        manifest.Mutations[2].Path.ShouldBe("name[0].given[0]");
+        manifest.Mutations[2].Category.ShouldBe("unicode.cjk");
     }
 
     private sealed class AlwaysFiresMayViolateStrategy : IEdgeCaseStrategy

@@ -54,6 +54,7 @@ public class PatientBuilderEdgeCasesTests
             first.manifest.Mutations[i].Path.ShouldBe(second.manifest.Mutations[i].Path);
             first.manifest.Mutations[i].After.ShouldBe(second.manifest.Mutations[i].After);
         }
+        first.manifest.Mutations.Count.ShouldBeGreaterThan(0);
     }
 
     [Fact]
