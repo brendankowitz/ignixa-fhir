@@ -32,6 +32,7 @@ internal static class ResourceCommand
         var seedOption = new Option<int?>("--seed") { Description = "Seed for reproducible edge-case generation" };
         var includeInvalidOption = new Option<bool>("--include-invalid") { Description = "Include non-validity-preserving (MayViolate/AlwaysInvalid) strategies when edge-cases are enabled", DefaultValueFactory = _ => false };
         var densityOption = new Option<string?>("--density") { Description = "Generation density: minimal|realistic|maximal (default minimal). realistic/maximal use the schema generator for ANY resource type and therefore IGNORE --firstname/--surname/--from and the Observation stateName specialization. realistic currently behaves identically to minimal." };
+        var verboseOption = new Option<bool>("--verbose") { Description = "Print full exception details (type and stack trace) on error", DefaultValueFactory = _ => false };
 
         resourceCommand.Arguments.Add(resourceTypeArg);
         resourceCommand.Arguments.Add(stateNameArg);
@@ -44,6 +45,7 @@ internal static class ResourceCommand
         resourceCommand.Options.Add(seedOption);
         resourceCommand.Options.Add(includeInvalidOption);
         resourceCommand.Options.Add(densityOption);
+        resourceCommand.Options.Add(verboseOption);
 
         resourceCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -60,11 +62,13 @@ internal static class ResourceCommand
             var selectors = ParseSelectors(edgeCasesValue);
             var explicitSeed = parseResult.GetValue(seedOption);
             var includeInvalid = parseResult.GetValue(includeInvalidOption);
+            var verbose = parseResult.GetValue(verboseOption);
             var seed = explicitSeed ?? (edgeCasesEnabled ? GenerateSeed() : 0);
 
             if (!TryParseDensity(parseResult.GetValue(densityOption), out var density))
             {
-                Console.WriteLine($"✗ Invalid --density value '{parseResult.GetValue(densityOption)}'. Use minimal, realistic, or maximal.");
+                await Console.Error.WriteLineAsync($"✗ Invalid --density value '{parseResult.GetValue(densityOption)}'. Use minimal, realistic, or maximal.");
+                Environment.ExitCode = 2;
                 return;
             }
 
@@ -72,7 +76,7 @@ internal static class ResourceCommand
                 Console.WriteLine($"Seed: {seed}  (pass --seed {seed} to replay)");
 
             await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder,
-                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density);
+                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, verbose, cancellationToken);
         });
 
         return resourceCommand;
@@ -123,7 +127,9 @@ internal static class ResourceCommand
         int seed,
         int? explicitSeed,
         bool includeInvalid,
-        GenerationDensity density)
+        GenerationDensity density,
+        bool verbose,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -137,7 +143,7 @@ internal static class ResourceCommand
             if (density != GenerationDensity.Minimal)
             {
                 await HandleGenericDensity(schemaProvider, fhirVersion, resourceType, outFolder, validate,
-                    edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, options);
+                    edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, options, cancellationToken);
             }
             else if (resourceType.Equals("Patient", StringComparison.OrdinalIgnoreCase))
             {
@@ -166,28 +172,29 @@ internal static class ResourceCommand
                 var outputPath = Path.Combine(outFolder, filename);
 
                 var json = JsonSerializer.Serialize(patient.MutableNode, options);
-                await File.WriteAllTextAsync(outputPath, json);
+                await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
                 Console.WriteLine($"✓ Generated Patient: {outputPath}");
 
                 if (manifest is not null)
                 {
                     PrintEdgeCaseSummary(manifest);
-                    await WriteManifestAsync(outputPath, manifest);
+                    await WriteManifestSafeAsync(outputPath, manifest, cancellationToken);
                 }
 
                 if (validate)
-                    RunValidation(patient.MutableNode, schemaProvider, "Patient", fhirVersion);
+                    RunValidation(patient.MutableNode, schemaProvider, "Patient", fhirVersion, includeInvalid);
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
                 var observationState = StateDiscovery.CreateObservationState(stateName);
                 if (observationState == null)
                 {
-                    Console.WriteLine($"✗ Unknown observation state: {stateName}");
-                    Console.WriteLine("Available states:");
+                    await Console.Error.WriteLineAsync($"✗ Unknown observation state: {stateName}");
+                    await Console.Error.WriteLineAsync("Available states:");
                     foreach (var name in StateDiscovery.GetObservationStateNames())
-                        Console.WriteLine($"  - {name}");
+                        await Console.Error.WriteLineAsync($"  - {name}");
+                    Environment.ExitCode = 2;
                     return;
                 }
 
@@ -209,29 +216,39 @@ internal static class ResourceCommand
                     var outputPath = Path.Combine(outFolder, filename);
 
                     var json = JsonSerializer.Serialize(observation.MutableNode, options);
-                    await File.WriteAllTextAsync(outputPath, json);
+                    await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
                     Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
 
                     if (manifest is not null)
                     {
                         PrintEdgeCaseSummary(manifest);
-                        await WriteManifestAsync(outputPath, manifest);
+                        await WriteManifestSafeAsync(outputPath, manifest, cancellationToken);
                     }
 
                     if (validate)
-                        RunValidation(observation.MutableNode, schemaProvider, "Observation", fhirVersion);
+                        RunValidation(observation.MutableNode, schemaProvider, "Observation", fhirVersion, includeInvalid);
                 }
             }
             else
             {
-                Console.WriteLine($"✗ Resource type '{resourceType}' is not supported or requires a state name.");
-                Console.WriteLine("Supported: Patient, Observation <stateName>");
+                await Console.Error.WriteLineAsync($"✗ Resource type '{resourceType}' is not supported or requires a state name.");
+                await Console.Error.WriteLineAsync("Supported: Patient, Observation <stateName>");
+                Environment.ExitCode = 2;
+                return;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            await Console.Error.WriteLineAsync("✗ Operation cancelled.");
+            Environment.ExitCode = 1;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Error: {ex.Message}");
+            await Console.Error.WriteLineAsync(verbose
+                ? $"✗ Error ({ex.GetType().Name}): {ex.Message}{Environment.NewLine}{ex.StackTrace}"
+                : $"✗ Error: {ex.Message}");
+            Environment.ExitCode = 1;
         }
     }
 
@@ -248,7 +265,8 @@ internal static class ResourceCommand
         int? explicitSeed,
         bool includeInvalid,
         GenerationDensity density,
-        JsonSerializerOptions options)
+        JsonSerializerOptions options,
+        CancellationToken cancellationToken)
     {
         var faker = explicitSeed is { } s
             ? new SchemaBasedFhirResourceFaker(schemaProvider, s) { Density = density }
@@ -262,18 +280,18 @@ internal static class ResourceCommand
         var outputPath = Path.Combine(outFolder, filename);
 
         var json = JsonSerializer.Serialize(resource.MutableNode, options);
-        await File.WriteAllTextAsync(outputPath, json);
+        await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
         Console.WriteLine($"✓ Generated {resourceType} ({density}): {outputPath}");
 
         if (manifest is not null)
         {
             PrintEdgeCaseSummary(manifest);
-            await WriteManifestAsync(outputPath, manifest);
+            await WriteManifestSafeAsync(outputPath, manifest, cancellationToken);
         }
 
         if (validate)
-            RunValidation(resource.MutableNode, schemaProvider, resourceType, fhirVersion);
+            RunValidation(resource.MutableNode, schemaProvider, resourceType, fhirVersion, includeInvalid);
     }
 
     private static MutationManifest? ApplyEdgeCases(ResourceJsonNode resource, bool enabled, string[] selectors, int seed, bool includeInvalid)
@@ -282,15 +300,37 @@ internal static class ResourceCommand
             return null;
 
         var catalog = EdgeCaseCatalog.CreateDefault();
-        var strategies = catalog.Resolve(selectors);
+        var strategies = catalog.Resolve(selectors, out var unmatched);
+
+        if (unmatched.Count > 0)
+        {
+            foreach (var sel in unmatched)
+                Console.Error.WriteLine($"⚠  Unknown --edge-cases selector: '{sel}'");
+            Environment.ExitCode = 2;
+        }
+
         var pipeline = new EdgeCasePipeline(seed);
         return pipeline.Apply(resource, strategies, includeInvalid);
     }
 
-    private static async Task WriteManifestAsync(string resourcePath, MutationManifest manifest)
+    private static async Task WriteManifestAsync(string resourcePath, MutationManifest manifest, CancellationToken cancellationToken = default)
     {
         var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
-        await File.WriteAllTextAsync(manifestPath, manifest.ToJson());
+        await File.WriteAllTextAsync(manifestPath, manifest.ToJson(), cancellationToken);
+    }
+
+    private static async Task WriteManifestSafeAsync(string resourcePath, MutationManifest manifest, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await WriteManifestAsync(resourcePath, manifest, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
+            await Console.Error.WriteLineAsync($"✗ Resource written but manifest failed ({manifestPath}): {ex.Message}");
+            Environment.ExitCode = 1;
+        }
     }
 
     private static void PrintEdgeCaseSummary(MutationManifest manifest)
@@ -300,17 +340,24 @@ internal static class ResourceCommand
             Console.WriteLine($"    {group.Key}: {group.Count()}");
     }
 
-    private static void RunValidation(System.Text.Json.Nodes.JsonNode node, IFhirSchemaProvider schemaProvider, string resourceType, string fhirVersion)
+    /// <summary>
+    /// Runs FHIR schema validation and prints results. Sets <c>Environment.ExitCode = 1</c>
+    /// when validation fails, unless <paramref name="includeInvalid"/> is true
+    /// (invalidity was deliberately requested via --include-invalid).
+    /// </summary>
+    private static void RunValidation(System.Text.Json.Nodes.JsonNode node, IFhirSchemaProvider schemaProvider, string resourceType, string fhirVersion, bool includeInvalid)
     {
         var validationResult = ValidationHelper.ValidateResource(node, schemaProvider);
         if (!validationResult.IsValid)
         {
-            Console.WriteLine($"\n⚠️  Validation Issues Detected:");
+            Console.Error.WriteLine($"\n⚠  Validation Issues Detected:");
             ValidationHelper.DisplayResults(validationResult, resourceType, fhirVersion, verbose: false);
+            if (!includeInvalid)
+                Environment.ExitCode = 1;
         }
         else
         {
-            Console.WriteLine($"✓ Validation passed");
+            Console.WriteLine("✓ Validation passed");
         }
     }
 }

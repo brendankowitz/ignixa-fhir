@@ -34,7 +34,8 @@ class Program
         AddFhirVersionCommands(rootCommand, "r5", new R5CoreSchemaProvider());
         AddFhirVersionCommands(rootCommand, "r6", new R6CoreSchemaProvider());
 
-        return await rootCommand.Parse(args).InvokeAsync();
+        var invokeExitCode = await rootCommand.Parse(args).InvokeAsync();
+        return invokeExitCode != 0 ? invokeExitCode : Environment.ExitCode;
     }
 
     /// <summary>

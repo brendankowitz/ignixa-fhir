@@ -21,7 +21,7 @@ public sealed class EdgeCaseCatalog
     {
     }
 
-    /// <summary>Creates a catalog pre-populated with all built-in strategies (unicode + temporal families).</summary>
+    /// <summary>Creates a catalog pre-populated with all built-in strategies (unicode, temporal, and string-boundary families).</summary>
     public static EdgeCaseCatalog CreateDefault()
     {
         var catalog = new EdgeCaseCatalog();
@@ -39,6 +39,29 @@ public sealed class EdgeCaseCatalog
 
     /// <summary>Returns all registered strategies in registration order.</summary>
     public IReadOnlyList<IEdgeCaseStrategy> All() => _strategies;
+
+    /// <summary>
+    /// Resolves selectors to matching strategies and reports which selectors matched nothing.
+    /// A selector may be a family name ("unicode"), a specific category ("unicode.rtl"),
+    /// or the set may be null/empty meaning ALL strategies. Matching is case-insensitive.
+    /// </summary>
+    /// <param name="selectors">Selectors to resolve.</param>
+    /// <param name="unmatched">Selectors that produced no matches.</param>
+    public IReadOnlyList<IEdgeCaseStrategy> Resolve(IEnumerable<string>? selectors, out IReadOnlyList<string> unmatched)
+    {
+        var selectorList = selectors?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+        if (selectorList is null || selectorList.Count == 0)
+        {
+            unmatched = [];
+            return _strategies;
+        }
+
+        var matched = _strategies.Where(s => MatchesAny(s, selectorList)).ToList();
+        unmatched = selectorList
+            .Where(sel => !_strategies.Any(s => Matches(s, sel)))
+            .ToList();
+        return matched;
+    }
 
     /// <summary>
     /// Resolves selectors to matching strategies. A selector may be a family name ("unicode"),

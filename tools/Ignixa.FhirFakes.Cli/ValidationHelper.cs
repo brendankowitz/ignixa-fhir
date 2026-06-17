@@ -68,9 +68,9 @@ internal static class ValidationHelper
         {
             return ValidationResult.Failure(
                 new ValidationIssue(
-                    code: "validation-error",
+                    code: "validator-internal-error",
                     path: "$",
-                    message: $"Validation error: {ex.Message}",
+                    message: $"Validator crashed — this is not a data validity issue. Exception: {ex.GetType().Name}: {ex.Message}",
                     severity: IssueSeverity.Fatal));
         }
     }
