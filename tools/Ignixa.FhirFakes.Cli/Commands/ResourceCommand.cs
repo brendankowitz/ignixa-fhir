@@ -176,11 +176,7 @@ internal static class ResourceCommand
 
                 Console.WriteLine($"✓ Generated Patient: {outputPath}");
 
-                if (manifest is not null)
-                {
-                    PrintEdgeCaseSummary(manifest);
-                    await WriteManifestSafeAsync(outputPath, manifest, cancellationToken);
-                }
+                await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
                 if (validate)
                     RunValidation(patient.MutableNode, schemaProvider, "Patient", fhirVersion, includeInvalid);
@@ -220,11 +216,7 @@ internal static class ResourceCommand
 
                     Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
 
-                    if (manifest is not null)
-                    {
-                        PrintEdgeCaseSummary(manifest);
-                        await WriteManifestSafeAsync(outputPath, manifest, cancellationToken);
-                    }
+                    await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
                     if (validate)
                         RunValidation(observation.MutableNode, schemaProvider, "Observation", fhirVersion, includeInvalid);
@@ -284,11 +276,7 @@ internal static class ResourceCommand
 
         Console.WriteLine($"✓ Generated {resourceType} ({density}): {outputPath}");
 
-        if (manifest is not null)
-        {
-            PrintEdgeCaseSummary(manifest);
-            await WriteManifestSafeAsync(outputPath, manifest, cancellationToken);
-        }
+        await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
         if (validate)
             RunValidation(resource.MutableNode, schemaProvider, resourceType, fhirVersion, includeInvalid);
@@ -313,21 +301,24 @@ internal static class ResourceCommand
         return pipeline.Apply(resource, strategies, includeInvalid);
     }
 
-    private static async Task WriteManifestAsync(string resourcePath, MutationManifest manifest, CancellationToken cancellationToken = default)
+    private static async Task ReportManifestAsync(string resourcePath, MutationManifest? manifest, CancellationToken cancellationToken)
     {
-        var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
-        await File.WriteAllTextAsync(manifestPath, manifest.ToJson(), cancellationToken);
+        if (manifest is null)
+            return;
+
+        PrintEdgeCaseSummary(manifest);
+        await WriteManifestSafeAsync(resourcePath, manifest, cancellationToken);
     }
 
     private static async Task WriteManifestSafeAsync(string resourcePath, MutationManifest manifest, CancellationToken cancellationToken = default)
     {
+        var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
         try
         {
-            await WriteManifestAsync(resourcePath, manifest, cancellationToken);
+            await File.WriteAllTextAsync(manifestPath, manifest.ToJson(), cancellationToken);
         }
         catch (Exception ex)
         {
-            var manifestPath = Path.ChangeExtension(resourcePath, null) + ".manifest.json";
             await Console.Error.WriteLineAsync($"✗ Resource written but manifest failed ({manifestPath}): {ex.Message}");
             Environment.ExitCode = 1;
         }
