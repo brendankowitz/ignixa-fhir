@@ -201,10 +201,11 @@ public class PopulationGeneratorTests
     {
         // Arrange
         var demographics = DemographicsDataProvider.CreateDefault();
-        var city = demographics.SelectCity("Massachusetts");
+        var randomizer = new Bogus.Randomizer();
+        var city = demographics.SelectCity("Massachusetts", randomizer);
 
         // Act
-        var zipCode = demographics.SampleZipCode(city);
+        var zipCode = demographics.SampleZipCode(city, randomizer);
 
         // Assert
         var result = Should.NotThrow(() => zipCode);
@@ -218,10 +219,11 @@ public class PopulationGeneratorTests
     {
         // Arrange
         var demographics = DemographicsDataProvider.CreateDefault();
-        var city = demographics.SelectCity("Washington");
+        var randomizer = new Bogus.Randomizer();
+        var city = demographics.SelectCity("Washington", randomizer);
 
         // Act
-        var areaCode = demographics.SampleAreaCode(city);
+        var areaCode = demographics.SampleAreaCode(city, randomizer);
 
         // Assert
         var result = Should.NotThrow(() => areaCode);

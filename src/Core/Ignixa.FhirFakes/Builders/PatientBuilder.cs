@@ -713,10 +713,10 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         }
 
         // Sample core demographics
-        _age = _demographics.SampleAge(city);
-        _gender = _demographics.SampleGender(city);
-        _zipCode = _demographics.SampleZipCode(city);
-        _areaCode = _demographics.SampleAreaCode(city);
+        _age = _demographics.SampleAge(city, _faker.Random);
+        _gender = _demographics.SampleGender(city, _faker.Random);
+        _zipCode = _demographics.SampleZipCode(city, _faker.Random);
+        _areaCode = _demographics.SampleAreaCode(city, _faker.Random);
         _city = city.Name;
         _state = city.State;
         _country = city.Country;
@@ -1052,15 +1052,6 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         }
 
         return extensions;
-    }
-
-    /// <summary>
-    /// Determines if the patient is from the US (for USCore extension eligibility).
-    /// </summary>
-    private bool IsUSPatient()
-    {
-        // Country defaults to "US" if not set, so treat null/empty as US
-        return string.IsNullOrEmpty(_country) || _country == "US";
     }
 
     // === Birth Date Validation and Calculation Methods ===

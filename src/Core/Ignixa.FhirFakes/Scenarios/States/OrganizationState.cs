@@ -346,7 +346,7 @@ public sealed class OrganizationState : ScenarioState
     private OrganizationAddress GenerateAddress()
     {
         var city = _demographics.Cities[_faker.Random.Int(0, _demographics.Cities.Count - 1)];
-        var zipCode = _demographics.SampleZipCode(city);
+        var zipCode = _demographics.SampleZipCode(city, _faker.Random);
         var streetNumber = _faker.Random.Int(100, 9999);
         var streetName = _faker.Address.StreetName();
         var streetSuffix = _faker.Random.Bool() ? "Suite " + _faker.Random.Int(100, 999) : null;
@@ -367,7 +367,7 @@ public sealed class OrganizationState : ScenarioState
     private string GeneratePhoneNumber()
     {
         var city = _demographics.Cities[_faker.Random.Int(0, _demographics.Cities.Count - 1)];
-        var areaCode = _demographics.SampleAreaCode(city);
+        var areaCode = _demographics.SampleAreaCode(city, _faker.Random);
         var exchange = _faker.Random.Int(200, 999);
         var subscriber = _faker.Random.Int(0, 9999);
         return $"({areaCode}) {exchange:D3}-{subscriber:D4}";

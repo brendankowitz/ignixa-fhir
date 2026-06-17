@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Builders.Profiles;
+using Ignixa.FhirFakes.Population;
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Xunit;
@@ -44,6 +45,45 @@ public class PatientBuilderDeterminismTests
         // Arrange & Act
         var first = BuildConfiguredPatient(seed: 1);
         var second = BuildConfiguredPatient(seed: 2);
+
+        // Assert
+        Canonicalize(first).ShouldNotBe(Canonicalize(second));
+    }
+
+    [Fact]
+    public void GivenSameSeed_WhenBuildingFromCity_ThenOutputsAreByteIdentical()
+    {
+        // Arrange & Act
+        var first = PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromCity(KnownCities.Boston).Build().MutableNode;
+        var second = PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromCity(KnownCities.Boston).Build().MutableNode;
+
+        // Assert
+        Canonicalize(first).ShouldBe(Canonicalize(second));
+    }
+
+    [Fact]
+    public void GivenSameSeed_WhenBuildingFromSeattle_ThenOutputsAreByteIdentical()
+    {
+        // Arrange & Act
+        var first = PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromSeattle().Build().MutableNode;
+        var second = PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromSeattle().Build().MutableNode;
+
+        // Assert
+        Canonicalize(first).ShouldBe(Canonicalize(second));
+    }
+
+    [Fact]
+    public void GivenDifferentSeeds_WhenBuildingFromCity_ThenOutputsDiffer()
+    {
+        // Arrange & Act
+        var first = PatientBuilderFactory.Create(_schemaProvider, 1)
+            .FromCity(KnownCities.Boston).Build().MutableNode;
+        var second = PatientBuilderFactory.Create(_schemaProvider, 2)
+            .FromCity(KnownCities.Boston).Build().MutableNode;
 
         // Assert
         Canonicalize(first).ShouldNotBe(Canonicalize(second));

@@ -401,13 +401,17 @@ public class DemographicsDataProvider
     /// <summary>
     /// Selects a city from the specified state using weighted random sampling by population.
     /// </summary>
-    public CityDemographics SelectCity(string state)
+    /// <param name="state">State name to filter cities by.</param>
+    /// <param name="randomizer">The seeded randomizer used for weighted sampling.</param>
+    public CityDemographics SelectCity(string state, Bogus.Randomizer randomizer)
     {
+        ArgumentNullException.ThrowIfNull(randomizer);
+
         var citiesInState = _cities.Where(c => c.State == state).ToList();
         if (citiesInState.Count == 0) return _cities.First(); // Fallback to any city
 
         var totalPop = citiesInState.Sum(c => c.Population);
-        var random = Random.Shared.Next(totalPop);
+        var random = randomizer.Int(0, totalPop - 1);
         var cumulative = 0;
 
         foreach (var city in citiesInState)
@@ -422,49 +426,64 @@ public class DemographicsDataProvider
     /// <summary>
     /// Samples an age from the city's age group distribution.
     /// </summary>
-    public int SampleAge(CityDemographics city)
+    /// <param name="city">City demographics.</param>
+    /// <param name="randomizer">The seeded randomizer used for age sampling.</param>
+    public int SampleAge(CityDemographics city, Bogus.Randomizer randomizer)
     {
-        var ageGroup = SampleFromDistribution(city.AgeGroupDistribution);
+        ArgumentNullException.ThrowIfNull(randomizer);
+
+        var ageGroup = SampleFromDistribution(city.AgeGroupDistribution, randomizer);
         return ageGroup switch
         {
-            "0-17" => Random.Shared.Next(0, 18),
-            "18-44" => Random.Shared.Next(18, 45),
-            "45-64" => Random.Shared.Next(45, 65),
-            "65+" => Random.Shared.Next(65, 90),
-            _ => Random.Shared.Next(0, 90)
+            "0-17" => randomizer.Int(0, 17),
+            "18-44" => randomizer.Int(18, 44),
+            "45-64" => randomizer.Int(45, 64),
+            "65+" => randomizer.Int(65, 89),
+            _ => randomizer.Int(0, 89)
         };
     }
 
     /// <summary>
     /// Samples a gender from the city's male ratio.
     /// </summary>
-    public string SampleGender(CityDemographics city)
+    /// <param name="city">City demographics.</param>
+    /// <param name="randomizer">The seeded randomizer used for gender sampling.</param>
+    public string SampleGender(CityDemographics city, Bogus.Randomizer randomizer)
     {
-        return Random.Shared.NextDouble() < city.MaleRatio ? PatientBuilderConstants.Gender.Male : PatientBuilderConstants.Gender.Female;
+        ArgumentNullException.ThrowIfNull(randomizer);
+
+        return randomizer.Double() < city.MaleRatio ? PatientBuilderConstants.Gender.Male : PatientBuilderConstants.Gender.Female;
     }
 
     /// <summary>
     /// Samples a zip code from the city's zip code range.
     /// </summary>
+    /// <param name="city">City demographics.</param>
+    /// <param name="randomizer">The seeded randomizer used for zip code sampling.</param>
     /// <example>
     /// Boston (prefix "021") → "02101", "02142", "02298", etc.
     /// </example>
-    public string SampleZipCode(CityDemographics city)
+    public string SampleZipCode(CityDemographics city, Bogus.Randomizer randomizer)
     {
-        // Generate a random 2-digit suffix for the zip code prefix
-        var suffix = Random.Shared.Next(0, 100).ToString("D2");
+        ArgumentNullException.ThrowIfNull(randomizer);
+
+        var suffix = randomizer.Int(0, 99).ToString("D2");
         return city.ZipCodePrefix + suffix;
     }
 
     /// <summary>
     /// Samples a phone area code from the city's area codes.
     /// </summary>
+    /// <param name="city">City demographics.</param>
+    /// <param name="randomizer">The seeded randomizer used for area code sampling.</param>
     /// <example>
     /// Boston → "617" or "857"
     /// </example>
-    public string SampleAreaCode(CityDemographics city)
+    public string SampleAreaCode(CityDemographics city, Bogus.Randomizer randomizer)
     {
-        return city.AreaCodes[Random.Shared.Next(city.AreaCodes.Count)];
+        ArgumentNullException.ThrowIfNull(randomizer);
+
+        return city.AreaCodes[randomizer.Int(0, city.AreaCodes.Count - 1)];
     }
 
     /// <summary>
@@ -488,9 +507,9 @@ public class DemographicsDataProvider
         return profile.SampleProfileAttributes(city, randomizer);
     }
 
-    private string SampleFromDistribution(Dictionary<string, double> distribution)
+    private static string SampleFromDistribution(Dictionary<string, double> distribution, Bogus.Randomizer randomizer)
     {
-        var random = Random.Shared.NextDouble();
+        var random = randomizer.Double();
         var cumulative = 0.0;
 
         foreach (var (key, prob) in distribution)

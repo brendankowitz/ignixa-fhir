@@ -67,7 +67,7 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
         for (int i = 0; i < populationSize; i++)
         {
             // 1. Select city (weighted by population)
-            var city = _demographics.SelectCity(state);
+            var city = _demographics.SelectCity(state, new Bogus.Randomizer());
 
             // 2. Sample demographics using PatientBuilder (race, age, gender, name, zip, area code)
             var patientBuilder = PatientBuilderFactory.Create(_schemaProvider)
