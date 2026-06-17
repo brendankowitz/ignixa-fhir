@@ -141,6 +141,22 @@ public class StringBoundaryStrategyTests
         coding?["system"]?.GetValue<string>().ShouldBe("http://hl7.org/fhir/v2/0203");
     }
 
+    [Fact]
+    public void GivenStringStrategies_WhenApplied_ThenIdentifierValueIsMutatedAndRecorded()
+    {
+        var strategies = EdgeCaseCatalog.CreateDefault().Resolve(["string"]);
+        var resource = ResourceJsonNode.Parse(SampleJson);
+
+        var manifest = new EdgeCasePipeline(7, EdgeCaseTargetFactory.Schema)
+            .Apply(resource, strategies, includeNonValidityPreserving: true);
+
+        // identifier.value is a FHIR string (not a code/uri), so it is legitimately mutable. The
+        // refactor away from an element-name allowlist makes it reachable; assert that positively.
+        var mutatedValue = resource.MutableNode["identifier"]?.AsArray()?[0]?.AsObject()?["value"]?.GetValue<string>();
+        mutatedValue.ShouldNotBe("MRN-999");
+        manifest.Mutations.ShouldContain(m => m.Path == "Patient.identifier[0].value");
+    }
+
     // ── Determinism ───────────────────────────────────────────────────────────
 
     [Fact]

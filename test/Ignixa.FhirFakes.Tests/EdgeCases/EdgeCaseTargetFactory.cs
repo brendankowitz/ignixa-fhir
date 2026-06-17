@@ -30,8 +30,9 @@ internal static class EdgeCaseTargetFactory
     /// <summary>Returns the single target at <paramref name="path"/> (the schema-typed location).</summary>
     public static MutationTarget AtPath(string json, string path)
     {
-        var target = EnumerateAll(json).FirstOrDefault(t => t.Path == path);
+        var all = EnumerateAll(json);
+        var target = all.FirstOrDefault(t => t.Path == path);
         return target ?? throw new InvalidOperationException(
-            $"No target found at path '{path}'. Available: {string.Join(", ", EnumerateAll(json).Select(t => t.Path))}");
+            $"No target found at path '{path}'. Available: {string.Join(", ", all.Select(t => t.Path))}");
     }
 }

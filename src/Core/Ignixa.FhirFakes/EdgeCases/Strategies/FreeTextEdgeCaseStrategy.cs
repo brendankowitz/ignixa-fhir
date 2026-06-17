@@ -28,7 +28,7 @@ public abstract class FreeTextEdgeCaseStrategy : IEdgeCaseStrategy
     public bool CanApply(MutationTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        return target.InstanceType is "string" or "markdown" && !target.IsRequiredBound;
+        return (target.InstanceType is "string" or "markdown") && !target.IsRequiredBound;
     }
 
     /// <inheritdoc />

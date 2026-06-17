@@ -60,7 +60,8 @@ public static class ElementTreeEnumerator
         var valueNode = ResolveValueNode(leaf);
         if (valueNode is null)
         {
-            return;
+            throw new InvalidOperationException(
+                $"Leaf '{leaf.Location}' (InstanceType '{leaf.InstanceType}') reports a primitive string value but no backing JsonValue node could be resolved — ElementTreeEnumerator invariant violated.");
         }
 
         targets.Add(new MutationTarget(
@@ -86,6 +87,10 @@ public static class ElementTreeEnumerator
         return leaf.Meta<JsonNode>() is JsonValue valueNode ? valueNode : null;
     }
 
-    private static bool IsRequiredBound(IType? type)
-        => type is ITypeExtended { Binding.Strength: "required" };
+    // internal (not private) so the PascalCase casing fix can be unit-tested directly against the
+    // real generated schema binding ("Required"), independent of which leaves the enumerator happens
+    // to yield. See ElementTreeEnumeratorTests.
+    internal static bool IsRequiredBound(IType? type)
+        => type is ITypeExtended { Binding.Strength: { } strength }
+            && string.Equals(strength, "required", StringComparison.OrdinalIgnoreCase);
 }

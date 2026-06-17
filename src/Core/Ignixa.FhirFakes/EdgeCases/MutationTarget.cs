@@ -73,7 +73,14 @@ public sealed class MutationTarget
         switch (_valueNode.Parent)
         {
             case JsonArray array:
-                array[array.IndexOf(_valueNode)] = newValue;
+                var index = array.IndexOf(_valueNode);
+                if (index < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Leaf at '{Path}' was not found in its parent array.");
+                }
+
+                array[index] = newValue;
                 break;
             case JsonObject obj:
                 obj[FindPropertyName(obj, _valueNode)] = newValue;
