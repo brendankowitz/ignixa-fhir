@@ -8,8 +8,10 @@ using System.Text.Json;
 namespace Ignixa.FhirFakes.EdgeCases;
 
 /// <summary>
-/// The complete, replayable record of every mutation the pipeline applied to one resource.
-/// Carries the seed so a single resource can be reproduced in isolation.
+/// A data record of the seed and every mutation the pipeline applied to one resource, for
+/// reference and replay. This type is a DTO and does not itself perform replay: replay is achieved
+/// by re-running <c>EdgeCasePipeline</c> with the same seed against the same input resource and
+/// strategy set, per the pipeline's determinism contract.
 /// </summary>
 public sealed class MutationManifest
 {
@@ -50,6 +52,7 @@ public sealed class MutationManifest
                 path = m.Path,
                 before = m.Before,
                 after = m.After,
+                description = m.Description,
             }),
         };
 

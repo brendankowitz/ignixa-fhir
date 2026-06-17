@@ -17,6 +17,13 @@ namespace Ignixa.FhirFakes.EdgeCases;
 /// This MVP only mutates strings, so only string-valued leaves are yielded. Numbers, booleans and
 /// nulls are ignored. Infrastructure keys (resourceType, id, meta, implicitRules, text) are not
 /// descended into.
+/// <para>
+/// Why walk raw <see cref="JsonNode"/> rather than reuse FHIRPath / <c>IElement</c> or the shared
+/// <c>IJsonNodeMutator</c> used by Patch and Mapping: this walker needs schema-agnostic blind
+/// enumeration of ALL string leaves plus a parent-pointer reference (object + key, or array + index)
+/// to mutate each leaf in place. <c>IElement</c> exposes no parent reference, so it cannot support
+/// in-place replacement; the path-targeted mutators expect a known path rather than a full sweep.
+/// </para>
 /// </remarks>
 public static class ResourceTreeWalker
 {
@@ -59,7 +66,7 @@ public static class ResourceTreeWalker
                 WalkArray(childArray, key, path, targets);
                 break;
             case JsonValue jsonValue when TryGetString(jsonValue, out var str):
-                targets.Add(MutationTarget.ForProperty(parent, key, path, str));
+                targets.Add(new PropertyTarget(parent, key, path, str));
                 break;
             default:
                 break;
@@ -86,7 +93,7 @@ public static class ResourceTreeWalker
                 WalkArray(childArray, elementName, path, targets);
                 break;
             case JsonValue jsonValue when TryGetString(jsonValue, out var str):
-                targets.Add(MutationTarget.ForArrayItem(array, index, elementName, path, str));
+                targets.Add(new ArrayItemTarget(array, index, elementName, path, str));
                 break;
             default:
                 break;

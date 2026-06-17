@@ -89,6 +89,11 @@ public class SchemaBasedFhirResourceFaker
     /// <see cref="CreatePatient"/> and <see cref="CreateSeattlePatient"/> so the base Patient
     /// generation path is reproducible. The generic <see cref="Generate(string)"/> path is seeded
     /// via the internal randomizers only.
+    /// <para>
+    /// Output is byte-reproducible from the seed EXCEPT <c>meta.lastUpdated</c>, which
+    /// <see cref="Generate(string)"/> stamps with wall-clock <see cref="DateTime.UtcNow"/>. A reader
+    /// must not infer byte-identical output from a seed alone.
+    /// </para>
     /// </remarks>
     public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider, int seed)
     {
@@ -176,8 +181,10 @@ public class SchemaBasedFhirResourceFaker
     #endregion
 
     /// <summary>
-    /// Generates a fake FHIR resource by resource type name.
-    /// Fills required elements and randomly includes some optional elements.
+    /// Generates a fake FHIR resource by resource type name. Population is governed by
+    /// <see cref="Density"/>: required elements only by default (Minimal/Realistic); under
+    /// <see cref="GenerationDensity.Maximal"/> every optional element is included as well. Inclusion
+    /// is deterministic for a given density — optionals are never sampled at random.
     /// </summary>
     public ResourceJsonNode Generate(string resourceType)
     {

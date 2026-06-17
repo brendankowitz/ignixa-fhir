@@ -9,8 +9,8 @@ namespace Ignixa.FhirFakes.EdgeCases.Strategies;
 
 /// <summary>
 /// Sets a free-text value to the empty string <c>""</c>. FHIR <c>string</c> requires at least one
-/// character, so an empty-but-present string is invalid per spec — this mutation is expected to
-/// produce a resource that fails validation.
+/// character, so an empty-but-present primitive is unconditionally rejected by the validator
+/// (depth-independent). This mutation therefore always produces an invalid resource.
 /// </summary>
 public sealed class EmptyPresentStringStrategy : StringBoundaryEdgeCaseStrategy
 {
@@ -18,7 +18,7 @@ public sealed class EmptyPresentStringStrategy : StringBoundaryEdgeCaseStrategy
     public override string Category => "string.empty-present";
 
     /// <inheritdoc />
-    public override ValidityIntent Intent => ValidityIntent.MayViolate;
+    public override ValidityIntent Intent => ValidityIntent.AlwaysInvalid;
 
     /// <inheritdoc />
     public override MutationResult Apply(MutationTarget target, Randomizer rng)

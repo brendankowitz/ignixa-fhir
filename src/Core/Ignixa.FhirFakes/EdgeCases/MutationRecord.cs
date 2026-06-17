@@ -12,4 +12,5 @@ namespace Ignixa.FhirFakes.EdgeCases;
 /// <param name="Path">The JSON path to the mutated leaf (e.g. "name[0].family").</param>
 /// <param name="Before">The value before mutation.</param>
 /// <param name="After">The value after mutation.</param>
-public sealed record MutationRecord(string Category, string Path, string? Before, string? After);
+/// <param name="Description">A short human-readable description of what the strategy changed.</param>
+public sealed record MutationRecord(string Category, string Path, string? Before, string? After, string Description);

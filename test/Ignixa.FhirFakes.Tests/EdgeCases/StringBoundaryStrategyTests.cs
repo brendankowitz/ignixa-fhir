@@ -33,7 +33,7 @@ public class StringBoundaryStrategyTests
     [InlineData("string.max-length", ValidityIntent.PreservesValidity)]
     [InlineData("string.injection-like", ValidityIntent.PreservesValidity)]
     [InlineData("string.control-chars", ValidityIntent.MayViolate)]
-    [InlineData("string.empty-present", ValidityIntent.MayViolate)]
+    [InlineData("string.empty-present", ValidityIntent.AlwaysInvalid)]
     [InlineData("string.whitespace-only", ValidityIntent.MayViolate)]
     public void GivenStringStrategy_WhenInspectingMetadata_ThenFamilyIsStringBoundaryAndIntentIsCorrect(
         string category, ValidityIntent expectedIntent)

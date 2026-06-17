@@ -89,6 +89,6 @@ public sealed class EdgeCasePipeline
         var before = target.Value;
         var result = strategy.Apply(target, _rng);
         target.Replace(result.NewValue);
-        records.Add(new MutationRecord(strategy.Category, target.Path, before, result.NewValue));
+        records.Add(new MutationRecord(strategy.Category, target.Path, before, result.NewValue, result.Description));
     }
 }

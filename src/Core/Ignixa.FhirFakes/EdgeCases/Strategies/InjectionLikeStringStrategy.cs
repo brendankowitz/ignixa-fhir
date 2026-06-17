@@ -24,6 +24,9 @@ public sealed class InjectionLikeStringStrategy : StringBoundaryEdgeCaseStrategy
         """{{7*7}}""",
         """<img src=x onerror=alert(1)>""",
         """' OR '1'='1""",
+        // Deliberately literal backslash sequences (the characters \, x, 0, ...), NOT real control
+        // bytes — this is injection-LOOKING free text that stays valid FHIR string. Actual control
+        // characters belong to ControlCharsStringStrategy.
         """\x00\x1b[31mRED\x1b[0m""",
         """../../etc/passwd""",
     ];

@@ -10,8 +10,9 @@ namespace Ignixa.FhirFakes.EdgeCases;
 /// under which one or more hierarchical categories live (e.g. "unicode.rtl").
 /// </summary>
 /// <remarks>
-/// Only <see cref="Unicode"/> and <see cref="Temporal"/> ship strategies in this MVP. The remaining
-/// members are defined so the catalog vocabulary is stable while later families are added.
+/// <see cref="Unicode"/>, <see cref="Temporal"/> and <see cref="StringBoundary"/> ship strategies.
+/// <see cref="Cardinality"/> and <see cref="Structural"/> are defined so the catalog vocabulary is
+/// stable while those later families are added.
 /// </remarks>
 public enum EdgeCaseFamily
 {
@@ -21,7 +22,7 @@ public enum EdgeCaseFamily
     /// <summary>Date/dateTime boundary perturbations (leap years, far past/future, partial precision).</summary>
     Temporal,
 
-    /// <summary>String length and content boundaries (max-length, whitespace-only, control chars). Not yet implemented.</summary>
+    /// <summary>String length and content boundaries (max-length, whitespace-only, control chars).</summary>
     StringBoundary,
 
     /// <summary>Cardinality perturbations (omit all optional, populate every optional). Not yet implemented.</summary>
