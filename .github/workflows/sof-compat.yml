@@ -31,10 +31,14 @@ jobs:
       - name: Bump sql-on-fhir-tests to upstream main
         run: |
           path=test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests
+          before=$(git -C "$path" rev-parse --short HEAD)
           git submodule update --remote --recursive "$path"
-          pinned=$(git -C "$path" rev-parse --short HEAD)
-          echo "UPSTREAM_REF=$pinned" >> "$GITHUB_ENV"
-          echo "Upstream suite now at $pinned"
+          after=$(git -C "$path" rev-parse --short HEAD)
+          echo "UPSTREAM_REF=$after" >> "$GITHUB_ENV"
+          if [ "$before" = "$after" ]; then
+            echo "::warning::sql-on-fhir-tests pointer unchanged ($after) — not testing newer upstream than the pinned gate"
+          fi
+          echo "Upstream suite at $after (was $before)"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -46,6 +50,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
+          mkdir -p artifacts/sof
           dotnet test test/Ignixa.SqlOnFhir.Tests/Ignixa.SqlOnFhir.Tests.csproj \
             --filter 'FullyQualifiedName~OfficialSqlOnFhirTestRunner' \
             --results-directory artifacts/sof \
@@ -54,19 +59,26 @@ jobs:
       - name: Summarize result
         if: always()
         run: |
-          summary=$(grep -hoE 'Failed:[[:space:]]*[0-9]+, Passed:[[:space:]]*[0-9]+, Skipped:[[:space:]]*[0-9]+, Total:[[:space:]]*[0-9]+' artifacts/sof/run.log | head -1)
+          summary=$(grep -hoE 'Failed:[[:space:]]*[0-9]+, Passed:[[:space:]]*[0-9]+, Skipped:[[:space:]]*[0-9]+, Total:[[:space:]]*[0-9]+' artifacts/sof/run.log 2>/dev/null | head -1)
+          # A missing result line means the run never reached test execution
+          # (build/restore/runner failure) — that is NOT conformance drift.
+          if [ -n "$summary" ]; then
+            echo "SOF_STATUS=ran" >> "$GITHUB_ENV"
+          else
+            echo "SOF_STATUS=no-result" >> "$GITHUB_ENV"
+          fi
+          echo "SOF_SUMMARY=${summary:-no test result captured (likely build or runner failure)}" >> "$GITHUB_ENV"
           {
             echo "## SQL-on-FHIR conformance vs upstream \`${UPSTREAM_REF}\`"
             echo ""
-            echo "Outcome: **${{ steps.sof.outcome }}**"
+            echo "Step outcome: **${{ steps.sof.outcome }}**"
             echo ""
             echo "\`\`\`"
-            echo "${summary:-no result line captured}"
+            echo "${summary:-no test result captured (likely build or runner failure)}"
             echo "\`\`\`"
             echo ""
-            grep -hE "Row [0-9]+ column|Failed Ignixa\.SqlOnFhir|Assert\.|expected '" artifacts/sof/run.log | sed 's/^/    /' | head -40
+            grep -hE "Row [0-9]+ column|Failed Ignixa\.SqlOnFhir|Assert\.|error [A-Z]+[0-9]+|expected '" artifacts/sof/run.log 2>/dev/null | sed 's/^/    /' | head -40
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "SOF_SUMMARY=${summary:-unknown}" >> "$GITHUB_ENV"
 
       - name: Upload conformance report
         if: always()
@@ -83,11 +95,23 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- sof-conformance-drift -->';
-            const title = 'SQL-on-FHIR conformance drift vs upstream main';
+            const noResult = process.env.SOF_STATUS === 'no-result';
+            // Distinct markers so a build/infra failure and a real drift dedup independently
+            // instead of overwriting each other's tracking issue.
+            const marker = noResult ? '<!-- sof-weekly-runner-failure -->' : '<!-- sof-conformance-drift -->';
+            const title = noResult
+              ? 'SQL-on-FHIR weekly run failed before producing results'
+              : 'SQL-on-FHIR conformance drift vs upstream main';
+            const lead = noResult
+              ? `The weekly SoF run against upstream \`${process.env.UPSTREAM_REF}\` failed before any test result was produced — likely a build, restore, or runner failure rather than a conformance regression. Check the run logs.`
+              : `Upstream suite \`${process.env.UPSTREAM_REF}\` has cases the evaluator does not yet pass.`;
+            const reconcile = noResult
+              ? 'Investigate the run logs / artifact; this is infrastructure, not a conformance gap.'
+              : 'Reconcile by fixing the evaluator or, if the case is genuinely deferred, ' +
+                'listing it in `OfficialSqlOnFhirTestRunner.KnownConformanceFailures` and bumping the pinned submodule pointer.';
             const body = [
               marker,
-              `Upstream suite \`${process.env.UPSTREAM_REF}\` has cases the evaluator does not yet pass.`,
+              lead,
               '',
               '```',
               process.env.SOF_SUMMARY || 'see run',
@@ -95,8 +119,7 @@ jobs:
               '',
               `Report: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               '',
-              'Reconcile by fixing the evaluator or, if the case is genuinely deferred, ' +
-              'listing it in `OfficialSqlOnFhirTestRunner.KnownConformanceFailures` and bumping the pinned submodule pointer.',
+              reconcile,
             ].join('\n');
 
             const existing = await github.paginate(github.rest.issues.listForRepo, {
