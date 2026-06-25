@@ -324,20 +324,14 @@ internal class SqlOnFhirEvaluationVisitor
             foreach (var currentRow in rows)
             {
                 var nestedRows = EvaluateSelect(nested, resource, context);
-                if (nestedRows.Count == 0)
+                // A nested select participates in a cross-join (row_product): an empty result
+                // zeroes the product and drops the row. Column-only and forEachOrNull selects
+                // never return empty, so this only fires when a nested forEach/repeat collapses.
+                foreach (var nestedRow in nestedRows)
                 {
-                    if (nested.ForEach == null && nested.ForEachOrNull == null)
-                        newRows.Add(currentRow);
-                    // else: Cartesian product with empty = drop row
-                }
-                else
-                {
-                    foreach (var nestedRow in nestedRows)
-                    {
-                        var merged = new Dictionary<string, object?>(currentRow);
-                        foreach (var kvp in nestedRow) merged[kvp.Key] = kvp.Value;
-                        newRows.Add(merged);
-                    }
+                    var merged = new Dictionary<string, object?>(currentRow);
+                    foreach (var kvp in nestedRow) merged[kvp.Key] = kvp.Value;
+                    newRows.Add(merged);
                 }
             }
             rows = newRows;

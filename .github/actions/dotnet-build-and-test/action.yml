@@ -88,6 +88,34 @@ runs:
         if-no-files-found: 'ignore'
         retention-days: 30
 
+    - name: Upload SQL-on-FHIR conformance report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: sql-on-fhir-test-report
+        path: '**/test_report.json'
+        if-no-files-found: 'ignore'
+        retention-days: 30
+
+    - name: Validate SQL-on-FHIR conformance report (schema)
+      if: always()
+      shell: bash
+      run: |
+        schema=$(find . -path '*sql-on-fhir-tests/test_report/test-report.schema.json' -print -quit)
+        if [ -z "$schema" ]; then
+          echo "Report schema not found (submodule not checked out?) - skipping validation"
+          exit 0
+        fi
+        found=0
+        while IFS= read -r report; do
+          found=1
+          echo "Validating $report against $schema"
+          pipx run check-jsonschema --schemafile "$schema" "$report"
+        done < <(find . -name test_report.json)
+        if [ "$found" -eq 0 ]; then
+          echo "No test_report.json produced - skipping validation"
+        fi
+
     - name: Publish test results
       if: always()
       uses: EnricoMi/publish-unit-test-result-action@v2

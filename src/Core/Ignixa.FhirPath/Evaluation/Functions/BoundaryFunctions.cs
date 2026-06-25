@@ -286,7 +286,7 @@ internal static class BoundaryFunctions
             string str when IsDateTimeString(str) => CalculateDateTimeHighBoundary(str, outputPrecision, element.InstanceType),
 
             // Time strings
-            string str when IsTimeString(str) => CalculateTimeHighBoundary(str, outputPrecision),
+            string str when IsTimeString(str) => CalculateTimeHighBoundary(str),
 
             _ => null
         };
@@ -469,12 +469,13 @@ internal static class BoundaryFunctions
         return FunctionHelpers.CreateTime(result);
     }
 
-    private static IElement? CalculateTimeHighBoundary(string timeStr, int precision)
+    private static IElement? CalculateTimeHighBoundary(string timeStr)
     {
         var parsed = ParseTimeString(timeStr);
         if (parsed == null) return null;
 
-        var result = FormatTimeHighBoundary(parsed.Value, precision);
+        var inputPrecision = GetTimePrecision(timeStr.TrimStart('@'));
+        var result = FormatTimeHighBoundary(parsed.Value, inputPrecision);
         return FunctionHelpers.CreateTime(result);
     }
 
@@ -779,13 +780,15 @@ internal static class BoundaryFunctions
         return $"{parsed.hour:D2}:{parsed.minute:D2}:{parsed.second:D2}.{parsed.millisecond:D3}";
     }
 
-    private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
+    private static string FormatTimeHighBoundary((int hour, int minute, int second, int millisecond) parsed, int inputPrecision)
     {
-        // Time precision: 2=hour, 4=minute, 6=second, 9=millisecond
-        // For high boundary, end of period (XX:XX:59.999)
-        // Time values are stored without T prefix per FHIR spec (HH:mm:ss format)
-        // e.g., @T10:30.highBoundary(9) returns '10:30:59.999'
-        return $"{parsed.hour:D2}:{parsed.minute:D2}:59.999";
+        // High boundary fills only the components below the input precision; specified
+        // components are kept. Input precision: 2=hour, 4=minute, 6=second, 9=millisecond.
+        // e.g. @T10:30.highBoundary() -> '10:30:59.999'; @T12:34:00 -> '12:34:00.999'.
+        var minute = inputPrecision >= 4 ? parsed.minute : 59;
+        var second = inputPrecision >= 6 ? parsed.second : 59;
+        var millisecond = inputPrecision >= 9 ? parsed.millisecond : 999;
+        return $"{parsed.hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}";
     }
 
     private static bool IsDateTimeString(string value)
