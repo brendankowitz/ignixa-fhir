@@ -29,6 +29,8 @@ FHIR validation is critical for production servers but must balance correctness,
 | [depth-refactor](investigations/depth-refactor.md) | In Progress | Consolidate ValidationTier/Mode into single ValidationDepth enum |
 | [hapi-message-format](investigations/hapi-message-format.md) | Complete | HAPI FHIR OperationOutcome structure for ecosystem compatibility |
 | [primitive-value-validation-gap](investigations/primitive-value-validation-gap.md) | Viable | Non-choice primitives use loose TypeCheck instead of strict FhirPrimitiveValidator — empty strings and invalid calendar dates accepted. Found by fhir-faker edge-case mode |
+| [tree-context-scoping](investigations/tree-context-scoping.md) | Viable | Thread %resource/%rootResource through ValidationState and inject a scoped reference index as the resolve() delegate — unblocks dom-1/bdl-* invariants and Bundle/contained resolution without adding a Parent pointer to IElement. 3-edit seam, no descent refactor |
+| [slicing-discriminators](investigations/slicing-discriminators.md) | In Progress | Slicing as a parent-altitude check: imperative slice assignment + cardinality/reporting, FHIRPath engine for the discriminator predicate only (HAPI-style). Builds on tree-context-scoping (needs conformsTo via %resource, resolve()). Prereq gap: SlicingMetadata.Discriminators lacks a discriminator type field |
 
 ## Decision
 

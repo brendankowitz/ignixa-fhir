@@ -98,8 +98,9 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
                 continue;
             }
 
-            // Validate contained resource against its own schema
-            var containedState = state.WithLocation(containedPath);
+            // Validate contained resource against its own schema. Re-scope so %resource points at
+            // the contained resource and %rootResource at the containing parent (FHIR dom-* rule).
+            var containedState = state.WithLocation(containedPath).EnterContainedResource(containedElement);
             var containedResult = containedSchema.Validate(containedElement, settings, containedState);
 
             if (!containedResult.IsValid)

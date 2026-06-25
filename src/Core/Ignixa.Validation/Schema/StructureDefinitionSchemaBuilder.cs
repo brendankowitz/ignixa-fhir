@@ -307,6 +307,14 @@ public class StructureDefinitionSchemaBuilder
         var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser, _logger);
         profileChecks.AddRange(invariantChecks);
 
+        // Reference-integrity (Full tier): flag local references (#id, intra-Bundle Type/id) that
+        // fail to resolve against the scoped resolver. No-ops when no resolver is seeded, so it is
+        // inert outside the scoped validation pipeline.
+        if (typeDefinition.Info.IsResource)
+        {
+            profileChecks.Add(new ReferenceResolutionCheck());
+        }
+
         // Build the canonical URL from the type name
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
 
