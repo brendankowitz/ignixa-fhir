@@ -1,0 +1,112 @@
+name: SoF Conformance (weekly)
+
+# Tracks SQL-on-FHIR conformance against the LATEST upstream sql-on-fhir.js suite,
+# independent of the pinned submodule pointer the PR gate uses. Non-gating: it never
+# blocks a PR — it surfaces drift (new upstream cases we don't yet pass) via the job
+# summary, an uploaded report, and a tracking issue.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sof-compat
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    name: Conformance vs upstream main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Bump sql-on-fhir-tests to upstream main
+        run: |
+          path=test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests
+          git submodule update --remote --recursive "$path"
+          pinned=$(git -C "$path" rev-parse --short HEAD)
+          echo "UPSTREAM_REF=$pinned" >> "$GITHUB_ENV"
+          echo "Upstream suite now at $pinned"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run SoF conformance (non-gating)
+        id: sof
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          dotnet test test/Ignixa.SqlOnFhir.Tests/Ignixa.SqlOnFhir.Tests.csproj \
+            --filter 'FullyQualifiedName~OfficialSqlOnFhirTestRunner' \
+            --results-directory artifacts/sof \
+            2>&1 | tee artifacts/sof/run.log
+
+      - name: Summarize result
+        if: always()
+        run: |
+          summary=$(grep -hoE 'Failed:[[:space:]]*[0-9]+, Passed:[[:space:]]*[0-9]+, Skipped:[[:space:]]*[0-9]+, Total:[[:space:]]*[0-9]+' artifacts/sof/run.log | head -1)
+          {
+            echo "## SQL-on-FHIR conformance vs upstream \`${UPSTREAM_REF}\`"
+            echo ""
+            echo "Outcome: **${{ steps.sof.outcome }}**"
+            echo ""
+            echo "\`\`\`"
+            echo "${summary:-no result line captured}"
+            echo "\`\`\`"
+            echo ""
+            grep -hE "Row [0-9]+ column|Failed Ignixa\.SqlOnFhir|Assert\.|expected '" artifacts/sof/run.log | sed 's/^/    /' | head -40
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "SOF_SUMMARY=${summary:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Upload conformance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sof-conformance-report
+          path: |
+            artifacts/sof/**
+            test/Ignixa.SqlOnFhir.Tests/**/test_report.json
+          if-no-files-found: warn
+
+      - name: Open or refresh tracking issue on drift
+        if: steps.sof.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- sof-conformance-drift -->';
+            const title = 'SQL-on-FHIR conformance drift vs upstream main';
+            const body = [
+              marker,
+              `Upstream suite \`${process.env.UPSTREAM_REF}\` has cases the evaluator does not yet pass.`,
+              '',
+              '```',
+              process.env.SOF_SUMMARY || 'see run',
+              '```',
+              '',
+              `Report: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Reconcile by fixing the evaluator or, if the case is genuinely deferred, ' +
+              'listing it in `OfficialSqlOnFhirTestRunner.KnownConformanceFailures` and bumping the pinned submodule pointer.',
+            ].join('\n');
+
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'sof-conformance',
+            });
+            const hit = existing.find(i => i.body && i.body.includes(marker));
+            if (hit) {
+              await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: hit.number, body });
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: hit.number, body: `Refreshed by run ${context.runId} — upstream \`${process.env.UPSTREAM_REF}\`.` });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['sof-conformance'] });
+            }
