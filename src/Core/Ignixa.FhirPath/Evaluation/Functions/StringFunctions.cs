@@ -516,9 +516,14 @@ internal static class StringFunctions
             .Select(e => (string)e.Value!)
             .ToList();
 
-        // join() always returns a single string element, even over an empty input
-        // collection (which yields ""). Matches fhirpath.js 3.9.0, the engine the
-        // SQL-on-FHIR conformance suite is generated against (fhirpath.json string-join cases).
+        // Per FHIRPath, join() over an empty input collection yields empty ({}),
+        // rendered as a null cell by SQL-on-FHIR. Matches the canonical sql-on-fhir.js
+        // conformance suite (fn_join.json) and fhirpath.js's empty-guard in joinFn.
+        if (focusElements.Count == 0)
+        {
+            return [];
+        }
+
         var result = string.Join(separator, strings);
         return [FunctionHelpers.CreateString(result)];
     }
