@@ -26,6 +26,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0   # GitVersion (GitVersion.MsBuild) needs full history or the build fails
           submodules: recursive
 
       - name: Bump sql-on-fhir-tests to upstream main
