@@ -94,10 +94,9 @@ public record ValidationState
     /// resolver is built rooted at this resource.
     /// </summary>
     /// <remarks>
-    /// Bundle entry resources are independent roots in the FHIRPath sense, but the validation
-    /// pipeline does not currently re-root them: a resource sitting in a Bundle entry is validated
-    /// with %resource still pointing at the enclosing Bundle. Wiring per-entry re-rooting (the
-    /// Bundle analogue of <see cref="EnterContainedResource"/>) is a separate enhancement.
+    /// Bundle entry resources are independent roots and are re-rooted during validation via
+    /// <see cref="EnterBundleEntry"/> (the Bundle analogue of <see cref="EnterContainedResource"/>),
+    /// driven by <c>BundleEntryCheck</c>.
     /// </remarks>
     /// <param name="resource">The resource element becoming the validation root.</param>
     /// <returns>A new validation state scoped to this resource.</returns>
@@ -131,6 +130,29 @@ public record ValidationState
                 contained,
                 parentScope.Resource,
                 reference => index.Resolve(reference) ?? parentResolver?.Invoke(reference))
+        };
+    }
+
+    /// <summary>
+    /// Enters a Bundle entry resource E. Unlike a contained resource, a bundle entry is an
+    /// independent root: both %resource and %rootResource become E (the enclosing Bundle is not E's
+    /// %rootResource). The resolver chains E's own contained set to the bundle scope's resolver so
+    /// intra-bundle sibling references (fullUrl, Type/id) remain resolvable from within the entry.
+    /// </summary>
+    /// <param name="entryResource">The Bundle entry resource element being entered.</param>
+    /// <returns>A new validation state scoped to the entry resource.</returns>
+    public ValidationState EnterBundleEntry(IElement entryResource)
+    {
+        ArgumentNullException.ThrowIfNull(entryResource);
+
+        var bundleResolver = Scope.Resolver;
+        var index = ReferenceIndex.Build(entryResource);
+
+        return this with
+        {
+            Scope = ResourceScope.Root(
+                entryResource,
+                reference => index.Resolve(reference) ?? bundleResolver?.Invoke(reference))
         };
     }
 

@@ -568,4 +568,72 @@ public class TreeContextScopingTests
         // Assert
         result.Issues.ShouldContain(i => i.Code == "ref-resolve");
     }
+
+    [Fact]
+    public void GivenBundleEntryResourceViolatingItsSchema_WhenValidatingBundle_ThenReportsEntryScopedIssue()
+    {
+        // Arrange — the Observation entry omits the required 'status' (1..1). Validated as a base
+        // Resource the omission is invisible; BundleEntryCheck validates it against the Observation
+        // schema, so the cardinality violation surfaces with an entry-scoped path.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Observation"",
+                        ""id"": ""2"",
+                        ""code"": { ""text"": ""x"" }
+                    }
+                }
+            ]
+        }");
+        var element = JsonNodeSourceNode.Create(json!).ToElement(TestSchemaProvider.GetR4Schema());
+        var schema = _schemaResolver.GetSchema("Bundle").ShouldNotBeNull();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+
+        // Act
+        var result = schema.Validate(element, settings);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Path.Contains("entry[0].resource", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GivenBundleEntry_WhenEnterBundleEntry_ThenEntryIsItsOwnRootAndSiblingsResolve()
+    {
+        // Arrange
+        var bundle = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://example.org/fhir/Patient/1"",
+                    ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" }
+                },
+                {
+                    ""fullUrl"": ""http://example.org/fhir/Observation/2"",
+                    ""resource"": {
+                        ""resourceType"": ""Observation"",
+                        ""id"": ""2"",
+                        ""status"": ""final"",
+                        ""code"": { ""text"": ""x"" },
+                        ""subject"": { ""reference"": ""Patient/1"" }
+                    }
+                }
+            ]
+        }");
+        var observationEntry = bundle.Children("entry")[1].Children("resource")[0];
+
+        // Act
+        var state = new ValidationState().EnterRootResource(bundle).EnterBundleEntry(observationEntry);
+
+        // Assert — the entry is its own root (not contained), and sibling Patient/1 still resolves
+        // through the chained bundle resolver.
+        state.Scope.Resource.ShouldBeSameAs(observationEntry);
+        state.Scope.RootResource.ShouldBeSameAs(observationEntry);
+        state.Scope.Resolver.ShouldNotBeNull();
+        state.Scope.Resolver!("Patient/1").ShouldNotBeNull();
+    }
 }

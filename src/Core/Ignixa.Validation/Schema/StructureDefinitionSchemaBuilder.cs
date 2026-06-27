@@ -295,6 +295,13 @@ public class StructureDefinitionSchemaBuilder
         if (typeDefinition.Info.IsResource && validationSchemaResolver is not null)
         {
             specChecks.Add(new ContainedResourceCheck(validationSchemaResolver));
+
+            // Bundle entry resources are typed as the abstract Resource in the Bundle definition;
+            // validate each against its concrete schema as an independent root.
+            if (typeDefinition.Info.Name == "Bundle")
+            {
+                specChecks.Add(new BundleEntryCheck(validationSchemaResolver));
+            }
         }
 
         // Tier 3 (Profile): Advanced checks - FHIRPath invariants, slicing, advanced terminology
