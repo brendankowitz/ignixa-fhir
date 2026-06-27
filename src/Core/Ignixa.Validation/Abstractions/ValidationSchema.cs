@@ -148,6 +148,17 @@ public sealed class ValidationSchema
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState? state = null)
     {
         state ??= new ValidationState();
+
+        // Seed FHIRPath tree-context (%resource / %rootResource / resolve()) automatically for a
+        // resource root when the caller hasn't already. Nested resources are re-scoped explicitly
+        // (see ContainedResourceCheck -> EnterContainedResource) before their recursive Validate
+        // call, leaving Scope already seeded, so this fires only at the top-level entry. Centralizing
+        // it here means callers cannot forget to enable root-referencing invariants and resolve().
+        if (!state.Scope.IsSeeded && (element.Type?.Info.IsResource ?? false))
+        {
+            state = state.EnterRootResource(element);
+        }
+
         var results = new List<ValidationResult>();
 
         // Universal checks always run (all depths)

@@ -307,12 +307,13 @@ public class StructureDefinitionSchemaBuilder
         var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser, _logger);
         profileChecks.AddRange(invariantChecks);
 
-        // Reference-integrity (Full tier): flag local references (#id, intra-Bundle Type/id) that
-        // fail to resolve against the scoped resolver. No-ops when no resolver is seeded, so it is
-        // inert outside the scoped validation pipeline.
+        // Reference-integrity (Full tier): flag unresolved local references — fragments (#id) and,
+        // for document/message bundles, relative Type/id references. The scoped resolver is seeded
+        // automatically by ValidationSchema.Validate for resource roots; the check no-ops only when
+        // validating a non-resource element with no seeded scope.
         if (typeDefinition.Info.IsResource)
         {
-            profileChecks.Add(new ReferenceResolutionCheck());
+            profileChecks.Add(new ReferenceResolutionCheck(validResourceTypes));
         }
 
         // Build the canonical URL from the type name

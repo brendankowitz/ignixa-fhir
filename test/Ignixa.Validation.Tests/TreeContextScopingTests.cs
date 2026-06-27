@@ -11,6 +11,7 @@ using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
+using Ignixa.Validation.Schema;
 using Ignixa.Validation.Tests.TestHelpers;
 using Shouldly;
 using Xunit;
@@ -25,6 +26,8 @@ public class TreeContextScopingTests
 {
     private readonly ISchema _schema = new R4CoreSchemaProvider();
     private readonly FhirPathParser _parser = new();
+    private readonly IValidationSchemaResolver _schemaResolver =
+        new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(new R4CoreSchemaProvider()));
 
     private static IElement ToElement(string json)
     {
@@ -240,12 +243,13 @@ public class TreeContextScopingTests
     }
 
     [Fact]
-    public void GivenBundleWithDanglingLocalReference_WhenReferenceResolutionCheck_ThenReportsIssue()
+    public void GivenDocumentBundleWithDanglingRelativeReference_WhenReferenceResolutionCheck_ThenReportsIssue()
     {
-        // Arrange
+        // Arrange — a document bundle requires intra-bundle reference integrity, so a Type/id
+        // reference that points outside the bundle is genuinely unresolved.
         var element = ToElement(@"{
             ""resourceType"": ""Bundle"",
-            ""type"": ""collection"",
+            ""type"": ""document"",
             ""entry"": [
                 {
                     ""fullUrl"": ""http://example.org/fhir/Observation/2"",
@@ -269,6 +273,161 @@ public class TreeContextScopingTests
         // Assert
         result.IsValid.ShouldBeFalse();
         result.Issues.ShouldContain(i => i.Code == "ref-resolve");
+    }
+
+    [Theory]
+    [InlineData("searchset")]
+    [InlineData("transaction")]
+    [InlineData("collection")]
+    public void GivenNonDocumentBundleWithUnresolvedRelativeReference_WhenReferenceResolutionCheck_ThenDoesNotReportIssue(string bundleType)
+    {
+        // Arrange — searchset/transaction/collection bundles legitimately reference server-resident
+        // resources not present in the bundle. A Type/id reference that is absent must NOT be flagged.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": """ + bundleType + @""",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://example.org/fhir/Observation/2"",
+                    ""resource"": {
+                        ""resourceType"": ""Observation"",
+                        ""id"": ""2"",
+                        ""status"": ""final"",
+                        ""code"": { ""text"": ""x"" },
+                        ""subject"": { ""reference"": ""Patient/999"" }
+                    }
+                }
+            ]
+        }");
+        var check = new ReferenceResolutionCheck();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenDocumentBundleWithResolvableRelativeReference_WhenReferenceResolutionCheck_ThenDoesNotReportIssue()
+    {
+        // Arrange — the referenced Patient/1 is present as a bundle entry, so it resolves.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""document"",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://example.org/fhir/Patient/1"",
+                    ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" }
+                },
+                {
+                    ""fullUrl"": ""http://example.org/fhir/Observation/2"",
+                    ""resource"": {
+                        ""resourceType"": ""Observation"",
+                        ""id"": ""2"",
+                        ""status"": ""final"",
+                        ""code"": { ""text"": ""x"" },
+                        ""subject"": { ""reference"": ""Patient/1"" }
+                    }
+                }
+            ]
+        }");
+        var check = new ReferenceResolutionCheck();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenDocumentBundleEntryWithOwnFragmentReference_WhenReferenceResolutionCheck_ThenDoesNotReportIssue()
+    {
+        // Arrange — a #fragment reference inside an entry resource resolves against THAT entry's own
+        // contained set, which the bundle-root resolver does not index. The root check must not flag
+        // it (it is checked under the entry's own scope, not here).
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""document"",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://example.org/fhir/MedicationRequest/2"",
+                    ""resource"": {
+                        ""resourceType"": ""MedicationRequest"",
+                        ""id"": ""2"",
+                        ""status"": ""active"",
+                        ""intent"": ""order"",
+                        ""subject"": { ""reference"": ""Patient/1"" },
+                        ""contained"": [ { ""resourceType"": ""Medication"", ""id"": ""med1"" } ],
+                        ""medicationReference"": { ""reference"": ""#med1"" }
+                    }
+                },
+                {
+                    ""fullUrl"": ""http://example.org/fhir/Patient/1"",
+                    ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" }
+                }
+            ]
+        }");
+        var check = new ReferenceResolutionCheck();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert — the entry-local #med1 must not be flagged by the bundle-root walk.
+        result.Issues.ShouldNotContain(i => i.Code == "ref-resolve" && i.Path.Contains("med1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GivenResourceWithDanglingFragmentReference_WhenReferenceResolutionCheck_ThenReportsIssue()
+    {
+        // Arrange — a seeded resolver with no matching contained resource: the #missing fragment is
+        // genuinely unresolved and must be flagged (non-Bundle local-reference path).
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""1"",
+            ""generalPractitioner"": [ { ""reference"": ""#missing"" } ]
+        }");
+        var check = new ReferenceResolutionCheck();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "ref-resolve");
+    }
+
+    [Fact]
+    public void GivenResourceWithResolvableFragmentReference_WhenReferenceResolutionCheck_ThenDoesNotReportIssue()
+    {
+        // Arrange — the #p1 fragment resolves to a contained resource.
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""1"",
+            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": ""p1"" } ],
+            ""generalPractitioner"": [ { ""reference"": ""#p1"" } ]
+        }");
+        var check = new ReferenceResolutionCheck();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -321,5 +480,92 @@ public class TreeContextScopingTests
         // Assert
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenDocumentBundleWithUnknownTypeToken_WhenCheckHasResourceTypeRegistry_ThenDoesNotReportIssue()
+    {
+        // Arrange — "MyCustomType/1" is shaped like a relative reference but is not a real resource
+        // type. With a resource-type registry the token is rejected, so it is never treated as a
+        // bundle-relative reference and not flagged as unresolved.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""document"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Observation"",
+                        ""id"": ""2"",
+                        ""status"": ""final"",
+                        ""code"": { ""text"": ""x"" },
+                        ""subject"": { ""reference"": ""MyCustomType/1"" }
+                    }
+                }
+            ]
+        }");
+        var registry = new HashSet<string>(StringComparer.Ordinal) { "Patient", "Observation", "Bundle" };
+        var check = new ReferenceResolutionCheck(registry);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.Issues.ShouldNotContain(i => i.Code == "ref-resolve");
+    }
+
+    [Fact]
+    public void GivenDanglingReferenceInsideContained_WhenValidatingAtFullDepth_ThenReportsRefResolveExactlyOnce()
+    {
+        // Arrange — a dangling fragment reference lives INSIDE a contained resource. The full
+        // pipeline runs the root resource's ReferenceResolutionCheck (which must not descend into
+        // the contained resource's scope) and ContainedResourceCheck's re-validation of the
+        // contained resource (which owns and checks it). The issue must be reported exactly once.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""obs1"",
+            ""status"": ""final"",
+            ""code"": { ""text"": ""x"" },
+            ""contained"": [
+                {
+                    ""resourceType"": ""Patient"",
+                    ""id"": ""p1"",
+                    ""managingOrganization"": { ""reference"": ""#nope"" }
+                }
+            ]
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json!);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var schema = _schemaResolver.GetSchema("Observation").ShouldNotBeNull();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+
+        // Act — note: no explicit EnterRootResource. ValidationSchema.Validate auto-seeds the root
+        // scope, so the reference-integrity check runs without callers having to remember to seed.
+        var result = schema.Validate(element, settings);
+
+        // Assert
+        result.Issues.Count(i => i.Code == "ref-resolve").ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenUnseededState_WhenValidatingResourceThroughSchema_ThenScopeIsAutoSeeded()
+    {
+        // Arrange — a dangling #fragment in a standalone resource. The caller does NOT seed the
+        // scope; ValidationSchema.Validate must seed it so the reference-integrity check fires.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""1"",
+            ""managingOrganization"": { ""reference"": ""#missing"" }
+        }");
+        var element = JsonNodeSourceNode.Create(json!).ToElement(TestSchemaProvider.GetR4Schema());
+        var schema = _schemaResolver.GetSchema("Patient").ShouldNotBeNull();
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+
+        // Act — unseeded state passed in; auto-seeding inside Validate enables the check.
+        var result = schema.Validate(element, settings, new ValidationState());
+
+        // Assert
+        result.Issues.ShouldContain(i => i.Code == "ref-resolve");
     }
 }

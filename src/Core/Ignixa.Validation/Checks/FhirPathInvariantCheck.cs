@@ -168,7 +168,9 @@ public class FhirPathInvariantCheck : IValidationCheck
             // (resource roots and contained recursion), supply %resource / %rootResource /
             // resolve() so root-referencing invariants (dom-*, bdl-*) evaluate correctly.
             // When scope is unseeded (some direct callers/tests), fall back to context-free
-            // evaluation, which defaults %resource to the constrained element as before.
+            // evaluation: %resource / %rootResource are unbound (empty) and resolve() is
+            // unavailable. The constrained element is still the focus ($this), so element-relative
+            // invariants evaluate as before; only invariants referencing %resource are affected.
             var result = _evaluator.Value.Evaluate(element, expression, BuildEvaluationContext(state));
 
             // Convert result to boolean
@@ -222,7 +224,7 @@ public class FhirPathInvariantCheck : IValidationCheck
     private static EvaluationContext? BuildEvaluationContext(ValidationState state)
     {
         var scope = state.Scope;
-        if (scope.Resource is null)
+        if (!scope.IsSeeded)
         {
             return null;
         }

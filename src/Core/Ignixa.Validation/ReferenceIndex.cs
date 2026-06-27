@@ -78,6 +78,9 @@ public sealed class ReferenceIndex
             var id = FirstChildValue(contained, "id");
             if (!string.IsNullOrEmpty(id))
             {
+                // First-wins on duplicate ids: a deliberate, deterministic resolution policy.
+                // Duplicate contained ids are themselves invalid and are surfaced by validation
+                // checks, not by this resolver. Do not change to an overwrite.
                 byContainedId.TryAdd(id, contained);
             }
         }
@@ -95,6 +98,8 @@ public sealed class ReferenceIndex
 
             var resource = resourceChildren[0];
 
+            // First-wins on duplicate keys (deliberate, deterministic). Duplicate fullUrls/keys are
+            // a bundle integrity problem reported by validation (e.g. bdl-7), not silently repaired here.
             var fullUrl = FirstChildValue(entry, "fullUrl");
             if (!string.IsNullOrEmpty(fullUrl))
             {

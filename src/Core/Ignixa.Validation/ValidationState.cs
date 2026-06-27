@@ -50,7 +50,7 @@ public record ValidationState
     /// resource currently being validated. Seeded at resource boundaries via
     /// <see cref="EnterRootResource"/> / <see cref="EnterContainedResource"/>.
     /// </summary>
-    public ResourceScope Scope { get; init; } = new();
+    public ResourceScope Scope { get; init; } = ResourceScope.Unseeded;
 
     /// <summary>
     /// Creates a new state with updated instance information.
@@ -89,11 +89,16 @@ public record ValidationState
     }
 
     /// <summary>
-    /// Enters a resource that becomes a validation root: a standalone resource or an independent
-    /// Bundle entry. Both %resource and %rootResource point at the resource itself (a Bundle entry's
-    /// resource is not "contained" in the Bundle in the FHIRPath sense). Builds a fresh resolver
-    /// rooted at this resource.
+    /// Enters a resource that becomes a validation root (the top-level resource passed to
+    /// validation). Both %resource and %rootResource point at the resource itself, and a fresh
+    /// resolver is built rooted at this resource.
     /// </summary>
+    /// <remarks>
+    /// Bundle entry resources are independent roots in the FHIRPath sense, but the validation
+    /// pipeline does not currently re-root them: a resource sitting in a Bundle entry is validated
+    /// with %resource still pointing at the enclosing Bundle. Wiring per-entry re-rooting (the
+    /// Bundle analogue of <see cref="EnterContainedResource"/>) is a separate enhancement.
+    /// </remarks>
     /// <param name="resource">The resource element becoming the validation root.</param>
     /// <returns>A new validation state scoped to this resource.</returns>
     public ValidationState EnterRootResource(IElement resource)
@@ -101,15 +106,7 @@ public record ValidationState
         ArgumentNullException.ThrowIfNull(resource);
 
         var index = ReferenceIndex.Build(resource);
-        return this with
-        {
-            Scope = new ResourceScope
-            {
-                Resource = resource,
-                RootResource = resource,
-                Resolver = index.Resolve
-            }
-        };
+        return this with { Scope = ResourceScope.Root(resource, index.Resolve) };
     }
 
     /// <summary>
@@ -130,12 +127,10 @@ public record ValidationState
 
         return this with
         {
-            Scope = parentScope with
-            {
-                Resource = contained,
-                RootResource = parentScope.Resource,
-                Resolver = reference => index.Resolve(reference) ?? parentResolver?.Invoke(reference)
-            }
+            Scope = ResourceScope.Contained(
+                contained,
+                parentScope.Resource,
+                reference => index.Resolve(reference) ?? parentResolver?.Invoke(reference))
         };
     }
 
