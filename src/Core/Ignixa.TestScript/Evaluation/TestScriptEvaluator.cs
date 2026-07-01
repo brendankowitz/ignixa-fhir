@@ -182,6 +182,7 @@ public sealed class TestScriptEvaluator(
         CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
+        TestRequest? request = null;
         try
         {
             if (expression.Destination is not null and > 1)
@@ -193,7 +194,7 @@ public sealed class TestScriptEvaluator(
                     new AssertionOutcome(false, WarningOnly: true,
                         "encodeRequestUrl=false is not supported; URL was encoded"));
 
-            var request = BuildRequest(expression, context);
+            request = BuildRequest(expression, context);
 
             context = context.WithRequest(expression.RequestId, request);
             var response = await _provider.ExecuteAsync(request, cancellationToken);
@@ -201,7 +202,7 @@ public sealed class TestScriptEvaluator(
 
             sw.Stop();
             context.Recorder.RecordOperationResult(expression.Label, expression.Description,
-                new OperationOutcome(true, response.StatusCode, Duration: sw.Elapsed));
+                new OperationOutcome(true, response.StatusCode, Duration: sw.Elapsed, Request: request, Response: response));
             return context;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -213,14 +214,14 @@ public sealed class TestScriptEvaluator(
         {
             sw.Stop();
             context.Recorder.RecordOperationResult(expression.Label, expression.Description,
-                new OperationOutcome(false, ErrorMessage: $"Request timed out or was aborted: {ex.Message}", Duration: sw.Elapsed));
+                new OperationOutcome(false, ErrorMessage: $"Request timed out or was aborted: {ex.Message}", Duration: sw.Elapsed, Request: request));
             return context;
         }
         catch (Exception ex)
         {
             sw.Stop();
             context.Recorder.RecordOperationResult(expression.Label, expression.Description,
-                new OperationOutcome(false, ErrorMessage: ex.Message, Duration: sw.Elapsed));
+                new OperationOutcome(false, ErrorMessage: ex.Message, Duration: sw.Elapsed, Request: request));
             return context;
         }
     }
@@ -269,8 +270,13 @@ public sealed class TestScriptEvaluator(
                 $"fixture:{fixture.Id}",
                 $"Autocreate fixture '{fixture.Id}'",
                 success
-                    ? new OperationOutcome(true, response.StatusCode)
-                    : new OperationOutcome(false, response.StatusCode, ErrorMessage: $"Autocreate returned HTTP {response.StatusCode}"));
+                    ? new OperationOutcome(true, response.StatusCode, Request: request, Response: response)
+                    : new OperationOutcome(
+                        false,
+                        response.StatusCode,
+                        ErrorMessage: $"Autocreate returned HTTP {response.StatusCode}",
+                        Request: request,
+                        Response: response));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -278,7 +284,7 @@ public sealed class TestScriptEvaluator(
             context.Recorder.RecordOperationResult(
                 $"fixture:{fixture.Id}",
                 $"Autocreate fixture '{fixture.Id}'",
-                new OperationOutcome(false, ErrorMessage: ex.Message));
+                new OperationOutcome(false, ErrorMessage: ex.Message, Request: request));
         }
         return context;
     }
@@ -313,8 +319,13 @@ public sealed class TestScriptEvaluator(
                 $"fixture:{fixture.Id}",
                 $"Autodelete fixture '{fixture.Id}'",
                 success
-                    ? new OperationOutcome(true, response.StatusCode)
-                    : new OperationOutcome(false, response.StatusCode, ErrorMessage: $"Autodelete returned HTTP {response.StatusCode}"));
+                    ? new OperationOutcome(true, response.StatusCode, Request: request, Response: response)
+                    : new OperationOutcome(
+                        false,
+                        response.StatusCode,
+                        ErrorMessage: $"Autodelete returned HTTP {response.StatusCode}",
+                        Request: request,
+                        Response: response));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -322,7 +333,7 @@ public sealed class TestScriptEvaluator(
             context.Recorder.RecordOperationResult(
                 $"fixture:{fixture.Id}",
                 $"Autodelete fixture '{fixture.Id}'",
-                new OperationOutcome(false, ErrorMessage: ex.Message));
+                new OperationOutcome(false, ErrorMessage: ex.Message, Request: request));
         }
         return context;
     }

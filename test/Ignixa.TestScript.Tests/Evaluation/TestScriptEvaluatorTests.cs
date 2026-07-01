@@ -839,6 +839,54 @@ public class TestScriptEvaluatorTests
     }
 
     [Fact]
+    public async Task GivenAutocreateAndAutodeleteFixtures_WhenExecuting_ThenLifecycleOperationsIncludeExchanges()
+    {
+        var fixtureProvider = Substitute.For<IFixtureProvider>();
+#pragma warning disable CA2012
+        fixtureProvider.ResolveFixtureAsync(
+                Arg.Any<FixtureDefinition>(),
+                Arg.Any<FixtureResolutionContext>(),
+                Arg.Any<CancellationToken>())
+            .Returns(JsonSourceNodeFactory.Parse("""{"resourceType":"Patient"}"""));
+#pragma warning restore CA2012
+
+        var responses = new Queue<TestResponse>(new[]
+        {
+            new TestResponse
+            {
+                StatusCode = 201,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"server-assigned-99"}"""),
+                RawBody = """{"resourceType":"Patient","id":"server-assigned-99"}"""
+            },
+            new TestResponse { StatusCode = 204 }
+        });
+
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call => responses.Dequeue());
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "FixtureLifecycle" },
+            Fixtures = [new FixtureDefinition { Id = "patient-fixture", Autocreate = true, Autodelete = true }]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        var setupAction = report.SetupResult!.Actions.ShouldHaveSingleItem();
+        setupAction.Exchange.ShouldNotBeNull();
+        setupAction.Exchange!.Request!.Method.ShouldBe(HttpMethod.Post);
+        setupAction.Exchange.Request.Url.ShouldBe("Patient");
+        setupAction.Exchange.Response!.StatusCode.ShouldBe(201);
+
+        var teardownAction = report.TeardownResult!.Actions.ShouldHaveSingleItem();
+        teardownAction.Exchange.ShouldNotBeNull();
+        teardownAction.Exchange!.Request!.Method.ShouldBe(HttpMethod.Delete);
+        teardownAction.Exchange.Request.Url.ShouldBe("Patient/server-assigned-99");
+        teardownAction.Exchange.Response!.StatusCode.ShouldBe(204);
+    }
+
+    [Fact]
     public async Task GivenAssertWithUnknownCriteriaType_WhenEvaluating_ThenRecordsErrorNotCrash()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())

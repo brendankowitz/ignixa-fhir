@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import useBaseUrl from '@docusaurus/useBaseUrl';
-import type { GroupedModule, ImplReport, ImplReportResult, ResultSummary } from './types';
+import type {
+  ConformanceStep,
+  GroupedModule,
+  HttpTraceRequest,
+  HttpTraceResponse,
+  ImplReport,
+  ImplReportResult,
+  ResultSummary,
+} from './types';
 import styles from './styles.module.css';
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -79,6 +87,80 @@ function statusLabel(status: string): string {
   if (isPass(status)) return 'Pass';
   if (isSkipped(status)) return 'Skipped';
   return status === 'error' ? 'Error' : 'Fail';
+}
+
+function stepTitle(step: ConformanceStep, index: number): string {
+  return step.label ?? step.description ?? `${step.kind} ${index + 1}`;
+}
+
+function formatHeaders(headers: Record<string, string>): string {
+  const entries = Object.entries(headers);
+  if (entries.length === 0) return '(none)';
+  return entries.map(([key, value]) => `${key}: ${value}`).join('\n');
+}
+
+function renderRequest(request: HttpTraceRequest): JSX.Element {
+  return (
+    <div className={styles.exchangePanel}>
+      <h5>Request</h5>
+      <code>
+        {request.method} {request.url}
+      </code>
+      <pre>{formatHeaders(request.headers)}</pre>
+      {request.body ? <pre>{request.body}</pre> : null}
+    </div>
+  );
+}
+
+function renderResponse(response: HttpTraceResponse): JSX.Element {
+  return (
+    <div className={styles.exchangePanel}>
+      <h5>Response</h5>
+      <code>Status {response.statusCode}</code>
+      <pre>{formatHeaders(response.headers)}</pre>
+      {response.bodyParseError ? <p className={styles.parseError}>{response.bodyParseError}</p> : null}
+      {response.body ? <pre>{response.body}</pre> : null}
+    </div>
+  );
+}
+
+function renderDetails(result: ImplReportResult): JSX.Element {
+  const steps = result.steps ?? [];
+  if (!result.error && steps.length === 0) {
+    return <span className={styles.noDetails}>-</span>;
+  }
+
+  return (
+    <details className={styles.failureDetails}>
+      <summary>
+        {result.error?.assertion ?? `${steps.length} step${steps.length === 1 ? '' : 's'}`}
+      </summary>
+      {result.error ? <pre>{result.error.received ?? '(no details captured)'}</pre> : null}
+      {steps.length > 0 ? (
+        <div className={styles.stepTrace}>
+          {steps.map((step, index) => (
+            <article className={styles.stepCard} key={`${step.kind}:${step.label ?? index}:${index}`}>
+              <header>
+                <div>
+                  <strong>{stepTitle(step, index)}</strong>
+                  {step.description ? <span>{step.description}</span> : null}
+                </div>
+                <span className={`${styles.statusPill} ${statusClass(step.status)}`}>
+                  {statusLabel(step.status)}
+                </span>
+              </header>
+              <p>
+                {step.phase} · {step.kind} · {formatDuration(step.duration_ms)}
+                {step.message ? ` · ${step.message}` : ''}
+              </p>
+              {step.request ? renderRequest(step.request) : null}
+              {step.response ? renderResponse(step.response) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  );
 }
 
 export default function FhirConformanceDashboard(): JSX.Element {
@@ -207,16 +289,7 @@ export default function FhirConformanceDashboard(): JSX.Element {
                         </span>
                       </td>
                       <td>{formatDuration(result.duration_ms)}</td>
-                      <td>
-                        {result.error ? (
-                          <details className={styles.failureDetails}>
-                            <summary>{result.error.assertion ?? 'Failure details'}</summary>
-                            <pre>{result.error.received ?? '(no details captured)'}</pre>
-                          </details>
-                        ) : (
-                          <span className={styles.noDetails}>-</span>
-                        )}
-                      </td>
+                      <td>{renderDetails(result)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -200,6 +200,60 @@
   white-space: pre-wrap;
 }
 
+.stepTrace {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.stepCard {
+  padding: 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 10px;
+  background: var(--ifm-background-surface-color);
+}
+
+.stepCard header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.stepCard header span {
+  display: block;
+  color: var(--ifm-color-emphasis-600);
+  font-size: 0.82rem;
+}
+
+.stepCard p {
+  margin: 0.5rem 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.85rem;
+}
+
+.exchangePanel {
+  margin-top: 0.6rem;
+}
+
+.exchangePanel h5 {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.exchangePanel code {
+  display: block;
+  margin-bottom: 0.35rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.parseError {
+  color: #c62828;
+  font-size: 0.85rem;
+}
+
 .noDetails {
   color: var(--ifm-color-emphasis-500);
 }

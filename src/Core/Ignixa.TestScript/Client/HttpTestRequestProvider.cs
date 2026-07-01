@@ -52,6 +52,7 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
         {
             StatusCode = (int)httpResponse.StatusCode,
             Body = body,
+            RawBody = responseBody,
             BodyParseError = bodyParseError,
             Headers = headers.ToImmutable()
         };

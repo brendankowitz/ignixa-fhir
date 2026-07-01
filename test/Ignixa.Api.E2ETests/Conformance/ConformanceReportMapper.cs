@@ -1,9 +1,23 @@
+using Ignixa.Serialization;
+using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Reporting;
 
 namespace Ignixa.Api.E2ETests.Conformance;
 
 internal static class ConformanceReportMapper
 {
+    private const int MaxBodyLength = 32_768;
+    private const string Redacted = "[redacted]";
+
+    private static readonly HashSet<string> SensitiveHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Authorization",
+        "Cookie",
+        "Proxy-Authorization",
+        "Set-Cookie",
+        "X-Api-Key"
+    };
+
     public static IReadOnlyList<ConformanceResult> Map(TestScriptReport report, string relativeFile)
     {
         var setupFailed = report.SetupResult?.Outcome is TestScriptOutcome.Fail or TestScriptOutcome.Error;
@@ -48,7 +62,13 @@ internal static class ConformanceReportMapper
             relativeFile,
             MapStatus(testCase.Outcome),
             durationMs,
-            BuildError(testCase.Actions));
+            BuildError(testCase.Actions))
+        {
+            Steps = MapSteps(report.SetupResult?.Actions ?? [], "setup")
+                .Concat(MapSteps(testCase.Actions, "test"))
+                .Concat(MapSteps(report.TeardownResult?.Actions ?? [], "teardown"))
+                .ToList()
+        };
     }
 
     private static IReadOnlyList<ConformanceResult> MapSetupFailure(TestScriptReport report, string relativeFile)
@@ -60,6 +80,9 @@ internal static class ConformanceReportMapper
             return
             [
                 new ConformanceResult(report.TestScriptName, relativeFile, setupStatus, 0, setupError)
+                {
+                    Steps = MapSteps(report.SetupResult?.Actions ?? [], "setup")
+                }
             ];
         }
 
@@ -69,8 +92,59 @@ internal static class ConformanceReportMapper
                 relativeFile,
                 setupStatus,
                 0,
-                setupError))
+                setupError)
+            {
+                Steps = MapSteps(report.SetupResult?.Actions ?? [], "setup")
+            })
             .ToList();
+    }
+
+    private static IReadOnlyList<ConformanceStep> MapSteps(IReadOnlyList<ActionResult> actions, string phase) =>
+        actions.Select(action => MapStep(action, phase)).ToList();
+
+    private static ConformanceStep MapStep(ActionResult action, string phase)
+    {
+        var exchange = action.Exchange;
+        return new ConformanceStep(
+            phase,
+            action.Kind == TestActionKind.Operation ? "operation" : "assertion",
+            action.Label,
+            action.Description,
+            MapStatus(action.Outcome),
+            (long)Math.Round(action.Duration.TotalMilliseconds),
+            action.Message,
+            exchange?.Request is null ? null : MapRequest(exchange.Request),
+            exchange?.Response is null ? null : MapResponse(exchange.Response));
+    }
+
+    private static ConformanceHttpRequest MapRequest(TestRequest request) =>
+        new(
+            request.Method.Method,
+            request.Url,
+            RedactHeaders(request.Headers),
+            TruncateBody(request.FormBody ?? request.Body?.SerializeToString()));
+
+    private static ConformanceHttpResponse MapResponse(TestResponse response) =>
+        new(
+            response.StatusCode,
+            RedactHeaders(response.Headers),
+            TruncateBody(response.RawBody ?? response.Body?.SerializeToString()),
+            response.BodyParseError);
+
+    private static IReadOnlyDictionary<string, string> RedactHeaders(IReadOnlyDictionary<string, string> headers) =>
+        headers
+            .OrderBy(header => header.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                header => header.Key,
+                header => SensitiveHeaders.Contains(header.Key) ? Redacted : header.Value,
+                StringComparer.OrdinalIgnoreCase);
+
+    private static string? TruncateBody(string? body)
+    {
+        if (string.IsNullOrEmpty(body) || body.Length <= MaxBodyLength)
+            return body;
+
+        return $"{body[..MaxBodyLength]}\n... [truncated]";
     }
 
     private static ConformanceError? BuildError(IReadOnlyList<ActionResult> actions)

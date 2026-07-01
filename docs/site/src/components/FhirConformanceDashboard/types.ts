@@ -5,12 +5,39 @@ export interface CellError {
   received?: string;
 }
 
+export interface HttpTraceRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: string | null;
+}
+
+export interface HttpTraceResponse {
+  statusCode: number;
+  headers: Record<string, string>;
+  body?: string | null;
+  bodyParseError?: string | null;
+}
+
+export interface ConformanceStep {
+  phase: 'setup' | 'test' | 'teardown' | string;
+  kind: 'operation' | 'assertion' | string;
+  label?: string | null;
+  description?: string | null;
+  status: ConformanceStatus;
+  duration_ms: number;
+  message?: string | null;
+  request?: HttpTraceRequest | null;
+  response?: HttpTraceResponse | null;
+}
+
 export interface ImplReportResult {
   id: string;
   file: string;
   status: ConformanceStatus;
   duration_ms: number;
   error?: CellError | null;
+  steps?: ConformanceStep[];
 }
 
 export interface ImplReport {
