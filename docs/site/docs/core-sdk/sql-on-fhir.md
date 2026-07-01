@@ -207,7 +207,7 @@ Ignixa runs the shared [sql-on-fhir.js](https://github.com/FHIR/sql-on-fhir.js) 
 
 **[Open Conformance Matrix](/sql-on-fhir-conformance)**
 
-- **Raw Report**: [test_report.json](/test_report.json)
+- **Raw Report**: [test_report.json](https://brendankowitz.github.io/ignixa-fhir/test_report.json)
 - Other implementations' results are mirrored locally at docs-deploy time, so the matrix stays available even if a third-party host is down.
 
 ## Related Documentation
