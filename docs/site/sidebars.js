@@ -96,6 +96,11 @@ const sidebars = {
         'core-sdk/fhir-mapping-language',
         'core-sdk/sql-on-fhir',
         'core-sdk/testscript',
+        {
+          type: 'link',
+          label: 'FHIR Conformance Report',
+          href: '/fhir-conformance',
+        },
         'core-sdk/firely-sdk-compatibility',
       ],
     },
