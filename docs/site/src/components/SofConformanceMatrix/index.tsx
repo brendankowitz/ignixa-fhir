@@ -16,12 +16,16 @@ const RESERVED_TAGS: Record<string, string> = {
   experimental: 'Experimental',
 };
 
-async function fetchJson<T>(url: string): Promise<T | null> {
+async function fetchJson<T>(url: string, context: string): Promise<T | null> {
   try {
     const response = await fetch(url);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error(`SofConformanceMatrix: ${context} fetch from ${url} returned ${response.status}`);
+      return null;
+    }
     return (await response.json()) as T;
-  } catch {
+  } catch (err) {
+    console.error(`SofConformanceMatrix: ${context} fetch from ${url} failed`, err);
     return null;
   }
 }
@@ -45,8 +49,8 @@ export default function SofConformanceMatrix(): JSX.Element {
 
     (async () => {
       const [manifest, suiteData] = await Promise.all([
-        fetchJson<ImplementationManifestEntry[]>(manifestUrl),
-        fetchJson<Suite[]>(testsUrl),
+        fetchJson<ImplementationManifestEntry[]>(manifestUrl, 'manifest'),
+        fetchJson<Suite[]>(testsUrl, 'suite index'),
       ]);
 
       if (!manifest || !suiteData) {
@@ -55,12 +59,20 @@ export default function SofConformanceMatrix(): JSX.Element {
       }
 
       const withReports = await Promise.all(
-        manifest.map(async (entry) => ({
-          entry,
-          report: entry.localResultsPath
-            ? await fetchJson<TestReport>(`${basePath}${entry.localResultsPath}`)
-            : null,
-        }))
+        manifest.map(async (entry) => {
+          const report = entry.localResultsPath
+            ? await fetchJson<TestReport>(`${basePath}${entry.localResultsPath}`, `${entry.name} report`)
+            : null;
+          return {
+            entry,
+            report,
+            // A report is expected whenever localResultsPath is set (it was mirrored
+            // successfully at build time); null here means the fetch failed at page-view
+            // time, which is a regression to surface — not the same as a vendor never
+            // having published results in the first place.
+            reportFetchFailed: Boolean(entry.localResultsPath) && report === null,
+          };
+        })
       );
       withReports.sort((a, b) => {
         if (a.entry.name === PINNED_IMPLEMENTATION) return -1;
@@ -127,7 +139,9 @@ export default function SofConformanceMatrix(): JSX.Element {
                     : styles.implHeader
                 }
               >
-                <a href={entry.url}>{entry.name}</a>
+                <a href={entry.url} title={entry.description}>
+                  {entry.name}
+                </a>
               </th>
             ))}
           </tr>
@@ -154,7 +168,7 @@ export default function SofConformanceMatrix(): JSX.Element {
                       .map((test) => (
                         <tr key={`${suite.file}:${test.title}`}>
                           <td className={styles.testCell}>{test.title}</td>
-                          {results.map(({ entry, report }) => {
+                          {results.map(({ entry, report, reportFetchFailed }) => {
                             const passed = passedFor(report, suite.file, test.title);
                             const cellClass =
                               entry.name === PINNED_IMPLEMENTATION
@@ -164,7 +178,14 @@ export default function SofConformanceMatrix(): JSX.Element {
                               <td key={entry.name} className={cellClass}>
                                 {passed === true && <span className={styles.pass}>&#10003;</span>}
                                 {passed === false && <span className={styles.fail}>&#9888;</span>}
-                                {passed === undefined && <span className={styles.noData}>&minus;</span>}
+                                {passed === undefined && reportFetchFailed && (
+                                  <span className={styles.fetchFailed} title="Results unavailable — fetch failed">
+                                    ?
+                                  </span>
+                                )}
+                                {passed === undefined && !reportFetchFailed && (
+                                  <span className={styles.noData}>&minus;</span>
+                                )}
                               </td>
                             );
                           })}

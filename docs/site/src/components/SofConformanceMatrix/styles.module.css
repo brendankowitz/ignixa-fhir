@@ -97,3 +97,9 @@
 .noData {
   color: var(--ifm-color-emphasis-500);
 }
+
+.fetchFailed {
+  color: var(--ifm-color-warning);
+  font-weight: 700;
+  cursor: help;
+}

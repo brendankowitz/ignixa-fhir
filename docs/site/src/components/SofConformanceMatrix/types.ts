@@ -1,37 +1,43 @@
 export interface ImplementationManifestEntry {
-  name: string;
-  url: string;
-  description: string;
-  sourceUrl: string | null;
-  localResultsPath: string | null;
+  readonly name: string;
+  readonly url: string;
+  readonly description: string;
+  readonly sourceUrl: string | null;
+  readonly localResultsPath: string | null;
 }
 
 export interface SuiteTest {
-  title: string;
-  tags: string[];
+  readonly title: string;
+  readonly tags: readonly string[];
 }
 
 export interface Suite {
-  file: string;
-  title: string;
-  tests: SuiteTest[];
+  readonly file: string;
+  readonly title: string;
+  readonly tests: readonly SuiteTest[];
 }
 
+// Third-party report format (produced by each implementation's own tooling, not validated at
+// runtime) — fields below the top level aren't guaranteed, so `result` is optional to match how
+// callers already treat it defensively.
 export interface TestReportCase {
-  name: string;
-  result: {
-    passed: boolean;
-    error?: string;
+  readonly name: string;
+  readonly result?: {
+    readonly passed: boolean;
+    readonly error?: string;
   };
 }
 
 export interface TestReport {
-  [suiteFile: string]: {
-    tests: TestReportCase[];
+  readonly [suiteFile: string]: {
+    readonly tests: readonly TestReportCase[];
   };
 }
 
 export interface ImplementationResults {
-  entry: ImplementationManifestEntry;
-  report: TestReport | null;
+  readonly entry: ImplementationManifestEntry;
+  readonly report: TestReport | null;
+  // True when a report was expected (localResultsPath was set) but the client-side fetch
+  // failed — distinct from a vendor never having published results at all.
+  readonly reportFetchFailed: boolean;
 }
