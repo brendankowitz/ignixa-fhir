@@ -201,6 +201,15 @@ foreach (var column in schema)
 }
 ```
 
+## Conformance Matrix
+
+Ignixa runs the shared [sql-on-fhir.js](https://github.com/FHIR/sql-on-fhir.js) test suite in CI, and the conformance matrix compares its test-by-test results against other known SQL on FHIR implementations:
+
+**[Open Conformance Matrix](/sql-on-fhir-conformance)**
+
+- **Raw Report**: [test_report.json](/test_report.json)
+- Other implementations' results are mirrored locally at docs-deploy time, so the matrix stays available even if a third-party host is down.
+
 ## Related Documentation
 
 - [SQL on FHIR v2 Specification](https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/)

@@ -80,6 +80,25 @@ jobs:
           fi
           echo "Generated $report ($(wc -c < "$report") bytes)"
 
+      - name: Generate SQL on FHIR reference implementation report
+        # The reference implementation's own published testResultsUrl is a dead link upstream,
+        # so we run its vendored compliance suite ourselves instead of depending on that host.
+        # Conformance gaps are tolerated the same way as our own suite: never block publishing.
+        working-directory: test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/sof-js
+        env:
+          NODE_OPTIONS: --experimental-vm-modules
+        run: |
+          npm ci
+          npx jest tests/compliance.test.js \
+            || echo "::warning::Reference implementation reported conformance failures; publishing report with recorded results"
+
+      - name: Mirror SQL on FHIR implementation conformance reports
+        # Builds the suite index and mirrors every other known implementation's published
+        # test_report.json locally, so the conformance matrix page never depends on a
+        # third-party host being reachable at page-view time. A mirror failure for one
+        # implementation is recorded as a warning, not a build failure.
+        run: pwsh -NoProfile -File eng/Mirror-SqlOnFhirConformance.ps1
+
       - name: Install dependencies
         working-directory: docs/site
         run: npm ci
