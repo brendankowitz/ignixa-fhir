@@ -84,11 +84,17 @@ jobs:
         # The reference implementation's own published testResultsUrl is a dead link upstream,
         # so we run its vendored compliance suite ourselves instead of depending on that host.
         # Conformance gaps are tolerated the same way as our own suite: never block publishing.
+        # Uses `npm install` rather than `npm ci`: this is a third-party vendored submodule we
+        # don't control, and its committed package-lock.json is not guaranteed to stay in sync
+        # with its package.json at whatever commit the submodule happens to be pinned to —
+        # `npm ci` fails hard on that drift instead of reconciling it. A genuine install failure
+        # still fails the build via the next step, which requires a real report to have been
+        # produced.
         working-directory: test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/sof-js
         env:
           NODE_OPTIONS: --experimental-vm-modules
         run: |
-          npm ci
+          npm install
           npx jest tests/compliance.test.js \
             || echo "::warning::Reference implementation reported conformance failures; publishing report with recorded results"
 
