@@ -35,6 +35,10 @@ function passedFor(report: TestReport | null, suiteFile: string, testTitle: stri
   return cases?.find((c) => c.name === testTitle)?.result?.passed;
 }
 
+function implementationTooltip(entry: ImplementationManifestEntry): string {
+  return entry.sourceUrl ? `${entry.description} (mirrored from ${entry.sourceUrl})` : entry.description;
+}
+
 export default function SofConformanceMatrix(): JSX.Element {
   const manifestUrl = useBaseUrl('/sof-conformance/manifest.json');
   const testsUrl = useBaseUrl('/sof-conformance/tests.json');
@@ -139,7 +143,7 @@ export default function SofConformanceMatrix(): JSX.Element {
                     : styles.implHeader
                 }
               >
-                <a href={entry.url} title={entry.description}>
+                <a href={entry.url} title={implementationTooltip(entry)}>
                   {entry.name}
                 </a>
               </th>

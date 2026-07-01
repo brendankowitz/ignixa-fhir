@@ -203,7 +203,7 @@ foreach (var column in schema)
 
 ## Conformance Matrix
 
-Ignixa runs the shared [sql-on-fhir.js](https://github.com/FHIR/sql-on-fhir.js) test suite in CI, and the conformance matrix compares its test-by-test results against other known SQL on FHIR implementations:
+Ignixa runs the shared [sql-on-fhir.js](https://github.com/FHIR/sql-on-fhir.js) test-suite definitions through its own .NET evaluator in CI, and the conformance matrix compares the test-by-test results against other known SQL on FHIR implementations:
 
 **[Open Conformance Matrix](/sql-on-fhir-conformance)**
 

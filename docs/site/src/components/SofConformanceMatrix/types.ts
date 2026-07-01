@@ -24,7 +24,6 @@ export interface TestReportCase {
   readonly name: string;
   readonly result?: {
     readonly passed: boolean;
-    readonly error?: string;
   };
 }
 
