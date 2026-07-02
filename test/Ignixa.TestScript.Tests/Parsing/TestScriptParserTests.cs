@@ -315,6 +315,66 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenTestWithRequiresCapabilityExtension_WhenParsed_ThenExpressionPopulated()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"CapabilityGated",
+              "status":"active",
+              "test":[{
+                "name":"everything op",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"rest.resource.where(type='Patient').operation.where(name='everything').exists()"}],
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient","params":"/123/$everything"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability
+            .ShouldBe("rest.resource.where(type='Patient').operation.where(name='everything').exists()");
+    }
+
+    [Fact]
+    public void GivenTestWithoutRequiresCapabilityExtension_WhenParsed_ThenExpressionNull()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Ungated",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTestScriptWithRequiresCapabilityOnMetadata_WhenParsed_ThenExpressionPopulated()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"SuiteGated",
+              "status":"active",
+              "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"rest.operation.where(name='reindex').exists()"}],
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Metadata.RequiresCapability.ShouldBe("rest.operation.where(name='reindex').exists()");
+    }
+
+    [Fact]
     public void GivenVariableWithExpression_WhenParsing_ThenCreatesExpressionExtraction()
     {
         var json = """

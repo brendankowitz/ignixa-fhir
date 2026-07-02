@@ -45,7 +45,8 @@ public static class TestScriptParser
             Description = JsonFieldReader.GetString(obj, "description", "$", errors),
             Url = JsonFieldReader.GetString(obj, "url", "$", errors),
             Status = status,
-            Version = JsonFieldReader.GetString(obj, "version", "$", errors)
+            Version = JsonFieldReader.GetString(obj, "version", "$", errors),
+            RequiresCapability = ParseRequiresCapability(obj["extension"]?.AsArray())
         };
 
         var fixtures = ParseFixtures(obj["fixture"]?.AsArray(), errors);
@@ -225,7 +226,8 @@ public static class TestScriptParser
                 Description = JsonFieldReader.GetString(test, "description", path, errors),
                 Actions = ParseActions(test["action"]?.AsArray(), path, errors),
                 Parameters = ParseParametrize(extensions, name, errors),
-                FhirVersions = ParseFhirVersions(extensions)
+                FhirVersions = ParseFhirVersions(extensions),
+                RequiresCapability = ParseRequiresCapability(extensions)
             });
         }
         return result;
@@ -233,6 +235,20 @@ public static class TestScriptParser
 
     private const string ParametrizeUrl = "http://ignixa.io/testscript/parametrize";
     private const string FhirVersionsUrl = "http://ignixa.io/testscript/fhirVersions";
+    private const string RequiresCapabilityUrl = "http://ignixa.io/testscript/requiresCapability";
+
+    private static string? ParseRequiresCapability(JsonArray? extensions)
+    {
+        if (extensions is null) return null;
+        foreach (var ext in extensions)
+        {
+            if (ext is not JsonObject obj) continue;
+            if (obj["url"]?.GetValue<string>() != RequiresCapabilityUrl) continue;
+
+            return obj["valueString"]?.GetValue<string>();
+        }
+        return null;
+    }
 
     private static IReadOnlyList<string> ParseFhirVersions(JsonArray? extensions)
     {

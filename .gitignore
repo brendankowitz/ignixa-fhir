@@ -362,3 +362,5 @@ test/Ignixa.FhirPath.Tests/TestData/
 # AI assistant scripts
 kimi.ps1
 claude-kimi.ps1
+
+.worktrees/
