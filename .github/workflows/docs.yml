@@ -32,6 +32,11 @@ jobs:
   build:
     name: Build Documentation
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # workflow_run fires on every completed CI run, including cancelled ones (ci.yml has
+    # cancel-in-progress: true, so a burst of pushes cancels superseded runs) and failed ones —
+    # without this gate we'd deploy docs built from a commit CI never actually passed on.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -98,8 +103,9 @@ jobs:
         # don't control, and its committed package-lock.json is not guaranteed to stay in sync
         # with its package.json at whatever commit the submodule happens to be pinned to —
         # `npm ci` fails hard on that drift instead of reconciling it. A genuine install failure
-        # still fails the build via the next step, which requires a real report to have been
-        # produced. Skipped when the CI-produced artifact was already downloaded above.
+        # still fails the build via "Verify reference implementation report was produced" below,
+        # which requires a real report to have been produced. Skipped when the CI-produced
+        # artifact was already downloaded above.
         if: steps.download-sof.outcome != 'success'
         working-directory: test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/sof-js
         env:

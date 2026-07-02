@@ -48,13 +48,17 @@ public sealed class TestScriptConformanceReportTests
         }
 
         var durationMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-        var target = _fixture.Client.BaseAddress?.ToString() ?? string.Empty;
+        // WebApplicationFactory.CreateClient() always sets BaseAddress; Target's non-nullable
+        // type relies on that framework guarantee rather than a silent empty-string fallback.
+        var target = _fixture.Client.BaseAddress!.ToString();
         var report = new ConformanceReport(ImplementationName, target, FhirVersion, startedAt, durationMs, results);
         await WriteReportAsync(report, CancellationToken.None);
 
         results.ShouldNotBeEmpty("No conformance tests were found or executed.");
         results.Where(result => result.Status == "error")
             .ShouldBeEmpty("TestScript parse/evaluator errors indicate conformance infrastructure failed.");
+        results.Count(result => result.Status is "pass" or "fail").ShouldBeGreaterThan(0,
+            "All results were skipped — the conformance corpus produced no executable checks.");
     }
 
     private static bool IsEnabled() =>

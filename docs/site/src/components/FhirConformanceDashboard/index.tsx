@@ -143,7 +143,7 @@ function renderDetails(result: ImplReportResult): JSX.Element {
               <header>
                 <div>
                   <strong>{stepTitle(step, index)}</strong>
-                  {step.description ? <span>{step.description}</span> : null}
+                  {step.label && step.description ? <span>{step.description}</span> : null}
                 </div>
                 <span className={`${styles.statusPill} ${statusClass(step.status)}`}>
                   {statusLabel(step.status)}
@@ -292,8 +292,8 @@ export default function FhirConformanceDashboard(): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {module.results.map((result) => (
-                    <tr key={`${result.file}:${result.id}`}>
+                  {module.results.map((result, index) => (
+                    <tr key={`${result.file}:${result.id}:${index}`}>
                       <td>
                         <strong>{titleFromId(result.id)}</strong>
                         <span>{result.file}</span>

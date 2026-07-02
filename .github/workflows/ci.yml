@@ -18,9 +18,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  SQL_SA_PASSWORD: ${{ secrets.SQL_SA_PASSWORD || 'YourStrong!Passw0rd' }}
-
 jobs:
   build-and-unit-tests:
     name: Build and Unit Tests
@@ -161,6 +158,10 @@ jobs:
       contents: read
       checks: write
     # Run in parallel with unit tests for faster CI (both do their own build)
+    # SQL_SA_PASSWORD is job-scoped (not workflow-level) so it isn't exposed to
+    # sql-on-fhir-conformance's `npm install` against an uncontrolled vendored submodule.
+    env:
+      SQL_SA_PASSWORD: ${{ secrets.SQL_SA_PASSWORD || 'YourStrong!Passw0rd' }}
 
     steps:
       - name: Checkout code
@@ -260,6 +261,7 @@ jobs:
   sql-on-fhir-conformance:
     name: SQL on FHIR Conformance (pinned)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
     # Non-gating (like the docs.yml flow it replaces): conformance gaps are recorded in the
@@ -278,6 +280,11 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Generate SQL on FHIR conformance report
         env:
@@ -304,8 +311,11 @@ jobs:
           echo "Generated $report ($(wc -c < "$report") bytes)"
 
       - name: Generate SQL on FHIR reference implementation report
-        # See docs.yml history for why `npm install` (not `npm ci`) is used against this
-        # vendored, uncontrolled submodule.
+        # `npm install` (not `npm ci`): third-party vendored submodule we don't control, and its
+        # committed package-lock.json isn't guaranteed to stay in sync with package.json at
+        # whatever commit the submodule happens to be pinned to — `npm ci` fails hard on that
+        # drift instead of reconciling it. A genuine install failure still fails the build via
+        # "Verify reference implementation report was produced" below.
         working-directory: test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/sof-js
         env:
           NODE_OPTIONS: --experimental-vm-modules
@@ -328,7 +338,10 @@ jobs:
           echo "Generated $report ($(wc -c < "$report") bytes)"
 
       - name: Upload SQL on FHIR conformance report (pinned)
-        if: always()
+        # if: success() (not always()) is deliberate: a partial/broken artifact from a failed
+        # step here would make docs.yml's download "succeed" and skip its live-generation
+        # fallback entirely, turning a CI hiccup into an unrecoverable docs build failure.
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: sof-conformance-report-pinned
