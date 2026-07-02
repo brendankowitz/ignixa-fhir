@@ -36,8 +36,9 @@
     <ProjectReference Include="../../src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Specification/Ignixa.Specification.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.TestScript/Ignixa.TestScript.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.TestScript.FhirFakes/Ignixa.TestScript.FhirFakes.csproj" />
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
   </ItemGroup>
 
 </Project>
-

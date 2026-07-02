@@ -37,7 +37,17 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
         if (!_inPhase)
             throw new InvalidOperationException("RecordOperationResult called without an open phase. Call BeginPhase first.");
         var resultOutcome = outcome.Success ? TestScriptOutcome.Pass : TestScriptOutcome.Error;
-        _currentActions.Add(new ActionResult(label, description, resultOutcome, outcome.ErrorMessage, outcome.Duration));
+        var exchange = outcome.Request is null && outcome.Response is null
+            ? null
+            : new HttpExchange(outcome.Request, outcome.Response);
+        _currentActions.Add(new ActionResult(
+            label,
+            description,
+            resultOutcome,
+            outcome.ErrorMessage,
+            outcome.Duration,
+            TestActionKind.Operation,
+            exchange));
     }
 
     public void RecordAssertionResult(string? label, string? description, AssertionOutcome outcome)

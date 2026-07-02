@@ -203,3 +203,13 @@ a pass), prints parse warnings per file, and records crashed scripts as `error` 
 aborting the run. `--fhir-version` sets the `fhirVersion` parameter on the `Accept` header for
 version-gated suites. `merge` replaces an existing run with the same id rather than duplicating it,
 and refuses to proceed when a report file is unreadable.
+
+## Published FHIR Conformance Report
+
+Ignixa publishes the latest R4 TestScript conformance run to the documentation site:
+
+**[Open FHIR Conformance Report](/fhir-conformance)**
+
+- **Raw Report**: [conformance/latest.json](https://brendankowitz.github.io/ignixa-fhir/conformance/latest.json)
+- The report is generated during docs deployment by running the `conformance-tests` suite through the same SQL Server/Azurite-backed E2E test environment used by CI.
+- Failing conformance cells are published honestly; TestScript parse or evaluator errors fail docs generation.

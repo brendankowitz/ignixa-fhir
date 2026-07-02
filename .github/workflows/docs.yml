@@ -1,20 +1,30 @@
 name: Deploy Docs to GitHub Pages
 
+# Called as a job from within ci.yml's own run (with `from-ci: true`) after ci.yml's
+# e2e-tests-sql and sql-on-fhir-conformance jobs finish — CI already runs both conformance
+# suites for every push to main, so this workflow downloads their same-run artifacts instead
+# of re-running the same tests a second time. Each download is best-effort
+# (`continue-on-error`); a missing/failed artifact falls back to generating that report live,
+# so a docs deploy is never blocked by a CI-side hiccup in one job. `from-ci` defaults to
+# false, so workflow_dispatch (manual runs) and the workflow_call from publish-release.yml
+# (which never ran ci.yml's jobs in this run) always take the live-generation path.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/site/**'
-      - '.github/workflows/docs.yml'
-      - 'src/**'
-      - 'tools/**/*.csproj'
-      - 'test/Ignixa.SqlOnFhir.Tests/**'
-      - 'Directory.Build.targets'
-  workflow_dispatch:
   workflow_call:
+    inputs:
+      from-ci:
+        description: >-
+          True when called from ci.yml within the same run, so CI-produced conformance
+          artifacts are already available locally. Leave false/unset when there's no such
+          run to draw from (e.g. publish-release.yml's call).
+        type: boolean
+        default: false
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  SQL_SA_PASSWORD: ${{ secrets.SQL_SA_PASSWORD || 'YourStrong!Passw0rd' }}
 
 concurrency:
   group: "pages"
@@ -24,8 +34,7 @@ jobs:
   build:
     name: Build Documentation
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -50,13 +59,24 @@ jobs:
       - name: Generate package stability matrix (ADR 2606)
         run: pwsh -NoProfile -File eng/Generate-StabilityMatrix.ps1
 
+      - name: Download SQL on FHIR conformance report from CI
+        if: inputs.from-ci
+        id: download-sof
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: sof-conformance-report-pinned
+          path: ${{ github.workspace }}
+
       - name: Generate SQL on FHIR conformance report
         # Runs the shared sql-on-fhir.js test-suite definitions through Ignixa's own .NET
         # evaluator (not JavaScript) and writes the test_report.json straight into the
         # Docusaurus static dir so it is published at <site>/test_report.json for the
         # implementations grid. Conformance failures are recorded honestly in the report
-        # and must not block publishing, so the test exit code is tolerated; the next step
-        # fails the build if no report was produced.
+        # and must not block publishing, so the test exit code is tolerated; the verify step
+        # below fails the build if no report was produced. Skipped when the CI-produced
+        # artifact was already downloaded above (ci.yml's sql-on-fhir-conformance job).
+        if: steps.download-sof.outcome != 'success'
         env:
           SOF_TEST_REPORT_PATH: ${{ github.workspace }}/docs/site/static/test_report.json
         run: |
@@ -66,6 +86,26 @@ jobs:
             --filter "FullyQualifiedName~OfficialSqlOnFhirTestRunner" \
             --verbosity minimal \
             || echo "::warning::Conformance suite reported failures; publishing report with recorded results"
+
+      - name: Generate SQL on FHIR reference implementation report
+        # The reference implementation's own published testResultsUrl is a dead link upstream,
+        # so we run its vendored compliance suite ourselves instead of depending on that host.
+        # Conformance gaps are tolerated the same way as our own suite: never block publishing.
+        # Uses `npm install` rather than `npm ci`: this is a third-party vendored submodule we
+        # don't control, and its committed package-lock.json is not guaranteed to stay in sync
+        # with its package.json at whatever commit the submodule happens to be pinned to —
+        # `npm ci` fails hard on that drift instead of reconciling it. A genuine install failure
+        # still fails the build via "Verify reference implementation report was produced" below,
+        # which requires a real report to have been produced. Skipped when the CI-produced
+        # artifact was already downloaded above.
+        if: steps.download-sof.outcome != 'success'
+        working-directory: test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/sof-js
+        env:
+          NODE_OPTIONS: --experimental-vm-modules
+        run: |
+          npm install
+          npx jest tests/compliance.test.js \
+            || echo "::warning::Reference implementation reported conformance failures; publishing report with recorded results"
 
       - name: Verify conformance report was produced
         run: |
@@ -79,24 +119,6 @@ jobs:
             exit 1
           fi
           echo "Generated $report ($(wc -c < "$report") bytes)"
-
-      - name: Generate SQL on FHIR reference implementation report
-        # The reference implementation's own published testResultsUrl is a dead link upstream,
-        # so we run its vendored compliance suite ourselves instead of depending on that host.
-        # Conformance gaps are tolerated the same way as our own suite: never block publishing.
-        # Uses `npm install` rather than `npm ci`: this is a third-party vendored submodule we
-        # don't control, and its committed package-lock.json is not guaranteed to stay in sync
-        # with its package.json at whatever commit the submodule happens to be pinned to —
-        # `npm ci` fails hard on that drift instead of reconciling it. A genuine install failure
-        # still fails the build via the next step, which requires a real report to have been
-        # produced.
-        working-directory: test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/sof-js
-        env:
-          NODE_OPTIONS: --experimental-vm-modules
-        run: |
-          npm install
-          npx jest tests/compliance.test.js \
-            || echo "::warning::Reference implementation reported conformance failures; publishing report with recorded results"
 
       - name: Verify reference implementation report was produced
         # Unlike a genuine conformance gap (tolerated above), a missing or empty-of-outcomes
@@ -123,6 +145,88 @@ jobs:
         # on a third-party host being reachable at page-view time. A failure for one
         # implementation is recorded as a warning, not a build failure.
         run: pwsh -NoProfile -File eng/Mirror-SqlOnFhirConformance.ps1
+
+      - name: Download FHIR conformance report from CI
+        if: inputs.from-ci
+        id: download-testscript
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: fhir-conformance-report
+          path: ${{ github.workspace }}/docs/site/static/conformance
+
+      - name: Start SQL Server and Azurite containers
+        if: steps.download-testscript.outcome != 'success'
+        run: |
+          echo "Starting SQL Server and Azurite containers..."
+          docker compose -f docker-compose.test.yml up -d --wait || {
+            echo "Container startup failed. Checking logs..."
+            docker compose -f docker-compose.test.yml logs
+            docker ps -a
+            exit 1
+          }
+          echo "SQL Server and Azurite started and healthy"
+        env:
+          SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
+
+      - name: Verify SQL Server connection
+        if: steps.download-testscript.outcome != 'success'
+        run: |
+          docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
+            -Q "SELECT @@VERSION" -b
+        timeout-minutes: 2
+
+      - name: Restore E2E test project
+        if: steps.download-testscript.outcome != 'success'
+        run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
+
+      - name: Build E2E test project
+        if: steps.download-testscript.outcome != 'success'
+        run: dotnet build test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj --configuration Release --no-restore
+
+      - name: Generate FHIR conformance report
+        # Skipped when the CI-produced artifact was already downloaded above (ci.yml's
+        # e2e-tests-sql job already runs this exact suite for every push to main).
+        if: steps.download-testscript.outcome != 'success'
+        run: |
+          dotnet test test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj \
+            --configuration Release \
+            --no-build \
+            --filter "FullyQualifiedName~TestScriptConformanceReportTests" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=FhirTest;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+          IGNIXA_RUN_CONFORMANCE: "true"
+          IGNIXA_CONFORMANCE_REPORT_PATH: ${{ github.workspace }}/docs/site/static/conformance/latest.json
+          Logging__LogLevel__Default: "Warning"
+          Logging__LogLevel__Microsoft: "Warning"
+          Logging__LogLevel__Microsoft.EntityFrameworkCore: "Error"
+
+      - name: Verify FHIR conformance report was produced
+        run: |
+          report="${{ github.workspace }}/docs/site/static/conformance/latest.json"
+          if [ ! -s "$report" ]; then
+            echo "::error::$report was not generated by the conformance suite"
+            exit 1
+          fi
+          if ! jq -e '.impl and .results and (.results | length > 0)' "$report" > /dev/null; then
+            echo "::error::$report does not contain any recorded TestScript outcomes"
+            exit 1
+          fi
+          if jq -e '.results | any(.status == "error")' "$report" > /dev/null; then
+            echo "::error::$report contains TestScript execution errors, which indicates infrastructure or evaluator failure"
+            jq -r '.results[] | select(.status == "error") | "\(.file): \(.error.assertion // "error") - \(.error.received // "")"' "$report"
+            exit 1
+          fi
+          echo "Generated $report ($(wc -c < "$report") bytes)"
+
+      - name: Cleanup SQL Server and Azurite containers
+        if: always() && steps.download-testscript.outcome != 'success'
+        run: |
+          docker compose -f docker-compose.test.yml down -v
+          echo "SQL Server and Azurite containers stopped and removed"
 
       - name: Install dependencies
         working-directory: docs/site

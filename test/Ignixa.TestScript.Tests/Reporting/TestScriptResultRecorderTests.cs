@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using Ignixa.TestScript.Reporting;
+using Ignixa.TestScript.Client;
 
 namespace Ignixa.TestScript.Tests.Reporting;
 
@@ -152,5 +154,46 @@ public class TestScriptResultRecorderTests
 
         var report = recorder.Build("name", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         report.TestResults[0].Actions[0].Outcome.ShouldBe(TestScriptOutcome.Error);
+    }
+
+    [Fact]
+    public void GivenOperationWithHttpExchange_WhenRecording_ThenActionIncludesTrace()
+    {
+        var recorder = new TestScriptResultRecorder();
+        var request = new TestRequest
+        {
+            Method = HttpMethod.Post,
+            Url = "Patient",
+            FormBody = "a=b",
+            Headers = new Dictionary<string, string>
+            {
+                ["Authorization"] = "Bearer secret",
+                ["Accept"] = "application/fhir+json"
+            }.ToImmutableDictionary()
+        };
+        var response = new TestResponse
+        {
+            StatusCode = 201,
+            RawBody = """{"resourceType":"Patient","id":"p1"}""",
+            Headers = new Dictionary<string, string>
+            {
+                ["Content-Type"] = "application/fhir+json"
+            }.ToImmutableDictionary()
+        };
+
+        recorder.BeginPhase(TestPhaseType.Test, "Test");
+        recorder.RecordOperationResult(
+            "create",
+            "Create patient",
+            new OperationOutcome(true, 201, Duration: TimeSpan.FromMilliseconds(12), Request: request, Response: response));
+        recorder.EndPhase();
+
+        var report = recorder.Build("name", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+        var action = report.TestResults[0].Actions[0];
+        action.Kind.ShouldBe(TestActionKind.Operation);
+        action.Exchange.ShouldNotBeNull();
+        action.Exchange!.Request.ShouldBe(request);
+        action.Exchange.Response.ShouldBe(response);
     }
 }

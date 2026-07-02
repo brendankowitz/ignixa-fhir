@@ -5,4 +5,6 @@ public sealed record ActionResult(
     string? Description,
     TestScriptOutcome Outcome,
     string? Message = null,
-    TimeSpan Duration = default);
+    TimeSpan Duration = default,
+    TestActionKind Kind = TestActionKind.Assertion,
+    HttpExchange? Exchange = null);
