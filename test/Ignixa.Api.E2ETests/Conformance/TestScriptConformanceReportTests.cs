@@ -35,6 +35,7 @@ public sealed class TestScriptConformanceReportTests
             return;
 
         var startedAt = DateTimeOffset.UtcNow;
+        var startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
         var testsDirectory = FindRepositoryDirectory("conformance-tests");
         var evaluator = CreateEvaluator();
         var results = new List<ConformanceResult>();
@@ -46,10 +47,12 @@ public sealed class TestScriptConformanceReportTests
             await RunTestScriptAsync(evaluator, file, relativeFile, results, CancellationToken.None);
         }
 
-        var durationMs = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
-        var report = new ConformanceReport(ImplementationName, startedAt, durationMs, results);
+        var durationMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+        var target = _fixture.Client.BaseAddress?.ToString() ?? string.Empty;
+        var report = new ConformanceReport(ImplementationName, target, FhirVersion, startedAt, durationMs, results);
         await WriteReportAsync(report, CancellationToken.None);
 
+        results.ShouldNotBeEmpty("No conformance tests were found or executed.");
         results.Where(result => result.Status == "error")
             .ShouldBeEmpty("TestScript parse/evaluator errors indicate conformance infrastructure failed.");
     }
@@ -77,6 +80,8 @@ public sealed class TestScriptConformanceReportTests
         List<ConformanceResult> results,
         CancellationToken cancellationToken)
     {
+        var (suite, category) = ConformanceReportMapper.DescribeSuite(relativeFile);
+
         Ignixa.TestScript.Parsing.ParseResult<Ignixa.TestScript.Model.TestScriptDefinition> parseResult;
         try
         {
@@ -84,14 +89,14 @@ public sealed class TestScriptConformanceReportTests
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, "Parse exception", ex.Message));
+            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, suite, category, "Parse exception", ex.Message));
             return;
         }
 
         if (!parseResult.IsSuccess)
         {
             var messages = string.Join("; ", parseResult.Errors.Select(error => error.Message));
-            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, "Parse error", messages));
+            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, suite, category, "Parse error", messages));
             return;
         }
 
@@ -102,7 +107,7 @@ public sealed class TestScriptConformanceReportTests
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, "Evaluator error", ex.Message));
+            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, suite, category, "Evaluator error", ex.Message));
         }
     }
 

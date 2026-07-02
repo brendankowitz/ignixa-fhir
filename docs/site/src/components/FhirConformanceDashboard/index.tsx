@@ -227,6 +227,12 @@ export default function FhirConformanceDashboard(): JSX.Element {
             <dt>Implementation</dt>
             <dd>{report.impl}</dd>
           </div>
+          {report.target ? (
+            <div>
+              <dt>Target</dt>
+              <dd>{report.target}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>Started</dt>
             <dd>{new Date(report.startedAt).toLocaleString()}</dd>
@@ -237,7 +243,7 @@ export default function FhirConformanceDashboard(): JSX.Element {
           </div>
           <div>
             <dt>FHIR version</dt>
-            <dd>R4 / 4.0</dd>
+            <dd>{report.fhirVersion ?? 'R4 / 4.0'}</dd>
           </div>
         </dl>
       </section>

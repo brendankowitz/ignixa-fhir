@@ -34,9 +34,11 @@ internal static class ConformanceReportMapper
 
     public static IReadOnlyList<ConformanceResult> Map(TestScriptReport report, string relativeFile)
     {
+        var (suite, category) = DescribeSuite(relativeFile);
+
         var setupFailed = report.SetupResult?.Outcome is TestScriptOutcome.Fail or TestScriptOutcome.Error;
         if (setupFailed)
-            return MapSetupFailure(report, relativeFile);
+            return MapSetupFailure(report, relativeFile, suite, category);
 
         if (report.TestResults.Count == 0)
         {
@@ -45,6 +47,8 @@ internal static class ConformanceReportMapper
                 new ConformanceResult(
                     report.TestScriptName,
                     relativeFile,
+                    suite,
+                    category,
                     "skipped",
                     0,
                     new ConformanceError("No tests", "Script contained no test cases"))
@@ -52,8 +56,19 @@ internal static class ConformanceReportMapper
         }
 
         return report.TestResults
-            .Select(testCase => MapTestCase(report, testCase, relativeFile))
+            .Select(testCase => MapTestCase(report, testCase, relativeFile, suite, category))
             .ToList();
+    }
+
+    internal static (string Suite, string Category) DescribeSuite(string relativeFile)
+    {
+        var suite = relativeFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+            ? relativeFile[..^".json".Length]
+            : relativeFile;
+
+        var separatorIndex = suite.IndexOf('/', StringComparison.Ordinal);
+        var category = separatorIndex < 0 ? suite : suite[..separatorIndex];
+        return (suite, category);
     }
 
     internal static string MapStatus(TestScriptOutcome outcome) => outcome switch
@@ -62,18 +77,22 @@ internal static class ConformanceReportMapper
         TestScriptOutcome.Fail => "fail",
         TestScriptOutcome.Error => "error",
         TestScriptOutcome.Skip => "skipped",
-        _ => throw new InvalidOperationException($"Unhandled TestScriptOutcome value: {outcome}")
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, $"Unhandled TestScriptOutcome value: {outcome}")
     };
 
     private static ConformanceResult MapTestCase(
         TestScriptReport report,
         TestCaseResult testCase,
-        string relativeFile)
+        string relativeFile,
+        string suite,
+        string category)
     {
         var durationMs = (long)Math.Round(testCase.Actions.Sum(action => action.Duration.TotalMilliseconds));
         return new ConformanceResult(
             $"{report.TestScriptName} > {testCase.Name}",
             relativeFile,
+            suite,
+            category,
             MapStatus(testCase.Outcome),
             durationMs,
             BuildError(testCase.Actions))
@@ -85,7 +104,11 @@ internal static class ConformanceReportMapper
         };
     }
 
-    private static IReadOnlyList<ConformanceResult> MapSetupFailure(TestScriptReport report, string relativeFile)
+    private static IReadOnlyList<ConformanceResult> MapSetupFailure(
+        TestScriptReport report,
+        string relativeFile,
+        string suite,
+        string category)
     {
         var setupError = BuildSetupError(report.SetupResult);
         var setupStatus = MapStatus(report.SetupResult?.Outcome ?? TestScriptOutcome.Fail);
@@ -93,7 +116,7 @@ internal static class ConformanceReportMapper
         {
             return
             [
-                new ConformanceResult(report.TestScriptName, relativeFile, setupStatus, 0, setupError)
+                new ConformanceResult(report.TestScriptName, relativeFile, suite, category, setupStatus, 0, setupError)
                 {
                     Steps = MapSteps(report.SetupResult?.Actions ?? [], "setup")
                 }
@@ -104,6 +127,8 @@ internal static class ConformanceReportMapper
             .Select(testCase => new ConformanceResult(
                 $"{report.TestScriptName} > {testCase.Name}",
                 relativeFile,
+                suite,
+                category,
                 setupStatus,
                 0,
                 setupError)
@@ -142,7 +167,7 @@ internal static class ConformanceReportMapper
     {
         TestActionKind.Operation => "operation",
         TestActionKind.Assertion => "assertion",
-        _ => throw new InvalidOperationException($"Unhandled TestActionKind value: {kind}")
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, $"Unhandled TestActionKind value: {kind}")
     };
 
     private static ConformanceHttpResponse MapResponse(TestResponse response) =>

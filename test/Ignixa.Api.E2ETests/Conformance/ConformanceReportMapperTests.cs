@@ -212,4 +212,26 @@ public class ConformanceReportMapperTests
         results[0].Steps.Select(step => step.Label).ShouldBe(["setup-create", "assert", "teardown-delete"]);
         results[0].Steps.Select(step => step.Phase).ShouldBe(["setup", "test", "teardown"]);
     }
+
+    [Fact]
+    public void GivenNestedRelativeFile_WhenDescribingSuite_ThenSuiteIncludesDirectoryAndCategoryIsFirstSegment()
+    {
+        // Act
+        var (suite, category) = ConformanceReportMapper.DescribeSuite("Search/patient.json");
+
+        // Assert
+        suite.ShouldBe("Search/patient");
+        category.ShouldBe("Search");
+    }
+
+    [Fact]
+    public void GivenBareFileName_WhenDescribingSuite_ThenSuiteAndCategoryAreEqual()
+    {
+        // Act
+        var (suite, category) = ConformanceReportMapper.DescribeSuite("smoke.json");
+
+        // Assert
+        suite.ShouldBe("smoke");
+        category.ShouldBe("smoke");
+    }
 }

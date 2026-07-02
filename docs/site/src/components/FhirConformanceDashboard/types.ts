@@ -34,6 +34,8 @@ export interface ConformanceStep {
 export interface ImplReportResult {
   id: string;
   file: string;
+  suite?: string;
+  category?: string;
   status: ConformanceStatus;
   duration_ms: number;
   error?: CellError | null;
@@ -42,6 +44,8 @@ export interface ImplReportResult {
 
 export interface ImplReport {
   impl: string;
+  target?: string;
+  fhirVersion?: string;
   startedAt: string;
   duration_ms: number;
   results: ImplReportResult[];
