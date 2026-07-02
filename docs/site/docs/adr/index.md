@@ -50,6 +50,12 @@ All architectural decisions support the **F5 Developer Experience**: a developer
 | [2512](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2512-narrative-generator.md) | Narrative Generator Library | Accepted |
 | [2512](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2512-patient-summary-generation.md) | Patient Summary Generation | Proposed |
 
+### Testing & Conformance
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [2607](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2607-testscript-extensions.md) | Custom TestScript Extensions for Automated Conformance Testing | Accepted |
+
 ## ADR Format
 
 Each ADR follows this structure:
