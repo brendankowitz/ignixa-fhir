@@ -375,6 +375,62 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenRequiresCapabilityExtensionWithWrongValueType_WhenParsed_ThenExpressionNull()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"WrongValueType",
+              "status":"active",
+              "test":[{
+                "name":"t",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueBoolean":true}],
+                "action":[{"assert":{"expression":"Patient.id.exists()"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTestWithParametrizeFhirVersionsAndRequiresCapabilityTogether_WhenParsed_ThenAllThreePopulate()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"AllExtensionsTogether",
+              "status":"active",
+              "test":[{
+                "name":"combined",
+                "extension":[
+                  {"url":"http://ignixa.io/testscript/fhirVersions","valueString":"4.0,4.3"},
+                  {"url":"http://ignixa.io/testscript/requiresCapability","valueString":"Patient.exists()"},
+                  {"url":"http://ignixa.io/testscript/parametrize","extension":[
+                    {"url":"variable","valueString":"id"},
+                    {"url":"values","valueString":"1,2"}
+                  ]}
+                ],
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient","params":"/${id}"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var test = result.Value!.Tests[0];
+        test.FhirVersions.ShouldBe(["4.0", "4.3"]);
+        test.RequiresCapability.ShouldBe("Patient.exists()");
+        test.Parameters.ShouldNotBeNull();
+        test.Parameters!.VariableName.ShouldBe("id");
+        test.Parameters.Values.ShouldBe(["1", "2"]);
+    }
+
+    [Fact]
     public void GivenVariableWithExpression_WhenParsing_ThenCreatesExpressionExtraction()
     {
         var json = """

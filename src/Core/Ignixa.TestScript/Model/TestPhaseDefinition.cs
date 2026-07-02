@@ -15,6 +15,8 @@ public sealed record TestPhaseDefinition
     /// extension on this test) evaluated against the target's CapabilityStatement. When
     /// present and it evaluates to <c>false</c>, this test is skipped rather than executed —
     /// e.g. <c>"rest.resource.where(type='Patient').operation.where(name='everything').exists()"</c>.
+    /// A malformed expression is also treated as a skip (an authoring error), with the
+    /// evaluation failure surfaced as the skip reason.
     /// </summary>
     public string? RequiresCapability { get; init; }
 }

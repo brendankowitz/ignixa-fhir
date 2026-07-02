@@ -1,6 +1,8 @@
 using System.CommandLine;
 using System.Text.Json;
 using Ignixa.ConformanceMatrix.Cli.Reporting;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Evaluation;
@@ -89,6 +91,8 @@ internal static class RunCommand
             ]);
             var evaluator = new TestScriptEvaluator(provider, fixtureProvider, schema);
 
+            var capabilityStatement = await FetchCapabilityStatementAsync(httpClient, cancellationToken);
+
             var allResults = new List<ImplReportResult>();
             foreach (var file in files)
             {
@@ -141,7 +145,8 @@ internal static class RunCommand
 
                 try
                 {
-                    var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, fhirVersion: fhirVersion);
+                    var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken,
+                        fhirVersion: fhirVersion, capabilityStatement: capabilityStatement);
                     var mapped = ReportMapper.Map(report, relFile);
                     allResults.AddRange(mapped);
 
@@ -199,4 +204,36 @@ internal static class RunCommand
 
     internal static int ClassifyExitCode(IReadOnlyList<ImplReportResult> results)
         => results.Any(r => MatrixBuilder.IsFail(r.Status)) ? 1 : 0;
+
+    /// <summary>
+    /// Fetches the target server's CapabilityStatement from <c>/metadata</c> once per run, so it
+    /// can be passed to <see cref="TestScriptEvaluator.ExecuteAsync"/> for <c>requiresCapability</c>
+    /// gating. Any failure (network error, non-success status, unparseable body) is treated as
+    /// "no CapabilityStatement available" — capability gating fails open in that case, matching
+    /// the evaluator's own policy — but is reported so it isn't silently swallowed.
+    /// </summary>
+    internal static async Task<ResourceJsonNode?> FetchCapabilityStatementAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await httpClient.GetAsync(new Uri("metadata", UriKind.Relative), cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.Error.WriteLine($"warning: could not fetch /metadata (HTTP {(int)response.StatusCode}); requiresCapability gating will fail open for this run");
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return JsonSourceNodeFactory.Parse(body);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"warning: could not fetch /metadata ({ex.GetType().Name}: {ex.Message}); requiresCapability gating will fail open for this run");
+            return null;
+        }
+    }
 }

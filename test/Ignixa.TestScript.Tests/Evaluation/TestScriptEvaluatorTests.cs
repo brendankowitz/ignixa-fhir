@@ -446,6 +446,160 @@ public class TestScriptEvaluatorTests
     }
 
     [Fact]
+    public async Task GivenParametrizedTestRequiringUndeclaredOperation_WhenExecuting_ThenEveryIterationIsSkippedWithValueSuffix()
+    {
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "ParametrizedCapabilityGated" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "SystemReindex",
+                    RequiresCapability = "rest.operation.where(name='reindex').exists()",
+                    Parameters = new ParametrizeDefinition("id", ["1", "2"]),
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/${id}/$reindex" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None,
+            capabilityStatement: CapabilityStatementWithPatientEverything());
+
+        report.TestResults.Count.ShouldBe(2);
+        report.TestResults.Select(r => r.Name).ShouldBe(["SystemReindex [1]", "SystemReindex [2]"]);
+        report.TestResults.ShouldAllBe(t => t.Outcome == TestScriptOutcome.Skip);
+        await _mockProvider.DidNotReceive().ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenSuiteGateMetButOneTestGateUnmet_WhenExecuting_ThenOnlyThatTestSkipsAndSiblingsRun()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata
+            {
+                Name = "MixedGating",
+                RequiresCapability = "rest.resource.where(type='Patient').operation.where(name='everything').exists()"
+            },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "Reindex",
+                    RequiresCapability = "rest.operation.where(name='reindex').exists()",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1/$reindex" }]
+                },
+                new TestPhaseDefinition
+                {
+                    Name = "PlainRead",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None,
+            capabilityStatement: CapabilityStatementWithPatientEverything());
+
+        report.TestResults.Count.ShouldBe(2);
+        report.TestResults[0].Name.ShouldBe("Reindex");
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+        report.TestResults[1].Name.ShouldBe("PlainRead");
+        report.TestResults[1].Outcome.ShouldNotBe(TestScriptOutcome.Skip);
+        await _mockProvider.Received(1).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenTestWithMismatchedFhirVersionAndMalformedCapability_WhenExecuting_ThenVersionSkipWinsWithoutEvaluatingCapability()
+    {
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "VersionBeforeCapability" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "R4Only",
+                    FhirVersions = ["4.0"],
+                    RequiresCapability = "rest.resource.where(type=",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None,
+            fhirVersion: "5.0", capabilityStatement: CapabilityStatementWithPatientEverything());
+
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+        report.TestResults[0].Actions[0].Message!.ShouldContain("FHIR version");
+        report.TestResults[0].Actions[0].Message!.ShouldNotContain("failed to evaluate");
+    }
+
+    [Fact]
+    public async Task GivenSetupFails_WhenTestHasMalformedRequiresCapability_ThenSkipReasonIsSetupFailedNotCapabilityError()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("Network failure"));
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "SetupFailsBeforeCapabilityCheck" },
+            Setup = [new OperationExpression { Type = "create", Resource = "Patient" }],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "BadExpression",
+                    RequiresCapability = "rest.resource.where(type=",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None,
+            capabilityStatement: CapabilityStatementWithPatientEverything());
+
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+        report.TestResults[0].Actions[0].Message!.ShouldContain("setup failed");
+        report.TestResults[0].Actions[0].Message!.ShouldNotContain("failed to evaluate");
+    }
+
+    [Fact]
+    public async Task GivenWhitespaceOnlyRequiresCapability_WhenExecuting_ThenTreatedAsAlwaysMet()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "WhitespaceCapability" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PlainRead",
+                    RequiresCapability = "   ",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None,
+            capabilityStatement: CapabilityStatementWithPatientEverything());
+
+        report.TestResults[0].Outcome.ShouldNotBe(TestScriptOutcome.Skip);
+        await _mockProvider.Received(1).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GivenEmptyTestScript_WhenExecuting_ThenReturnsPassWithNoTests()
     {
         var definition = new TestScriptDefinition
