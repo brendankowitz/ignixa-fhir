@@ -213,3 +213,7 @@ Ignixa publishes the latest R4 TestScript conformance run to the documentation s
 - **Raw Report**: [conformance/latest.json](https://brendankowitz.github.io/ignixa-fhir/conformance/latest.json)
 - The report is generated during docs deployment by running the `conformance-tests` suite through the same SQL Server/Azurite-backed E2E test environment used by CI.
 - Failing conformance cells are published honestly; TestScript parse or evaluator errors fail docs generation.
+
+## Related Documentation
+
+- [ADR 2607: Custom TestScript Extensions for Automated Conformance Testing](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2607-testscript-extensions.md) — the `http://ignixa.io/testscript/*` engine extensions (`parametrize`, `fhirVersions`, `requiresCapability`, `fhirfakes`), why each exists, and the interim IG / future HL7 proposal for each.
