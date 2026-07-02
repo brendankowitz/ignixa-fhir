@@ -1,25 +1,29 @@
 name: Deploy Docs to GitHub Pages
 
-# Deploys after CI (workflow_run) rather than on push directly: CI already runs both conformance
-# suites (`sql-on-fhir-conformance` and `e2e-tests-sql` in ci.yml) for every push to main, so this
-# workflow downloads their artifacts instead of re-running the same tests a second time. Each
-# download is best-effort (`continue-on-error`) — a missing/failed artifact falls back to
-# generating that report live, so a docs deploy is never silently blocked by a CI-side hiccup.
-# workflow_dispatch and workflow_call (used by publish-release.yml) have no CI run to draw from,
-# so they always take the live-generation path.
+# Called as a job from within ci.yml's own run (with `from-ci: true`) after ci.yml's
+# e2e-tests-sql and sql-on-fhir-conformance jobs finish — CI already runs both conformance
+# suites for every push to main, so this workflow downloads their same-run artifacts instead
+# of re-running the same tests a second time. Each download is best-effort
+# (`continue-on-error`); a missing/failed artifact falls back to generating that report live,
+# so a docs deploy is never blocked by a CI-side hiccup in one job. `from-ci` defaults to
+# false, so workflow_dispatch (manual runs) and the workflow_call from publish-release.yml
+# (which never ran ci.yml's jobs in this run) always take the live-generation path.
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
   workflow_call:
+    inputs:
+      from-ci:
+        description: >-
+          True when called from ci.yml within the same run, so CI-produced conformance
+          artifacts are already available locally. Leave false/unset when there's no such
+          run to draw from (e.g. publish-release.yml's call).
+        type: boolean
+        default: false
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
-  actions: read
 
 env:
   SQL_SA_PASSWORD: ${{ secrets.SQL_SA_PASSWORD || 'YourStrong!Passw0rd' }}
@@ -33,18 +37,10 @@ jobs:
     name: Build Documentation
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # workflow_run fires on every completed CI run, including cancelled ones (ci.yml has
-    # cancel-in-progress: true, so a burst of pushes cancels superseded runs) and failed ones —
-    # without this gate we'd deploy docs built from a commit CI never actually passed on.
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # workflow_run checks out the default branch tip by default, not the commit CI just
-          # validated — pin explicitly to that commit so the published site matches the run
-          # whose artifacts we're about to consume.
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0  # Full history for GitVersion (GitVersion.MsBuild needs it or the build fails)
 
       - name: Check out conformance test suite (submodule)
@@ -66,15 +62,13 @@ jobs:
         run: pwsh -NoProfile -File eng/Generate-StabilityMatrix.ps1
 
       - name: Download SQL on FHIR conformance report from CI
-        if: github.event_name == 'workflow_run'
+        if: inputs.from-ci
         id: download-sof
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: sof-conformance-report-pinned
           path: ${{ github.workspace }}
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
 
       - name: Generate SQL on FHIR conformance report
         # Runs the shared sql-on-fhir.js test-suite definitions through Ignixa's own .NET
@@ -155,15 +149,13 @@ jobs:
         run: pwsh -NoProfile -File eng/Mirror-SqlOnFhirConformance.ps1
 
       - name: Download FHIR conformance report from CI
-        if: github.event_name == 'workflow_run'
+        if: inputs.from-ci
         id: download-testscript
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: fhir-conformance-report
           path: ${{ github.workspace }}/docs/site/static/conformance
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
 
       - name: Start SQL Server and Azurite containers
         if: steps.download-testscript.outcome != 'success'

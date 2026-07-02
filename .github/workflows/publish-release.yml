@@ -508,7 +508,6 @@ jobs:
       contents: read
       pages: write
       id-token: write
-      actions: read
 
   # =============================================================================
   # Stage 6: Summary (always runs)

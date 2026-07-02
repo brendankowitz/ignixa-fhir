@@ -266,8 +266,9 @@ jobs:
       contents: read
     # Non-gating (like the docs.yml flow it replaces): conformance gaps are recorded in the
     # report, not treated as CI failures. Runs independently of the other jobs so a report
-    # regeneration here never blocks Docker publish or notify-*. Consumed by docs.yml via
-    # workflow_run + download-artifact instead of docs.yml re-running these suites itself.
+    # regeneration here never blocks Docker publish or notify-*. Consumed by the deploy-docs
+    # job below via download-artifact within this same run, instead of docs.yml re-running
+    # these suites itself.
 
     steps:
       - name: Checkout code
@@ -350,6 +351,22 @@ jobs:
             test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests/test_report/public/test-results.json
           if-no-files-found: warn
           retention-days: 30
+
+  deploy-docs:
+    name: Deploy Docs to GitHub Pages
+    needs: [ e2e-tests-sql, sql-on-fhir-conformance ]
+    # always(): wait for both jobs to finish, but don't gate on their result — a failed
+    # conformance job just means no artifact was uploaded, and docs.yml's own download/
+    # live-generation fallback already handles that per-report. If the whole run gets
+    # cancelled (e.g. cancel-in-progress on a newer push), this job never starts regardless.
+    if: always()
+    uses: ./.github/workflows/docs.yml
+    with:
+      from-ci: true
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
   check-code-quality:
     name: Code Quality
