@@ -29,7 +29,11 @@ internal static class ConformanceReportMapper
         "apikey",
         "key",
         "sig",
-        "signature"
+        "signature",
+        "client_secret",
+        "refresh_token",
+        "code",
+        "id_token"
     };
 
     public static IReadOnlyList<ConformanceResult> Map(TestScriptReport report, string relativeFile)
@@ -203,7 +207,8 @@ internal static class ConformanceReportMapper
 
                 var name = pair[..separatorIndex];
                 var value = pair[(separatorIndex + 1)..];
-                return SensitiveQueryParameters.Contains(name) ? $"{name}={Redacted}" : $"{name}={value}";
+                var decodedName = Uri.UnescapeDataString(name);
+                return SensitiveQueryParameters.Contains(decodedName) ? $"{name}={Redacted}" : $"{name}={value}";
             });
 
         return $"{path}?{string.Join('&', pairs)}";

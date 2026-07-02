@@ -15,11 +15,10 @@ internal sealed record ConformanceResult(
     public IReadOnlyList<ConformanceStep> Steps { get; init; } = [];
 
     public static ConformanceResult CreateError(
-        string id,
         string file,
         string suite,
         string category,
         string assertion,
         string received) =>
-        new(id, file, suite, category, "error", 0, new ConformanceError(assertion, received));
+        new(file, file, suite, category, "error", 0, new ConformanceError(assertion, received));
 }

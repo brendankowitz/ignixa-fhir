@@ -190,6 +190,40 @@ public class ConformanceReportMapperTests
     }
 
     [Fact]
+    public void GivenOAuthAndPercentEncodedQueryParameters_WhenMappingReport_ThenRedactsSecrets()
+    {
+        // Arrange
+        var request = new TestRequest
+        {
+            Method = HttpMethod.Get,
+            Url = "Patient?client_secret=abc&refresh_token=def&code=ghi&id_token=jkl&%63ode2=mno&_count=10",
+            Headers = ImmutableDictionary<string, string>.Empty,
+        };
+        var response = new TestResponse
+        {
+            StatusCode = 200,
+            RawBody = """{"resourceType":"Bundle","type":"searchset"}""",
+            Headers = ImmutableDictionary<string, string>.Empty,
+        };
+        var action = new ActionResult(
+            "search",
+            "Search patients",
+            TestScriptOutcome.Pass,
+            Duration: TimeSpan.FromMilliseconds(42),
+            Kind: TestActionKind.Operation,
+            Exchange: new HttpExchange(request, response));
+        var report = MakeReport(tests: [new TestCaseResult("search patient", null, [action], TestScriptOutcome.Pass)]);
+
+        // Act
+        var results = ConformanceReportMapper.Map(report, "Search/patient.json");
+
+        // Assert
+        var step = results[0].Steps.ShouldHaveSingleItem();
+        step.Request!.Url.ShouldBe(
+            "Patient?client_secret=[redacted]&refresh_token=[redacted]&code=[redacted]&id_token=[redacted]&%63ode2=mno&_count=10");
+    }
+
+    [Fact]
     public void GivenSuccessfulSetupAndTeardown_WhenMappingReport_ThenIncludesAllPhaseSteps()
     {
         // Arrange

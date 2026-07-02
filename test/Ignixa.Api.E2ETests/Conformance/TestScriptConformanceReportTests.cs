@@ -93,14 +93,14 @@ public sealed class TestScriptConformanceReportTests
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, suite, category, "Parse exception", ex.Message));
+            results.Add(ConformanceResult.CreateError(relativeFile, suite, category, "Parse exception", ex.Message));
             return;
         }
 
         if (!parseResult.IsSuccess)
         {
             var messages = string.Join("; ", parseResult.Errors.Select(error => error.Message));
-            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, suite, category, "Parse error", messages));
+            results.Add(ConformanceResult.CreateError(relativeFile, suite, category, "Parse error", messages));
             return;
         }
 
@@ -111,7 +111,7 @@ public sealed class TestScriptConformanceReportTests
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            results.Add(ConformanceResult.CreateError(relativeFile, relativeFile, suite, category, "Evaluator error", ex.Message));
+            results.Add(ConformanceResult.CreateError(relativeFile, suite, category, "Evaluator error", ex.Message));
         }
     }
 
