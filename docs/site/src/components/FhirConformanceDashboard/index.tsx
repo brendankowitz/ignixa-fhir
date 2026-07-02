@@ -11,8 +11,8 @@ import type {
 } from './types';
 import styles from './styles.module.css';
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -170,17 +170,26 @@ export default function FhirConformanceDashboard(): JSX.Element {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    fetchJson<ImplReport>(reportUrl)
+    fetchJson<ImplReport>(reportUrl, controller.signal)
       .then((data) => {
         if (!cancelled) setReport(data);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error');
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          setError('Request timed out');
+        } else {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [reportUrl]);
 

@@ -9,13 +9,27 @@ internal static class ConformanceReportMapper
     private const int MaxBodyLength = 32_768;
     private const string Redacted = "[redacted]";
 
+    // Invariant: conformance TestScripts MUST NOT carry real secrets. Header/URL redaction here is defense-in-depth for a report published to a public site, not the primary control.
     private static readonly HashSet<string> SensitiveHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Authorization",
+        "Authentication",
         "Cookie",
         "Proxy-Authorization",
         "Set-Cookie",
-        "X-Api-Key"
+        "X-Api-Key",
+        "X-Auth-Token"
+    };
+
+    private static readonly HashSet<string> SensitiveQueryParameters = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "access_token",
+        "token",
+        "api_key",
+        "apikey",
+        "key",
+        "sig",
+        "signature"
     };
 
     public static IReadOnlyList<ConformanceResult> Map(TestScriptReport report, string relativeFile)
@@ -107,7 +121,7 @@ internal static class ConformanceReportMapper
         var exchange = action.Exchange;
         return new ConformanceStep(
             phase,
-            action.Kind == TestActionKind.Operation ? "operation" : "assertion",
+            MapKind(action.Kind),
             action.Label,
             action.Description,
             MapStatus(action.Outcome),
@@ -120,9 +134,16 @@ internal static class ConformanceReportMapper
     private static ConformanceHttpRequest MapRequest(TestRequest request) =>
         new(
             request.Method.Method,
-            request.Url,
+            RedactUrl(request.Url),
             RedactHeaders(request.Headers),
             TruncateBody(request.FormBody ?? request.Body?.SerializeToString()));
+
+    private static string MapKind(TestActionKind kind) => kind switch
+    {
+        TestActionKind.Operation => "operation",
+        TestActionKind.Assertion => "assertion",
+        _ => throw new InvalidOperationException($"Unhandled TestActionKind value: {kind}")
+    };
 
     private static ConformanceHttpResponse MapResponse(TestResponse response) =>
         new(
@@ -138,6 +159,30 @@ internal static class ConformanceReportMapper
                 header => header.Key,
                 header => SensitiveHeaders.Contains(header.Key) ? Redacted : header.Value,
                 StringComparer.OrdinalIgnoreCase);
+
+    private static string RedactUrl(string url)
+    {
+        var queryStart = url.IndexOf('?', StringComparison.Ordinal);
+        if (queryStart < 0)
+            return url;
+
+        var path = url[..queryStart];
+        var query = url[(queryStart + 1)..];
+        var pairs = query
+            .Split('&')
+            .Select(pair =>
+            {
+                var separatorIndex = pair.IndexOf('=', StringComparison.Ordinal);
+                if (separatorIndex < 0)
+                    return pair;
+
+                var name = pair[..separatorIndex];
+                var value = pair[(separatorIndex + 1)..];
+                return SensitiveQueryParameters.Contains(name) ? $"{name}={Redacted}" : $"{name}={value}";
+            });
+
+        return $"{path}?{string.Join('&', pairs)}";
+    }
 
     private static string? TruncateBody(string? body)
     {

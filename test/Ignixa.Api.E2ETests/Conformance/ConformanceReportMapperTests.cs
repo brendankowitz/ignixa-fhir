@@ -134,6 +134,62 @@ public class ConformanceReportMapperTests
     }
 
     [Fact]
+    public void GivenSensitiveHeadersAndUrl_WhenMappingReport_ThenRedactsSecrets()
+    {
+        // Arrange
+        var request = new TestRequest
+        {
+            Method = HttpMethod.Get,
+            Url = "Patient?access_token=abc123&_count=10&api_key=xyz",
+            Headers = new Dictionary<string, string>
+            {
+                ["Authorization"] = "Bearer secret",
+                ["Cookie"] = "session=secret",
+                ["X-Api-Key"] = "secret-key",
+                ["Authentication"] = "secret-auth",
+                ["X-Auth-Token"] = "secret-token",
+                ["Accept"] = "application/fhir+json"
+            }.ToImmutableDictionary(),
+        };
+        var response = new TestResponse
+        {
+            StatusCode = 200,
+            RawBody = """{"resourceType":"Bundle","type":"searchset"}""",
+            Headers = new Dictionary<string, string>
+            {
+                ["Set-Cookie"] = "session=secret",
+                ["Content-Type"] = "application/fhir+json"
+            }.ToImmutableDictionary(),
+        };
+        var action = new ActionResult(
+            "search",
+            "Search patients",
+            TestScriptOutcome.Pass,
+            Duration: TimeSpan.FromMilliseconds(42),
+            Kind: TestActionKind.Operation,
+            Exchange: new HttpExchange(request, response));
+        var report = MakeReport(tests: [new TestCaseResult("search patient", null, [action], TestScriptOutcome.Pass)]);
+
+        // Act
+        var results = ConformanceReportMapper.Map(report, "Search/patient.json");
+
+        // Assert
+        results.ShouldHaveSingleItem();
+        var step = results[0].Steps.ShouldHaveSingleItem();
+        step.Request.ShouldNotBeNull();
+        step.Request!.Headers["Authorization"].ShouldBe("[redacted]");
+        step.Request.Headers["Cookie"].ShouldBe("[redacted]");
+        step.Request.Headers["X-Api-Key"].ShouldBe("[redacted]");
+        step.Request.Headers["Authentication"].ShouldBe("[redacted]");
+        step.Request.Headers["X-Auth-Token"].ShouldBe("[redacted]");
+        step.Request.Headers["Accept"].ShouldBe("application/fhir+json");
+        step.Response.ShouldNotBeNull();
+        step.Response!.Headers["Set-Cookie"].ShouldBe("[redacted]");
+        step.Response.Headers["Content-Type"].ShouldBe("application/fhir+json");
+        step.Request.Url.ShouldBe("Patient?access_token=[redacted]&_count=10&api_key=[redacted]");
+    }
+
+    [Fact]
     public void GivenSuccessfulSetupAndTeardown_WhenMappingReport_ThenIncludesAllPhaseSteps()
     {
         // Arrange
