@@ -315,6 +315,122 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenTestWithRequiresCapabilityExtension_WhenParsed_ThenExpressionPopulated()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"CapabilityGated",
+              "status":"active",
+              "test":[{
+                "name":"everything op",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"rest.resource.where(type='Patient').operation.where(name='everything').exists()"}],
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient","params":"/123/$everything"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability
+            .ShouldBe("rest.resource.where(type='Patient').operation.where(name='everything').exists()");
+    }
+
+    [Fact]
+    public void GivenTestWithoutRequiresCapabilityExtension_WhenParsed_ThenExpressionNull()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Ungated",
+              "status":"active",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTestScriptWithRequiresCapabilityOnMetadata_WhenParsed_ThenExpressionPopulated()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"SuiteGated",
+              "status":"active",
+              "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"rest.operation.where(name='reindex').exists()"}],
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Metadata.RequiresCapability.ShouldBe("rest.operation.where(name='reindex').exists()");
+    }
+
+    [Fact]
+    public void GivenRequiresCapabilityExtensionWithWrongValueType_WhenParsed_ThenExpressionNull()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"WrongValueType",
+              "status":"active",
+              "test":[{
+                "name":"t",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueBoolean":true}],
+                "action":[{"assert":{"expression":"Patient.id.exists()"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTestWithParametrizeFhirVersionsAndRequiresCapabilityTogether_WhenParsed_ThenAllThreePopulate()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"AllExtensionsTogether",
+              "status":"active",
+              "test":[{
+                "name":"combined",
+                "extension":[
+                  {"url":"http://ignixa.io/testscript/fhirVersions","valueString":"4.0,4.3"},
+                  {"url":"http://ignixa.io/testscript/requiresCapability","valueString":"Patient.exists()"},
+                  {"url":"http://ignixa.io/testscript/parametrize","extension":[
+                    {"url":"variable","valueString":"id"},
+                    {"url":"values","valueString":"1,2"}
+                  ]}
+                ],
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient","params":"/${id}"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var test = result.Value!.Tests[0];
+        test.FhirVersions.ShouldBe(["4.0", "4.3"]);
+        test.RequiresCapability.ShouldBe("Patient.exists()");
+        test.Parameters.ShouldNotBeNull();
+        test.Parameters!.VariableName.ShouldBe("id");
+        test.Parameters.Values.ShouldBe(["1", "2"]);
+    }
+
+    [Fact]
     public void GivenVariableWithExpression_WhenParsing_ThenCreatesExpressionExtraction()
     {
         var json = """

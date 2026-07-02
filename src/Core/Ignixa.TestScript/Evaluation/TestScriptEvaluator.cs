@@ -27,10 +27,12 @@ public sealed class TestScriptEvaluator(
     public async Task<TestScriptReport> ExecuteAsync(
         TestScriptDefinition definition,
         CancellationToken cancellationToken,
-        string? fhirVersion = null)
+        string? fhirVersion = null,
+        ResourceJsonNode? capabilityStatement = null)
     {
         var startTime = DateTimeOffset.UtcNow;
         var recorder = new TestScriptResultRecorder();
+        var capabilityElement = capabilityStatement?.ToElement(schemaProvider);
 
         var context = new TestScriptContext
         {
@@ -41,6 +43,17 @@ public sealed class TestScriptEvaluator(
         {
             if (variable.DefaultValue is not null)
                 context = context.WithVariable(variable.Name, variable.DefaultValue);
+        }
+
+        var (suiteCapabilityMet, suiteCapabilityReason) =
+            EvaluateCapabilityRequirement(definition.Metadata.RequiresCapability, capabilityElement);
+        if (!suiteCapabilityMet)
+        {
+            var reason = suiteCapabilityReason ?? "Required capability not met";
+            foreach (var test in definition.Tests)
+                RecordSkippedTest(recorder, test, reason);
+
+            return recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow);
         }
 
         var hasSetupWork = definition.Fixtures.Count > 0 || definition.Setup.Count > 0;
@@ -92,8 +105,16 @@ public sealed class TestScriptEvaluator(
             {
                 if (!IsVersionCompatible(test.FhirVersions, fhirVersion))
                 {
-                    recorder.RecordSkippedTest(test.Name, test.Description,
+                    RecordSkippedTest(recorder, test,
                         $"Test targets FHIR version(s) [{string.Join(", ", test.FhirVersions)}] but execution requested '{fhirVersion}'");
+                    continue;
+                }
+
+                var (testCapabilityMet, testCapabilityReason) =
+                    EvaluateCapabilityRequirement(test.RequiresCapability, capabilityElement);
+                if (!testCapabilityMet)
+                {
+                    RecordSkippedTest(recorder, test, testCapabilityReason ?? "Required capability not met");
                     continue;
                 }
 
@@ -119,17 +140,7 @@ public sealed class TestScriptEvaluator(
         else
         {
             foreach (var test in definition.Tests)
-            {
-                if (test.Parameters is null)
-                {
-                    recorder.RecordSkippedTest(test.Name, test.Description, "setup failed");
-                }
-                else
-                {
-                    foreach (var value in test.Parameters.Values)
-                        recorder.RecordSkippedTest($"{test.Name} [{value}]", test.Description, "setup failed");
-                }
-            }
+                RecordSkippedTest(recorder, test, "setup failed");
         }
 
         if (definition.Teardown.Count > 0 || definition.Fixtures.Any(f => f.Autodelete))
@@ -158,6 +169,49 @@ public sealed class TestScriptEvaluator(
         if (fhirVersions.Count == 0) return true;
         if (fhirVersion is null) return true;
         return fhirVersions.Contains(fhirVersion, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Evaluates a <c>requiresCapability</c> FHIRPath expression against the target's
+    /// CapabilityStatement, converted once per <see cref="ExecuteAsync"/> call by the caller.
+    /// A missing/empty expression always passes. A missing <paramref name="capabilityElement"/>
+    /// (couldn't be fetched or wasn't supplied) also passes — capability gating fails open
+    /// rather than silently skipping large parts of a run because <c>/metadata</c> happened
+    /// to be unreachable. A malformed expression fails closed (skip) with the exception message
+    /// as the reason, since that's an authoring bug rather than a target-server characteristic.
+    /// </summary>
+    private static (bool IsMet, string? Reason) EvaluateCapabilityRequirement(
+        string? requiresCapability, IElement? capabilityElement)
+    {
+        if (string.IsNullOrWhiteSpace(requiresCapability)) return (true, null);
+        if (capabilityElement is null) return (true, null);
+
+        try
+        {
+            var met = capabilityElement.IsTrue(requiresCapability);
+            return (met, met ? null : $"Required capability not met: {requiresCapability}");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return (false, $"requiresCapability expression '{requiresCapability}' failed to evaluate: {ex.Message}");
+        }
+    }
+
+    private static void RecordSkippedTest(TestScriptResultRecorder recorder, TestPhaseDefinition test, string reason)
+    {
+        if (test.Parameters is null)
+        {
+            recorder.RecordSkippedTest(test.Name, test.Description, reason);
+        }
+        else
+        {
+            foreach (var value in test.Parameters.Values)
+                recorder.RecordSkippedTest($"{test.Name} [{value}]", test.Description, reason);
+        }
     }
 
     private async Task<TestScriptContext> ExecuteActionsAsync(
