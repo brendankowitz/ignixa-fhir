@@ -216,11 +216,16 @@ public sealed class DiscoveredScenario
     /// The underlying factory method. Internal so callers cannot bypass <see cref="ScenarioCatalog.Invoke"/>
     /// and its parameter-fallback / exception-wrapping behavior via raw reflection. Visible to
     /// <c>Ignixa.FhirFakes.Tests</c> via <c>InternalsVisibleTo</c> so tests can construct synthetic
-    /// scenarios pointing at test-local methods.
+    /// scenarios pointing at test-local methods. Not <c>required</c> (a required member cannot be less
+    /// visible than its public containing type, per CS9032) — always set via the object initializer by
+    /// <c>ScenarioCatalog.Discover()</c> and by tests; the <c>= null!</c> default only silences the
+    /// nullable-reference-type warning since the compiler can no longer enforce it's set.
     /// </summary>
-    internal required MethodInfo Method { get; init; }
+    internal MethodInfo Method { get; init; } = null!;
 }
 ```
+
+> **Note:** `internal required MethodInfo Method` does not compile — C# (CS9032) requires a `required` member to be at least as visible as its containing type, and `DiscoveredScenario` is `public`. The code above (non-`required`, `internal`, with an `= null!` default to satisfy nullable-reference-type analysis) is the corrected version; it preserves the encapsulation intent (`Method` stays inaccessible outside the assembly and `Ignixa.FhirFakes.Tests`) without the compiler error.
 
 - [ ] **Step 3: Create `ScenarioInvocationException.cs`**
 
