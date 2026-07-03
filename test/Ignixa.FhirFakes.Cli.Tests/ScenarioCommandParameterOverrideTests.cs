@@ -1,3 +1,4 @@
+using System.Globalization;
 using Shouldly;
 using Ignixa.FhirFakes.Cli.Commands;
 using Ignixa.FhirFakes.Scenarios;
@@ -9,6 +10,13 @@ public class ScenarioCommandParameterOverrideTests
     private static DiscoveredScenario GetDiabeticPatientScenario()
     {
         var scenario = ScenarioCatalog.Find("DiabeticPatient");
+        scenario.ShouldNotBeNull();
+        return scenario!;
+    }
+
+    private static DiscoveredScenario GetMetabolicSyndromeProgressionScenario()
+    {
+        var scenario = ScenarioCatalog.Find("MetabolicSyndromeProgression");
         scenario.ShouldNotBeNull();
         return scenario!;
     }
@@ -65,5 +73,29 @@ public class ScenarioCommandParameterOverrideTests
         success.ShouldBeFalse();
         error.ShouldNotBeNull();
         error.ShouldContain("Invalid --param value");
+    }
+
+    [Fact]
+    public void GivenDecimalParamValue_WhenParsingOverridesUnderNonInvariantCulture_ThenParsesAsInvariantDecimal()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            // de-DE treats '.' as a thousands separator and ',' as the decimal point.
+            // Parsing must stay culture-invariant so "35.5" always means 35.5, not 355.
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            var scenario = GetMetabolicSyndromeProgressionScenario();
+            var paramValues = new[] { "startingBMI=35.5" };
+
+            var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out var overrides, out var error);
+
+            success.ShouldBeTrue();
+            error.ShouldBeNull();
+            overrides["startingBMI"].ShouldBe(35.5m);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 }

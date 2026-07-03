@@ -1,5 +1,6 @@
 using Ignixa.Abstractions;
 using System.CommandLine;
+using System.Globalization;
 using System.Text.Json;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Specification;
@@ -223,13 +224,13 @@ internal static class ScenarioCommand
     {
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
-        if (underlyingType == typeof(int) && int.TryParse(rawValue, out var intValue))
+        if (underlyingType == typeof(int) && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
         {
             converted = intValue;
             return true;
         }
 
-        if (underlyingType == typeof(decimal) && decimal.TryParse(rawValue, out var decimalValue))
+        if (underlyingType == typeof(decimal) && decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
         {
             converted = decimalValue;
             return true;
