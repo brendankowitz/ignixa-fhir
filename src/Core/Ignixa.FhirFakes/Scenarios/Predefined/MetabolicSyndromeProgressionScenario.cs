@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -62,11 +63,12 @@ public static class MetabolicSyndromeProgressionScenario
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <param name="startingBMI">Starting BMI value (default: 35.0 - Class II Obesity).</param>
     /// <returns>A complete scenario context with metabolic syndrome progression.</returns>
+    [Scenario(Category = "Metabolic", Title = "Metabolic Syndrome", Description = "BMI-correlated progression of obesity, hypertension, diabetes, and hyperlipidemia risk.")]
     public static ScenarioContext GetMetabolicSyndromeProgression(
         this IFhirSchemaProvider schemaProvider,
-        int age = 48,
-        string gender = "male",
-        decimal startingBMI = 35.0m)
+        [ScenarioParameter(Min = 25, Max = 75, Description = "Patient age")] int age = 48,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male",
+        [ScenarioParameter(Min = 18, Max = 50, Description = "Starting BMI value")] decimal startingBMI = 35.0m)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

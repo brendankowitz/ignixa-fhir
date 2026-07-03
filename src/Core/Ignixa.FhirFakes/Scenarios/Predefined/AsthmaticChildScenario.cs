@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -30,11 +31,12 @@ public static class AsthmaticChildScenario
     /// <param name="gender">Child's gender (default: random).</param>
     /// <param name="severity">Asthma severity 1-4 (default: 2 - mild persistent).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
+    [Scenario(Category = "Pediatric", Title = "Asthma (Pediatric)", Description = "Persistent asthma management with controller therapy and peak-flow monitoring in children.")]
     public static ScenarioContext GetAsthmaticChild(
         this IFhirSchemaProvider schemaProvider,
-        int age = 7,
-        string? gender = null,
-        int severity = 2)
+        [ScenarioParameter(Min = 2, Max = 17, Description = "Child's age")] int age = 7,
+        [ScenarioParameter(Description = "Child's gender; random if not specified")] string? gender = null,
+        [ScenarioParameter(Min = 1, Max = 4, Description = "Asthma severity (1-4)")] int severity = 2)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

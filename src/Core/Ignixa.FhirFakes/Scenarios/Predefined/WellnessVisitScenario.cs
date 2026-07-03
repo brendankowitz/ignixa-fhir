@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -36,11 +37,12 @@ public static class WellnessVisitScenario
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <param name="includeLipidPanel">Whether to include lipid panel (default: true, automatic for age >= 30).</param>
     /// <returns>A complete scenario context with wellness visit resources.</returns>
+    [Scenario(Category = "Preventive", Title = "Wellness Visit", Description = "Routine wellness visit with vitals, metabolic panel, and age-appropriate lipid screening.")]
     public static ScenarioContext GetWellnessVisit(
         this IFhirSchemaProvider schemaProvider,
-        int age = 45,
-        string gender = "male",
-        bool includeLipidPanel = true)
+        [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 45,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male",
+        [ScenarioParameter(Description = "Whether to include a lipid panel (automatic for age >= 30)")] bool includeLipidPanel = true)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

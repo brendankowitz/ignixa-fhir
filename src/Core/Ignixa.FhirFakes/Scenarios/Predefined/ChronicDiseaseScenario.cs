@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -272,10 +273,11 @@ public static class ChronicDiseaseScenario
     /// <param name="age">Patient age (default: 58 - typical CKD onset in diabetic population).</param>
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <returns>A complete scenario context with CKD progression pathway.</returns>
+    [Scenario(Category = "Chronic", Title = "CKD Progression", Description = "KDIGO-staged chronic kidney disease progression with nephrology referral and dialysis prep.")]
     public static ScenarioContext GetChronicKidneyDiseaseProgression(
         this IFhirSchemaProvider schemaProvider,
-        int age = 58,
-        string gender = "male")
+        [ScenarioParameter(Min = 30, Max = 90, Description = "Patient age")] int age = 58,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male")
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
@@ -529,10 +531,11 @@ public static class ChronicDiseaseScenario
     /// <param name="age">Patient age (default: 62 - typical COPD onset in smoker population).</param>
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <returns>A complete scenario context with COPD management pathway.</returns>
+    [Scenario(Category = "Chronic", Title = "COPD", Description = "GOLD-staged COPD management from diagnosis through exacerbation and oxygen therapy.")]
     public static ScenarioContext GetCOPDManagementWithExacerbations(
         this IFhirSchemaProvider schemaProvider,
-        int age = 62,
-        string gender = "male")
+        [ScenarioParameter(Min = 40, Max = 90, Description = "Patient age")] int age = 62,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male")
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

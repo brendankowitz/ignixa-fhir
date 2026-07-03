@@ -51,13 +51,24 @@ public class ScenarioCatalogTests
     [Fact]
     public void GivenUnannotatedScenario_WhenFinding_ThenTitleFallsBackToHumanizedId()
     {
-        // WellnessVisit is annotated later in this plan (Task 5); until then, any
-        // as-yet-unannotated scenario id demonstrates the humanization fallback.
-        // PediatricEarInfection has no consecutive-capital edge cases, so it humanizes cleanly.
-        var scenario = ScenarioCatalog.Find("PediatricEarInfection")!;
+        // GetComprehensiveScreeningVisit is NOT annotated (outside the scope of the 14 screenshot-mapped scenarios).
+        // It will fall back to humanized id for Title and null for Category.
+        var scenario = ScenarioCatalog.Find("ComprehensiveScreeningVisit")!;
 
-        scenario.Title.ShouldBe("Pediatric Ear Infection");
+        scenario.Title.ShouldBe("Comprehensive Screening Visit");
         scenario.Category.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAnnotatedScenario_WhenFindingDiabeticPatient_ThenHasExpectedMetadata()
+    {
+        var scenario = ScenarioCatalog.Find("DiabeticPatient")!;
+
+        scenario.Category.ShouldBe("Chronic");
+        scenario.Title.ShouldBe("Type 2 Diabetes");
+        var age = scenario.Parameters.Single(p => p.Name == "age");
+        age.Min.ShouldBe(18);
+        age.Max.ShouldBe(90);
     }
 
     [Fact]

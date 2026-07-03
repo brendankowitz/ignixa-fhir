@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -77,10 +78,11 @@ public static class CardiovascularScenario
     /// <param name="age">Patient age (default: 62 - typical MI age).</param>
     /// <param name="gender">Patient gender (default: "male" - higher cardiac risk).</param>
     /// <returns>A complete scenario context with acute MI pathway.</returns>
+    [Scenario(Category = "Emergency", Title = "Acute MI", Description = "Acute myocardial infarction pathway with cardiac biomarkers and secondary-prevention CarePlan.")]
     public static ScenarioContext GetAcuteMyocardialInfarction(
         this IFhirSchemaProvider schemaProvider,
-        int age = 62,
-        string gender = "male")
+        [ScenarioParameter(Min = 35, Max = 95, Description = "Patient age")] int age = 62,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male")
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

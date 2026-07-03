@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -54,11 +55,12 @@ public static class EarInfectionScenario
     /// <param name="gender">Child's gender (default: random).</param>
     /// <param name="includeFollowUp">Whether to include follow-up visit with resolution (default: true).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
+    [Scenario(Category = "Pediatric", Title = "Pediatric Ear Infection", Description = "Acute otitis media diagnosis with amoxicillin and optional follow-up resolution visit.")]
     public static ScenarioContext GetPediatricEarInfection(
         this IFhirSchemaProvider schemaProvider,
-        int age = 4,
-        string? gender = null,
-        bool includeFollowUp = true)
+        [ScenarioParameter(Min = 2, Max = 10, Description = "Child's age in years")] int age = 4,
+        [ScenarioParameter(Description = "Child's gender; random if not specified")] string? gender = null,
+        [ScenarioParameter(Description = "Whether to include a follow-up visit with resolution")] bool includeFollowUp = true)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

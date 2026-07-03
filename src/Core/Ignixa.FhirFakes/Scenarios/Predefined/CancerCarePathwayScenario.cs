@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -244,10 +245,11 @@ public static class CancerCarePathwayScenario
     /// <param name="age">Patient age (default: 55 - typical screening age).</param>
     /// <param name="gender">Patient gender (default: "female").</param>
     /// <returns>A complete scenario context with breast cancer care pathway.</returns>
+    [Scenario(Category = "Oncology", Title = "Breast Cancer", Description = "Breast cancer care pathway from screening through biopsy, surgery, and chemotherapy.")]
     public static ScenarioContext GetBreastCancerPathway(
         this IFhirSchemaProvider schemaProvider,
-        int age = 55,
-        string gender = "female")
+        [ScenarioParameter(Min = 30, Max = 85, Description = "Patient age")] int age = 55,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "female")
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

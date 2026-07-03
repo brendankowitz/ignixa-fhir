@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -32,11 +33,12 @@ public static class UrinaryTractInfectionScenario
     /// <param name="gender">Patient gender (default: "female").</param>
     /// <param name="includeFollowUp">Whether to include follow-up visit with resolution (default: true).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
+    [Scenario(Category = "Acute", Title = "UTI", Description = "Uncomplicated UTI diagnosis with nitrofurantoin and optional resolution follow-up.")]
     public static ScenarioContext GetUrinaryTractInfection(
         this IFhirSchemaProvider schemaProvider,
-        int age = 35,
-        string gender = "female",
-        bool includeFollowUp = true)
+        [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 35,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "female",
+        [ScenarioParameter(Description = "Whether to include a follow-up visit with resolution")] bool includeFollowUp = true)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
