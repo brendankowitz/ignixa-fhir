@@ -1,10 +1,11 @@
 using Ignixa.Abstractions;
 using System.CommandLine;
 using System.Text.Json;
-using Ignixa.FhirFakes.Cli.Discovery;
 using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.EdgeCases;
+using Ignixa.FhirFakes.Population;
+using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -157,7 +158,7 @@ internal static class ResourceCommand
 
                 if (!string.IsNullOrEmpty(from))
                 {
-                    var city = StateDiscovery.FindCity(from);
+                    var city = FindCity(from);
                     if (city != null)
                         builder.FromCity(city);
                     else
@@ -183,12 +184,12 @@ internal static class ResourceCommand
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
-                var observationState = StateDiscovery.CreateObservationState(stateName);
+                var observationState = ObservationStateCatalog.Create(stateName);
                 if (observationState == null)
                 {
                     await Console.Error.WriteLineAsync($"✗ Unknown observation state: {stateName}");
                     await Console.Error.WriteLineAsync("Available states:");
-                    foreach (var name in StateDiscovery.GetObservationStateNames())
+                    foreach (var name in ObservationStateCatalog.Names())
                         await Console.Error.WriteLineAsync($"  - {name}");
                     Environment.ExitCode = 2;
                     return;
@@ -351,4 +352,12 @@ internal static class ResourceCommand
             Console.WriteLine("✓ Validation passed");
         }
     }
+
+    /// <summary>
+    /// Finds a city by name. Internal (not private) so <c>ResourceCommandFindCityTests</c> can call it
+    /// directly via the CLI project's <c>InternalsVisibleTo</c>.
+    /// </summary>
+    internal static CityDemographics? FindCity(string cityName) =>
+        DemographicsDataProvider.CreateDefault().Cities
+            .FirstOrDefault(c => c.Name.Equals(cityName, StringComparison.OrdinalIgnoreCase));
 }

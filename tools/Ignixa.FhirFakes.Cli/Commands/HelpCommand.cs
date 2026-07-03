@@ -1,5 +1,6 @@
 using System.CommandLine;
-using Ignixa.FhirFakes.Cli.Discovery;
+using Ignixa.FhirFakes.Scenarios;
+using Ignixa.FhirFakes.Scenarios.States;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
 
@@ -95,23 +96,31 @@ internal static class HelpCommand
     {
         Console.WriteLine("Available Predefined Scenarios:");
         Console.WriteLine();
-        
-        var scenarios = ScenarioDiscovery.GetScenarioNames().OrderBy(s => s).ToList();
-        
+
+        var scenarios = ScenarioCatalog.All()
+            .OrderBy(s => s.Category ?? "Uncategorized")
+            .ThenBy(s => s.Title)
+            .ToList();
+
         Console.WriteLine($"Found {scenarios.Count} scenarios:");
         Console.WriteLine();
-        
-        foreach (var scenario in scenarios)
+
+        foreach (var group in scenarios.GroupBy(s => s.Category ?? "Uncategorized"))
         {
-            Console.WriteLine($"  - {scenario}");
+            Console.WriteLine($"{group.Key}:");
+            foreach (var scenario in group)
+            {
+                var description = string.IsNullOrEmpty(scenario.Description) ? string.Empty : $" - {scenario.Description}";
+                Console.WriteLine($"  - {scenario.Id} ({scenario.Title}){description}");
+            }
+            Console.WriteLine();
         }
-        
-        Console.WriteLine();
+
         Console.WriteLine("Usage:");
-        Console.WriteLine($"  ignixa-fakes r4 scenario <ScenarioName> --out <folder> [--resolved-references]");
+        Console.WriteLine($"  ignixa-fakes r4 scenario <ScenarioName> --out <folder> [--param name=value ...] [--resolved-references]");
         Console.WriteLine();
         Console.WriteLine("Example:");
-        Console.WriteLine("  ignixa-fakes r4 scenario DiabeticPatient --out ./output --resolved-references");
+        Console.WriteLine("  ignixa-fakes r4 scenario DiabeticPatient --out ./output --param age=60 --param severity=3");
     }
 
     private static void ShowObservationStates()
@@ -119,7 +128,7 @@ internal static class HelpCommand
         Console.WriteLine("Available Observation States:");
         Console.WriteLine();
         
-        var states = StateDiscovery.GetObservationStateNames().OrderBy(s => s).ToList();
+        var states = ObservationStateCatalog.Names().OrderBy(s => s).ToList();
         
         Console.WriteLine($"Found {states.Count} observation states:");
         Console.WriteLine();
