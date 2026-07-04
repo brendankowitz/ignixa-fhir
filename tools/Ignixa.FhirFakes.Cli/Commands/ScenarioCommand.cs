@@ -209,9 +209,11 @@ internal static class ScenarioCommand
                 return false;
             }
 
-            if (!parameter.TryParseValue(rawValue, out var converted))
+            if (!parameter.TryParseValue(rawValue, out var converted, out var failureReason))
             {
-                error = $"Cannot convert value '{rawValue}' for parameter '{name}' to {parameter.Type.Name}.";
+                error = failureReason is not null
+                    ? $"Invalid value '{rawValue}' for parameter '{name}': {failureReason}"
+                    : $"Cannot convert value '{rawValue}' for parameter '{name}' to {parameter.Type.Name}.";
                 return false;
             }
 

@@ -63,6 +63,24 @@ public class ScenarioCommandParameterOverrideTests
     }
 
     [Fact]
+    public void GivenOutOfRangeValueForIntParameter_WhenParsingOverrides_ThenErrorNamesTheRangeNotAConversionFailure()
+    {
+        var scenario = GetDiabeticPatientScenario();
+        var paramValues = new[] { "age=5" };
+
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out _, out var error);
+
+        success.ShouldBeFalse();
+        error.ShouldNotBeNull();
+        // 5 converts to int just fine — the error must name the actual problem (the declared
+        // range), not claim a type-conversion failure that didn't happen.
+        error.ShouldNotContain("Cannot convert");
+        error.ShouldContain("5");
+        error.ShouldContain("18");
+        error.ShouldContain("90");
+    }
+
+    [Fact]
     public void GivenMalformedParamValue_WhenParsingOverrides_ThenReturnsFalseWithError()
     {
         var scenario = GetDiabeticPatientScenario();

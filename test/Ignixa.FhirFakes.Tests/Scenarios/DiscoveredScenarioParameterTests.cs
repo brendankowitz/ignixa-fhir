@@ -115,25 +115,34 @@ public class DiscoveredScenarioParameterTests
     }
 
     [Fact]
-    public void GivenIntBelowMin_WhenParsing_ThenReturnsFalse()
+    public void GivenIntBelowMin_WhenParsing_ThenReturnsFalseWithRangeReason()
     {
-        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int), Min = 18 };
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int), Min = 18, Max = 85 };
 
-        var parsed = parameter.TryParseValue("5", out var value);
+        var parsed = parameter.TryParseValue("5", out var value, out var failureReason);
 
         parsed.ShouldBeFalse();
         value.ShouldBeNull();
+        // Must not be reported as a type-conversion failure (5 converts to int just fine) — the
+        // reason should name the actual problem: the value, and the allowed range.
+        failureReason.ShouldNotBeNull();
+        failureReason.ShouldContain("5");
+        failureReason.ShouldContain("18");
+        failureReason.ShouldContain("85");
     }
 
     [Fact]
-    public void GivenIntAboveMax_WhenParsing_ThenReturnsFalse()
+    public void GivenIntAboveMax_WhenParsing_ThenReturnsFalseWithRangeReason()
     {
         var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int), Max = 85 };
 
-        var parsed = parameter.TryParseValue("200", out var value);
+        var parsed = parameter.TryParseValue("200", out var value, out var failureReason);
 
         parsed.ShouldBeFalse();
         value.ShouldBeNull();
+        failureReason.ShouldNotBeNull();
+        failureReason.ShouldContain("200");
+        failureReason.ShouldContain("85");
     }
 
     [Fact]

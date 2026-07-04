@@ -346,14 +346,15 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     public PatientBuilder WithGender(string gender)
     {
         ArgumentNullException.ThrowIfNull(gender);
-        if (!PatientBuilderConstants.Gender.All.Contains(gender, StringComparer.OrdinalIgnoreCase))
+        var canonical = PatientBuilderConstants.Gender.All.FirstOrDefault(g => g.Equals(gender, StringComparison.OrdinalIgnoreCase));
+        if (canonical is null)
         {
             throw new ArgumentException(
                 $"Invalid gender '{gender}'. Expected one of: {string.Join(", ", PatientBuilderConstants.Gender.All)}.",
                 nameof(gender));
         }
 
-        _gender = gender;
+        _gender = canonical;
         return this;
     }
 

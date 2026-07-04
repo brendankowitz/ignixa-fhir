@@ -84,18 +84,13 @@ public class ThemeConsistentGenerationTests
         }
     }
 
-    [Fact]
-    public void GivenMinimalDensityAndUnsetTheme_WhenGeneratingMedicationRequest_ThenEachResourceIsInternallyConsistent()
-    {
-        var schemaProvider = new R4CoreSchemaProvider();
-        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 77)
-        {
-            Density = GenerationDensity.Minimal,
-            // Theme intentionally left unset — this is the real default every existing caller gets.
-        };
-
-        AssertPerCallDomainConsistency(faker, "MedicationRequest", MedicationPool);
-    }
+    // Note: a Minimal-density + unset-Theme + MedicationRequest variant of this test was removed —
+    // at Minimal density MedicationRequest has exactly one coded element (medicationCodeableConcept),
+    // so a "domains observed in one call are consistent" assertion could never fail there and added
+    // no regression protection. Minimal-density theming is already covered by
+    // GivenMinimalDensityAndCardiologyTheme_WhenGeneratingMedicationRequest_ThenRequiredCodeIsThemed
+    // (explicit theme reaches a required field); per-call consistency for the unset/default path is
+    // covered below using Procedure, which has multiple coded siblings even at Minimal/Maximum.
 
     [Fact]
     public void GivenMaximumDensityAndUnsetTheme_WhenGeneratingProcedure_ThenEachResourceIsInternallyConsistent()
