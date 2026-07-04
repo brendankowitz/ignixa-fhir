@@ -60,12 +60,27 @@ public sealed class DiscoveredScenarioParameter
 
         if (underlyingType == typeof(int) && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
         {
+            if (!IsWithinRange(intValue))
+            {
+                value = null;
+                return false;
+            }
+
             value = intValue;
             return true;
         }
 
         if (underlyingType == typeof(decimal) && decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
         {
+            // Casting to double can lose precision at extreme magnitudes; acceptable here because
+            // scenario Min/Max hints describe small, human-scale values (age, severity), not
+            // high-precision decimals.
+            if (!IsWithinRange((double)decimalValue))
+            {
+                value = null;
+                return false;
+            }
+
             value = decimalValue;
             return true;
         }
@@ -94,4 +109,7 @@ public sealed class DiscoveredScenarioParameter
         value = null;
         return false;
     }
+
+    private bool IsWithinRange(double numericValue) =>
+        (Min is null || numericValue >= Min.Value) && (Max is null || numericValue <= Max.Value);
 }

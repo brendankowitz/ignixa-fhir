@@ -115,6 +115,50 @@ public class DiscoveredScenarioParameterTests
     }
 
     [Fact]
+    public void GivenIntBelowMin_WhenParsing_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int), Min = 18 };
+
+        var parsed = parameter.TryParseValue("5", out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenIntAboveMax_WhenParsing_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int), Max = 85 };
+
+        var parsed = parameter.TryParseValue("200", out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenIntWithinRange_WhenParsing_ThenReturnsInt()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int), Min = 18, Max = 85 };
+
+        var parsed = parameter.TryParseValue("40", out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe(40);
+    }
+
+    [Fact]
+    public void GivenDecimalOutsideRange_WhenParsing_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "bmi", Type = typeof(decimal), Min = 10, Max = 50 };
+
+        var parsed = parameter.TryParseValue("75.5", out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenNullableIntValue_WhenParsing_ThenReturnsInt()
     {
         var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int?) };
