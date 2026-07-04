@@ -4,9 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Reflection;
-using System.Text;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 
@@ -61,30 +59,7 @@ public static class ScenarioCatalog
         ArgumentNullException.ThrowIfNull(scenario);
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
-        var parameters = scenario.Method.GetParameters();
-        var args = new object?[parameters.Length];
-        args[0] = schemaProvider;
-
-        var overrides = parameterOverrides == null
-            ? null
-            : new Dictionary<string, object?>(parameterOverrides, StringComparer.OrdinalIgnoreCase);
-
-        for (var i = 1; i < parameters.Length; i++)
-        {
-            var parameter = parameters[i];
-            if (overrides != null && overrides.TryGetValue(parameter.Name!, out var overrideValue))
-            {
-                args[i] = CoerceAndValidateOverride(scenario.Id, parameter, overrideValue);
-            }
-            else if (parameter.HasDefaultValue)
-            {
-                args[i] = parameter.DefaultValue;
-            }
-            else
-            {
-                args[i] = DefaultForType(parameter.ParameterType);
-            }
-        }
+        var args = ScenarioParameterBinder.BuildArguments(scenario.Id, scenario.Method, parameterOverrides, schemaProvider);
 
         ScenarioContext context;
         try
@@ -103,70 +78,6 @@ public static class ScenarioCatalog
         }
 
         return context;
-    }
-
-    private static object? DefaultForType(Type type)
-    {
-        if (type.IsValueType && Nullable.GetUnderlyingType(type) == null)
-        {
-            return Activator.CreateInstance(type);
-        }
-
-        return null;
-    }
-
-    private static readonly HashSet<Type> NumericTypes =
-    [
-        typeof(sbyte), typeof(byte), typeof(short), typeof(ushort),
-        typeof(int), typeof(uint), typeof(long), typeof(ulong),
-        typeof(float), typeof(double), typeof(decimal),
-    ];
-
-    /// <summary>
-    /// Validates an override value against a parameter's declared type, coercing compatible numeric
-    /// widening/narrowing conversions (e.g. an <see langword="int"/> override for a
-    /// <see langword="decimal"/> parameter) rather than rejecting them outright — a common shape for
-    /// values arriving from JSON deserialization or other loosely-typed callers. Deliberately does NOT
-    /// coerce strings: string-to-value conversion belongs to <see cref="DiscoveredScenarioParameter.TryParseValue"/>,
-    /// which also enforces Min/Max; routing strings through here would silently bypass that check.
-    /// </summary>
-    [SuppressMessage("Usage", "CA2208:Instantiate argument exceptions correctly", Justification = "paramName intentionally names the public Invoke argument 'parameterOverrides', the surface a caller can fix.")]
-    private static object? CoerceAndValidateOverride(string scenarioId, ParameterInfo parameter, object? value)
-    {
-        var effectiveType = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
-
-        if (value is null)
-        {
-            if (parameter.ParameterType.IsValueType && Nullable.GetUnderlyingType(parameter.ParameterType) is null)
-            {
-                throw new ArgumentException(
-                    $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is null, but the parameter type '{parameter.ParameterType.Name}' is a non-nullable value type.",
-                    "parameterOverrides");
-            }
-
-            return null;
-        }
-
-        if (effectiveType.IsInstanceOfType(value))
-        {
-            return value;
-        }
-
-        if (NumericTypes.Contains(effectiveType) && NumericTypes.Contains(value.GetType()))
-        {
-            try
-            {
-                return Convert.ChangeType(value, effectiveType, CultureInfo.InvariantCulture);
-            }
-            catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException)
-            {
-                // Falls through to the throw below (e.g. a long value too large for an int parameter).
-            }
-        }
-
-        throw new ArgumentException(
-            $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is of type '{value.GetType().Name}', but the parameter expects '{effectiveType.Name}'.",
-            "parameterOverrides");
     }
 
     private static IReadOnlyList<DiscoveredScenario> Discover()
@@ -197,9 +108,9 @@ public static class ScenarioCatalog
                 {
                     Id = id,
                     Category = attribute?.Category,
-                    Title = attribute?.Title ?? Humanize(id),
+                    Title = attribute?.Title ?? ScenarioParameterBinder.Humanize(id),
                     Description = attribute?.Description,
-                    Parameters = parameters.Skip(1).Select(BuildParameter).ToList(),
+                    Parameters = parameters.Skip(1).Select(ScenarioParameterBinder.BuildParameter).ToList(),
                     Domain = attribute is null || attribute.Domain == ClinicalDomain.Unspecified ? null : attribute.Domain,
                     Method = method,
                 });
@@ -207,34 +118,5 @@ public static class ScenarioCatalog
         }
 
         return scenarios;
-    }
-
-    private static DiscoveredScenarioParameter BuildParameter(ParameterInfo parameter)
-    {
-        var attribute = parameter.GetCustomAttribute<ScenarioParameterAttribute>();
-
-        return new DiscoveredScenarioParameter
-        {
-            Name = parameter.Name!,
-            Type = parameter.ParameterType,
-            DefaultValue = parameter.HasDefaultValue ? parameter.DefaultValue : null,
-            HasDefaultValue = parameter.HasDefaultValue,
-            Min = attribute is null || double.IsNaN(attribute.Min) ? null : attribute.Min,
-            Max = attribute is null || double.IsNaN(attribute.Max) ? null : attribute.Max,
-            Description = attribute?.Description,
-        };
-    }
-
-    private static string Humanize(string id)
-    {
-        var builder = new StringBuilder();
-        foreach (var c in id)
-        {
-            if (builder.Length > 0 && char.IsUpper(c) && !char.IsUpper(builder[^1]))
-                builder.Append(' ');
-            builder.Append(c);
-        }
-
-        return builder.ToString();
     }
 }
