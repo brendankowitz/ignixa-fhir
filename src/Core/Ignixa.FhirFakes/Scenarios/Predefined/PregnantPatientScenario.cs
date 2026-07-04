@@ -30,7 +30,7 @@ public static class PregnantPatientScenario
     /// <param name="age">Patient age (default: 28).</param>
     /// <param name="weekOfPregnancy">Starting week of pregnancy for scenario (default: 8).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
-    [Scenario(Category = "Journey", Title = "Pregnancy Journey", Description = "Trimester-by-trimester prenatal visit journey from confirmation through delivery approach.")]
+    [Scenario(Category = "Journey", Title = "Pregnancy Journey", Description = "Trimester-by-trimester prenatal visit journey from confirmation through delivery approach.", Domain = ClinicalDomain.ObstetricsGynecology)]
     public static ScenarioContext GetPregnantPatient(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 15, Max = 45, Description = "Patient age")] int age = 28,

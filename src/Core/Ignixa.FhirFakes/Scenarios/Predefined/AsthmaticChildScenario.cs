@@ -31,7 +31,7 @@ public static class AsthmaticChildScenario
     /// <param name="gender">Child's gender (default: random).</param>
     /// <param name="severity">Asthma severity 1-4 (default: 2 - mild persistent).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
-    [Scenario(Category = "Pediatric", Title = "Asthma (Pediatric)", Description = "Persistent asthma management with controller therapy and peak-flow monitoring in children.")]
+    [Scenario(Category = "Pediatric", Title = "Asthma (Pediatric)", Description = "Persistent asthma management with controller therapy and peak-flow monitoring in children.", Domain = ClinicalDomain.Pulmonology)]
     public static ScenarioContext GetAsthmaticChild(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 2, Max = 17, Description = "Child's age")] int age = 7,

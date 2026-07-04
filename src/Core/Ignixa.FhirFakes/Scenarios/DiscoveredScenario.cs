@@ -39,6 +39,11 @@ public sealed class DiscoveredScenario
     public required IReadOnlyList<DiscoveredScenarioParameter> Parameters { get; init; }
 
     /// <summary>
+    /// Clinical specialty from <see cref="ScenarioAttribute.Domain"/>, or null if undeclared.
+    /// </summary>
+    public ClinicalDomain? Domain { get; init; }
+
+    /// <summary>
     /// The underlying factory method. Internal so callers cannot bypass <see cref="ScenarioCatalog.Invoke"/>
     /// and its parameter-fallback / exception-wrapping behavior via raw reflection. Visible to
     /// <c>Ignixa.FhirFakes.Tests</c> via <c>InternalsVisibleTo</c> so tests can construct synthetic

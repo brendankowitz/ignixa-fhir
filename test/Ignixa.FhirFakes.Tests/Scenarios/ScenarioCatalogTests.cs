@@ -16,7 +16,7 @@ public class ScenarioCatalogTests
     [Fact]
     public void GivenScenarioCatalog_WhenGettingAll_ThenReturnsKnownScenarios()
     {
-        var ids = ScenarioCatalog.All().Select(s => s.Id).ToList();
+        var ids = ScenarioCatalog.GetAll().Select(s => s.Id).ToList();
 
         ids.ShouldContain("DiabeticPatient");
         ids.ShouldContain("AsthmaticChild");

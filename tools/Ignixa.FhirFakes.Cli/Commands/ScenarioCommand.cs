@@ -83,7 +83,7 @@ internal static class ScenarioCommand
             {
                 Console.WriteLine($"X Unknown scenario: {scenarioName}");
                 Console.WriteLine("Available scenarios:");
-                foreach (var name in ScenarioCatalog.All().Select(s => s.Id).OrderBy(s => s))
+                foreach (var name in ScenarioCatalog.GetAll().Select(s => s.Id).OrderBy(s => s))
                 {
                     Console.WriteLine($"  - {name}");
                 }

@@ -273,7 +273,7 @@ public static class ChronicDiseaseScenario
     /// <param name="age">Patient age (default: 58 - typical CKD onset in diabetic population).</param>
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <returns>A complete scenario context with CKD progression pathway.</returns>
-    [Scenario(Category = "Chronic", Title = "CKD Progression", Description = "KDIGO-staged chronic kidney disease progression with nephrology referral and dialysis prep.")]
+    [Scenario(Category = "Chronic", Title = "CKD Progression", Description = "KDIGO-staged chronic kidney disease progression with nephrology referral and dialysis prep.", Domain = ClinicalDomain.Nephrology)]
     public static ScenarioContext GetChronicKidneyDiseaseProgression(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 30, Max = 90, Description = "Patient age")] int age = 58,
@@ -531,7 +531,7 @@ public static class ChronicDiseaseScenario
     /// <param name="age">Patient age (default: 62 - typical COPD onset in smoker population).</param>
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <returns>A complete scenario context with COPD management pathway.</returns>
-    [Scenario(Category = "Chronic", Title = "COPD", Description = "GOLD-staged COPD management from diagnosis through exacerbation and oxygen therapy.")]
+    [Scenario(Category = "Chronic", Title = "COPD", Description = "GOLD-staged COPD management from diagnosis through exacerbation and oxygen therapy.", Domain = ClinicalDomain.Pulmonology)]
     public static ScenarioContext GetCOPDManagementWithExacerbations(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 40, Max = 90, Description = "Patient age")] int age = 62,

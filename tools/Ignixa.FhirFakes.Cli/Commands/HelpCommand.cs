@@ -97,7 +97,7 @@ internal static class HelpCommand
         Console.WriteLine("Available Predefined Scenarios:");
         Console.WriteLine();
 
-        var scenarios = ScenarioCatalog.All()
+        var scenarios = ScenarioCatalog.GetAll()
             .OrderBy(s => s.Category ?? "Uncategorized")
             .ThenBy(s => s.Title)
             .ToList();
@@ -128,7 +128,7 @@ internal static class HelpCommand
         Console.WriteLine("Available Observation States:");
         Console.WriteLine();
         
-        var states = ObservationStateCatalog.Names().OrderBy(s => s).ToList();
+        var states = ObservationStateCatalog.GetNames().OrderBy(s => s).ToList();
         
         Console.WriteLine($"Found {states.Count} observation states:");
         Console.WriteLine();

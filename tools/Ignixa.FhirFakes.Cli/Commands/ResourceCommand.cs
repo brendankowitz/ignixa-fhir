@@ -184,12 +184,11 @@ internal static class ResourceCommand
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
-                var observationState = ObservationStateCatalog.Create(stateName);
-                if (observationState == null)
+                if (!ObservationStateCatalog.TryCreate(stateName, out var observationState))
                 {
                     await Console.Error.WriteLineAsync($"✗ Unknown observation state: {stateName}");
                     await Console.Error.WriteLineAsync("Available states:");
-                    foreach (var name in ObservationStateCatalog.Names())
+                    foreach (var name in ObservationStateCatalog.GetNames())
                         await Console.Error.WriteLineAsync($"  - {name}");
                     Environment.ExitCode = 2;
                     return;

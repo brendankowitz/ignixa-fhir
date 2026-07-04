@@ -31,7 +31,7 @@ public static class HypertensivePatientScenario
     /// <param name="gender">Patient gender (default: random).</param>
     /// <param name="severity">Initial hypertension severity 1-4 (default: 2).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
-    [Scenario(Category = "Chronic", Title = "Hypertension", Description = "ACE inhibitor treatment with monthly blood pressure monitoring and escalation.")]
+    [Scenario(Category = "Chronic", Title = "Hypertension", Description = "ACE inhibitor treatment with monthly blood pressure monitoring and escalation.", Domain = ClinicalDomain.Cardiology)]
     public static ScenarioContext GetHypertensivePatient(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 58,

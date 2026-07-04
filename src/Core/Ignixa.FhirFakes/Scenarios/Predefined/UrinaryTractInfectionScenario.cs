@@ -33,7 +33,7 @@ public static class UrinaryTractInfectionScenario
     /// <param name="gender">Patient gender (default: "female").</param>
     /// <param name="includeFollowUp">Whether to include follow-up visit with resolution (default: true).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
-    [Scenario(Category = "Acute", Title = "UTI", Description = "Uncomplicated UTI diagnosis with nitrofurantoin and optional resolution follow-up.")]
+    [Scenario(Category = "Acute", Title = "UTI", Description = "Uncomplicated UTI diagnosis with nitrofurantoin and optional resolution follow-up.", Domain = ClinicalDomain.Urology)]
     public static ScenarioContext GetUrinaryTractInfection(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 35,

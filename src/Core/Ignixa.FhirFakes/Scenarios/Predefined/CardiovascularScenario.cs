@@ -78,7 +78,7 @@ public static class CardiovascularScenario
     /// <param name="age">Patient age (default: 62 - typical MI age).</param>
     /// <param name="gender">Patient gender (default: "male" - higher cardiac risk).</param>
     /// <returns>A complete scenario context with acute MI pathway.</returns>
-    [Scenario(Category = "Emergency", Title = "Acute MI", Description = "Acute myocardial infarction pathway with cardiac biomarkers and secondary-prevention CarePlan.")]
+    [Scenario(Category = "Emergency", Title = "Acute MI", Description = "Acute myocardial infarction pathway with cardiac biomarkers and secondary-prevention CarePlan.", Domain = ClinicalDomain.Cardiology)]
     public static ScenarioContext GetAcuteMyocardialInfarction(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 35, Max = 95, Description = "Patient age")] int age = 62,

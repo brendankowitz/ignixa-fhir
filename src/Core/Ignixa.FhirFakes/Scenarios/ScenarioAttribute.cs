@@ -14,7 +14,15 @@ namespace Ignixa.FhirFakes.Scenarios;
 public sealed class ScenarioAttribute : Attribute
 {
     /// <summary>
+    /// Explicit scenario id. When set, overrides the method-name-derived id so a factory method can
+    /// be renamed without breaking the published id consumers store.
+    /// </summary>
+    public string? Id { get; init; }
+
+    /// <summary>
     /// Free-text grouping label (e.g. "Chronic", "Emergency", "Pediatric"). Null if uncategorized.
+    /// This is a free-text presentation label for grouping in UIs; for the machine-usable clinical
+    /// taxonomy use <see cref="Domain"/>.
     /// </summary>
     public string? Category { get; init; }
 
@@ -28,4 +36,10 @@ public sealed class ScenarioAttribute : Attribute
     /// One-line description of what the scenario generates.
     /// </summary>
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Clinical specialty this scenario belongs to. <see cref="ClinicalDomain.Unspecified"/> (the
+    /// default) means "not declared" and surfaces as null on <see cref="DiscoveredScenario.Domain"/>.
+    /// </summary>
+    public ClinicalDomain Domain { get; init; } = ClinicalDomain.Unspecified;
 }

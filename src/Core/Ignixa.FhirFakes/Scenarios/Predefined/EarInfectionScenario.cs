@@ -55,7 +55,7 @@ public static class EarInfectionScenario
     /// <param name="gender">Child's gender (default: random).</param>
     /// <param name="includeFollowUp">Whether to include follow-up visit with resolution (default: true).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
-    [Scenario(Category = "Pediatric", Title = "Pediatric Ear Infection", Description = "Acute otitis media diagnosis with amoxicillin and optional follow-up resolution visit.")]
+    [Scenario(Category = "Pediatric", Title = "Pediatric Ear Infection", Description = "Acute otitis media diagnosis with amoxicillin and optional follow-up resolution visit.", Domain = ClinicalDomain.Pediatrics)]
     public static ScenarioContext GetPediatricEarInfection(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 2, Max = 10, Description = "Child's age in years")] int age = 4,

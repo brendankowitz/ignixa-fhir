@@ -63,7 +63,7 @@ public static class MetabolicSyndromeProgressionScenario
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <param name="startingBMI">Starting BMI value (default: 35.0 - Class II Obesity).</param>
     /// <returns>A complete scenario context with metabolic syndrome progression.</returns>
-    [Scenario(Category = "Metabolic", Title = "Metabolic Syndrome", Description = "BMI-correlated progression of obesity, hypertension, diabetes, and hyperlipidemia risk.")]
+    [Scenario(Category = "Metabolic", Title = "Metabolic Syndrome", Description = "BMI-correlated progression of obesity, hypertension, diabetes, and hyperlipidemia risk.", Domain = ClinicalDomain.Endocrinology)]
     public static ScenarioContext GetMetabolicSyndromeProgression(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 25, Max = 75, Description = "Patient age")] int age = 48,

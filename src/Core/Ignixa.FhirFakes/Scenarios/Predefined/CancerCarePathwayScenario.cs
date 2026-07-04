@@ -245,7 +245,7 @@ public static class CancerCarePathwayScenario
     /// <param name="age">Patient age (default: 55 - typical screening age).</param>
     /// <param name="gender">Patient gender (default: "female").</param>
     /// <returns>A complete scenario context with breast cancer care pathway.</returns>
-    [Scenario(Category = "Oncology", Title = "Breast Cancer", Description = "Breast cancer care pathway from screening through biopsy, surgery, and chemotherapy.")]
+    [Scenario(Category = "Oncology", Title = "Breast Cancer", Description = "Breast cancer care pathway from screening through biopsy, surgery, and chemotherapy.", Domain = ClinicalDomain.Oncology)]
     public static ScenarioContext GetBreastCancerPathway(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 30, Max = 85, Description = "Patient age")] int age = 55,

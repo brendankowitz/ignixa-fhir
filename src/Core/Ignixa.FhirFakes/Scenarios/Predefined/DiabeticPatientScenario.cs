@@ -32,7 +32,7 @@ public static class DiabeticPatientScenario
     /// <param name="gender">Patient gender (default: random).</param>
     /// <param name="severity">Initial diabetes severity 1-5 (default: 2).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
-    [Scenario(Category = "Chronic", Title = "Type 2 Diabetes", Description = "A1C, glucose, and Metformin dose escalation across follow-up encounters.")]
+    [Scenario(Category = "Chronic", Title = "Type 2 Diabetes", Description = "A1C, glucose, and Metformin dose escalation across follow-up encounters.", Domain = ClinicalDomain.Endocrinology)]
     public static ScenarioContext GetDiabeticPatient(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 52,

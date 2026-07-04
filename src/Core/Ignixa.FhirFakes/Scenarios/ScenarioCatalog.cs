@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
 using Ignixa.Abstractions;
@@ -23,7 +24,8 @@ public static class ScenarioCatalog
     /// <summary>
     /// Gets all discovered scenarios.
     /// </summary>
-    public static IReadOnlyList<DiscoveredScenario> All() => s_scenarios.Value;
+    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
+    public static IReadOnlyList<DiscoveredScenario> GetAll() => s_scenarios.Value;
 
     /// <summary>
     /// Finds a scenario by id (case-insensitive). Returns <see langword="null"/> if no scenario matches —
@@ -117,11 +119,9 @@ public static class ScenarioCatalog
                 if (parameters.Length == 0 || parameters[0].ParameterType != typeof(IFhirSchemaProvider))
                     continue;
 
-                var id = method.Name.StartsWith("Get", StringComparison.Ordinal)
-                    ? method.Name["Get".Length..]
-                    : method.Name;
-
                 var attribute = method.GetCustomAttribute<ScenarioAttribute>();
+                var id = attribute?.Id
+                    ?? (method.Name.StartsWith("Get", StringComparison.Ordinal) ? method.Name["Get".Length..] : method.Name);
 
                 scenarios.Add(new DiscoveredScenario
                 {
@@ -130,6 +130,7 @@ public static class ScenarioCatalog
                     Title = attribute?.Title ?? Humanize(id),
                     Description = attribute?.Description,
                     Parameters = parameters.Skip(1).Select(BuildParameter).ToList(),
+                    Domain = attribute is null || attribute.Domain == ClinicalDomain.Unspecified ? null : attribute.Domain,
                     Method = method,
                 });
             }

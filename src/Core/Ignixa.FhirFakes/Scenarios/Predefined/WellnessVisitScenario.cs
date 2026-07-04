@@ -37,7 +37,7 @@ public static class WellnessVisitScenario
     /// <param name="gender">Patient gender (default: "male").</param>
     /// <param name="includeLipidPanel">Whether to include lipid panel (default: true, automatic for age >= 30).</param>
     /// <returns>A complete scenario context with wellness visit resources.</returns>
-    [Scenario(Category = "Preventive", Title = "Wellness Visit", Description = "Routine wellness visit with vitals, metabolic panel, and age-appropriate lipid screening.")]
+    [Scenario(Category = "Preventive", Title = "Wellness Visit", Description = "Routine wellness visit with vitals, metabolic panel, and age-appropriate lipid screening.", Domain = ClinicalDomain.FamilyMedicine)]
     public static ScenarioContext GetWellnessVisit(
         this IFhirSchemaProvider schemaProvider,
         [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 45,
