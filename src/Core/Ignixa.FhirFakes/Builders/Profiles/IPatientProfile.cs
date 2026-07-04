@@ -71,8 +71,9 @@ public interface IPatientProfile
     /// Builds profile-specific identifiers from the provided attributes.
     /// </summary>
     /// <param name="attributes">Profile-specific attributes sampled from demographics</param>
+    /// <param name="randomizer">The seeded randomizer that is the sole source of randomness for identifier generation</param>
     /// <returns>Collection of identifier JsonObjects to add to the patient resource, or null if none</returns>
-    IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes);
+    IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes, Bogus.Randomizer randomizer);
 
     /// <summary>
     /// Validates that all required attributes are present.

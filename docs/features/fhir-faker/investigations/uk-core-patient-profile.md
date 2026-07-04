@@ -1,8 +1,9 @@
 # Investigation: UK Core Patient Profile
 
 **Feature**: fhir-faker
-**Status**: In Progress
+**Status**: Implemented
 **Created**: 2026-07-04
+**Implemented**: 2026-07-04 (PR #300)
 
 ## Approach
 
@@ -97,7 +98,7 @@ it benefits Melbourne/Sydney/Amsterdam regardless of whether UK ships.
 - [x] Follows architectural layering rules — profile stays entirely inside `Ignixa.FhirFakes` (Core), no `Hl7.Fhir.*` dependency, matches existing US/AU profiles' file-per-type layout
 - [x] Developer Experience (works with minimal setup) — `PatientProfileFactory.GetProfile("GB")` and `KnownCities.London` would work with no new setup, same as `KnownCities.Boston` today
 - [x] Specification compliance (if applicable) — profile URL, NHS Number identifier system, and ethnic category CodeSystem/extension URLs are taken directly from the published UK Core IG rather than invented
-- [ ] Consistent with existing patterns — mostly yes, but the postcode-format gap (see above) means UK cities can't fully reuse `SampleZipCode` without either an accepted inaccuracy or a sampler change; this needs a decision before implementation
+- [x] Consistent with existing patterns — the postcode-format gap (see above) was resolved by the `PostalCodeFormat` enum in [country-aware-postal-codes](country-aware-postal-codes.md), so London (and Melbourne/Sydney/Amsterdam) now sample correctly-shaped postal codes through the same `SampleZipCode` method every city uses
 
 ## Evidence
 
@@ -106,15 +107,17 @@ it benefits Melbourne/Sydney/Amsterdam regardless of whether UK ships.
 - Ran a throwaway console app against the restored `Bogus 35.6.5` NuGet package (`~/.nuget/packages/bogus/35.6.5`) to confirm `en_GB` and `en_IE` are real, loadable Bogus locales, not just documented-but-absent ones.
 - Grepped the repo (`UKCore`, `UK Core`, `en_GB`, `NHS number`, `nhs-number`) — no prior UK work exists; only unrelated matches in generated FHIR ValueSet resx files.
 - Checked `docs/adr/` and `docs/site/docs/core-sdk/fhir-fakes.md` — no ADR or documented plan for UK support; NL (Amsterdam) is the only non-US/AU city today and it deliberately ships with `DefaultPatientProfile` (no country-specific extensions), which is the fallback this investigation would improve on for GB specifically.
-- UK Core FHIR IG structure (profile URL, NHS Number system/verification-status codes, Ethnic Category extension URL and ONS 2011 code list) is from HL7 UK Core (`fhir.hl7.org.uk`) — **not yet cross-checked against the current published IG version in this session**; before implementation, re-verify exact StructureDefinition/CodeSystem canonical URLs and code list against the live IG, since UK Core has had multiple versions.
+- UK Core FHIR IG structure (profile URL, NHS Number system/verification-status codes, Ethnic Category extension URL and ONS 2011 code list) is from HL7 UK Core (`fhir.hl7.org.uk`). **Cross-checked against the live IG at implementation time** via web search (`build.fhir.org/ig/HL7-UK/UK-Core-Access`, `fhir.hl7.org.uk` CodeSystem/StructureDefinition pages, NHS Data Dictionary's "ETHNIC CATEGORY" data element) — the profile URL, NHS Number identifier system, both extension URLs, and the full ethnic category code list were confirmed to match the values used in `UKCorePatientProfile.cs` before merge, not just carried over from this doc's original estimate.
 
 ## Verdict
 
-*Pending evaluation.* Three independent decisions to make before implementation:
+**Implemented** — all three decisions below were carried out in PR #300:
 
-1. Ship the `en_GB`/`en_IE` locale fix now regardless of the rest (low risk, no dependencies).
-2. Build `UKCorePatientProfile` following the US/AU pattern (needs canonical URLs re-verified against the live UK Core IG, and real ONS 2021 per-city ethnicity distributions rather than estimates).
-3. Ship the postal code fix — see [country-aware-postal-codes](country-aware-postal-codes.md), which recommends a `PostalCodeFormat` enum on `CityDemographics` and found this already affects Melbourne/Sydney/Amsterdam, not just UK.
+1. Shipped the `en_GB`/`en_IE` locale fix in `DefaultNameGenerationStrategy` (also later extended to the informal `UK` alias, mapped to `en_GB`, following review feedback).
+2. Built `UKCorePatientProfile` following the US/AU pattern, with canonical URLs verified against the live UK Core IG (see updated Evidence above) and a London ethnic-category distribution derived from 2021 Census data.
+3. Shipped the postal code fix — see [country-aware-postal-codes](country-aware-postal-codes.md) — as a `PostalCodeFormat` enum on `CityDemographics`, fixing the already-live Melbourne/Sydney/Amsterdam bug in the same change.
+
+Post-merge review (5 specialized review agents + the `ocr` CLI + Gemini Code Assist) surfaced one real correctness bug not caught before merge: `UKCorePatientProfile.GenerateNhsNumber` used `Random.Shared` instead of the seeded `Bogus.Randomizer`, silently breaking this library's seeded-reproducibility contract for UK Core patients specifically (every other profile's sampling was already seed-aware). Fixed as a follow-up commit on the same PR by threading `Bogus.Randomizer` through `IPatientProfile.BuildIdentifiers`.
 
 ## Alternatives noted for future investigation
 

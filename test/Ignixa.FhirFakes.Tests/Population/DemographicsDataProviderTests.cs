@@ -73,11 +73,11 @@ public class DemographicsDataProviderTests
     }
 
     [Fact]
-    public void GivenUkAlphaNumericFormat_WhenSamplingZipCode_ThenReturnsOutwardCodeSpaceDigitTwoLetters()
+    public void GivenUKAlphaNumericFormat_WhenSamplingZipCode_ThenReturnsOutwardCodeSpaceDigitTwoLetters()
     {
         // Arrange
         var provider = DemographicsDataProvider.CreateDefault();
-        var city = MakeCity("SW1A", PostalCodeFormat.UkAlphaNumeric);
+        var city = MakeCity("SW1A", PostalCodeFormat.UKAlphaNumeric);
         var randomizer = new Bogus.Randomizer();
 
         // Act
@@ -92,7 +92,7 @@ public class DemographicsDataProviderTests
     {
         // Arrange
         var provider = DemographicsDataProvider.CreateDefault();
-        var city = MakeCity("SW1A", PostalCodeFormat.UkAlphaNumeric);
+        var city = MakeCity("SW1A", PostalCodeFormat.UKAlphaNumeric);
 
         // Act
         var first = provider.SampleZipCode(city, new Bogus.Randomizer(42));
@@ -157,7 +157,8 @@ public class DemographicsDataProviderTests
         var city = KnownCities.London;
 
         // Act
-        var distribution = (Dictionary<string, double>)city.Attributes[UKCorePatientProfile.EthnicCategoryDistributionKey];
+        city.Attributes.TryGetValue(UKCorePatientProfile.EthnicCategoryDistributionKey, out var raw).ShouldBeTrue();
+        var distribution = raw.ShouldBeOfType<Dictionary<string, double>>();
 
         // Assert
         distribution.Values.Sum().ShouldBe(1.0, 0.001);

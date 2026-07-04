@@ -1,8 +1,9 @@
 # Investigation: Country-Aware Postal Code Sampling
 
 **Feature**: fhir-faker
-**Status**: In Progress
+**Status**: Implemented
 **Created**: 2026-07-04
+**Implemented**: 2026-07-04 (PR #300)
 
 ## Approach
 
@@ -172,9 +173,15 @@ private static string SampleLetters(Bogus.Randomizer randomizer, int count) =>
 
 ## Verdict
 
-**Recommended: Option 3** (`PostalCodeFormat` enum on `CityDemographics`). It's the smallest change
-that (a) fixes the currently-shipping AU/NL bug, (b) unblocks UK cities, and (c) stays consistent with
-how its three sibling sampling methods on `DemographicsDataProvider` already work — data on the record,
-not a new strategy/registry layer. Not yet implemented — pending confirmation to proceed, and pending
-a decision on whether the separately-discovered `OrganizationState` country-hardcoding bug should be
-fixed in the same change or filed as its own follow-up.
+**Implemented: Option 3** (`PostalCodeFormat` enum on `CityDemographics`). Shipped in PR #300: fixes
+the previously-shipping AU/NL bug, unblocks UK cities (London), and stays consistent with how its three
+sibling sampling methods on `DemographicsDataProvider` already work — data on the record, not a new
+strategy/registry layer. The separately-discovered `OrganizationState` country-hardcoding bug was fixed
+in the same change (`Country: city.Country` instead of a hardcoded `"USA"` literal).
+
+Post-merge review hardened the implementation further: `SampleZipCode`'s switch now has an explicit
+`NumericSuffix` arm plus a throwing default arm (instead of a catch-all `_ =>` that would have silently
+produced US-shaped output for any future `PostalCodeFormat` value with no compiler warning), and
+`PostalCodeFormat.UkAlphaNumeric` was renamed to `UKAlphaNumeric` for consistency with
+`UKCorePatientProfile`'s capitalization (two-letter acronyms stay fully capitalized per .NET naming
+guidelines).

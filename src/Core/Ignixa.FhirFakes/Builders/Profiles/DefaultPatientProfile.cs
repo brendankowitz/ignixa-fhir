@@ -55,7 +55,7 @@ public sealed class DefaultPatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes)
+    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes, Bogus.Randomizer randomizer)
     {
         // Default profile has no specific identifiers
         return null;

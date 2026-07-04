@@ -21,5 +21,5 @@ public enum PostalCodeFormat
     DutchAlphaNumeric,
 
     /// <summary>UK-style: the prefix (an alphanumeric outward code), a space, then a digit and 2 random uppercase letters (e.g. "SW1A" -&gt; "SW1A 1AA").</summary>
-    UkAlphaNumeric
+    UKAlphaNumeric
 }

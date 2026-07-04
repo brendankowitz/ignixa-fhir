@@ -487,7 +487,7 @@ public class OrganizationStateTests
         var country = address["country"]?.GetValue<string>();
 
         cityName.ShouldNotBeNullOrEmpty();
-        var matchingCity = demographics.Cities.First(c => c.Name == cityName);
+        var matchingCity = demographics.Cities.Single(c => c.Name == cityName);
         country.ShouldBe(matchingCity.Country);
     }
 

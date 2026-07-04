@@ -36,7 +36,7 @@ public class CityDemographicsTests
     [InlineData(PostalCodeFormat.NumericSuffix)]
     [InlineData(PostalCodeFormat.FixedNumeric)]
     [InlineData(PostalCodeFormat.DutchAlphaNumeric)]
-    [InlineData(PostalCodeFormat.UkAlphaNumeric)]
+    [InlineData(PostalCodeFormat.UKAlphaNumeric)]
     public void GivenCityDemographics_WhenPostalCodeFormatSpecified_ThenUsesThatValue(PostalCodeFormat format)
     {
         // Arrange & Act

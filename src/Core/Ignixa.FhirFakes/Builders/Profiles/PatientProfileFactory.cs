@@ -19,6 +19,7 @@ public static class PatientProfileFactory
         ["US"] = USCorePatientProfile.Instance,
         ["AU"] = AUBasePatientProfile.Instance,
         ["GB"] = UKCorePatientProfile.Instance,
+        ["UK"] = UKCorePatientProfile.Instance,
     };
 
     /// <summary>

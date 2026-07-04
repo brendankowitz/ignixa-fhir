@@ -169,7 +169,7 @@ public sealed class USCorePatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes)
+    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes, Bogus.Randomizer randomizer)
     {
         // US Core does not require specific identifiers in this implementation
         // Could be extended to generate SSN-like identifiers if needed

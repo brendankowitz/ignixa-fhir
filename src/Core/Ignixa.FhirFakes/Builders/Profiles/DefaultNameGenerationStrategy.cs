@@ -38,7 +38,7 @@ public sealed class DefaultNameGenerationStrategy : INameGenerationStrategy
         ["DE"] = "de",        // German
         ["FR"] = "fr",        // French
         ["GB"] = "en_GB",     // English (Great Britain)
-        ["UK"] = "en",        // English
+        ["UK"] = "en_GB",     // English (Great Britain)
         ["IE"] = "en_IE",     // English (Ireland)
         ["BE"] = "nl",        // Dutch (Belgium)
         ["CH"] = "de",        // German (Switzerland)

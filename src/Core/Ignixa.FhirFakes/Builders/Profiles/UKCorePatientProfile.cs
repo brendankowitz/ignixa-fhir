@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Ignixa.FhirFakes.Population;
@@ -22,9 +21,8 @@ namespace Ignixa.FhirFakes.Builders.Profiles;
 /// Ethnic category codes follow the ONS 2011 census / NHS Data Dictionary "ETHNIC CATEGORY" data element.
 ///
 /// Required attributes from demographics:
-/// - "ethnicCategory": ONS ethnic category code ("A".."S", "Z")
+/// - "ethnicCategory": one of the <see cref="EthnicCategory"/> codes (letters A-S skip I, O, and Q; plus Z for "Not stated")
 /// </remarks>
-[SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
 public sealed class UKCorePatientProfile : IPatientProfile
 {
     /// <summary>
@@ -175,12 +173,12 @@ public sealed class UKCorePatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes)
+    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes, Bogus.Randomizer randomizer)
     {
         yield return new JsonObject
         {
             ["system"] = "https://fhir.nhs.uk/Id/nhs-number",
-            ["value"] = GenerateNhsNumber(),
+            ["value"] = GenerateNhsNumber(randomizer),
             ["extension"] = new JsonArray
             {
                 new JsonObject
@@ -207,7 +205,9 @@ public sealed class UKCorePatientProfile : IPatientProfile
     public bool ValidateAttributes(IReadOnlyDictionary<string, object> attributes)
     {
         // Ethnic category is required for UK Core
-        return attributes.ContainsKey(EthnicCategoryAttribute);
+        return attributes.TryGetValue(EthnicCategoryAttribute, out var value)
+            && value is string code
+            && !string.IsNullOrEmpty(code);
     }
 
     /// <inheritdoc />
@@ -229,7 +229,7 @@ public sealed class UKCorePatientProfile : IPatientProfile
     /// </summary>
     /// <param name="city">City demographics containing an ethnic category distribution</param>
     /// <param name="randomizer">The seeded randomizer used for weighted sampling</param>
-    /// <returns>Ethnic category code ("A".."S", "Z")</returns>
+    /// <returns>One of the <see cref="EthnicCategory"/> codes</returns>
     /// <remarks>
     /// Uses weighted random sampling based on the city's ethnic category distribution from Attributes.
     /// If no distribution is provided, falls back to <see cref="EthnicCategory.British"/>.
@@ -269,7 +269,7 @@ public sealed class UKCorePatientProfile : IPatientProfile
     /// the products are summed, and the check digit is <c>11 - (sum mod 11)</c>. A result of 11 becomes
     /// 0; a result of 10 is invalid, so the base is regenerated.
     /// </remarks>
-    private static string GenerateNhsNumber()
+    private static string GenerateNhsNumber(Bogus.Randomizer randomizer)
     {
         while (true)
         {
@@ -278,7 +278,7 @@ public sealed class UKCorePatientProfile : IPatientProfile
 
             for (var i = 0; i < 9; i++)
             {
-                digits[i] = Random.Shared.Next(0, 10);
+                digits[i] = randomizer.Int(0, 9);
                 sum += digits[i] * (10 - i);
             }
 

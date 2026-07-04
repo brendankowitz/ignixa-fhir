@@ -434,7 +434,7 @@ public class DemographicsDataProvider
                     ["Z"] = 0.005
                 }
             },
-            PostalCodeFormat: PostalCodeFormat.UkAlphaNumeric
+            PostalCodeFormat: PostalCodeFormat.UKAlphaNumeric
         ));
 
         return provider;
@@ -509,10 +509,11 @@ public class DemographicsDataProvider
     /// Boston (prefix "021", NumericSuffix) → "02101", "02142", "02298", etc.
     /// Melbourne (prefix "3000", FixedNumeric) → "3000".
     /// Amsterdam (prefix "1011", DutchAlphaNumeric) → "1011 AB", etc.
-    /// London (prefix "SW1A", UkAlphaNumeric) → "SW1A 1AA", etc.
+    /// London (prefix "SW1A", UKAlphaNumeric) → "SW1A 1AA", etc.
     /// </example>
     public string SampleZipCode(CityDemographics city, Bogus.Randomizer randomizer)
     {
+        ArgumentNullException.ThrowIfNull(city);
         ArgumentNullException.ThrowIfNull(randomizer);
 
         const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -521,8 +522,9 @@ public class DemographicsDataProvider
         {
             PostalCodeFormat.FixedNumeric => city.ZipCodePrefix,
             PostalCodeFormat.DutchAlphaNumeric => $"{city.ZipCodePrefix} {randomizer.String2(2, letters)}",
-            PostalCodeFormat.UkAlphaNumeric => $"{city.ZipCodePrefix} {randomizer.Int(0, 9)}{randomizer.String2(2, letters)}",
-            _ => city.ZipCodePrefix + randomizer.Int(0, 99).ToString("D2"),
+            PostalCodeFormat.UKAlphaNumeric => $"{city.ZipCodePrefix} {randomizer.Int(0, 9)}{randomizer.String2(2, letters)}",
+            PostalCodeFormat.NumericSuffix => city.ZipCodePrefix + randomizer.Int(0, 99).ToString("D2"),
+            _ => throw new NotSupportedException($"Unsupported PostalCodeFormat: {city.PostalCodeFormat}"),
         };
     }
 

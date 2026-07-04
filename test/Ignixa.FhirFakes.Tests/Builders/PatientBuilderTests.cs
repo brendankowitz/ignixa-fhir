@@ -1007,14 +1007,80 @@ public class PatientBuilderTests
         var attributes = new Dictionary<string, object>();
 
         // Act & Assert - generate a batch and independently validate each check digit
+        var randomizer = new Bogus.Randomizer();
         for (var n = 0; n < 100; n++)
         {
-            var identifiers = UKCorePatientProfile.Instance.BuildIdentifiers(attributes)!.ToList();
+            var identifiers = UKCorePatientProfile.Instance.BuildIdentifiers(attributes, randomizer)!.ToList();
+            identifiers.ShouldNotBeEmpty();
             var nhsNumber = identifiers[0]["value"]!.GetValue<string>();
 
             nhsNumber.Length.ShouldBe(10);
             IsValidNhsNumber(nhsNumber).ShouldBeTrue($"'{nhsNumber}' should have a valid Modulus 11 check digit");
         }
+    }
+
+    [Fact]
+    public void GivenCityWithNoEthnicCategoryDistribution_WhenSamplingProfileAttributes_ThenFallsBackToBritish()
+    {
+        // Arrange
+        var cityWithoutDistribution = new CityDemographics(
+            Name: "Testville",
+            State: "Test State",
+            Country: "GB",
+            Population: 1000,
+            AgeGroupDistribution: new Dictionary<string, double> { ["18-44"] = 1.0 },
+            MaleRatio: 0.5,
+            ZipCodePrefix: "AB1",
+            AreaCodes: ["000"]);
+        var randomizer = new Bogus.Randomizer();
+
+        // Act
+        var attributes = UKCorePatientProfile.Instance.SampleProfileAttributes(cityWithoutDistribution, randomizer);
+
+        // Assert
+        attributes[UKCorePatientProfile.EthnicCategoryAttribute].ShouldBe(UKCorePatientProfile.EthnicCategory.British);
+    }
+
+    [Fact]
+    public void GivenDistributionNotSummingToOne_WhenSamplingProfileAttributes_ThenFallsBackToFirstKey()
+    {
+        // Arrange
+        var cityWithBadDistribution = new CityDemographics(
+            Name: "Testville",
+            State: "Test State",
+            Country: "GB",
+            Population: 1000,
+            AgeGroupDistribution: new Dictionary<string, double> { ["18-44"] = 1.0 },
+            MaleRatio: 0.5,
+            ZipCodePrefix: "AB1",
+            AreaCodes: ["000"],
+            Attributes: new Dictionary<string, object>
+            {
+                [UKCorePatientProfile.EthnicCategoryDistributionKey] = new Dictionary<string, double>
+                {
+                    [UKCorePatientProfile.EthnicCategory.Indian] = 0.05,
+                    [UKCorePatientProfile.EthnicCategory.Pakistani] = 0.05
+                }
+            });
+        // Seed 0 draws randomizer.Double() ~= 0.726, well past the 0.1 cumulative sum of the
+        // distribution, so this only passes via the distribution.Keys.First() fallback - a proper
+        // weighted sample over {0.05, 0.05} would never pick Indian for a draw >= 0.1.
+        var randomizer = new Bogus.Randomizer(0);
+
+        // Act
+        var attributes = UKCorePatientProfile.Instance.SampleProfileAttributes(cityWithBadDistribution, randomizer);
+
+        // Assert
+        attributes[UKCorePatientProfile.EthnicCategoryAttribute].ShouldBe(UKCorePatientProfile.EthnicCategory.Indian);
+    }
+
+    [Theory]
+    [InlineData("9434765919", true)]   // valid: base 943476591, computed check digit 9
+    [InlineData("9434765910", false)]  // same base, wrong check digit (9 corrupted to 0)
+    [InlineData("1234567895", false)]  // base 123456789 sums to a remainder of 1 -> required check digit is 10, which is invalid for ANY last digit
+    public void GivenKnownNhsNumber_WhenValidatingCheckDigit_ThenMatchesExpectedValidity(string nhsNumber, bool expectedValid)
+    {
+        IsValidNhsNumber(nhsNumber).ShouldBe(expectedValid);
     }
 
     // Independent reimplementation of the NHS Modulus 11 validation used to verify generated numbers.
