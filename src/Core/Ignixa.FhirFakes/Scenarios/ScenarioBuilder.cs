@@ -57,6 +57,7 @@ public sealed class ScenarioBuilder
     private readonly IFhirSchemaProvider _schemaProvider;
     private readonly SchemaBasedFhirResourceFaker _faker;
     private readonly ResourceRegistry _registry = new();
+    private readonly int? _seed;
     private string _scenarioName = "Unnamed Scenario";
     private string _description = string.Empty;
     private string? _tag;
@@ -72,6 +73,20 @@ public sealed class ScenarioBuilder
         ArgumentNullException.ThrowIfNull(schemaProvider);
         _schemaProvider = schemaProvider;
         _faker = new SchemaBasedFhirResourceFaker(schemaProvider);
+        _seed = null;
+    }
+
+    /// <summary>
+    /// Creates a new scenario builder whose randomness is seeded for reproducible generation.
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider for resource generation.</param>
+    /// <param name="seed">The seed applied to the internal <see cref="SchemaBasedFhirResourceFaker"/>.</param>
+    public ScenarioBuilder(IFhirSchemaProvider schemaProvider, int seed)
+    {
+        ArgumentNullException.ThrowIfNull(schemaProvider);
+        _schemaProvider = schemaProvider;
+        _faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed);
+        _seed = seed;
     }
 
     /// <summary>
@@ -214,7 +229,7 @@ public sealed class ScenarioBuilder
                 configure(builder);
                 return builder;
             },
-            sp => PatientBuilderFactory.Create(sp))
+            sp => PatientBuilderFactory.Create(sp, _seed))
         {
             StartDate = startDate
         });
@@ -252,7 +267,7 @@ public sealed class ScenarioBuilder
                 configure?.Invoke(builder);
                 return builder;
             },
-            sp => PatientBuilderFactory.Create(sp))
+            sp => PatientBuilderFactory.Create(sp, _seed))
         {
             StartDate = startDate
         });
@@ -301,7 +316,7 @@ public sealed class ScenarioBuilder
                 configure?.Invoke(builder);
                 return builder;
             },
-            sp => PatientBuilderFactory.Create(sp))
+            sp => PatientBuilderFactory.Create(sp, _seed))
         {
             StartDate = startDate
         });
