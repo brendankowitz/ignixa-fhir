@@ -18,11 +18,18 @@ public record FhirCode(string System, string Code, string Display)
     /// Clinical specialty this code belongs to, or null if domain-neutral/untagged.
     /// </summary>
     /// <remarks>
-    /// Participates in the record's synthesized equality: a hand-built <c>new FhirCode(system, code,
-    /// display)</c> (Domain null) does not equal a curated constant with the same System/Code/Display
-    /// but a non-null Domain. Compare by (System, Code) if you need identity independent of tagging.
+    /// Excluded from equality/hashing along with <see cref="Display"/> — a FHIR code's true identity is
+    /// (System, Code); Domain is thematic metadata, not identity. Verified: no two curated constants in
+    /// this codebase currently share a (System, Code) pair while differing in Domain. If that ever becomes
+    /// necessary (the same code legitimately belonging to two domains), this equality contract must be
+    /// revisited.
     /// </remarks>
     public ClinicalDomain? Domain { get; init; }
+
+    public virtual bool Equals(FhirCode? other) =>
+        other is not null && System == other.System && Code == other.Code;
+
+    public override int GetHashCode() => HashCode.Combine(System, Code);
 
     /// <summary>
     /// Common code systems used in FHIR resources.
