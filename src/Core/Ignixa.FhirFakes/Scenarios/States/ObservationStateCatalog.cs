@@ -60,7 +60,10 @@ public static class ObservationStateCatalog
         var observationStateType = typeof(ObservationState);
 
         var methods = observationStateType.GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(m => m.ReturnType == observationStateType && m.GetParameters().All(p => p.HasDefaultValue));
+            .Where(m => m.ReturnType == observationStateType
+                && !m.IsGenericMethodDefinition
+                && !m.IsSpecialName
+                && m.GetParameters().All(p => p.HasDefaultValue));
 
         foreach (var method in methods)
             states[method.Name] = method;

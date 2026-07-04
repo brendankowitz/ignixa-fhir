@@ -10,6 +10,21 @@ namespace Ignixa.FhirFakes.Tests.Scenarios.States;
 
 public class ObservationStateCatalogTests
 {
+    private static readonly string[] PinnedNames =
+    [
+        "BloodGlucose",
+        "BloodPressure",
+        "BodyHeight",
+        "BodyMassIndex",
+        "BodyTemperature",
+        "BodyWeight",
+        "FetalHeartRate",
+        "HeartRate",
+        "HemoglobinA1c",
+        "PeakFlow",
+        "RespiratoryRate",
+    ];
+
     [Fact]
     public void GivenObservationStateCatalog_WhenGettingNames_ThenReturnsKnownStates()
     {
@@ -18,6 +33,14 @@ public class ObservationStateCatalogTests
         names.ShouldContain("BloodGlucose");
         names.ShouldContain("HemoglobinA1c");
         names.ShouldContain("BloodPressure");
+    }
+
+    [Fact]
+    public void GivenTheCatalog_WhenListingNames_ThenMatchesThePinnedContract()
+    {
+        var names = ObservationStateCatalog.GetNames().OrderBy(s => s, StringComparer.Ordinal).ToArray();
+
+        names.ShouldBe(PinnedNames);
     }
 
     [Fact]

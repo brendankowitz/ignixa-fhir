@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Reflection;
 using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Scenarios;
 using Shouldly;
@@ -94,6 +95,32 @@ public class ScenarioCatalogInvariantTests
         var ids = ScenarioCatalog.GetAll().Select(s => s.Id).OrderBy(s => s, StringComparer.Ordinal).ToArray();
 
         ids.ShouldBe(PinnedIds);
+    }
+
+    [Fact]
+    public void GivenEveryScenarioAttributedMethod_WhenScanningLoosely_ThenAllAppearInTheCatalog()
+    {
+        var catalogIds = ScenarioCatalog.GetAll().Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+
+        var attributedMethods = typeof(ScenarioAttribute).Assembly.GetTypes()
+            .Where(t => t.Namespace == "Ignixa.FhirFakes.Scenarios.Predefined")
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+            .Where(m => m.GetCustomAttribute<ScenarioAttribute>() is not null)
+            .ToList();
+
+        attributedMethods.ShouldNotBeEmpty();
+
+        foreach (var method in attributedMethods)
+        {
+            var attribute = method.GetCustomAttribute<ScenarioAttribute>();
+            var id = attribute!.Id
+                ?? (method.Name.StartsWith("Get", StringComparison.Ordinal) ? method.Name["Get".Length..] : method.Name);
+
+            catalogIds.ShouldContain(id,
+                $"[Scenario]-attributed method {method.DeclaringType!.Name}.{method.Name} derives id '{id}' " +
+                "but it is absent from ScenarioCatalog.GetAll() — likely a malformed factory shape " +
+                "(wrong first-parameter type or return type) silently dropped by discovery.");
+        }
     }
 
     private static bool IsSupportedParameterType(Type type)
