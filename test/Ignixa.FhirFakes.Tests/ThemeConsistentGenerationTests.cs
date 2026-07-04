@@ -85,6 +85,52 @@ public class ThemeConsistentGenerationTests
     }
 
     [Fact]
+    public void GivenMinimalDensityAndUnsetTheme_WhenGeneratingMedicationRequest_ThenEachResourceIsInternallyConsistent()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 77)
+        {
+            Density = GenerationDensity.Minimal,
+            // Theme intentionally left unset — this is the real default every existing caller gets.
+        };
+
+        AssertPerCallDomainConsistency(faker, "MedicationRequest", MedicationPool);
+    }
+
+    [Fact]
+    public void GivenMaximumDensityAndUnsetTheme_WhenGeneratingProcedure_ThenEachResourceIsInternallyConsistent()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 77)
+        {
+            Density = GenerationDensity.Maximum,
+            // Theme intentionally left unset — the auto-picked-per-call default path.
+        };
+
+        AssertPerCallDomainConsistency(faker, "Procedure", ProcedurePool);
+    }
+
+    private static void AssertPerCallDomainConsistency(
+        SchemaBasedFhirResourceFaker faker, string resourceType, Dictionary<string, FhirCode> pool)
+    {
+        for (var i = 0; i < 30; i++)
+        {
+            var resource = faker.Generate(resourceType);
+
+            var domainsThisCall = CollectCodings(resource.MutableNode)
+                .Select(c => pool.TryGetValue($"{c.System}|{c.Code}", out var match) ? match : null)
+                .Where(match => match?.Domain is not null)
+                .Select(match => match!.Domain!.Value)
+                .Distinct()
+                .ToList();
+
+            domainsThisCall.Count.ShouldBeLessThanOrEqualTo(1,
+                $"Within a single {resourceType} Generate() call the auto-picked theme should keep every " +
+                $"themed pick coherent, but found multiple domains: {string.Join(", ", domainsThisCall)}.");
+        }
+    }
+
+    [Fact]
     public void GivenCardiologyTheme_WhenGeneratingProcedure_ThenMatchedProcedureCodesAreCardiologyOrUntagged()
     {
         var schemaProvider = new R4CoreSchemaProvider();
