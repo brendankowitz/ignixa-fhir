@@ -82,7 +82,7 @@ public class SchemaBasedFhirResourceFaker
 
     private ClinicalDomain? _resolvedTheme;
 
-    private static readonly ClinicalDomain[] s_assignableDomains =
+    private static readonly ClinicalDomain[] AssignableDomains =
         Enum.GetValues<ClinicalDomain>().Where(d => d != ClinicalDomain.Unspecified).ToArray();
 
     private ClinicalDomain GetOrResolveTheme()
@@ -90,7 +90,7 @@ public class SchemaBasedFhirResourceFaker
         if (Theme is { } explicitTheme)
             return explicitTheme;
 
-        return _resolvedTheme ??= _faker.PickRandom(s_assignableDomains);
+        return _resolvedTheme ??= _faker.PickRandom(AssignableDomains);
     }
 
     public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider)

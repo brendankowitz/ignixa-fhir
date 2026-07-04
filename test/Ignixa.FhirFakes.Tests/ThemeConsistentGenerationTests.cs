@@ -13,7 +13,7 @@ namespace Ignixa.FhirFakes.Tests;
 
 public class ThemeConsistentGenerationTests
 {
-    private static readonly Dictionary<string, FhirCode> s_procedurePool =
+    private static readonly Dictionary<string, FhirCode> ProcedurePool =
         BindingCodeMapper.GetAllProcedureCodes().ToDictionary(c => $"{c.System}|{c.Code}");
 
     [Fact]
@@ -31,7 +31,7 @@ public class ThemeConsistentGenerationTests
         var codings = CollectCodings(resource.MutableNode);
         foreach (var (system, code) in codings)
         {
-            if (s_procedurePool.TryGetValue($"{system}|{code}", out var matched))
+            if (ProcedurePool.TryGetValue($"{system}|{code}", out var matched))
             {
                 (matched.Domain is ClinicalDomain.Cardiology or null).ShouldBeTrue(
                     $"Procedure code {code} ({matched.Display}) has domain {matched.Domain}, expected Cardiology or untagged.");
@@ -69,7 +69,7 @@ public class ThemeConsistentGenerationTests
             var resource = faker.Generate("Procedure");
             foreach (var (system, code) in CollectCodings(resource.MutableNode))
             {
-                if (s_procedurePool.TryGetValue($"{system}|{code}", out var matched) && matched.Domain is { } domain)
+                if (ProcedurePool.TryGetValue($"{system}|{code}", out var matched) && matched.Domain is { } domain)
                 {
                     observedDomains.Add(domain);
                 }

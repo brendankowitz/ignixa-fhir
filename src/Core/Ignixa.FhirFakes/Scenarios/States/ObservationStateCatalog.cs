@@ -16,12 +16,12 @@ namespace Ignixa.FhirFakes.Scenarios.States;
 /// </summary>
 public static class ObservationStateCatalog
 {
-    private static readonly Lazy<IReadOnlyDictionary<string, MethodInfo>> s_states = new(Discover);
-    private static readonly Lazy<IReadOnlyList<string>> s_names = new(() => [.. s_states.Value.Keys]);
+    private static readonly Lazy<IReadOnlyDictionary<string, MethodInfo>> StateFactoriesByName = new(Discover);
+    private static readonly Lazy<IReadOnlyList<string>> StateNames = new(() => [.. StateFactoriesByName.Value.Keys]);
 
     /// <summary>Gets all available observation state names.</summary>
     [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ScenarioCatalog.GetAll.")]
-    public static IReadOnlyList<string> GetNames() => s_names.Value;
+    public static IReadOnlyList<string> GetNames() => StateNames.Value;
 
     /// <summary>
     /// Tries to find an observation state factory by name (case-insensitive) and create it using
@@ -33,7 +33,7 @@ public static class ObservationStateCatalog
         ArgumentNullException.ThrowIfNull(name);
         state = null;
 
-        if (!s_states.Value.TryGetValue(name, out var method))
+        if (!StateFactoriesByName.Value.TryGetValue(name, out var method))
             return false;
 
         var parameters = method.GetParameters();

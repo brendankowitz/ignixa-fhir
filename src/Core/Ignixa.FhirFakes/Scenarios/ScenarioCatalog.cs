@@ -19,7 +19,7 @@ namespace Ignixa.FhirFakes.Scenarios;
 /// </summary>
 public static class ScenarioCatalog
 {
-    private static readonly Lazy<IReadOnlyList<DiscoveredScenario>> s_scenarios = new(Discover);
+    private static readonly Lazy<IReadOnlyList<DiscoveredScenario>> Scenarios = new(Discover);
 
     /// <summary>
     /// Attribute-bag key under which <see cref="Invoke"/> records the scenario's
@@ -32,14 +32,14 @@ public static class ScenarioCatalog
     /// Gets all discovered scenarios.
     /// </summary>
     [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
-    public static IReadOnlyList<DiscoveredScenario> GetAll() => s_scenarios.Value;
+    public static IReadOnlyList<DiscoveredScenario> GetAll() => Scenarios.Value;
 
     /// <summary>
     /// Finds a scenario by id (case-insensitive). Returns <see langword="null"/> if no scenario matches —
     /// this is expected control flow for an unknown id, not an error.
     /// </summary>
     public static DiscoveredScenario? Find(string id) =>
-        s_scenarios.Value.FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+        Scenarios.Value.FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Invokes a discovered scenario's factory method, applying <paramref name="parameterOverrides"/>

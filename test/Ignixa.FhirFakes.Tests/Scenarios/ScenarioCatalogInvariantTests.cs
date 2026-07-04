@@ -12,10 +12,10 @@ namespace Ignixa.FhirFakes.Tests.Scenarios;
 
 public class ScenarioCatalogInvariantTests
 {
-    private static readonly string[] s_knownCategories =
+    private static readonly string[] KnownCategories =
         ["Chronic", "Emergency", "Pediatric", "Journey", "Oncology", "Acute", "Metabolic", "Preventive"];
 
-    private static readonly string[] s_pinnedIds =
+    private static readonly string[] PinnedIds =
     [
         "AbdominalPainVisit",
         "AcuteMyocardialInfarction",
@@ -66,7 +66,7 @@ public class ScenarioCatalogInvariantTests
             scenario.Id.ShouldNotBeNullOrWhiteSpace();
             scenario.Title.ShouldNotBeNullOrWhiteSpace();
             if (scenario.Category is not null)
-                s_knownCategories.ShouldContain(scenario.Category);
+                KnownCategories.ShouldContain(scenario.Category);
 
             if (scenario.Domain is { } domain)
                 Enum.IsDefined(domain).ShouldBeTrue($"{scenario.Id}: undefined ClinicalDomain {domain}");
@@ -93,7 +93,7 @@ public class ScenarioCatalogInvariantTests
     {
         var ids = ScenarioCatalog.GetAll().Select(s => s.Id).OrderBy(s => s, StringComparer.Ordinal).ToArray();
 
-        ids.ShouldBe(s_pinnedIds);
+        ids.ShouldBe(PinnedIds);
     }
 
     private static bool IsSupportedParameterType(Type type)
