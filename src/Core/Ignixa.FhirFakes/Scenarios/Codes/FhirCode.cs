@@ -14,7 +14,14 @@ namespace Ignixa.FhirFakes.Scenarios.Codes;
 /// <param name="Display">The human-readable display text (e.g., "Diabetes mellitus type 2").</param>
 public record FhirCode(string System, string Code, string Display)
 {
-    /// <summary>Clinical specialty this code belongs to, or null if domain-neutral/untagged.</summary>
+    /// <summary>
+    /// Clinical specialty this code belongs to, or null if domain-neutral/untagged.
+    /// </summary>
+    /// <remarks>
+    /// Participates in the record's synthesized equality: a hand-built <c>new FhirCode(system, code,
+    /// display)</c> (Domain null) does not equal a curated constant with the same System/Code/Display
+    /// but a non-null Domain. Compare by (System, Code) if you need identity independent of tagging.
+    /// </remarks>
     public ClinicalDomain? Domain { get; init; }
 
     /// <summary>
