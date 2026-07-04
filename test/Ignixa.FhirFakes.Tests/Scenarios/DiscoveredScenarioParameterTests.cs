@@ -71,6 +71,28 @@ public class DiscoveredScenarioParameterTests
     }
 
     [Fact]
+    public void GivenUndefinedEnumOrdinal_WhenParsing_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "severity", Type = typeof(Severity) };
+
+        var parsed = parameter.TryParseValue("999", out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenDefinedEnumOrdinalString_WhenParsing_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "severity", Type = typeof(Severity) };
+
+        var parsed = parameter.TryParseValue("1", out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenStringValue_WhenParsing_ThenReturnsRawString()
     {
         var parameter = new DiscoveredScenarioParameter { Name = "gender", Type = typeof(string) };

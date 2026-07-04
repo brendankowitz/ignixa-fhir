@@ -41,4 +41,13 @@ public class ResourceCommandThemeParseTests
         parsed.ShouldBeFalse();
         theme.ShouldBeNull();
     }
+
+    [Fact]
+    public void GivenNumericOrdinal_WhenParsing_ThenReturnsFalse()
+    {
+        var parsed = ResourceCommand.TryParseTheme("4", out var theme);
+
+        parsed.ShouldBeFalse();
+        theme.ShouldBeNull();
+    }
 }

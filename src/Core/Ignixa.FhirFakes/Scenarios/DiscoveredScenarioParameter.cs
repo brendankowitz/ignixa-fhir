@@ -76,7 +76,10 @@ public sealed class DiscoveredScenarioParameter
             return true;
         }
 
-        if (underlyingType.IsEnum && Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var enumValue))
+        if (underlyingType.IsEnum
+            && (rawValue.Length == 0 || !char.IsDigit(rawValue[0]))
+            && Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var enumValue)
+            && Enum.IsDefined(underlyingType, enumValue!))
         {
             value = enumValue;
             return true;

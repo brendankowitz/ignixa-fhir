@@ -127,6 +127,9 @@ internal static class ResourceCommand
             return true;
         }
 
+        if (trimmed.Length > 0 && char.IsDigit(trimmed[0]))
+            return false;
+
         if (Enum.TryParse<ClinicalDomain>(trimmed, ignoreCase: true, out var parsed)
             && Enum.IsDefined(parsed)
             && parsed != ClinicalDomain.Unspecified)
