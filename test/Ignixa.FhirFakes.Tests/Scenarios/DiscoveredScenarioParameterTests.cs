@@ -29,6 +29,30 @@ public class DiscoveredScenarioParameterTests
     }
 
     [Fact]
+    public void GivenEmptyValue_WhenParsingNullableIntParameter_ThenReturnsNull()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int?) };
+
+        var parsed = parameter.TryParseValue(string.Empty, out var value);
+
+        // Empty means "clear it to null" for a nullable value-type parameter (e.g. --param age=),
+        // not "unparseable" -- distinct from a non-nullable int parameter, where empty still fails.
+        parsed.ShouldBeTrue();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenEmptyValue_WhenParsingNonNullableIntParameter_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int) };
+
+        var parsed = parameter.TryParseValue(string.Empty, out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenDecimalValueUnderDeCulture_WhenParsing_ThenStaysInvariant()
     {
         var originalCulture = CultureInfo.CurrentCulture;

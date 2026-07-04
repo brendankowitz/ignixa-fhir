@@ -66,8 +66,18 @@ public sealed class DiscoveredScenarioParameter
     public bool TryParseValue(string rawValue, out object? value, out string? failureReason)
     {
         ArgumentNullException.ThrowIfNull(rawValue);
+        var isNullableValueType = Nullable.GetUnderlyingType(Type) is not null;
         var underlyingType = Nullable.GetUnderlyingType(Type) ?? Type;
         failureReason = null;
+
+        // An empty/whitespace override (e.g. --param age=) means "clear it to null" for a nullable
+        // value-type parameter, not "unparseable" -- string parameters treat empty as a legitimate
+        // literal value instead (handled by the string branch below).
+        if (isNullableValueType && string.IsNullOrWhiteSpace(rawValue))
+        {
+            value = null;
+            return true;
+        }
 
         if (underlyingType == typeof(int) && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
         {

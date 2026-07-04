@@ -202,6 +202,27 @@ public class ScenarioCatalogTests
     }
 
     [Fact]
+    public void GivenLongOverrideForIntParameter_WhenInvoking_ThenCoercesToInt()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var method = typeof(ScenarioCatalogTests).GetMethod(
+            nameof(RequiredParamScenario), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var scenario = new DiscoveredScenario
+        {
+            Id = "RequiredParamScenario",
+            Title = "RequiredParamScenario",
+            Parameters = [],
+            Method = method,
+        };
+
+        // A compatible numeric type (long here) for an int parameter is a common shape when values
+        // arrive from JSON deserialization or another loosely-typed caller -- should coerce, not throw.
+        var context = ScenarioCatalog.Invoke(scenario, schemaProvider, new Dictionary<string, object?> { ["requiredValue"] = 42L });
+
+        context.GetAttribute<int>("requiredValue").ShouldBe(42);
+    }
+
+    [Fact]
     public void GivenStringOverrideForIntParameter_WhenInvoking_ThenThrowsArgumentException()
     {
         var schemaProvider = new R4CoreSchemaProvider();

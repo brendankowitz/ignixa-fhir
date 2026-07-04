@@ -41,9 +41,10 @@ public static class ObservationStateCatalog
         for (var i = 0; i < parameters.Length; i++)
             args[i] = parameters[i].DefaultValue;
 
+        object? result;
         try
         {
-            state = (ObservationState)method.Invoke(null, args)!;
+            result = method.Invoke(null, args);
         }
         catch (TargetInvocationException ex) when (ex.InnerException is not null)
         {
@@ -51,6 +52,14 @@ public static class ObservationStateCatalog
                 $"Observation state '{name}' threw during creation: {ex.InnerException.Message}", ex.InnerException);
         }
 
+        // Honor the [NotNullWhen(true)] contract: if the factory ever returned null, `state` must
+        // not be non-null-but-actually-null on a true return -- report "no state" instead.
+        if (result is null)
+        {
+            return false;
+        }
+
+        state = (ObservationState)result;
         return true;
     }
 

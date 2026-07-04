@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Ignixa.Abstractions;
@@ -73,8 +74,7 @@ public static class ScenarioCatalog
             var parameter = parameters[i];
             if (overrides != null && overrides.TryGetValue(parameter.Name!, out var overrideValue))
             {
-                ValidateOverrideType(scenario.Id, parameter, overrideValue);
-                args[i] = overrideValue;
+                args[i] = CoerceAndValidateOverride(scenario.Id, parameter, overrideValue);
             }
             else if (parameter.HasDefaultValue)
             {
@@ -115,8 +115,23 @@ public static class ScenarioCatalog
         return null;
     }
 
+    private static readonly HashSet<Type> NumericTypes =
+    [
+        typeof(sbyte), typeof(byte), typeof(short), typeof(ushort),
+        typeof(int), typeof(uint), typeof(long), typeof(ulong),
+        typeof(float), typeof(double), typeof(decimal),
+    ];
+
+    /// <summary>
+    /// Validates an override value against a parameter's declared type, coercing compatible numeric
+    /// widening/narrowing conversions (e.g. an <see langword="int"/> override for a
+    /// <see langword="decimal"/> parameter) rather than rejecting them outright — a common shape for
+    /// values arriving from JSON deserialization or other loosely-typed callers. Deliberately does NOT
+    /// coerce strings: string-to-value conversion belongs to <see cref="DiscoveredScenarioParameter.TryParseValue"/>,
+    /// which also enforces Min/Max; routing strings through here would silently bypass that check.
+    /// </summary>
     [SuppressMessage("Usage", "CA2208:Instantiate argument exceptions correctly", Justification = "paramName intentionally names the public Invoke argument 'parameterOverrides', the surface a caller can fix.")]
-    private static void ValidateOverrideType(string scenarioId, ParameterInfo parameter, object? value)
+    private static object? CoerceAndValidateOverride(string scenarioId, ParameterInfo parameter, object? value)
     {
         var effectiveType = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
 
@@ -129,15 +144,29 @@ public static class ScenarioCatalog
                     "parameterOverrides");
             }
 
-            return;
+            return null;
         }
 
-        if (!effectiveType.IsInstanceOfType(value))
+        if (effectiveType.IsInstanceOfType(value))
         {
-            throw new ArgumentException(
-                $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is of type '{value.GetType().Name}', but the parameter expects '{effectiveType.Name}'.",
-                "parameterOverrides");
+            return value;
         }
+
+        if (NumericTypes.Contains(effectiveType) && NumericTypes.Contains(value.GetType()))
+        {
+            try
+            {
+                return Convert.ChangeType(value, effectiveType, CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException)
+            {
+                // Falls through to the throw below (e.g. a long value too large for an int parameter).
+            }
+        }
+
+        throw new ArgumentException(
+            $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is of type '{value.GetType().Name}', but the parameter expects '{effectiveType.Name}'.",
+            "parameterOverrides");
     }
 
     private static IReadOnlyList<DiscoveredScenario> Discover()
