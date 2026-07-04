@@ -242,6 +242,12 @@ internal static class ScenarioCommand
             return true;
         }
 
+        if (underlyingType.IsEnum && Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var enumValue))
+        {
+            converted = enumValue;
+            return true;
+        }
+
         if (underlyingType == typeof(string))
         {
             converted = rawValue;

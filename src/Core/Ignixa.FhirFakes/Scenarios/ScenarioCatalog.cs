@@ -55,10 +55,14 @@ public static class ScenarioCatalog
         var args = new object?[parameters.Length];
         args[0] = schemaProvider;
 
+        var overrides = parameterOverrides == null
+            ? null
+            : new Dictionary<string, object?>(parameterOverrides, StringComparer.OrdinalIgnoreCase);
+
         for (var i = 1; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
-            if (parameterOverrides != null && parameterOverrides.TryGetValue(parameter.Name!, out var overrideValue))
+            if (overrides != null && overrides.TryGetValue(parameter.Name!, out var overrideValue))
             {
                 args[i] = overrideValue;
             }
@@ -85,10 +89,11 @@ public static class ScenarioCatalog
 
     private static object? DefaultForType(Type type)
     {
-        if (type == typeof(int))
-            return 0;
-        if (type == typeof(bool))
-            return false;
+        if (type.IsValueType && Nullable.GetUnderlyingType(type) == null)
+        {
+            return Activator.CreateInstance(type);
+        }
+
         return null;
     }
 

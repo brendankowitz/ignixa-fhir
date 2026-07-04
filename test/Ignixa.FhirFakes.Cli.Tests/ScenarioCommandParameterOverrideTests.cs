@@ -98,4 +98,52 @@ public class ScenarioCommandParameterOverrideTests
             CultureInfo.CurrentCulture = originalCulture;
         }
     }
+
+    [Fact]
+    public void GivenEnumParamValue_WhenParsingOverrides_ThenConvertsToEnumCaseInsensitively()
+    {
+        var scenario = new DiscoveredScenario
+        {
+            Id = "SyntheticEnumScenario",
+            Title = "SyntheticEnumScenario",
+            Parameters = new[]
+            {
+                new DiscoveredScenarioParameter { Name = "severity", Type = typeof(SeverityLevel) },
+            },
+        };
+        var paramValues = new[] { "severity=high" };
+
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out var overrides, out var error);
+
+        success.ShouldBeTrue();
+        error.ShouldBeNull();
+        overrides["severity"].ShouldBe(SeverityLevel.High);
+    }
+
+    [Fact]
+    public void GivenInvalidEnumParamValue_WhenParsingOverrides_ThenReturnsFalseWithError()
+    {
+        var scenario = new DiscoveredScenario
+        {
+            Id = "SyntheticEnumScenario",
+            Title = "SyntheticEnumScenario",
+            Parameters = new[]
+            {
+                new DiscoveredScenarioParameter { Name = "severity", Type = typeof(SeverityLevel) },
+            },
+        };
+        var paramValues = new[] { "severity=notavalue" };
+
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out _, out var error);
+
+        success.ShouldBeFalse();
+        error.ShouldNotBeNull();
+        error.ShouldContain("severity");
+    }
+
+    private enum SeverityLevel
+    {
+        Low = 0,
+        High = 1,
+    }
 }

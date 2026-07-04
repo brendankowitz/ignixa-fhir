@@ -139,11 +139,63 @@ public class ScenarioCatalogTests
         exception.InnerException!.Message.ShouldBe("boom");
     }
 
+    [Fact]
+    public void GivenParameterOverrideWithDifferentCasing_WhenInvoking_ThenAppliesOverride()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var method = typeof(ScenarioCatalogTests).GetMethod(
+            nameof(RequiredParamScenario), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var scenario = new DiscoveredScenario
+        {
+            Id = "RequiredParamScenario",
+            Title = "RequiredParamScenario",
+            Parameters = [],
+            Method = method,
+        };
+
+        var context = ScenarioCatalog.Invoke(
+            scenario, schemaProvider, new Dictionary<string, object?> { ["REQUIREDVALUE"] = 42 });
+
+        context.GetAttribute<int>("requiredValue").ShouldBe(42);
+    }
+
+    [Fact]
+    public void GivenEnumParameterWithNoOverrideAndNoDefault_WhenInvoking_ThenFallsBackToEnumDefault()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var method = typeof(ScenarioCatalogTests).GetMethod(
+            nameof(EnumParamScenario), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var scenario = new DiscoveredScenario
+        {
+            Id = "EnumParamScenario",
+            Title = "EnumParamScenario",
+            Parameters = [],
+            Method = method,
+        };
+
+        var context = ScenarioCatalog.Invoke(scenario, schemaProvider);
+
+        context.GetAttribute<Severity>("severity").ShouldBe(Severity.Low);
+    }
+
     private static ScenarioContext RequiredParamScenario(IFhirSchemaProvider schemaProvider, int requiredValue)
     {
         var context = new ScenarioContext();
         context.SetAttribute("requiredValue", requiredValue);
         return context;
+    }
+
+    private static ScenarioContext EnumParamScenario(IFhirSchemaProvider schemaProvider, Severity severity)
+    {
+        var context = new ScenarioContext();
+        context.SetAttribute("severity", severity);
+        return context;
+    }
+
+    private enum Severity
+    {
+        Low = 0,
+        High = 1,
     }
 
     private static ScenarioContext ThrowingScenario(IFhirSchemaProvider schemaProvider) =>
