@@ -1406,6 +1406,28 @@ public class PatientBuilderTests
         gpArray[1]?["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
     }
 
+    [Fact]
+    public void GivenInvalidGenderString_WhenSettingGender_ThenThrowsArgumentException()
+    {
+        var builder = PatientBuilderFactory.Create(_schemaProvider);
+
+        Should.Throw<ArgumentException>(() => builder.WithGender("not-a-real-gender"));
+    }
+
+    [Theory]
+    [InlineData("Male")]
+    [InlineData("FEMALE")]
+    [InlineData("other")]
+    [InlineData("Unknown")]
+    public void GivenValidGenderStringInAnyCase_WhenSettingGender_ThenSucceeds(string gender)
+    {
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithGender(gender)
+            .Build();
+
+        patient.MutableNode["gender"]?.GetValue<string>().ShouldBe(gender);
+    }
+
     #endregion
 }
 

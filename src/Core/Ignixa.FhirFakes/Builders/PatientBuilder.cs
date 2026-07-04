@@ -346,6 +346,13 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     public PatientBuilder WithGender(string gender)
     {
         ArgumentNullException.ThrowIfNull(gender);
+        if (!PatientBuilderConstants.Gender.All.Contains(gender, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"Invalid gender '{gender}'. Expected one of: {string.Join(", ", PatientBuilderConstants.Gender.All)}.",
+                nameof(gender));
+        }
+
         _gender = gender;
         return this;
     }
