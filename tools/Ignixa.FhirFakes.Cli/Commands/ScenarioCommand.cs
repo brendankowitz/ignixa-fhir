@@ -111,7 +111,7 @@ internal static class ScenarioCommand
             }
 
             var id = Guid.NewGuid().ToString();
-            var filename = $"{fhirVersion}-bundle-{scenarioName}-{id}.json";
+            var filename = $"{fhirVersion}-bundle-{scenario.Id}-{id}.json";
             var outputPath = Path.Combine(outFolder, filename);
 
             JsonSerializerOptions options = new()

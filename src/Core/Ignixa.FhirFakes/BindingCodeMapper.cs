@@ -27,8 +27,9 @@ namespace Ignixa.FhirFakes;
 /// the faker can query this mapper to get appropriate codes for elements with bindings,
 /// ensuring generated resources use realistic, valid terminology.
 ///
-/// NOTE: This class is stateless and thread-safe. The IValueSetProvider must be passed
-/// to methods that need version-specific code lookup to ensure correct version handling
+/// NOTE: Thread-safe via benign-race lazy caching — concurrent first-access calls may each compute a
+/// code cache once, but all results are identical, so no locking is needed. The IValueSetProvider must
+/// be passed to methods that need version-specific code lookup to ensure correct version handling
 /// when multiple FHIR versions are used concurrently (e.g., in test scenarios).
 /// </remarks>
 internal static class BindingCodeMapper
