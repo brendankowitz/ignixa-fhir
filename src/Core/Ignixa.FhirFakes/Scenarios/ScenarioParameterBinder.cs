@@ -55,6 +55,7 @@ internal static class ScenarioParameterBinder
         string scenarioId,
         MethodInfo method,
         IReadOnlyDictionary<string, object?>? overrides,
+        string overridesParamName,
         params object[] leadingArgs)
     {
         var parameters = method.GetParameters();
@@ -73,7 +74,7 @@ internal static class ScenarioParameterBinder
             var parameter = parameters[i];
             if (overrideMap != null && overrideMap.TryGetValue(parameter.Name!, out var overrideValue))
             {
-                args[i] = CoerceAndValidateOverride(scenarioId, parameter, overrideValue);
+                args[i] = CoerceAndValidateOverride(scenarioId, parameter, overrideValue, overridesParamName);
             }
             else if (parameter.HasDefaultValue)
             {
@@ -114,8 +115,16 @@ internal static class ScenarioParameterBinder
         return null;
     }
 
-    [SuppressMessage("Usage", "CA2208:Instantiate argument exceptions correctly", Justification = "paramName intentionally names the public Invoke argument 'parameterOverrides', the surface a caller can fix.")]
-    private static object? CoerceAndValidateOverride(string scenarioId, ParameterInfo parameter, object? value)
+    /// <summary>
+    /// Validates an override value against a parameter's declared type, coercing compatible numeric
+    /// widening/narrowing conversions (e.g. an <see langword="int"/> override for a
+    /// <see langword="decimal"/> parameter) rather than rejecting them outright — a common shape for
+    /// values arriving from JSON deserialization or other loosely-typed callers. Deliberately does NOT
+    /// coerce strings: string-to-value conversion belongs to <see cref="DiscoveredScenarioParameter.TryParseValue"/>,
+    /// which also enforces Min/Max; routing strings through here would silently bypass that check.
+    /// </summary>
+    [SuppressMessage("Usage", "CA2208:Instantiate argument exceptions correctly", Justification = "paramName is supplied by the caller via overridesParamName, so it always names that caller's own public parameter.")]
+    private static object? CoerceAndValidateOverride(string scenarioId, ParameterInfo parameter, object? value, string overridesParamName)
     {
         var effectiveType = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
 
@@ -125,7 +134,7 @@ internal static class ScenarioParameterBinder
             {
                 throw new ArgumentException(
                     $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is null, but the parameter type '{parameter.ParameterType.Name}' is a non-nullable value type.",
-                    "parameterOverrides");
+                    overridesParamName);
             }
 
             return null;
@@ -150,6 +159,6 @@ internal static class ScenarioParameterBinder
 
         throw new ArgumentException(
             $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is of type '{value.GetType().Name}', but the parameter expects '{effectiveType.Name}'.",
-            "parameterOverrides");
+            overridesParamName);
     }
 }

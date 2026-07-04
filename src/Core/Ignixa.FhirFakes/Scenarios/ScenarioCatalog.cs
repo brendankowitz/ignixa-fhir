@@ -59,7 +59,7 @@ public static class ScenarioCatalog
         ArgumentNullException.ThrowIfNull(scenario);
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
-        var args = ScenarioParameterBinder.BuildArguments(scenario.Id, scenario.Method, parameterOverrides, schemaProvider);
+        var args = ScenarioParameterBinder.BuildArguments(scenario.Id, scenario.Method, parameterOverrides, "parameterOverrides", schemaProvider);
 
         ScenarioContext context;
         try
