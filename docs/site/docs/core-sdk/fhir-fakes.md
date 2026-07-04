@@ -724,11 +724,17 @@ ignixa-fakes r4 resource Patient --out ./output --density maximum --seed 42
 
 ### Theme-Consistent Generation
 
-At `Maximum` density, every optional coded element is populated — without a shared theme, sibling coded
-fields on one resource are picked independently and can be clinically incoherent (e.g. a `Procedure` with
-an unrelated `category`, `code`, and `bodySite`). `Theme` (a `ClinicalDomain`, e.g. `Cardiology`,
-`Endocrinology`, `OrthopedicSurgery`) keeps coded picks on one resource drawn from the same clinical
-specialty wherever the curated code pools have a tagged match, falling back to the full pool otherwise.
+Without a shared theme, sibling coded fields on one resource are picked independently and can be
+clinically incoherent (e.g. a `Procedure` with an unrelated `category`, `code`, and `bodySite`). `Theme`
+(a `ClinicalDomain`, e.g. `Cardiology`, `Endocrinology`, `OrthopedicSurgery`) keeps coded picks on one
+resource drawn from the same clinical specialty wherever the curated code pools have a tagged match,
+falling back to the full pool otherwise.
+
+**Density and Theme are orthogonal.** Density controls *which* elements are generated (required-only at
+`Minimal`, required plus every optional at `Maximum`); Theme controls the *clinical coherence* of
+whichever coded elements do get generated. Theme therefore applies to any coded element that gets
+populated at **any** density — including required coded elements at `Minimal`. It is not a
+`Maximum`-density-only feature.
 
 ```csharp
 var faker = new SchemaBasedFhirResourceFaker(schemaProvider)

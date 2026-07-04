@@ -9,6 +9,13 @@
 > discovery API. One correction from the original design: `FhirCode.Domain` was added as an
 > **init-only property**, not the additive positional constructor parameter shown below — see the
 > note after the code snippet.
+>
+> **Shipped scope (density-independent):** although the symptom below is described at `Maximum`
+> density, the shipped behaviour is intentionally **orthogonal to `GenerationDensity`** by explicit
+> product decision. Density controls *which* elements are populated; Theme controls the *clinical
+> coherence* of whichever coded elements are populated. Theme therefore applies to any coded element
+> generated at **any** density — including required coded elements at `Minimal` — not only to the
+> optional elements added at `Maximum`.
 
 ## Summary
 

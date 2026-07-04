@@ -16,6 +16,74 @@ public class ThemeConsistentGenerationTests
     private static readonly Dictionary<string, FhirCode> ProcedurePool =
         BindingCodeMapper.GetAllProcedureCodes().ToDictionary(c => $"{c.System}|{c.Code}");
 
+    private static readonly Dictionary<string, FhirCode> MedicationPool =
+        BindingCodeMapper.GetAllMedicationCodes().ToDictionary(c => $"{c.System}|{c.Code}");
+
+    [Fact]
+    public void GivenMinimalDensityAndCardiologyTheme_WhenGeneratingMedicationRequest_ThenRequiredCodeIsThemed()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1)
+        {
+            Density = GenerationDensity.Minimal,
+            Theme = ClinicalDomain.Cardiology,
+        };
+
+        AssertMedicationCodesAreCardiologyThemed(faker, requireMatch: true);
+    }
+
+    [Fact]
+    public void GivenRealisticDensityAndCardiologyTheme_WhenGeneratingMedicationRequest_ThenRequiredCodeIsThemed()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1)
+        {
+            Density = GenerationDensity.Realistic,
+            Theme = ClinicalDomain.Cardiology,
+        };
+
+        AssertMedicationCodesAreCardiologyThemed(faker, requireMatch: true);
+    }
+
+    [Fact]
+    public void GivenMinimalDensityAndUnspecifiedTheme_WhenGeneratingMedicationRequest_ThenThemingIsDisabled()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1)
+        {
+            Density = GenerationDensity.Minimal,
+            Theme = ClinicalDomain.Unspecified,
+        };
+
+        var resource = faker.Generate("MedicationRequest");
+
+        resource.MutableNode["resourceType"]!.GetValue<string>().ShouldBe("MedicationRequest");
+    }
+
+    private static void AssertMedicationCodesAreCardiologyThemed(SchemaBasedFhirResourceFaker faker, bool requireMatch)
+    {
+        var matched = 0;
+        for (var i = 0; i < 20; i++)
+        {
+            var resource = faker.Generate("MedicationRequest");
+            foreach (var (system, code) in CollectCodings(resource.MutableNode))
+            {
+                if (MedicationPool.TryGetValue($"{system}|{code}", out var medication))
+                {
+                    matched++;
+                    (medication.Domain is ClinicalDomain.Cardiology or null).ShouldBeTrue(
+                        $"Medication code {code} ({medication.Display}) has domain {medication.Domain}, expected Cardiology or untagged.");
+                }
+            }
+        }
+
+        if (requireMatch)
+        {
+            matched.ShouldBeGreaterThan(0,
+                "Expected at least one themed medication code to be generated at this density to prove theming is exercised.");
+        }
+    }
+
     [Fact]
     public void GivenCardiologyTheme_WhenGeneratingProcedure_ThenMatchedProcedureCodesAreCardiologyOrUntagged()
     {
