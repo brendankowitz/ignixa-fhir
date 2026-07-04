@@ -15,6 +15,7 @@ Test data generation library for creating realistic FHIR resources across versio
 | [state-id-pattern](investigations/state-id-pattern.md) | Viable | 2025-12-05 | Cross-state resource references using StateId |
 | [improvements-summary](investigations/improvements-summary.md) | Complete | 2025-12-02 | Implementation summary of cross-version compatibility work |
 | [adversarial-data-generation](investigations/adversarial-data-generation.md) | In Progress | 2026-06-16 | Edge-case/fuzz data as a first-class type — extensible category catalog + seeded decorator pipeline, validity measured & bucketed |
+| [theme-consistent-generation](investigations/theme-consistent-generation.md) | In Progress | 2026-07-04 | Carry a clinical "theme" through Maximum-density generation so sibling coded fields on one resource stay semantically coherent |
 
 ## Overview
 
