@@ -72,6 +72,9 @@ Generate a complete patient scenario with related resources:
 
 ```bash
 ignixa-fakes r4 scenario DiabeticPatient --out ./output --resolved-references
+
+# Override a scenario parameter (repeatable)
+ignixa-fakes r4 scenario DiabeticPatient --out ./output --param age=60 --param severity=3
 ```
 
 Available scenarios include:
@@ -80,6 +83,20 @@ Available scenarios include:
 - `UrinaryTractInfection` - UTI diagnosis and treatment
 - `AsthmaticChild` - Pediatric asthma management
 - And many more...
+
+Run `ignixa-fakes help scenarios` for the full, current list — or discover them programmatically via
+`ScenarioCatalog.GetAll()` in the `Ignixa.FhirFakes` library.
+
+### Generate at Maximum Density with a Clinical Theme
+
+Fill in every optional element, keeping sibling coded fields thematically coherent:
+
+```bash
+ignixa-fakes r4 resource Procedure --out ./output --density maximum --theme cardiology
+
+# Omit --theme for a random (but still coherent) theme; use --theme none to disable theming
+ignixa-fakes r4 resource Procedure --out ./output --density maximum
+```
 
 ### Generate Populations
 
@@ -104,6 +121,14 @@ ignixa-fakes r4 population --out ./output --from Seattle --count 100 --ndjson
 - `--surname <name>` - Set patient surname
 - `--from <city>` - Generate from a specific city
 - `--count <number>` - Number of resources/patients to generate
+- `--param <name=value>` - Override a scenario parameter, repeatable (`scenario` command only)
+- `--density <minimal|realistic|maximum>` - Control how many optional elements are populated (`resource` command; default `minimal`)
+- `--theme <domain|none>` - Clinical theme for coherent code selection, e.g. `cardiology`, `orthopedic-surgery`, or `none` to disable (`resource` command)
+- `--seed <number>` - Seed for reproducible generation (`resource` command)
+- `--edge-cases [selectors]` - Apply edge-case/fuzz mutations, optionally scoped to families or categories (`resource` command)
+- `--validate` - Validate generated resources against the FHIR schema
+
+**Exit codes** (scripting/CI): `0` success, `1` runtime error (generation/I/O failure), `2` usage error (invalid arguments, unknown scenario/state/selector/theme/density value).
 
 ## Output
 
