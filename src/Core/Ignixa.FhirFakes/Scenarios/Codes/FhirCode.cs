@@ -225,7 +225,7 @@ public record FhirCode(string System, string Code, string Display)
         public static readonly FhirCode Cetirizine = new(Systems.RxNorm, "1014678", "Cetirizine hydrochloride 10 MG Oral Tablet");
 
         /// <summary>Fluticasone propionate 110 mcg inhaler - Inhaled corticosteroid for asthma control</summary>
-        public static readonly FhirCode FlucticasonePropionate = new(Systems.RxNorm, "745678", "Fluticasone propionate 0.11 MG/ACTUAT Metered Dose Inhaler");
+        public static readonly FhirCode FluticasonePropionate = new(Systems.RxNorm, "745678", "Fluticasone propionate 0.11 MG/ACTUAT Metered Dose Inhaler");
 
         // Other Common Medications
 

@@ -408,9 +408,9 @@ public sealed class MedicationOrderState : ScenarioState
     /// <summary>
     /// Creates a Fluticasone Propionate inhaler prescription for asthma (controller medication).
     /// </summary>
-    public static MedicationOrderState FlucticasonePropionate() => new()
+    public static MedicationOrderState FluticasonePropionate() => new()
     {
-        Code = FhirCode.Medications.FlucticasonePropionate,
+        Code = FhirCode.Medications.FluticasonePropionate,
         IsChronic = true,
         Frequency = "twice-daily",
         DoseQuantity = 2,

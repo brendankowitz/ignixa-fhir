@@ -223,35 +223,35 @@ public static class Procedures
     public static FhirCode Biopsy { get; } = new(
         System: FhirCode.Systems.SnomedCt,
         Code: "86273004",
-        Display: "Biopsy");
+        Display: "Biopsy") { Domain = ClinicalDomain.Pathology };
 
     /// <summary>Blood transfusion - Infusion of blood products</summary>
     public static FhirCode BloodTransfusion { get; } = new(
         System: FhirCode.Systems.SnomedCt,
         Code: "116859006",
-        Display: "Transfusion of blood product");
+        Display: "Transfusion of blood product") { Domain = ClinicalDomain.InternalMedicine };
 
     /// <summary>Incision and drainage - Abscess drainage</summary>
     public static FhirCode IncisionAndDrainage { get; } = new(
         System: FhirCode.Systems.SnomedCt,
         Code: "392235006",
-        Display: "Incision and drainage");
+        Display: "Incision and drainage") { Domain = ClinicalDomain.GeneralSurgery };
 
     /// <summary>Intubation - Endotracheal tube insertion</summary>
     public static FhirCode Intubation { get; } = new(
         System: FhirCode.Systems.SnomedCt,
         Code: "112798008",
-        Display: "Insertion of endotracheal tube");
+        Display: "Insertion of endotracheal tube") { Domain = ClinicalDomain.EmergencyMedicine };
 
     /// <summary>Mechanical ventilation - Assisted breathing support</summary>
     public static FhirCode MechanicalVentilation { get; } = new(
         System: FhirCode.Systems.SnomedCt,
         Code: "40617009",
-        Display: "Artificial respiration");
+        Display: "Artificial respiration") { Domain = ClinicalDomain.EmergencyMedicine };
 
     /// <summary>Central venous catheter insertion - Central line placement</summary>
     public static FhirCode CentralVenousCatheter { get; } = new(
         System: FhirCode.Systems.SnomedCt,
         Code: "392247006",
-        Display: "Insertion of central venous catheter");
+        Display: "Insertion of central venous catheter") { Domain = ClinicalDomain.EmergencyMedicine };
 }
