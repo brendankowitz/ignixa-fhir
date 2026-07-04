@@ -1,6 +1,5 @@
 using Ignixa.Abstractions;
 using System.CommandLine;
-using System.Globalization;
 using System.Text.Json;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Specification;
@@ -91,7 +90,7 @@ internal static class ScenarioCommand
                 return;
             }
 
-            if (!TryParseParameterOverrides(scenario, paramValues, out var overrides, out var parseError))
+            if (!TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out var overrides, out var parseError))
             {
                 Console.WriteLine($"X {parseError}");
                 Environment.ExitCode = 2;
@@ -177,11 +176,11 @@ internal static class ScenarioCommand
 
     /// <summary>
     /// Parses <c>--param name=value</c> overrides into a name-to-value dictionary, converting each raw
-    /// string to the scenario parameter's declared CLR type. Internal (not private) so
-    /// <c>ScenarioCommandParameterOverrideTests</c> can call it directly.
+    /// string to the scenario parameter's declared CLR type.
     /// </summary>
     internal static bool TryParseParameterOverrides(
-        DiscoveredScenario scenario,
+        string scenarioId,
+        IReadOnlyList<DiscoveredScenarioParameter> parameters,
         string[] paramValues,
         out Dictionary<string, object?> overrides,
         out string? error)
@@ -201,14 +200,14 @@ internal static class ScenarioCommand
             var name = raw[..separatorIndex];
             var rawValue = raw[(separatorIndex + 1)..];
 
-            var parameter = scenario.Parameters.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            var parameter = parameters.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (parameter == null)
             {
-                error = $"Scenario '{scenario.Id}' has no parameter named '{name}'. Available: {string.Join(", ", scenario.Parameters.Select(p => p.Name))}";
+                error = $"Scenario '{scenarioId}' has no parameter named '{name}'. Available: {string.Join(", ", parameters.Select(p => p.Name))}";
                 return false;
             }
 
-            if (!TryConvert(rawValue, parameter.Type, out var converted))
+            if (!parameter.TryParseValue(rawValue, out var converted))
             {
                 error = $"Cannot convert value '{rawValue}' for parameter '{name}' to {parameter.Type.Name}.";
                 return false;
@@ -218,43 +217,5 @@ internal static class ScenarioCommand
         }
 
         return true;
-    }
-
-    private static bool TryConvert(string rawValue, Type targetType, out object? converted)
-    {
-        var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-
-        if (underlyingType == typeof(int) && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
-        {
-            converted = intValue;
-            return true;
-        }
-
-        if (underlyingType == typeof(decimal) && decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
-        {
-            converted = decimalValue;
-            return true;
-        }
-
-        if (underlyingType == typeof(bool) && bool.TryParse(rawValue, out var boolValue))
-        {
-            converted = boolValue;
-            return true;
-        }
-
-        if (underlyingType.IsEnum && Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var enumValue))
-        {
-            converted = enumValue;
-            return true;
-        }
-
-        if (underlyingType == typeof(string))
-        {
-            converted = rawValue;
-            return true;
-        }
-
-        converted = null;
-        return false;
     }
 }

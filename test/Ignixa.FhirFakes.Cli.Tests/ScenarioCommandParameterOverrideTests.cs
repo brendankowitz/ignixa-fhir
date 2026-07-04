@@ -27,7 +27,7 @@ public class ScenarioCommandParameterOverrideTests
         var scenario = GetDiabeticPatientScenario();
         var paramValues = new[] { "age=70", "severity=4", "gender=female" };
 
-        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out var overrides, out var error);
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out var overrides, out var error);
 
         success.ShouldBeTrue();
         error.ShouldBeNull();
@@ -42,7 +42,7 @@ public class ScenarioCommandParameterOverrideTests
         var scenario = GetDiabeticPatientScenario();
         var paramValues = new[] { "notAParameter=123" };
 
-        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out _, out var error);
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out _, out var error);
 
         success.ShouldBeFalse();
         error.ShouldNotBeNull();
@@ -55,7 +55,7 @@ public class ScenarioCommandParameterOverrideTests
         var scenario = GetDiabeticPatientScenario();
         var paramValues = new[] { "age=notanumber" };
 
-        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out _, out var error);
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out _, out var error);
 
         success.ShouldBeFalse();
         error.ShouldNotBeNull();
@@ -68,7 +68,7 @@ public class ScenarioCommandParameterOverrideTests
         var scenario = GetDiabeticPatientScenario();
         var paramValues = new[] { "age" };
 
-        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out _, out var error);
+        var success = ScenarioCommand.TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out _, out var error);
 
         success.ShouldBeFalse();
         error.ShouldNotBeNull();
@@ -87,7 +87,7 @@ public class ScenarioCommandParameterOverrideTests
             var scenario = GetMetabolicSyndromeProgressionScenario();
             var paramValues = new[] { "startingBMI=35.5" };
 
-            var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out var overrides, out var error);
+            var success = ScenarioCommand.TryParseParameterOverrides(scenario.Id, scenario.Parameters, paramValues, out var overrides, out var error);
 
             success.ShouldBeTrue();
             error.ShouldBeNull();
@@ -102,18 +102,11 @@ public class ScenarioCommandParameterOverrideTests
     [Fact]
     public void GivenEnumParamValue_WhenParsingOverrides_ThenConvertsToEnumCaseInsensitively()
     {
-        var scenario = new DiscoveredScenario
-        {
-            Id = "SyntheticEnumScenario",
-            Title = "SyntheticEnumScenario",
-            Parameters = new[]
-            {
-                new DiscoveredScenarioParameter { Name = "severity", Type = typeof(SeverityLevel) },
-            },
-        };
+        IReadOnlyList<DiscoveredScenarioParameter> parameters =
+            [new() { Name = "severity", Type = typeof(SeverityLevel) }];
         var paramValues = new[] { "severity=high" };
 
-        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out var overrides, out var error);
+        var success = ScenarioCommand.TryParseParameterOverrides("SyntheticEnumScenario", parameters, paramValues, out var overrides, out var error);
 
         success.ShouldBeTrue();
         error.ShouldBeNull();
@@ -123,18 +116,11 @@ public class ScenarioCommandParameterOverrideTests
     [Fact]
     public void GivenInvalidEnumParamValue_WhenParsingOverrides_ThenReturnsFalseWithError()
     {
-        var scenario = new DiscoveredScenario
-        {
-            Id = "SyntheticEnumScenario",
-            Title = "SyntheticEnumScenario",
-            Parameters = new[]
-            {
-                new DiscoveredScenarioParameter { Name = "severity", Type = typeof(SeverityLevel) },
-            },
-        };
+        IReadOnlyList<DiscoveredScenarioParameter> parameters =
+            [new() { Name = "severity", Type = typeof(SeverityLevel) }];
         var paramValues = new[] { "severity=notavalue" };
 
-        var success = ScenarioCommand.TryParseParameterOverrides(scenario, paramValues, out _, out var error);
+        var success = ScenarioCommand.TryParseParameterOverrides("SyntheticEnumScenario", parameters, paramValues, out _, out var error);
 
         success.ShouldBeFalse();
         error.ShouldNotBeNull();

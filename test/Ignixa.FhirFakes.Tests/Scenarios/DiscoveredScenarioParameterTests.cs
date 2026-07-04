@@ -1,0 +1,105 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Globalization;
+using Ignixa.FhirFakes.Scenarios;
+using Shouldly;
+
+namespace Ignixa.FhirFakes.Tests.Scenarios;
+
+public class DiscoveredScenarioParameterTests
+{
+    private enum Severity
+    {
+        Low = 0,
+        High = 1,
+    }
+
+    [Fact]
+    public void GivenIntValue_WhenParsing_ThenReturnsInt()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int) };
+
+        var parsed = parameter.TryParseValue("42", out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe(42);
+    }
+
+    [Fact]
+    public void GivenDecimalValueUnderDeCulture_WhenParsing_ThenStaysInvariant()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            var parameter = new DiscoveredScenarioParameter { Name = "bmi", Type = typeof(decimal) };
+
+            var parsed = parameter.TryParseValue("35.5", out var value);
+
+            parsed.ShouldBeTrue();
+            value.ShouldBe(35.5m);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void GivenBoolValue_WhenParsing_ThenReturnsBool()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "flag", Type = typeof(bool) };
+
+        var parsed = parameter.TryParseValue("true", out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe(true);
+    }
+
+    [Fact]
+    public void GivenEnumValue_WhenParsing_ThenConvertsCaseInsensitively()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "severity", Type = typeof(Severity) };
+
+        var parsed = parameter.TryParseValue("high", out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe(Severity.High);
+    }
+
+    [Fact]
+    public void GivenStringValue_WhenParsing_ThenReturnsRawString()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "gender", Type = typeof(string) };
+
+        var parsed = parameter.TryParseValue("female", out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe("female");
+    }
+
+    [Fact]
+    public void GivenUnparseableIntValue_WhenParsing_ThenReturnsFalse()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int) };
+
+        var parsed = parameter.TryParseValue("notanumber", out var value);
+
+        parsed.ShouldBeFalse();
+        value.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenNullableIntValue_WhenParsing_ThenReturnsInt()
+    {
+        var parameter = new DiscoveredScenarioParameter { Name = "age", Type = typeof(int?) };
+
+        var parsed = parameter.TryParseValue("7", out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe(7);
+    }
+}

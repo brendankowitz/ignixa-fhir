@@ -22,6 +22,13 @@ public static class ScenarioCatalog
     private static readonly Lazy<IReadOnlyList<DiscoveredScenario>> s_scenarios = new(Discover);
 
     /// <summary>
+    /// Attribute-bag key under which <see cref="Invoke"/> records the scenario's
+    /// <see cref="DiscoveredScenario.Domain"/> on the returned <see cref="ScenarioContext"/>.
+    /// Read via <c>context.GetAttribute&lt;ClinicalDomain&gt;(ScenarioCatalog.ClinicalDomainAttributeKey)</c>.
+    /// </summary>
+    public const string ClinicalDomainAttributeKey = "clinicalDomain";
+
+    /// <summary>
     /// Gets all discovered scenarios.
     /// </summary>
     [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
@@ -66,6 +73,7 @@ public static class ScenarioCatalog
             var parameter = parameters[i];
             if (overrides != null && overrides.TryGetValue(parameter.Name!, out var overrideValue))
             {
+                ValidateOverrideType(scenario.Id, parameter, overrideValue);
                 args[i] = overrideValue;
             }
             else if (parameter.HasDefaultValue)
@@ -78,15 +86,23 @@ public static class ScenarioCatalog
             }
         }
 
+        ScenarioContext context;
         try
         {
-            return (ScenarioContext)scenario.Method.Invoke(null, args)!;
+            context = (ScenarioContext)scenario.Method.Invoke(null, args)!;
         }
         catch (TargetInvocationException ex) when (ex.InnerException != null)
         {
             throw new ScenarioInvocationException(
                 $"Scenario '{scenario.Id}' threw during invocation: {ex.InnerException.Message}", ex.InnerException);
         }
+
+        if (scenario.Domain is { } domain)
+        {
+            context.SetAttribute(ClinicalDomainAttributeKey, domain);
+        }
+
+        return context;
     }
 
     private static object? DefaultForType(Type type)
@@ -97,6 +113,31 @@ public static class ScenarioCatalog
         }
 
         return null;
+    }
+
+    [SuppressMessage("Usage", "CA2208:Instantiate argument exceptions correctly", Justification = "paramName intentionally names the public Invoke argument 'parameterOverrides', the surface a caller can fix.")]
+    private static void ValidateOverrideType(string scenarioId, ParameterInfo parameter, object? value)
+    {
+        var effectiveType = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
+
+        if (value is null)
+        {
+            if (parameter.ParameterType.IsValueType && Nullable.GetUnderlyingType(parameter.ParameterType) is null)
+            {
+                throw new ArgumentException(
+                    $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is null, but the parameter type '{parameter.ParameterType.Name}' is a non-nullable value type.",
+                    "parameterOverrides");
+            }
+
+            return;
+        }
+
+        if (!effectiveType.IsInstanceOfType(value))
+        {
+            throw new ArgumentException(
+                $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is of type '{value.GetType().Name}', but the parameter expects '{effectiveType.Name}'.",
+                "parameterOverrides");
+        }
     }
 
     private static IReadOnlyList<DiscoveredScenario> Discover()

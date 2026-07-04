@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
+
 namespace Ignixa.FhirFakes.Scenarios;
 
 /// <summary>
@@ -46,4 +48,47 @@ public sealed class DiscoveredScenarioParameter
     /// One-line description from <see cref="ScenarioParameterAttribute.Description"/>, or null if unset.
     /// </summary>
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Parses a raw string (e.g. a CLI or form value) into this parameter's CLR type using
+    /// invariant culture. Supports int, decimal, bool, string, enums, and their nullable forms.
+    /// </summary>
+    public bool TryParseValue(string rawValue, out object? value)
+    {
+        ArgumentNullException.ThrowIfNull(rawValue);
+        var underlyingType = Nullable.GetUnderlyingType(Type) ?? Type;
+
+        if (underlyingType == typeof(int) && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+        {
+            value = intValue;
+            return true;
+        }
+
+        if (underlyingType == typeof(decimal) && decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
+        {
+            value = decimalValue;
+            return true;
+        }
+
+        if (underlyingType == typeof(bool) && bool.TryParse(rawValue, out var boolValue))
+        {
+            value = boolValue;
+            return true;
+        }
+
+        if (underlyingType.IsEnum && Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var enumValue))
+        {
+            value = enumValue;
+            return true;
+        }
+
+        if (underlyingType == typeof(string))
+        {
+            value = rawValue;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
 }

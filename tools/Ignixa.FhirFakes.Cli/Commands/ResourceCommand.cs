@@ -353,8 +353,7 @@ internal static class ResourceCommand
     }
 
     /// <summary>
-    /// Finds a city by name. Internal (not private) so <c>ResourceCommandFindCityTests</c> can call it
-    /// directly via the CLI project's <c>InternalsVisibleTo</c>.
+    /// Finds a city by name.
     /// </summary>
     internal static CityDemographics? FindCity(string cityName) =>
         DemographicsDataProvider.CreateDefault().Cities

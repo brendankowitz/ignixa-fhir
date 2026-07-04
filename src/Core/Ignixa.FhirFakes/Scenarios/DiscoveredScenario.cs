@@ -12,6 +12,10 @@ namespace Ignixa.FhirFakes.Scenarios;
 /// </summary>
 public sealed class DiscoveredScenario
 {
+    internal DiscoveredScenario()
+    {
+    }
+
     /// <summary>
     /// The scenario id (e.g. "DiabeticPatient"), derived from the factory method name with a leading
     /// "Get" stripped. Matched case-insensitively by <see cref="ScenarioCatalog.Find"/>.
@@ -44,13 +48,8 @@ public sealed class DiscoveredScenario
     public ClinicalDomain? Domain { get; init; }
 
     /// <summary>
-    /// The underlying factory method. Internal so callers cannot bypass <see cref="ScenarioCatalog.Invoke"/>
-    /// and its parameter-fallback / exception-wrapping behavior via raw reflection. Visible to
-    /// <c>Ignixa.FhirFakes.Tests</c> via <c>InternalsVisibleTo</c> so tests can construct synthetic
-    /// scenarios pointing at test-local methods. Not <c>required</c> (a required member cannot be less
-    /// visible than its public containing type, per CS9032) — always set via the object initializer by
-    /// <c>ScenarioCatalog.Discover()</c> and by tests; the <c>= null!</c> default only silences the
-    /// nullable-reference-type warning since the compiler can no longer enforce it's set.
+    /// The underlying factory method. Internal so raw reflection stays an implementation detail; set by
+    /// <c>Discover()</c> and tests via InternalsVisibleTo.
     /// </summary>
     internal MethodInfo Method { get; init; } = null!;
 }

@@ -178,6 +178,71 @@ public class ScenarioCatalogTests
         context.GetAttribute<Severity>("severity").ShouldBe(Severity.Low);
     }
 
+    [Fact]
+    public void GivenAnnotatedScenario_WhenInvoking_ThenStampsClinicalDomain()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var scenario = ScenarioCatalog.Find("DiabeticPatient")!;
+
+        var context = ScenarioCatalog.Invoke(scenario, schemaProvider);
+
+        context.GetAttribute<ClinicalDomain>(ScenarioCatalog.ClinicalDomainAttributeKey)
+            .ShouldBe(ClinicalDomain.Endocrinology);
+    }
+
+    [Fact]
+    public void GivenUnannotatedScenario_WhenInvoking_ThenDoesNotStampClinicalDomain()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var scenario = ScenarioCatalog.Find("ComprehensiveScreeningVisit")!;
+
+        var context = ScenarioCatalog.Invoke(scenario, schemaProvider);
+
+        context.HasAttribute(ScenarioCatalog.ClinicalDomainAttributeKey).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenStringOverrideForIntParameter_WhenInvoking_ThenThrowsArgumentException()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var method = typeof(ScenarioCatalogTests).GetMethod(
+            nameof(RequiredParamScenario), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var scenario = new DiscoveredScenario
+        {
+            Id = "RequiredParamScenario",
+            Title = "RequiredParamScenario",
+            Parameters = [],
+            Method = method,
+        };
+
+        var exception = Should.Throw<ArgumentException>(
+            () => ScenarioCatalog.Invoke(scenario, schemaProvider, new Dictionary<string, object?> { ["requiredValue"] = "notanint" }));
+
+        exception.Message.ShouldContain("RequiredParamScenario");
+        exception.Message.ShouldContain("requiredValue");
+    }
+
+    [Fact]
+    public void GivenNullOverrideForNonNullableIntParameter_WhenInvoking_ThenThrowsArgumentException()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var method = typeof(ScenarioCatalogTests).GetMethod(
+            nameof(RequiredParamScenario), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var scenario = new DiscoveredScenario
+        {
+            Id = "RequiredParamScenario",
+            Title = "RequiredParamScenario",
+            Parameters = [],
+            Method = method,
+        };
+
+        var exception = Should.Throw<ArgumentException>(
+            () => ScenarioCatalog.Invoke(scenario, schemaProvider, new Dictionary<string, object?> { ["requiredValue"] = null }));
+
+        exception.Message.ShouldContain("RequiredParamScenario");
+        exception.Message.ShouldContain("requiredValue");
+    }
+
     private static ScenarioContext RequiredParamScenario(IFhirSchemaProvider schemaProvider, int requiredValue)
     {
         var context = new ScenarioContext();
