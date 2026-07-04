@@ -72,6 +72,27 @@ public class SchemaBasedFhirResourceFaker
     /// </summary>
     public GenerationDensity Density { get; set; } = GenerationDensity.Minimal;
 
+    /// <summary>
+    /// Clinical theme for coherent code selection. Null (the default) auto-picks one random domain
+    /// per <see cref="Generate(string)"/> call; <see cref="ClinicalDomain.Unspecified"/> disables
+    /// theming entirely (fully independent picks, the pre-theming behavior); any other value pins
+    /// every themed pick to that domain.
+    /// </summary>
+    public ClinicalDomain? Theme { get; set; }
+
+    private ClinicalDomain? _resolvedTheme;
+
+    private static readonly ClinicalDomain[] AssignableDomains =
+        Enum.GetValues<ClinicalDomain>().Where(d => d != ClinicalDomain.Unspecified).ToArray();
+
+    private ClinicalDomain GetOrResolveTheme()
+    {
+        if (Theme is { } explicitTheme)
+            return explicitTheme;
+
+        return _resolvedTheme ??= _faker.PickRandom(AssignableDomains);
+    }
+
     public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider)
     {
         _schemaProvider = schemaProvider;
@@ -189,6 +210,8 @@ public class SchemaBasedFhirResourceFaker
     public ResourceJsonNode Generate(string resourceType)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
+
+        _resolvedTheme = null;
 
         if (!_schemaProvider.ResourceTypeNames.Contains(resourceType))
         {
@@ -502,7 +525,7 @@ public class SchemaBasedFhirResourceFaker
         }
 
         // Try to get codes from our predefined constants
-        if (!BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) || codes.Length == 0)
+        if (!BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) || codes.Length == 0)
         {
             return false;
         }
@@ -777,7 +800,7 @@ public class SchemaBasedFhirResourceFaker
         // Try binding-aware generation first
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return CreateCodeableConcept(selectedCode);
@@ -805,7 +828,7 @@ public class SchemaBasedFhirResourceFaker
         // Try to get binding information for concept generation
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return new JsonObject
@@ -853,7 +876,7 @@ public class SchemaBasedFhirResourceFaker
         // Try binding-aware generation first
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return CreateCoding(selectedCode);
@@ -871,6 +894,20 @@ public class SchemaBasedFhirResourceFaker
     }
 
     /// <summary>
+    /// Picks a themed code from the pool for the resolved theme, falling back to the given default
+    /// when theming is disabled or the pool has no code tagged for the active theme.
+    /// </summary>
+    private FhirCode PickThemedOrDefault(FhirCode[] pool, FhirCode noThemeDefault)
+    {
+        var theme = GetOrResolveTheme();
+        if (theme == ClinicalDomain.Unspecified)
+            return noThemeDefault;
+
+        var themed = Array.FindAll(pool, c => c.Domain == theme);
+        return themed.Length > 0 ? _faker.PickRandom(themed) : noThemeDefault;
+    }
+
+    /// <summary>
     /// Attempts to get a FhirCode based on context heuristics.
     /// </summary>
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
@@ -882,30 +919,33 @@ public class SchemaBasedFhirResourceFaker
         if (lowerContext.Contains("condition", StringComparison.OrdinalIgnoreCase) ||
             lowerContext.Contains("diagnosis", StringComparison.OrdinalIgnoreCase))
         {
-            fhirCode = FhirCode.Conditions.Hypertension;
+            fhirCode = PickThemedOrDefault(BindingCodeMapper.GetAllConditionCodes(), FhirCode.Conditions.Hypertension);
             return true;
         }
 
         if (lowerContext.Contains("medication", StringComparison.OrdinalIgnoreCase))
         {
-            fhirCode = FhirCode.Medications.Ibuprofen400mg;
+            fhirCode = PickThemedOrDefault(BindingCodeMapper.GetAllMedicationCodes(), FhirCode.Medications.Ibuprofen400mg);
             return true;
         }
 
         if (lowerContext.Contains("observation", StringComparison.OrdinalIgnoreCase) ||
             lowerContext.Contains("loinc", StringComparison.OrdinalIgnoreCase))
         {
-            fhirCode = FhirCode.Observations.BodyWeight;
+            fhirCode = PickThemedOrDefault(BindingCodeMapper.GetAllObservationCodes(), FhirCode.Observations.BodyWeight);
             return true;
         }
 
         if (lowerContext.Contains("procedure", StringComparison.OrdinalIgnoreCase))
         {
-            // Use a generic procedure code (we don't have Appendectomy in our constants)
             var procedureCodes = BindingCodeMapper.GetAllProcedureCodes();
             if (procedureCodes.Length > 0)
             {
-                fhirCode = _faker.PickRandom(procedureCodes);
+                var theme = GetOrResolveTheme();
+                var themedProcedures = theme == ClinicalDomain.Unspecified
+                    ? procedureCodes
+                    : Array.FindAll(procedureCodes, c => c.Domain == theme) is { Length: > 0 } themed ? themed : procedureCodes;
+                fhirCode = _faker.PickRandom(themedProcedures);
                 return true;
             }
         }

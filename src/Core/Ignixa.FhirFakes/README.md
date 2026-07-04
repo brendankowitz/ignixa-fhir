@@ -110,15 +110,63 @@ var builder = new ScenarioBuilder(schemaProvider)
 var context = builder.Build();
 ```
 
+### Discover and Invoke Predefined Scenarios Programmatically
+
+`ScenarioCatalog` and `ObservationStateCatalog` discover the library's predefined scenarios and
+observation states by reflection, so a UI or other consumer can enumerate and invoke them without
+hard-coding extension method names:
+
+```csharp
+using Ignixa.FhirFakes.Scenarios;
+using Ignixa.FhirFakes.Scenarios.States;
+
+foreach (var scenario in ScenarioCatalog.GetAll())
+{
+    Console.WriteLine($"{scenario.Id}: {scenario.Title} ({scenario.Category})");
+}
+
+var found = ScenarioCatalog.Find("DiabeticPatient");
+if (found is not null)
+{
+    var context = ScenarioCatalog.Invoke(found, schemaProvider,
+        new Dictionary<string, object?> { ["age"] = 60, ["severity"] = 3 });
+}
+
+foreach (var name in ObservationStateCatalog.GetNames())
+{
+    if (ObservationStateCatalog.TryCreate(name, out var state))
+    {
+        // use state
+    }
+}
+```
+
+### Theme-Consistent Generation
+
+At any density, `SchemaBasedFhirResourceFaker` can keep sibling coded fields on one resource drawn
+from the same clinical specialty instead of picking each independently at random:
+
+```csharp
+var faker = new SchemaBasedFhirResourceFaker(schemaProvider)
+{
+    Density = GenerationDensity.Maximum,
+    Theme = ClinicalDomain.Cardiology   // omit for a random (but still coherent) theme
+};
+
+var procedure = faker.Generate("Procedure");
+```
+
 ## Architecture
 
 ### Layer 1: Random Resources
 - `BindingAwareGenerator`: Core resource generation
 - Respects FHIR profiles and terminology bindings
 - Generates valid references and complex types
+- `ClinicalDomain` / `Theme`: keeps sibling coded fields on one resource thematically coherent
 
 ### Layer 2: Clinical Scenarios
 - `ScenarioBuilder`: Fluent composition API
+- `ScenarioCatalog` / `ObservationStateCatalog`: public, attribute-driven discovery of predefined scenarios and observation states
 - `ProbabilisticBranchState`: Evidence-based branching
 - `VitalSignCorrelationEngine`: Physiological realism
 - `CommonScenarios`: Reusable clinical fragments

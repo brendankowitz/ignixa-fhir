@@ -140,7 +140,7 @@ public static class PediatricAsthmaOnsetScenario
                         MedicationOrderState.Albuterol(),
 
                         // Controller medication (long-term management)
-                        MedicationOrderState.FlucticasonePropionate(),
+                        MedicationOrderState.FluticasonePropionate(),
 
                         // === YEAR 2: Asthma Management Follow-Ups (Age 5) ===
                         DelayState.Months(3),
@@ -357,7 +357,7 @@ public static class PediatricAsthmaOnsetScenario
                         },
                         ObservationState.PeakFlow(value: 160m),
                         MedicationOrderState.Albuterol(),
-                        MedicationOrderState.FlucticasonePropionate(),
+                        MedicationOrderState.FluticasonePropionate(),
 
                         // Education: Allergen avoidance strategies
                         new SetAttributeState { AttributeName = "allergen_avoidance_education", Value = "completed" },

@@ -12,8 +12,25 @@ namespace Ignixa.FhirFakes.Scenarios.Codes;
 /// <param name="System">The code system URI (e.g., "http://snomed.info/sct").</param>
 /// <param name="Code">The code value (e.g., "44054006").</param>
 /// <param name="Display">The human-readable display text (e.g., "Diabetes mellitus type 2").</param>
-public record FhirCode(string System, string Code, string Display)
+public sealed record FhirCode(string System, string Code, string Display)
 {
+    /// <summary>
+    /// Clinical specialty this code belongs to, or null if domain-neutral/untagged.
+    /// </summary>
+    /// <remarks>
+    /// Excluded from equality/hashing along with <see cref="Display"/> — a FHIR code's true identity is
+    /// (System, Code); Domain is thematic metadata, not identity. Verified: no two curated constants in
+    /// this codebase currently share a (System, Code) pair while differing in Domain. If that ever becomes
+    /// necessary (the same code legitimately belonging to two domains), this equality contract must be
+    /// revisited.
+    /// </remarks>
+    public ClinicalDomain? Domain { get; init; }
+
+    public bool Equals(FhirCode? other) =>
+        other is not null && System == other.System && Code == other.Code;
+
+    public override int GetHashCode() => HashCode.Combine(System, Code);
+
     /// <summary>
     /// Common code systems used in FHIR resources.
     /// </summary>
@@ -33,20 +50,20 @@ public record FhirCode(string System, string Code, string Display)
     /// </summary>
     public static class Conditions
     {
-        public static readonly FhirCode DiabetesType2 = new(Systems.SnomedCt, "44054006", "Diabetes mellitus type 2");
-        public static readonly FhirCode Prediabetes = new(Systems.SnomedCt, "714628002", "Prediabetes");
-        public static readonly FhirCode Hypertension = new(Systems.SnomedCt, "38341003", "Hypertensive disorder");
-        public static readonly FhirCode HypertensionEssential = new(Systems.SnomedCt, "59621000", "Essential hypertension");
-        public static readonly FhirCode Hyperlipidemia = new(Systems.SnomedCt, "55822004", "Hyperlipidemia");
-        public static readonly FhirCode Obesity = new(Systems.SnomedCt, "414915002", "Obesity");
-        public static readonly FhirCode Pregnancy = new(Systems.SnomedCt, "77386006", "Pregnancy");
-        public static readonly FhirCode Asthma = new(Systems.SnomedCt, "195967001", "Asthma");
-        public static readonly FhirCode AllergicRhinitis = new(Systems.SnomedCt, "61582004", "Allergic rhinitis");
-        public static readonly FhirCode PregnancyNormal = new(Systems.SnomedCt, "72892002", "Normal pregnancy");
-        public static readonly FhirCode UrinaryTractInfection = new(Systems.SnomedCt, "68566005", "Urinary tract infectious disease");
-        public static readonly FhirCode AcuteUpperRespiratoryInfection = new(Systems.SnomedCt, "54150009", "Upper respiratory infection");
-        public static readonly FhirCode Appendicitis = new(Systems.SnomedCt, "74400008", "Appendicitis");
-        public static readonly FhirCode VitaminDDeficiency = new(Systems.SnomedCt, "34713006", "Vitamin D deficiency");
+        public static readonly FhirCode DiabetesType2 = new(Systems.SnomedCt, "44054006", "Diabetes mellitus type 2") { Domain = ClinicalDomain.Endocrinology };
+        public static readonly FhirCode Prediabetes = new(Systems.SnomedCt, "714628002", "Prediabetes") { Domain = ClinicalDomain.Endocrinology };
+        public static readonly FhirCode Hypertension = new(Systems.SnomedCt, "38341003", "Hypertensive disorder") { Domain = ClinicalDomain.Cardiology };
+        public static readonly FhirCode HypertensionEssential = new(Systems.SnomedCt, "59621000", "Essential hypertension") { Domain = ClinicalDomain.Cardiology };
+        public static readonly FhirCode Hyperlipidemia = new(Systems.SnomedCt, "55822004", "Hyperlipidemia") { Domain = ClinicalDomain.Cardiology };
+        public static readonly FhirCode Obesity = new(Systems.SnomedCt, "414915002", "Obesity") { Domain = ClinicalDomain.Endocrinology };
+        public static readonly FhirCode Pregnancy = new(Systems.SnomedCt, "77386006", "Pregnancy") { Domain = ClinicalDomain.ObstetricsGynecology };
+        public static readonly FhirCode Asthma = new(Systems.SnomedCt, "195967001", "Asthma") { Domain = ClinicalDomain.Pulmonology };
+        public static readonly FhirCode AllergicRhinitis = new(Systems.SnomedCt, "61582004", "Allergic rhinitis") { Domain = ClinicalDomain.Pulmonology };
+        public static readonly FhirCode PregnancyNormal = new(Systems.SnomedCt, "72892002", "Normal pregnancy") { Domain = ClinicalDomain.ObstetricsGynecology };
+        public static readonly FhirCode UrinaryTractInfection = new(Systems.SnomedCt, "68566005", "Urinary tract infectious disease") { Domain = ClinicalDomain.Urology };
+        public static readonly FhirCode AcuteUpperRespiratoryInfection = new(Systems.SnomedCt, "54150009", "Upper respiratory infection") { Domain = ClinicalDomain.FamilyMedicine };
+        public static readonly FhirCode Appendicitis = new(Systems.SnomedCt, "74400008", "Appendicitis") { Domain = ClinicalDomain.GeneralSurgery };
+        public static readonly FhirCode VitaminDDeficiency = new(Systems.SnomedCt, "34713006", "Vitamin D deficiency") { Domain = ClinicalDomain.Endocrinology };
     }
 
     /// <summary>
@@ -54,16 +71,16 @@ public record FhirCode(string System, string Code, string Display)
     /// </summary>
     public static class Observations
     {
-        public static readonly FhirCode HemoglobinA1c = new(Systems.Loinc, "4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood");
-        public static readonly FhirCode BloodGlucose = new(Systems.Loinc, "2339-0", "Glucose [Mass/volume] in Blood");
-        public static readonly FhirCode BloodPressureSystolic = new(Systems.Loinc, "8480-6", "Systolic blood pressure");
-        public static readonly FhirCode BloodPressureDiastolic = new(Systems.Loinc, "8462-4", "Diastolic blood pressure");
-        public static readonly FhirCode BloodPressurePanel = new(Systems.Loinc, "85354-9", "Blood pressure panel");
+        public static readonly FhirCode HemoglobinA1c = new(Systems.Loinc, "4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood") { Domain = ClinicalDomain.Endocrinology };
+        public static readonly FhirCode BloodGlucose = new(Systems.Loinc, "2339-0", "Glucose [Mass/volume] in Blood") { Domain = ClinicalDomain.Endocrinology };
+        public static readonly FhirCode BloodPressureSystolic = new(Systems.Loinc, "8480-6", "Systolic blood pressure") { Domain = ClinicalDomain.Cardiology };
+        public static readonly FhirCode BloodPressureDiastolic = new(Systems.Loinc, "8462-4", "Diastolic blood pressure") { Domain = ClinicalDomain.Cardiology };
+        public static readonly FhirCode BloodPressurePanel = new(Systems.Loinc, "85354-9", "Blood pressure panel") { Domain = ClinicalDomain.Cardiology };
         public static readonly FhirCode BodyWeight = new(Systems.Loinc, "29463-7", "Body weight");
         public static readonly FhirCode BodyHeight = new(Systems.Loinc, "8302-2", "Body height");
         public static readonly FhirCode Bmi = new(Systems.Loinc, "39156-5", "Body mass index (BMI)");
-        public static readonly FhirCode PeakExpiratoryFlowRate = new(Systems.Loinc, "33452-4", "Peak expiratory flow rate");
-        public static readonly FhirCode FetalHeartRate = new(Systems.Loinc, "55283-6", "Fetal heart rate");
+        public static readonly FhirCode PeakExpiratoryFlowRate = new(Systems.Loinc, "33452-4", "Peak expiratory flow rate") { Domain = ClinicalDomain.Pulmonology };
+        public static readonly FhirCode FetalHeartRate = new(Systems.Loinc, "55283-6", "Fetal heart rate") { Domain = ClinicalDomain.ObstetricsGynecology };
         public static readonly FhirCode BodyTemperature = new(Systems.Loinc, "8310-5", "Body temperature");
         public static readonly FhirCode PainSeverity = new(Systems.Loinc, "72514-3", "Pain severity - 0-10 verbal numeric rating [Score] - Reported");
     }
@@ -77,56 +94,56 @@ public record FhirCode(string System, string Code, string Display)
         // Diabetes
 
         /// <summary>Metformin 500mg tablet - First-line oral diabetes medication</summary>
-        public static readonly FhirCode Metformin500mg = new(Systems.RxNorm, "860975", "Metformin hydrochloride 500 MG Oral Tablet");
+        public static readonly FhirCode Metformin500mg = new(Systems.RxNorm, "860975", "Metformin hydrochloride 500 MG Oral Tablet") { Domain = ClinicalDomain.Endocrinology };
 
         /// <summary>Metformin 1000mg tablet - First-line oral diabetes medication</summary>
-        public static readonly FhirCode Metformin1000mg = new(Systems.RxNorm, "861007", "Metformin hydrochloride 1000 MG Oral Tablet");
+        public static readonly FhirCode Metformin1000mg = new(Systems.RxNorm, "861007", "Metformin hydrochloride 1000 MG Oral Tablet") { Domain = ClinicalDomain.Endocrinology };
 
         /// <summary>Insulin glargine 100 UNT/ML injection - Long-acting insulin</summary>
-        public static readonly FhirCode InsulinGlargine = new(Systems.RxNorm, "261551", "Insulin glargine 100 UNT/ML Injectable Solution");
+        public static readonly FhirCode InsulinGlargine = new(Systems.RxNorm, "261551", "Insulin glargine 100 UNT/ML Injectable Solution") { Domain = ClinicalDomain.Endocrinology };
 
         /// <summary>Insulin lispro 100 UNT/ML injection - Rapid-acting insulin</summary>
-        public static readonly FhirCode InsulinLispro = new(Systems.RxNorm, "865097", "Insulin lispro 100 UNT/ML Injectable Solution");
+        public static readonly FhirCode InsulinLispro = new(Systems.RxNorm, "865097", "Insulin lispro 100 UNT/ML Injectable Solution") { Domain = ClinicalDomain.Endocrinology };
 
         // Hypertension & Cardiovascular
 
         /// <summary>Lisinopril 10mg tablet - ACE inhibitor for hypertension</summary>
-        public static readonly FhirCode Lisinopril10mg = new(Systems.RxNorm, "314076", "Lisinopril 10 MG Oral Tablet");
+        public static readonly FhirCode Lisinopril10mg = new(Systems.RxNorm, "314076", "Lisinopril 10 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Lisinopril 20mg tablet - ACE inhibitor for hypertension</summary>
-        public static readonly FhirCode Lisinopril20mg = new(Systems.RxNorm, "314077", "Lisinopril 20 MG Oral Tablet");
+        public static readonly FhirCode Lisinopril20mg = new(Systems.RxNorm, "314077", "Lisinopril 20 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Amlodipine 5mg tablet - Calcium channel blocker for hypertension</summary>
-        public static readonly FhirCode Amlodipine5mg = new(Systems.RxNorm, "329528", "Amlodipine 5 MG Oral Tablet");
+        public static readonly FhirCode Amlodipine5mg = new(Systems.RxNorm, "329528", "Amlodipine 5 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Amlodipine 10mg tablet - Calcium channel blocker for hypertension</summary>
-        public static readonly FhirCode Amlodipine10mg = new(Systems.RxNorm, "329526", "Amlodipine 10 MG Oral Tablet");
+        public static readonly FhirCode Amlodipine10mg = new(Systems.RxNorm, "329526", "Amlodipine 10 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Atorvastatin 20mg tablet - Statin for cholesterol</summary>
-        public static readonly FhirCode Atorvastatin20mg = new(Systems.RxNorm, "617318", "Atorvastatin 20 MG Oral Tablet");
+        public static readonly FhirCode Atorvastatin20mg = new(Systems.RxNorm, "617318", "Atorvastatin 20 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Atorvastatin 40mg tablet - Statin for cholesterol</summary>
-        public static readonly FhirCode Atorvastatin40mg = new(Systems.RxNorm, "617310", "Atorvastatin 40 MG Oral Tablet");
+        public static readonly FhirCode Atorvastatin40mg = new(Systems.RxNorm, "617310", "Atorvastatin 40 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Aspirin 81mg tablet - Low-dose antiplatelet for cardiac protection</summary>
-        public static readonly FhirCode Aspirin81mg = new(Systems.RxNorm, "243670", "Aspirin 81 MG Oral Tablet");
+        public static readonly FhirCode Aspirin81mg = new(Systems.RxNorm, "243670", "Aspirin 81 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Clopidogrel 75mg tablet - Antiplatelet medication</summary>
-        public static readonly FhirCode Clopidogrel75mg = new(Systems.RxNorm, "309362", "Clopidogrel 75 MG Oral Tablet");
+        public static readonly FhirCode Clopidogrel75mg = new(Systems.RxNorm, "309362", "Clopidogrel 75 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         /// <summary>Warfarin 5mg tablet - Anticoagulant</summary>
-        public static readonly FhirCode Warfarin5mg = new(Systems.RxNorm, "855333", "Warfarin Sodium 5 MG Oral Tablet");
+        public static readonly FhirCode Warfarin5mg = new(Systems.RxNorm, "855333", "Warfarin Sodium 5 MG Oral Tablet") { Domain = ClinicalDomain.Cardiology };
 
         // Respiratory
 
         /// <summary>Albuterol 0.083 mg/mL inhalation solution - Bronchodilator for asthma</summary>
-        public static readonly FhirCode Albuterol = new(Systems.RxNorm, "435", "Albuterol 0.083 MG/ML Inhalation Solution");
+        public static readonly FhirCode Albuterol = new(Systems.RxNorm, "435", "Albuterol 0.083 MG/ML Inhalation Solution") { Domain = ClinicalDomain.Pulmonology };
 
         /// <summary>Fluticasone propionate 50 mcg inhaler - Inhaled corticosteroid for asthma</summary>
-        public static readonly FhirCode Fluticasone50mcg = new(Systems.RxNorm, "746030", "Fluticasone propionate 0.05 MG/ACTUAT Metered Dose Inhaler");
+        public static readonly FhirCode Fluticasone50mcg = new(Systems.RxNorm, "746030", "Fluticasone propionate 0.05 MG/ACTUAT Metered Dose Inhaler") { Domain = ClinicalDomain.Pulmonology };
 
         /// <summary>Montelukast 10mg tablet - Leukotriene inhibitor for asthma</summary>
-        public static readonly FhirCode Montelukast10mg = new(Systems.RxNorm, "198032", "Montelukast 10 MG Oral Tablet");
+        public static readonly FhirCode Montelukast10mg = new(Systems.RxNorm, "198032", "Montelukast 10 MG Oral Tablet") { Domain = ClinicalDomain.Pulmonology };
 
         // Pain Management
 
@@ -168,16 +185,16 @@ public record FhirCode(string System, string Code, string Display)
         // Mental Health
 
         /// <summary>Sertraline 50mg tablet - SSRI antidepressant</summary>
-        public static readonly FhirCode Sertraline50mg = new(Systems.RxNorm, "312938", "Sertraline 50 MG Oral Tablet");
+        public static readonly FhirCode Sertraline50mg = new(Systems.RxNorm, "312938", "Sertraline 50 MG Oral Tablet") { Domain = ClinicalDomain.Psychiatry };
 
         /// <summary>Escitalopram 10mg tablet - SSRI antidepressant</summary>
-        public static readonly FhirCode Escitalopram10mg = new(Systems.RxNorm, "351249", "Escitalopram 10 MG Oral Tablet");
+        public static readonly FhirCode Escitalopram10mg = new(Systems.RxNorm, "351249", "Escitalopram 10 MG Oral Tablet") { Domain = ClinicalDomain.Psychiatry };
 
         /// <summary>Alprazolam 0.5mg tablet - Benzodiazepine for anxiety</summary>
-        public static readonly FhirCode Alprazolam05mg = new(Systems.RxNorm, "308047", "Alprazolam 0.5 MG Oral Tablet");
+        public static readonly FhirCode Alprazolam05mg = new(Systems.RxNorm, "308047", "Alprazolam 0.5 MG Oral Tablet") { Domain = ClinicalDomain.Psychiatry };
 
         /// <summary>Lorazepam 1mg tablet - Benzodiazepine for anxiety</summary>
-        public static readonly FhirCode Lorazepam1mg = new(Systems.RxNorm, "197589", "Lorazepam 1 MG Oral Tablet");
+        public static readonly FhirCode Lorazepam1mg = new(Systems.RxNorm, "197589", "Lorazepam 1 MG Oral Tablet") { Domain = ClinicalDomain.Psychiatry };
 
         // Gastrointestinal
 
@@ -208,7 +225,7 @@ public record FhirCode(string System, string Code, string Display)
         public static readonly FhirCode Cetirizine = new(Systems.RxNorm, "1014678", "Cetirizine hydrochloride 10 MG Oral Tablet");
 
         /// <summary>Fluticasone propionate 110 mcg inhaler - Inhaled corticosteroid for asthma control</summary>
-        public static readonly FhirCode FlucticasonePropionate = new(Systems.RxNorm, "745678", "Fluticasone propionate 0.11 MG/ACTUAT Metered Dose Inhaler");
+        public static readonly FhirCode FluticasonePropionate = new(Systems.RxNorm, "745678", "Fluticasone propionate 0.11 MG/ACTUAT Metered Dose Inhaler");
 
         // Other Common Medications
 

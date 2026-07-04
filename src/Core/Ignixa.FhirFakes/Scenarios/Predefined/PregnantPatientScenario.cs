@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -29,10 +30,11 @@ public static class PregnantPatientScenario
     /// <param name="age">Patient age (default: 28).</param>
     /// <param name="weekOfPregnancy">Starting week of pregnancy for scenario (default: 8).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
+    [Scenario(Category = "Journey", Title = "Pregnancy Journey", Description = "Trimester-by-trimester prenatal visit journey from confirmation through delivery approach.", Domain = ClinicalDomain.ObstetricsGynecology)]
     public static ScenarioContext GetPregnantPatient(
         this IFhirSchemaProvider schemaProvider,
-        int age = 28,
-        int weekOfPregnancy = 8)
+        [ScenarioParameter(Min = 15, Max = 45, Description = "Patient age")] int age = 28,
+        [ScenarioParameter(Min = 1, Max = 40, Description = "Starting week of pregnancy for the scenario")] int weekOfPregnancy = 8)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

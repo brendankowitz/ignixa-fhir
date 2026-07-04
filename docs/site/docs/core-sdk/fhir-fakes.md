@@ -224,6 +224,50 @@ var scenario = schemaProvider.GetDiabeticPatient(
 // - Multiple follow-up encounters
 ```
 
+### Programmatic Discovery
+
+`ScenarioCatalog` and `ObservationStateCatalog` discover predefined scenarios and observation states by
+reflection, so a UI (or any other consumer) can enumerate them without hard-coding extension method names:
+
+```csharp
+using Ignixa.FhirFakes.Scenarios;
+using Ignixa.FhirFakes.Scenarios.States;
+
+// List all discovered scenarios with their metadata
+foreach (var scenario in ScenarioCatalog.GetAll())
+{
+    Console.WriteLine($"{scenario.Id}: {scenario.Title} ({scenario.Category})");
+    // scenario.Domain is the ClinicalDomain (e.g. Endocrinology), or null if undeclared
+    foreach (var parameter in scenario.Parameters)
+    {
+        Console.WriteLine($"  {parameter.Name}: {parameter.Type.Name} (min {parameter.Min}, max {parameter.Max})");
+    }
+}
+
+// Find one by id (case-insensitive) and invoke it with parameter overrides
+var found = ScenarioCatalog.Find("DiabeticPatient");
+if (found is not null)
+{
+    var overrides = new Dictionary<string, object?> { ["age"] = 60, ["severity"] = 3 };
+    var context = ScenarioCatalog.Invoke(found, schemaProvider, overrides);
+}
+
+// Discover observation states the same way
+foreach (var name in ObservationStateCatalog.GetNames())
+{
+    if (ObservationStateCatalog.TryCreate(name, out var state))
+    {
+        // use state
+    }
+}
+```
+
+`ScenarioCatalog.Invoke` throws `ScenarioInvocationException` (wrapping the original exception) if the
+scenario's factory method itself throws, and `ArgumentException` if a parameter override's type doesn't
+match the parameter's declared CLR type. A `[Scenario]`-annotated factory method can declare an explicit
+`Id` (to survive a method rename without breaking a published id) and a `Domain` (`ClinicalDomain`, e.g.
+`Cardiology`, `Endocrinology`) distinct from the free-text `Category` UI grouping label.
+
 ## Reusable Scenario Fragments
 
 Compose scenarios from common patterns:
@@ -331,9 +375,16 @@ ignixa-fakes r4 scenario HypertensivePatient --out ./output --resolved-reference
 # Validate generated resources against schema
 ignixa-fakes r4 scenario WellnessVisit --out ./output --validate
 
+# Override a scenario parameter (repeatable), e.g. patient age and severity
+ignixa-fakes r4 scenario DiabeticPatient --out ./output --param age=60 --param severity=3
+
 # List available scenarios
 ignixa-fakes help scenarios
 ```
+
+`--param name=value` is repeatable and matches by parameter name (case-insensitive); the raw string is
+parsed into the parameter's declared CLR type (int, decimal, bool, string, or enum) using invariant
+culture. An unknown parameter name or an unparseable value exits with code `2`.
 
 **Output**: `{version}-bundle-{scenario}-{guid}.json` (transaction or batch bundle)
 
@@ -393,6 +444,15 @@ ignixa-fakes r4 resource Observation BloodGlucose --out ./output
 
 # Generate any resource type at maximum density (all optional elements populated)
 ignixa-fakes r4 resource AllergyIntolerance --out ./output --density maximum
+
+# Generate at maximum density with a clinical theme so coded fields agree with each other
+ignixa-fakes r4 resource Procedure --out ./output --density maximum --theme orthopedic-surgery
+
+# Omit --theme for a random (but still coherent) theme per resource
+ignixa-fakes r4 resource Procedure --out ./output --density maximum
+
+# Disable theming entirely (pre-theming behavior: every coded field picked independently)
+ignixa-fakes r4 resource Procedure --out ./output --density maximum --theme none
 ```
 
 **Exit codes for scripting / CI:**
@@ -419,9 +479,9 @@ When edge cases are applied, a sidecar `.manifest.json` file is written alongsid
 
 | Command | Options |
 |---------|---------|
-| `scenario <name>` | `--out`, `--resolved-references`, `--validate` |
+| `scenario <name>` | `--out`, `--resolved-references`, `--validate`, `--param name=value` (repeatable) |
 | `population` | `--out`, `--from`, `--count`, `--resolved-references`, `--ndjson` |
-| `resource <type> [stateName]` | `--out`, `--firstname`, `--surname`, `--from`, `--validate`, `--edge-cases [selectors]`, `--seed`, `--include-invalid`, `--density`, `--verbose` |
+| `resource <type> [stateName]` | `--out`, `--firstname`, `--surname`, `--from`, `--validate`, `--edge-cases [selectors]`, `--seed`, `--include-invalid`, `--density`, `--theme`, `--verbose` |
 | `help scenarios` | Lists all available predefined scenarios |
 
 ## Deterministic / Reproducible Generation
@@ -661,6 +721,49 @@ ignixa-fakes r4 resource Patient --out ./output --density maximum --seed 42
 ```
 
 **Important:** when `--density` is `realistic` or `maximum`, the `resource` command uses the schema-based generator for any resource type and **ignores** `--firstname`, `--surname`, `--from`, and the Observation `stateName` specialisation. The filename includes the density label: `{version}-{resourcetype}-{density}-{id}.json`.
+
+### Theme-Consistent Generation
+
+Without a shared theme, sibling coded fields on one resource are picked independently and can be
+clinically incoherent (e.g. a `Procedure` with an unrelated `category`, `code`, and `bodySite`). `Theme`
+(a `ClinicalDomain`, e.g. `Cardiology`, `Endocrinology`, `OrthopedicSurgery`) keeps coded picks on one
+resource drawn from the same clinical specialty wherever the curated code pools have a tagged match,
+falling back to the full pool otherwise.
+
+**Density and Theme are orthogonal.** Density controls *which* elements are generated (required-only at
+`Minimal`, required plus every optional at `Maximum`); Theme controls the *clinical coherence* of
+whichever coded elements do get generated. Theme therefore applies to any coded element that gets
+populated at **any** density — including required coded elements at `Minimal`. It is not a
+`Maximum`-density-only feature.
+
+```csharp
+var faker = new SchemaBasedFhirResourceFaker(schemaProvider)
+{
+    Density = GenerationDensity.Maximum,
+    Theme = ClinicalDomain.OrthopedicSurgery   // optional — omit to auto-pick one random theme per Generate() call
+};
+
+var procedure = faker.Generate("Procedure");
+```
+
+| `Theme` value | Behaviour |
+|---|---|
+| unset (`null`, the default) | A random `ClinicalDomain` is picked once per `Generate()` call and used for every themed pick on that resource. |
+| `ClinicalDomain.Unspecified` | Theming disabled — every coded field is picked independently from the full pool (pre-theming behaviour). |
+| Any other `ClinicalDomain` | Every themed pick on the resource is drawn from that domain's tagged codes, falling back to the full pool if a value set has no tagged match. |
+
+Only the curated `Conditions`, `Medications`, `Observations`, and `Procedures` code pools are tagged in
+this initial pass — value sets resolved via `IValueSetProvider` (not the curated pools) are unaffected.
+
+### CLI
+
+```bash
+ignixa-fakes r4 resource Procedure --out ./output --density maximum --theme orthopedic-surgery
+ignixa-fakes r4 resource Procedure --out ./output --density maximum --theme none
+```
+
+`--theme` accepts a `ClinicalDomain` name in kebab-case or PascalCase (case-insensitive), or `none` to
+disable theming. Omit it for a random (but still coherent) theme per resource.
 
 ---
 

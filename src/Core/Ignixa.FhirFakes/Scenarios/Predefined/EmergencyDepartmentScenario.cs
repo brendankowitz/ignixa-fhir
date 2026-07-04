@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -71,10 +72,11 @@ public static class EmergencyDepartmentScenario
     /// <param name="age">Patient age (default: 58 - typical chest pain presentation age).</param>
     /// <param name="gender">Patient gender (default: "male" - higher cardiac risk).</param>
     /// <returns>A complete scenario context with ED chest pain workup.</returns>
+    [Scenario(Category = "Emergency", Title = "Emergency — Chest Pain", Description = "ESI-2 chest pain workup with serial troponin, EKG, and probabilistic disposition.", Domain = ClinicalDomain.EmergencyMedicine)]
     public static ScenarioContext GetChestPainVisit(
         this IFhirSchemaProvider schemaProvider,
-        int age = 58,
-        string gender = "male")
+        [ScenarioParameter(Min = 18, Max = 95, Description = "Patient age")] int age = 58,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male")
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
@@ -237,10 +239,11 @@ public static class EmergencyDepartmentScenario
     /// <param name="age">Patient age (default: 28 - peak incidence for appendicitis).</param>
     /// <param name="gender">Patient gender (default: "male" - slightly higher incidence).</param>
     /// <returns>A complete scenario context with ED abdominal pain workup.</returns>
+    [Scenario(Category = "Emergency", Title = "Emergency — Abdominal Pain", Description = "Abdominal pain workup with labs, CT imaging, and possible appendectomy.", Domain = ClinicalDomain.EmergencyMedicine)]
     public static ScenarioContext GetAbdominalPainVisit(
         this IFhirSchemaProvider schemaProvider,
-        int age = 28,
-        string gender = "male")
+        [ScenarioParameter(Min = 5, Max = 90, Description = "Patient age")] int age = 28,
+        [ScenarioParameter(Description = "Patient gender")] string gender = "male")
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

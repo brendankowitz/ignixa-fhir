@@ -27,8 +27,9 @@ namespace Ignixa.FhirFakes;
 /// the faker can query this mapper to get appropriate codes for elements with bindings,
 /// ensuring generated resources use realistic, valid terminology.
 ///
-/// NOTE: This class is stateless and thread-safe. The IValueSetProvider must be passed
-/// to methods that need version-specific code lookup to ensure correct version handling
+/// NOTE: Thread-safe via benign-race lazy caching — concurrent first-access calls may each compute a
+/// code cache once, but all results are identical, so no locking is needed. The IValueSetProvider must
+/// be passed to methods that need version-specific code lookup to ensure correct version handling
 /// when multiple FHIR versions are used concurrently (e.g., in test scenarios).
 /// </remarks>
 internal static class BindingCodeMapper
@@ -55,6 +56,7 @@ internal static class BindingCodeMapper
     private static FhirCode[]? _medicationCodes;
     private static FhirCode[]? _conditionCodes;
     private static FhirCode[]? _encounterTypeCodes;
+    private static FhirCode[]? _observationCodes;
 
     /// <summary>
     /// Attempts to get predefined codes for a value set URI.
@@ -73,6 +75,30 @@ internal static class BindingCodeMapper
 
         codes = GetCodesForValueSetInternal(valueSetUri, valueSetProvider);
         return codes.Length > 0;
+    }
+
+    /// <summary>
+    /// Theme-aware variant: filters the value set's codes to the given clinical domain, falling back
+    /// to the full pool when the theme is <see cref="ClinicalDomain.Unspecified"/> or has no tagged match.
+    /// </summary>
+    public static bool TryGetCodesForValueSet(
+        string? valueSetUri, IValueSetProvider? valueSetProvider, ClinicalDomain theme, out FhirCode[] codes)
+    {
+        if (!TryGetCodesForValueSet(valueSetUri, valueSetProvider, out var all))
+        {
+            codes = [];
+            return false;
+        }
+
+        if (theme == ClinicalDomain.Unspecified)
+        {
+            codes = all;
+            return true;
+        }
+
+        var themed = Array.FindAll(all, c => c.Domain == theme);
+        codes = themed.Length > 0 ? themed : all;
+        return true;
     }
 
     /// <summary>
@@ -222,6 +248,14 @@ internal static class BindingCodeMapper
     public static FhirCode[] GetAllEncounterTypeCodes()
     {
         return _encounterTypeCodes ??= GetCodesFromStaticFields(typeof(FhirCode.EncounterTypes));
+    }
+
+    /// <summary>
+    /// Gets all observation codes from the FhirCode.Observations nested class.
+    /// </summary>
+    public static FhirCode[] GetAllObservationCodes()
+    {
+        return _observationCodes ??= GetCodesFromStaticFields(typeof(FhirCode.Observations));
     }
 
     /// <summary>

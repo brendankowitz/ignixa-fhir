@@ -19,7 +19,7 @@ Created/Enhanced Scenarios:
 Supporting Code Added:
 - `MedicationOrderState.cs` - Added factory methods:
   - `Atorvastatin20mg()` - Statin for hyperlipidemia
-  - `FlucticasonePropionate()` - Inhaled corticosteroid for asthma control
+  - `FluticasonePropionate()` - Inhaled corticosteroid for asthma control
   - `VitaminD50000IU()` - High-dose vitamin D for deficiency
 
 - `FhirCode.cs` - Added condition codes:
@@ -34,7 +34,7 @@ Supporting Code Added:
 - `FhirCode.cs` - Added medication codes:
   - `VitaminD50000IU` - RxNorm: 316879
   - `Cetirizine` - RxNorm: 1014678
-  - `FlucticasonePropionate` - RxNorm: 745678
+  - `FluticasonePropionate` - RxNorm: 745678
 
 - `Allergens.cs` - Added aliases:
   - `DustMites` → `DustMite`
@@ -284,7 +284,7 @@ builder
                 new ConditionOnsetState { Code = FhirCode.Conditions.Asthma, Severity = 2 },
                 ObservationState.PeakFlow(value: 180m),  // Reduced during diagnosis
                 MedicationOrderState.Albuterol(),  // Rescue inhaler
-                MedicationOrderState.FlucticasonePropionate(),  // Controller medication
+                MedicationOrderState.FluticasonePropionate(),  // Controller medication
                 // ... follow-up visits with peak flow monitoring ...
 
                 // Nested probability: 20% experience exacerbation in first year

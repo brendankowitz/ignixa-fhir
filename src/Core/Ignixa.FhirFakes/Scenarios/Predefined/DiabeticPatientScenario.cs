@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Abstractions;
@@ -31,11 +32,12 @@ public static class DiabeticPatientScenario
     /// <param name="gender">Patient gender (default: random).</param>
     /// <param name="severity">Initial diabetes severity 1-5 (default: 2).</param>
     /// <returns>A complete scenario context with patient journey.</returns>
+    [Scenario(Category = "Chronic", Title = "Type 2 Diabetes", Description = "A1C, glucose, and Metformin dose escalation across follow-up encounters.", Domain = ClinicalDomain.Endocrinology)]
     public static ScenarioContext GetDiabeticPatient(
         this IFhirSchemaProvider schemaProvider,
-        int age = 52,
-        string? gender = null,
-        int severity = 2)
+        [ScenarioParameter(Min = 18, Max = 90, Description = "Patient age")] int age = 52,
+        [ScenarioParameter(Description = "Patient gender; random if not specified")] string? gender = null,
+        [ScenarioParameter(Min = 1, Max = 5, Description = "Initial diabetes severity (1-5)")] int severity = 2)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
 

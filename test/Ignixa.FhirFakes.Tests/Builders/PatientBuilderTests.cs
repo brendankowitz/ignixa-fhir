@@ -1406,6 +1406,30 @@ public class PatientBuilderTests
         gpArray[1]?["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
     }
 
+    [Fact]
+    public void GivenInvalidGenderString_WhenSettingGender_ThenThrowsArgumentException()
+    {
+        var builder = PatientBuilderFactory.Create(_schemaProvider);
+
+        Should.Throw<ArgumentException>(() => builder.WithGender("not-a-real-gender"));
+    }
+
+    [Theory]
+    [InlineData("Male", "male")]
+    [InlineData("FEMALE", "female")]
+    [InlineData("other", "other")]
+    [InlineData("Unknown", "unknown")]
+    public void GivenValidGenderStringInAnyCase_WhenSettingGender_ThenNormalizesToCanonicalLowercaseCode(string gender, string expectedCanonical)
+    {
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithGender(gender)
+            .Build();
+
+        // AdministrativeGender is a case-sensitive FHIR code system (male/female/other/unknown only) —
+        // input casing must not leak into the emitted resource.
+        patient.MutableNode["gender"]?.GetValue<string>().ShouldBe(expectedCanonical);
+    }
+
     #endregion
 }
 
