@@ -33,6 +33,7 @@ internal static class ResourceCommand
         var seedOption = new Option<int?>("--seed") { Description = "Seed for reproducible edge-case generation" };
         var includeInvalidOption = new Option<bool>("--include-invalid") { Description = "Include non-validity-preserving (MayViolate/AlwaysInvalid) strategies when edge-cases are enabled", DefaultValueFactory = _ => false };
         var densityOption = new Option<string?>("--density") { Description = "Generation density: minimal|realistic|maximum (default minimal). realistic/maximum use the schema generator for ANY resource type and therefore IGNORE --firstname/--surname/--from and the Observation stateName specialization. realistic currently behaves identically to minimal." };
+        var themeOption = new Option<string?>("--theme") { Description = "Clinical theme for coherent code selection with --density maximum (e.g. cardiology, endocrinology, orthopedic-surgery). Omit for a random theme per resource; use 'none' to disable theming." };
         var verboseOption = new Option<bool>("--verbose") { Description = "Print full exception details (type and stack trace) on error", DefaultValueFactory = _ => false };
 
         resourceCommand.Arguments.Add(resourceTypeArg);
@@ -46,6 +47,7 @@ internal static class ResourceCommand
         resourceCommand.Options.Add(seedOption);
         resourceCommand.Options.Add(includeInvalidOption);
         resourceCommand.Options.Add(densityOption);
+        resourceCommand.Options.Add(themeOption);
         resourceCommand.Options.Add(verboseOption);
 
         resourceCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -73,11 +75,18 @@ internal static class ResourceCommand
                 return;
             }
 
+            if (!TryParseTheme(parseResult.GetValue(themeOption), out var theme))
+            {
+                await Console.Error.WriteLineAsync($"✗ Invalid --theme value '{parseResult.GetValue(themeOption)}'. Use a clinical domain name (e.g. cardiology, orthopedic-surgery) or 'none'.");
+                Environment.ExitCode = 2;
+                return;
+            }
+
             if (edgeCasesEnabled && explicitSeed is null)
                 Console.WriteLine($"Seed: {seed}  (pass --seed {seed} to replay)");
 
             await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder,
-                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, verbose, cancellationToken);
+                firstname, surname, from, validate, edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, theme, verbose, cancellationToken);
         });
 
         return resourceCommand;
@@ -105,6 +114,30 @@ internal static class ResourceCommand
             && Enum.IsDefined(density);
     }
 
+    internal static bool TryParseTheme(string? value, out ClinicalDomain? theme)
+    {
+        theme = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        var trimmed = value.Trim().Replace("-", string.Empty, StringComparison.Ordinal);
+        if (trimmed.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            theme = ClinicalDomain.Unspecified;
+            return true;
+        }
+
+        if (Enum.TryParse<ClinicalDomain>(trimmed, ignoreCase: true, out var parsed)
+            && Enum.IsDefined(parsed)
+            && parsed != ClinicalDomain.Unspecified)
+        {
+            theme = parsed;
+            return true;
+        }
+
+        return false;
+    }
+
     private static string[] ParseSelectors(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -129,6 +162,7 @@ internal static class ResourceCommand
         int? explicitSeed,
         bool includeInvalid,
         GenerationDensity density,
+        ClinicalDomain? theme,
         bool verbose,
         CancellationToken cancellationToken)
     {
@@ -144,7 +178,7 @@ internal static class ResourceCommand
             if (density != GenerationDensity.Minimal)
             {
                 await HandleGenericDensity(schemaProvider, fhirVersion, resourceType, outFolder, validate,
-                    edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, options, cancellationToken);
+                    edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, theme, options, cancellationToken);
             }
             else if (resourceType.Equals("Patient", StringComparison.OrdinalIgnoreCase))
             {
@@ -257,12 +291,13 @@ internal static class ResourceCommand
         int? explicitSeed,
         bool includeInvalid,
         GenerationDensity density,
+        ClinicalDomain? theme,
         JsonSerializerOptions options,
         CancellationToken cancellationToken)
     {
         var faker = explicitSeed is { } s
-            ? new SchemaBasedFhirResourceFaker(schemaProvider, s) { Density = density }
-            : new SchemaBasedFhirResourceFaker(schemaProvider) { Density = density };
+            ? new SchemaBasedFhirResourceFaker(schemaProvider, s) { Density = density, Theme = theme }
+            : new SchemaBasedFhirResourceFaker(schemaProvider) { Density = density, Theme = theme };
 
         var resource = faker.Generate(resourceType);
         var manifest = ApplyEdgeCases(schemaProvider, resource, edgeCasesEnabled, selectors, seed, includeInvalid);
