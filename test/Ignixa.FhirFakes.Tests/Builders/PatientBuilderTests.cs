@@ -739,6 +739,51 @@ public class PatientBuilderTests
     }
 
     [Fact]
+    public void GivenRealisticBuilder_WhenBuildingFromLondon_ThenUsesUKCoreProfile()
+    {
+        // Arrange & Act
+        var builder = PatientBuilderFactory.Create(_schemaProvider)
+            .FromCity(KnownCities.London);
+
+        // Assert - Check profile is UK Core
+        builder.Profile.ShouldBe(UKCorePatientProfile.Instance);
+        builder.Profile.ProfileUrl.ShouldBe("https://fhir.hl7.org.uk/StructureDefinition/UKCore-Patient");
+        builder.Profile.CountryCode.ShouldBe("GB");
+    }
+
+    [Fact]
+    public void GivenRealisticBuilder_WhenBuildingFromLondon_ThenIncludesEthnicCategoryExtensionAndNhsNumber()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .FromCity(KnownCities.London)
+            .Build();
+
+        // Assert
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
+
+        // Should have address in London, GB
+        var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        address?["city"]?.GetValue<string>().ShouldBe("London");
+        address?["country"]?.GetValue<string>().ShouldBe("GB");
+
+        // Should have UK Core ethnic category extension
+        var extensions = patient.MutableNode["extension"]?.AsArray();
+        extensions.ShouldNotBeNull();
+
+        var ethnicCategoryUrl = "https://fhir.hl7.org.uk/StructureDefinition/Extension-UKCore-EthnicCategory";
+        extensions!.Any(e => e?["url"]?.GetValue<string>() == ethnicCategoryUrl)
+            .ShouldBeTrue("UK patients should have ethnic category extension");
+
+        // Should have an NHS Number identifier
+        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        identifiers.ShouldNotBeNull();
+        identifiers!.Any(i => i?["system"]?.GetValue<string>() == "https://fhir.nhs.uk/Id/nhs-number")
+            .ShouldBeTrue("UK patients should have an NHS Number identifier");
+    }
+
+    [Fact]
     public void GivenSimpleBuilder_WhenUsingWithProfile_ThenUsesSpecifiedProfile()
     {
         // Arrange & Act
@@ -887,6 +932,137 @@ public class PatientBuilderTests
         extensionsWithBMI.Count.ShouldBe(1);
         extensionsWithBMI[0]["url"]?.GetValue<string>().ShouldBe("http://ignixa.dev/StructureDefinition/patient-bmi");
         extensionsWithBMI[0]["valueDecimal"]?.GetValue<decimal>().ShouldBe(25.5m);
+    }
+
+    [Fact]
+    public void GivenPatientProfileFactory_WhenGettingGBProfile_ThenReturnsUKCoreProfile()
+    {
+        // Assert
+        PatientProfileFactory.GetProfile("GB").ShouldBe(UKCorePatientProfile.Instance);
+        UKCorePatientProfile.Instance.ProfileUrl.ShouldBe("https://fhir.hl7.org.uk/StructureDefinition/UKCore-Patient");
+        UKCorePatientProfile.Instance.CountryCode.ShouldBe("GB");
+    }
+
+    [Fact]
+    public void GivenUKCoreProfile_WhenBuildingWithEthnicCategory_ThenIncludesEthnicCategoryExtension()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithProfile(UKCorePatientProfile.Instance)
+            .WithAttribute(UKCorePatientProfile.EthnicCategoryAttribute, UKCorePatientProfile.EthnicCategory.British)
+            .WithGender("female")
+            .WithAge(30)
+            .Build();
+
+        // Assert
+        var extensions = patient.MutableNode["extension"]?.AsArray();
+        extensions.ShouldNotBeNull();
+
+        var ethnicCategoryExtension = extensions!
+            .FirstOrDefault(e => e?["url"]?.GetValue<string>() == "https://fhir.hl7.org.uk/StructureDefinition/Extension-UKCore-EthnicCategory");
+        ethnicCategoryExtension.ShouldNotBeNull();
+
+        var coding = ethnicCategoryExtension!["valueCodeableConcept"]?["coding"]?.AsArray()?[0]?.AsObject();
+        coding.ShouldNotBeNull();
+        coding!["system"]?.GetValue<string>().ShouldBe("https://fhir.hl7.org.uk/CodeSystem/UKCore-EthnicCategory");
+        coding["code"]?.GetValue<string>().ShouldBe("A");
+        coding["display"]?.GetValue<string>().ShouldBe("British, White");
+    }
+
+    [Fact]
+    public void GivenUKCoreProfile_WhenBuildingPatient_ThenIncludesNhsNumberIdentifierWithVerificationStatus()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithProfile(UKCorePatientProfile.Instance)
+            .WithAttribute(UKCorePatientProfile.EthnicCategoryAttribute, UKCorePatientProfile.EthnicCategory.British)
+            .WithGender("male")
+            .WithAge(50)
+            .Build();
+
+        // Assert
+        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        identifiers.ShouldNotBeNull();
+
+        var nhsIdentifier = identifiers!
+            .FirstOrDefault(i => i?["system"]?.GetValue<string>() == "https://fhir.nhs.uk/Id/nhs-number");
+        nhsIdentifier.ShouldNotBeNull();
+
+        var value = nhsIdentifier!["value"]?.GetValue<string>();
+        value.ShouldNotBeNull();
+        value!.Length.ShouldBe(10);
+        value.ShouldAllBe(c => char.IsDigit(c));
+
+        var verificationStatus = nhsIdentifier["extension"]?.AsArray()?[0]?.AsObject();
+        verificationStatus.ShouldNotBeNull();
+        verificationStatus!["url"]?.GetValue<string>()
+            .ShouldBe("https://fhir.hl7.org.uk/StructureDefinition/Extension-UKCore-NHSNumberVerificationStatus");
+        verificationStatus["valueCodeableConcept"]?["coding"]?.AsArray()?[0]?["code"]?.GetValue<string>().ShouldBe("01");
+    }
+
+    [Fact]
+    public void GivenUKCoreProfile_WhenGeneratingNhsNumbers_ThenEachHasValidModulus11CheckDigit()
+    {
+        // Arrange
+        var attributes = new Dictionary<string, object>();
+
+        // Act & Assert - generate a batch and independently validate each check digit
+        for (var n = 0; n < 100; n++)
+        {
+            var identifiers = UKCorePatientProfile.Instance.BuildIdentifiers(attributes)!.ToList();
+            var nhsNumber = identifiers[0]["value"]!.GetValue<string>();
+
+            nhsNumber.Length.ShouldBe(10);
+            IsValidNhsNumber(nhsNumber).ShouldBeTrue($"'{nhsNumber}' should have a valid Modulus 11 check digit");
+        }
+    }
+
+    // Independent reimplementation of the NHS Modulus 11 validation used to verify generated numbers.
+    private static bool IsValidNhsNumber(string nhsNumber)
+    {
+        if (nhsNumber.Length != 10 || !nhsNumber.All(char.IsDigit))
+        {
+            return false;
+        }
+
+        var sum = 0;
+        for (var i = 0; i < 9; i++)
+        {
+            sum += (nhsNumber[i] - '0') * (10 - i);
+        }
+
+        var remainder = sum % 11;
+        var checkDigit = 11 - remainder;
+
+        if (checkDigit == 11)
+        {
+            checkDigit = 0;
+        }
+        else if (checkDigit == 10)
+        {
+            return false;
+        }
+
+        return checkDigit == nhsNumber[9] - '0';
+    }
+
+    [Theory]
+    [InlineData("GB")]
+    [InlineData("IE")]
+    public void GivenDefaultNameStrategy_WhenGeneratingForUkOrIrelandLocale_ThenDoesNotThrow(string countryCode)
+    {
+        // Bogus throws on an unknown locale, so a successful call proves en_GB / en_IE are valid.
+        var randomizer = new Bogus.Randomizer(42);
+
+        var act = () => DefaultNameGenerationStrategy.Instance.GenerateName(
+            "female",
+            new Dictionary<string, object>(),
+            countryCode,
+            randomizer);
+
+        var (given, family) = act.ShouldNotThrow();
+        given.ShouldNotBeNullOrEmpty();
+        family.ShouldNotBeNullOrEmpty();
     }
 
     #endregion

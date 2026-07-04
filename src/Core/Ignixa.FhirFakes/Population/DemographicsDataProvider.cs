@@ -353,7 +353,8 @@ public class DemographicsDataProvider
             Attributes: new Dictionary<string, object>
             {
                 [AUBasePatientProfile.IndigenousStatusDistributionKey] = australianIndigenousDistribution
-            }
+            },
+            PostalCodeFormat: PostalCodeFormat.FixedNumeric
         ));
 
         provider.AddCity(new CityDemographics(
@@ -373,7 +374,8 @@ public class DemographicsDataProvider
             Attributes: new Dictionary<string, object>
             {
                 [AUBasePatientProfile.IndigenousStatusDistributionKey] = australianIndigenousDistribution
-            }
+            },
+            PostalCodeFormat: PostalCodeFormat.FixedNumeric
         ));
 
         provider.AddCity(new CityDemographics(
@@ -389,8 +391,50 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.498,
             ZipCodePrefix: "1011",
-            AreaCodes: ["020"]
-            // No profile-specific attributes for Amsterdam
+            AreaCodes: ["020"],
+            PostalCodeFormat: PostalCodeFormat.DutchAlphaNumeric
+        ));
+
+        // International cities - United Kingdom
+        // Data source: ONS 2021 Census (Greater London)
+        provider.AddCity(new CityDemographics(
+            Name: "London",
+            State: "Greater London",
+            Country: "GB",
+            Population: 8_799_800,
+            AgeGroupDistribution: new() {
+                ["0-17"] = 0.190,
+                ["18-44"] = 0.460,
+                ["45-64"] = 0.230,
+                ["65+"] = 0.120
+            },
+            MaleRatio: 0.495,
+            ZipCodePrefix: "SW1A",
+            AreaCodes: ["020"],
+            Attributes: new Dictionary<string, object>
+            {
+                [UKCorePatientProfile.EthnicCategoryDistributionKey] = new Dictionary<string, double>
+                {
+                    ["A"] = 0.372,
+                    ["B"] = 0.016,
+                    ["C"] = 0.170,
+                    ["D"] = 0.010,
+                    ["E"] = 0.008,
+                    ["F"] = 0.020,
+                    ["G"] = 0.019,
+                    ["H"] = 0.070,
+                    ["J"] = 0.030,
+                    ["K"] = 0.030,
+                    ["L"] = 0.077,
+                    ["M"] = 0.042,
+                    ["N"] = 0.079,
+                    ["P"] = 0.014,
+                    ["R"] = 0.017,
+                    ["S"] = 0.021,
+                    ["Z"] = 0.005
+                }
+            },
+            PostalCodeFormat: PostalCodeFormat.UkAlphaNumeric
         ));
 
         return provider;
@@ -456,19 +500,30 @@ public class DemographicsDataProvider
     }
 
     /// <summary>
-    /// Samples a zip code from the city's zip code range.
+    /// Samples a postal code from the city's postal code range, shaped according to
+    /// <see cref="CityDemographics.PostalCodeFormat"/>.
     /// </summary>
     /// <param name="city">City demographics.</param>
-    /// <param name="randomizer">The seeded randomizer used for zip code sampling.</param>
+    /// <param name="randomizer">The seeded randomizer used for postal code sampling.</param>
     /// <example>
-    /// Boston (prefix "021") → "02101", "02142", "02298", etc.
+    /// Boston (prefix "021", NumericSuffix) → "02101", "02142", "02298", etc.
+    /// Melbourne (prefix "3000", FixedNumeric) → "3000".
+    /// Amsterdam (prefix "1011", DutchAlphaNumeric) → "1011 AB", etc.
+    /// London (prefix "SW1A", UkAlphaNumeric) → "SW1A 1AA", etc.
     /// </example>
     public string SampleZipCode(CityDemographics city, Bogus.Randomizer randomizer)
     {
         ArgumentNullException.ThrowIfNull(randomizer);
 
-        var suffix = randomizer.Int(0, 99).ToString("D2");
-        return city.ZipCodePrefix + suffix;
+        const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+        return city.PostalCodeFormat switch
+        {
+            PostalCodeFormat.FixedNumeric => city.ZipCodePrefix,
+            PostalCodeFormat.DutchAlphaNumeric => $"{city.ZipCodePrefix} {randomizer.String2(2, letters)}",
+            PostalCodeFormat.UkAlphaNumeric => $"{city.ZipCodePrefix} {randomizer.Int(0, 9)}{randomizer.String2(2, letters)}",
+            _ => city.ZipCodePrefix + randomizer.Int(0, 99).ToString("D2"),
+        };
     }
 
     /// <summary>

@@ -19,6 +19,7 @@ namespace Ignixa.FhirFakes.Population;
 /// <param name="ZipCodePrefix">Zip/Postal code prefix range for the city (e.g., "021" for Boston 02101-02298, "3000" for Melbourne)</param>
 /// <param name="AreaCodes">Phone area codes for the city (e.g., ["617", "857"] for Boston, ["03"] for Melbourne)</param>
 /// <param name="Attributes">Optional profile-specific attributes for this city (e.g., ethnicity distribution for US, indigenous status distribution for AU)</param>
+/// <param name="PostalCodeFormat">The postal code shape to sample in (default: US-style numeric suffix). See <see cref="Population.PostalCodeFormat"/>.</param>
 public record CityDemographics(
     string Name,
     string State,
@@ -28,7 +29,8 @@ public record CityDemographics(
     double MaleRatio,
     string ZipCodePrefix,
     IReadOnlyList<string> AreaCodes,
-    IReadOnlyDictionary<string, object>? Attributes = null
+    IReadOnlyDictionary<string, object>? Attributes = null,
+    PostalCodeFormat PostalCodeFormat = PostalCodeFormat.NumericSuffix
 )
 {
     /// <summary>

@@ -1230,12 +1230,22 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 
     private bool HasIdentifiers()
     {
-        return _identifiers.Count > 0;
+        return _identifiers.Count > 0 || _profile.BuildIdentifiers(_profileAttributes) is not null;
     }
 
     private JsonArray BuildIdentifiers()
     {
         var identifierArray = new JsonArray();
+
+        // Profile-specific identifiers (e.g. UK Core NHS Number)
+        var profileIdentifiers = _profile.BuildIdentifiers(_profileAttributes);
+        if (profileIdentifiers is not null)
+        {
+            foreach (var identifier in profileIdentifiers)
+            {
+                identifierArray.Add(identifier);
+            }
+        }
 
         foreach (var config in _identifiers)
         {
