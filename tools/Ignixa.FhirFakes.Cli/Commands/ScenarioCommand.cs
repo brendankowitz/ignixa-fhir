@@ -56,7 +56,7 @@ internal static class ScenarioCommand
             var validate = parseResult.GetValue(validateOption);
             var paramValues = parseResult.GetValue(paramOption) ?? [];
 
-            await HandleScenarioCommand(schemaProvider, fhirVersion, scenarioName, outFolder, resolvedReferences, validate, paramValues);
+            await HandleScenarioCommand(schemaProvider, fhirVersion, scenarioName, outFolder, resolvedReferences, validate, paramValues, cancellationToken);
         });
 
         return scenarioCommand;
@@ -69,7 +69,8 @@ internal static class ScenarioCommand
         string outFolder,
         bool resolvedReferences,
         bool validate,
-        string[] paramValues)
+        string[] paramValues,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -129,7 +130,7 @@ internal static class ScenarioCommand
             // Use ToBatchBundle if resolved references is requested
             var bundle = resolvedReferences ? context.ToBatchBundle() : context.ToBundle();
             var json = JsonSerializer.Serialize(bundle.MutableNode, options);
-            await File.WriteAllTextAsync(outputPath, json);
+            await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
             var bundleType = resolvedReferences ? "batch" : "transaction";
             Console.WriteLine($"Generated scenario bundle ({bundleType}): {outputPath}");
@@ -171,6 +172,7 @@ internal static class ScenarioCommand
         catch (Exception ex)
         {
             Console.WriteLine($"X Error: {ex.Message}");
+            Environment.ExitCode = 1;
         }
     }
 

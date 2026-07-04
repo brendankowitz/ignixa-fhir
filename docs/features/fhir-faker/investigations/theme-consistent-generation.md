@@ -1,8 +1,14 @@
 # Investigation: Theme-Consistent (Semantically Coherent) Generation
 
 **Feature**: fhir-faker
-**Status**: In Progress
+**Status**: MVP implemented (see `docs/site/docs/core-sdk/fhir-fakes.md#theme-consistent-generation`)
 **Created**: 2026-07-04
+
+> **Update:** the MVP described below has been implemented on the
+> `feature/fakes-unified-scenario-discovery-theming` branch, alongside PR #297's scenario/state
+> discovery API. One correction from the original design: `FhirCode.Domain` was added as an
+> **init-only property**, not the additive positional constructor parameter shown below — see the
+> note after the code snippet.
 
 ## Summary
 
@@ -65,15 +71,29 @@ SchemaBasedFhirResourceFaker
 ### Data model
 
 ```csharp
-// FhirCode.cs — additive positional parameter, default null, existing call sites unaffected
-public sealed record FhirCode(string System, string Code, string Display, ClinicalDomain? Domain = null);
+// FhirCode.cs — init-only property, NOT a positional constructor parameter: FhirCode is a public
+// record on a stable (semver-committed) NuGet package, and an added positional parameter is
+// binary-breaking for compiled consumers even though source-compatible. An init property is
+// additive; existing `new FhirCode(system, code, display)` call sites are unaffected and yield
+// Domain = null.
+public record FhirCode(string System, string Code, string Display)
+{
+    public ClinicalDomain? Domain { get; init; }
+    // ...nested Systems/Conditions/Observations/Medications/EncounterTypes classes unchanged
+}
 
-// New, small, flat enum — mirrors names already in Scenarios/Codes/Specialties.cs
+// Tagged constant example:
+public static readonly FhirCode DiabetesType2 =
+    new(Systems.SnomedCt, "44054006", "Diabetes mellitus type 2") { Domain = ClinicalDomain.Endocrinology };
+
+// New, small, flat enum — mirrors names already in Scenarios/Codes/Specialties.cs; Unspecified = 0
+// is the "no theme" sentinel (see SchemaBasedFhirResourceFaker.Theme below)
 public enum ClinicalDomain
 {
-    FamilyMedicine, InternalMedicine, Cardiology, Endocrinology, GeneralSurgery,
-    OrthopedicSurgery, Gastroenterology, ObstetricsGynecology, Urology, Radiology,
-    // ... remaining entries mirror Specialties.cs
+    Unspecified = 0, FamilyMedicine, InternalMedicine, Pediatrics, Cardiology, EmergencyMedicine,
+    GeneralSurgery, ObstetricsGynecology, Psychiatry, Neurology, OrthopedicSurgery, Dermatology,
+    Ophthalmology, Radiology, Anesthesiology, Pathology, Oncology, Pulmonology, Gastroenterology,
+    Endocrinology, Nephrology, Urology,
 }
 ```
 
