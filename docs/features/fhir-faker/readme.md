@@ -18,6 +18,7 @@ Test data generation library for creating realistic FHIR resources across versio
 | [theme-consistent-generation](investigations/theme-consistent-generation.md) | MVP Implemented | 2026-07-04 | Carry a clinical "theme" through generation so sibling coded fields on one resource stay semantically coherent, independent of density |
 | [uk-core-patient-profile](investigations/uk-core-patient-profile.md) | Implemented | 2026-07-04 | UKCorePatientProfile (NHS number + ONS ethnic category) and London, following the US Core/AU Base pattern |
 | [country-aware-postal-codes](investigations/country-aware-postal-codes.md) | Implemented | 2026-07-04 | Fixed `SampleZipCode`'s US-shaped numeric-suffix logic — was already producing invalid postcodes for Melbourne/Sydney/Amsterdam |
+| [workflow-context-data-generation](investigations/workflow-context-data-generation.md) | Proposed | 2026-07-04 | Workflow-shaped fixture data, search-response composition, and extension seams for downstream context consumers |
 
 ## Overview
 
