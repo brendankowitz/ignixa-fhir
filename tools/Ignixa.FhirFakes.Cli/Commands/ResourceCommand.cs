@@ -231,7 +231,7 @@ internal static class ResourceCommand
                     return;
                 }
 
-                var faker = new SchemaBasedFhirResourceFaker(schemaProvider);
+                var faker = new SchemaBasedFhirResourceFaker(schemaProvider) { Theme = theme };
                 var context = new Ignixa.FhirFakes.Scenarios.ScenarioContext();
                 var patient = PatientBuilderFactory.Create(schemaProvider).Build();
                 context.Patient = patient;

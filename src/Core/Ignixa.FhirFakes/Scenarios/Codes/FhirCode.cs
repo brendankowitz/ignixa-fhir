@@ -12,7 +12,7 @@ namespace Ignixa.FhirFakes.Scenarios.Codes;
 /// <param name="System">The code system URI (e.g., "http://snomed.info/sct").</param>
 /// <param name="Code">The code value (e.g., "44054006").</param>
 /// <param name="Display">The human-readable display text (e.g., "Diabetes mellitus type 2").</param>
-public record FhirCode(string System, string Code, string Display)
+public sealed record FhirCode(string System, string Code, string Display)
 {
     /// <summary>
     /// Clinical specialty this code belongs to, or null if domain-neutral/untagged.
@@ -26,7 +26,7 @@ public record FhirCode(string System, string Code, string Display)
     /// </remarks>
     public ClinicalDomain? Domain { get; init; }
 
-    public virtual bool Equals(FhirCode? other) =>
+    public bool Equals(FhirCode? other) =>
         other is not null && System == other.System && Code == other.Code;
 
     public override int GetHashCode() => HashCode.Combine(System, Code);

@@ -106,7 +106,11 @@ public sealed class DiscoveredScenarioParameter
 
         if (underlyingType.IsEnum)
         {
-            if ((rawValue.Length == 0 || !char.IsDigit(rawValue[0]))
+            // Trim before the digit check, not just rawValue[0] — Enum.TryParse itself trims
+            // leading/trailing whitespace, so an untrimmed check here would let " 1" slip past
+            // as a raw ordinal (caught only if that ordinal happens to be undefined).
+            var trimmedForDigitCheck = rawValue.Trim();
+            if ((trimmedForDigitCheck.Length == 0 || !char.IsDigit(trimmedForDigitCheck[0]))
                 && Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var enumValue)
                 && Enum.IsDefined(underlyingType, enumValue!))
             {
