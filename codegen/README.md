@@ -14,7 +14,6 @@ codegen/
 ├── Ignixa.Specification.Generators/ # Custom ILanguage implementation
 │   └── CSharpStructureProviderLanguage.cs
 ├── fhir-codegen/                   # Git submodule (Microsoft fhir-codegen)
-├── generate.ps1                    # PowerShell generation script
 ├── generate.sh                     # Bash generation script
 └── Directory.Build.props           # Disables CPM for codegen
 ```
@@ -33,17 +32,11 @@ The main `All.sln` uses Central Package Management (CPM), which conflicts with t
 ### Prerequisites
 
 - .NET 8 SDK or later
-- PowerShell 7+ (for `generate.ps1`) or Bash (for `generate.sh`)
+- Bash (for `generate.sh`) or PowerShell 7+ (for `generate-search-parameters.ps1`)
 
 ### Generating Providers
 
 #### Generate all FHIR versions:
-
-**PowerShell:**
-```powershell
-cd codegen
-./generate.ps1
-```
 
 **Bash:**
 ```bash
@@ -53,17 +46,12 @@ cd codegen
 
 #### Generate a specific version:
 
-**PowerShell:**
-```powershell
-./generate.ps1 -FhirVersion R4
-```
-
 **Bash:**
 ```bash
 ./generate.sh R4
 ```
 
-Supported versions: `R4`, `R4B`, `R5`, `STU3`, `All`
+Supported versions: `R4`, `R4B`, `R5`, `R6`, `STU3`, `All`
 
 ### Output
 
