@@ -94,6 +94,25 @@ var age = element.Scalar("age()");
 var count = element.Scalar("name.count()");
 ```
 
+:::warning
+`Scalar()` returns the raw boxed .NET value. Don't call `.ToString()` on it to get display
+text — a boolean gives `"True"` instead of FhirPath's `"true"`, and decimals format per the
+current culture. Use `Select(expr).AsString()` for spec-conformant strings.
+:::
+
+### AsString
+
+Converts a single-result expression to its FhirPath string representation (the spec's
+`toString()` rules — lowercase booleans, invariant-culture decimals):
+
+```csharp
+var hasAddress = element.Select("address.exists()").AsString();  // "false", not "False"
+var birthDate = element.Select("birthDate").AsString();
+```
+
+Returns `null` if the expression yields empty, multiple values, or a non-convertible value —
+matching `Scalar()`'s empty/multiple contract.
+
 ### IsTrue / IsBoolean
 
 Returns boolean evaluation:
@@ -417,7 +436,7 @@ IEnumerable<IElement> results = compiled != null
 ```
 
 :::note
-Most applications should use the `Select()`, `Scalar()`, `IsTrue()` extension methods which handle caching automatically. Direct API access is only needed for custom caching strategies or AST inspection.
+Most applications should use the `Select()`, `Scalar()`, `AsString()`, `IsTrue()` extension methods which handle caching automatically. Direct API access is only needed for custom caching strategies or AST inspection.
 :::
 
 ## Performance Tips

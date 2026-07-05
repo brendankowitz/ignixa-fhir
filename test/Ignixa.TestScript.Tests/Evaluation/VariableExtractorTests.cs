@@ -64,6 +64,47 @@ public class VariableExtractorTests
     }
 
     [Fact]
+    public async Task GivenExpressionExtractionOfBooleanValue_WhenExtracting_ThenSubstitutesLowercaseString()
+    {
+        // Same bug class as the fhirpath-value assertion evaluator: a Scalar()?.ToString()
+        // would render boolean extractions as "True", not the FhirPath-spec "true".
+        var responses = new Queue<TestResponse>(new[]
+        {
+            new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"1","active":true}""")
+            },
+            new TestResponse { StatusCode = 200 }
+        });
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => responses.Dequeue());
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "BooleanExpression" },
+            Variables = [new VariableDefinition { Name = "isActive", Extraction = new ExpressionExtraction("Patient.active") }],
+            Setup = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "UseIsActive",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/${isActive}" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+        await _mockProvider.Received().ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Url == "Patient/true"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GivenExpressionExtractionWithBadSyntax_WhenExtracting_ThenRecordsErrorNotSilentlyIgnored()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())

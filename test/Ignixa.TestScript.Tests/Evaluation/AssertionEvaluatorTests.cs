@@ -454,6 +454,29 @@ public class AssertionEvaluatorTests
     }
 
     [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenExpressionReturnsBoolean_ThenComparesAsLowercaseString()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "abc"}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/abc" },
+            new AssertExpression
+            {
+                Criteria = new FhirPathValueCriteria("Patient.address.exists()", "false", AssertOperator.Equals)
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
     public async Task GivenFhirPathValueCriteria_WhenValueDoesNotMatch_ThenFails()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())

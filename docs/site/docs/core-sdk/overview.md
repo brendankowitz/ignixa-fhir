@@ -151,8 +151,8 @@ var names = element.Select("name.given");
 // Boolean check
 var isActive = element.IsTrue("active = true");
 
-// Scalar value
-var birthDate = element.Scalar("birthDate")?.ToString();
+// Scalar value as its FhirPath string representation
+var birthDate = element.Select("birthDate").AsString();
 ```
 
 ### Validate Resources

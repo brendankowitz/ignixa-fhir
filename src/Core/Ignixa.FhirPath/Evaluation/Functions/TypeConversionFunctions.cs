@@ -160,8 +160,8 @@ internal static class TypeConversionFunctions
         if (value is bool b)
             return [FunctionHelpers.CreateString(b ? "true" : "false")];
 
-        // All other types use their standard ToString()
-        return [FunctionHelpers.CreateString(value.ToString()!)];
+        // All other types: use invariant culture so numeric/date formatting doesn't vary by server locale
+        return [FunctionHelpers.CreateString(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!)];
     }
 
     /// <summary>

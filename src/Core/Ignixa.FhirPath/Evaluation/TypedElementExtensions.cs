@@ -6,6 +6,7 @@
  */
 
 using System.Collections.Concurrent;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
@@ -102,6 +103,13 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Single scalar value, or null if expression returns empty/multiple values</returns>
+    /// <remarks>
+    /// Returns the raw boxed value (bool, decimal, string, ...). Calling <c>.ToString()</c> on it
+    /// produces CLR formatting, not FhirPath formatting — a boolean renders as "True", not the
+    /// spec's "true", and decimals are culture-sensitive. To get the FhirPath string representation
+    /// of a result, use <see cref="AsString"/> on <see cref="Select"/> instead, e.g.
+    /// <c>input.Select(expression).AsString()</c>.
+    /// </remarks>
     public static object? Scalar(this IElement input, string expression, EvaluationContext? context = null)
     {
         var results = input.Select(expression, context).ToList();
@@ -112,6 +120,23 @@ public static class TypedElementExtensions
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Converts a single-item element collection to its FhirPath string representation
+    /// (the spec's <c>toString()</c> rules: lowercase booleans, invariant-culture decimals).
+    /// </summary>
+    /// <param name="elements">The element collection to convert, typically the result of <see cref="Select"/></param>
+    /// <returns>The FhirPath string representation, or null if the collection is empty, has multiple items, or is not convertible</returns>
+    /// <example>
+    /// <code>
+    /// var hasAddress = element.Select("address.exists()").AsString(); // "false", not "False"
+    /// </code>
+    /// </example>
+    public static string? AsString(this IEnumerable<IElement> elements)
+    {
+        ArgumentNullException.ThrowIfNull(elements);
+        return TypeConversionFunctions.ToString(elements).SingleOrDefault()?.Value as string;
     }
 
     /// <summary>
