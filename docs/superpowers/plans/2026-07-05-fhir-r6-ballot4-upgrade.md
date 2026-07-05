@@ -397,17 +397,47 @@ git commit -m "chore(specification): regenerate R6 value set provider for ballot
 
 ### Task 6: Regenerate R6 search parameters, compartments, and code system mappings
 
+**Third distinct toolchain gap found running this task the first time — now fixed in the plan below:** a first attempt crashed with a NEW exception type: `InvalidCastException: Value 'DeviceAlert' cannot be cast to a member of enumeration VersionIndependentResourceTypesAll`, at `codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs:202`, inside `searchParam.Target?.Select(r => r.ToString())`. Root cause: `SearchParameter.Target` (and the identically-shaped `SearchParameter.Base`, same file line 199 — didn't crash this run only because no SearchParameter in this specific load happened to have `DeviceAlert` in `.base`, but it has the exact same latent defect) are Firely SDK convenience properties that internally cast each raw code string to the strict `VersionIndependentResourceTypesAll` enum — which predates ballot4 and has no `DeviceAlert` member — and throw on access, before our code ever calls `.ToString()`. **Unlike the earlier submodule-level gaps, this crash is in code we own** (`codegen/Ignixa.Specification.Generators/`, not the vendored `fhir-codegen` submodule), so no fork/branch detour is needed. Confirmed fix: read the raw string via `BaseElement`/`TargetElement` (the untyped `Code<VersionIndependentResourceTypesAll>` lists) and each element's inherited `ObjectValue` (the pre-cast raw string), instead of the `.Base`/`.Target` convenience properties that force the enum cast. Verified both `BaseElement`/`TargetElement` and `ObjectValue` exist in the vendored `Hl7.Fhir.R5`/`Hl7.Fhir.Base` 5.13.1 assemblies before writing this fix into the plan.
+
 **Files:**
+- Modify: `codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs` (lines ~199, ~202 — the `.Base`/`.Target` access, see Step 1 below)
 - Modify (generated): `src/Core/Ignixa.Search/Generated/R6SearchParameterDefinitions.g.cs`
 - Modify (generated): `src/Core/Ignixa.Search/Generated/R6CompartmentDefinitions.g.cs`
 - Modify (generated): `src/Core/Ignixa.Search/Generated/R6CodeSystemMappings.g.cs`
+- Possibly modify: `codegen/Ignixa.Specification.Generators/CSharpCompartmentLanguage.cs`, `codegen/Ignixa.Specification.Generators/CSharpCodeSystemResolverLanguage.cs` (check for the same `.Select(r => r.ToString())`-on-a-`Code<VersionIndependentResourceTypesAll>`-typed-list pattern before running Steps 3/4 — a prior grep found no `.Target`/`.Base` references in either file, but check broadly for any similarly-shaped resource-type-enum access, since `DeviceAlert` could surface through a different property name in those generators)
 - Possibly modify: `src/Core/Ignixa.Search/Definition/SearchParameterDefinitionManager.cs`, `src/Core/Ignixa.Search/Definition/CompartmentDefinitionManager.cs`, `src/Core/Ignixa.Search/Indexing/CodeSystemResolver.cs` (each has a `FhirVersion.R6 => R6...Definitions/Mappings.Get...()` branch — only touch if regen renames the static accessor method)
 
 **Interfaces:**
-- Consumes: bumped pin from Task 2; advanced `fhir-codegen` toolchain from Task 3. These three modes default to a stale output path (`src/Ignixa.Search/Generated`, missing the `Core/` segment) — pass the correct output directory explicitly on every invocation, as shown below.
+- Consumes: bumped pin from Task 2; advanced + tolerant-parsing `fhir-codegen` toolchain from Tasks 3/3b. These three modes default to a stale output path (`src/Ignixa.Search/Generated`, missing the `Core/` segment) — pass the correct output directory explicitly on every invocation, as shown below.
 - Produces: `R6SearchParameterDefinitions.GetBaseSearchParameters()`, `R6CompartmentDefinitions.GetCompartments()`, `R6CodeSystemMappings.GetMappings()` reflecting ballot4.
 
-- [ ] **Step 1: Run the search generator for R6 with an explicit output path**
+- [ ] **Step 1: Fix the `Base`/`Target` resource-type enum crash in `CSharpSearchParameterLanguage.cs`**
+
+In `codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs`, find:
+
+```csharp
+        // Extract base (list of resource types)
+        var baseTypes = searchParam.Base?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+
+        // Extract target (list of target resource types for Reference parameters)
+        var targetTypes = searchParam.Target?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+```
+
+Change to read the raw string via `*Element`/`ObjectValue` instead of the enum-casting convenience properties:
+
+```csharp
+        // Extract base (list of resource types) -- read raw string via BaseElement/ObjectValue,
+        // not the Base convenience property, which casts to VersionIndependentResourceTypesAll
+        // and throws on ballot4-only resource types (e.g. DeviceAlert) that predate the pinned SDK's enum.
+        var baseTypes = searchParam.BaseElement?.Select(r => r.ObjectValue?.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+
+        // Extract target (list of target resource types for Reference parameters) -- same reasoning.
+        var targetTypes = searchParam.TargetElement?.Select(r => r.ObjectValue?.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+```
+
+Then check `CSharpCompartmentLanguage.cs` and `CSharpCodeSystemResolverLanguage.cs` for any similarly-shaped access (a `.Select(...)` over a list of `Code<VersionIndependentResourceTypesAll>`-typed values via a convenience property rather than its `*Element` form) — fix any found the same way. Rebuild the codegen tool (`cd codegen && dotnet build Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release`) to confirm the edit compiles before proceeding.
+
+- [ ] **Step 2: Run the search generator for R6 with an explicit output path**
 
 ```bash
 cd /e/data/src/ignixa-fhir
@@ -416,7 +446,7 @@ dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specificatio
 
 Expected: `git status --short` shows `src/Core/Ignixa.Search/Generated/R6SearchParameterDefinitions.g.cs` modified — NOT a new `src/Ignixa.Search/Generated/` directory. If a new top-level `src/Ignixa.Search/` directory appears, the output path argument was wrong; delete it and re-run with the exact path above.
 
-- [ ] **Step 2: Run the compartment generator for R6 with an explicit output path**
+- [ ] **Step 3: Run the compartment generator for R6 with an explicit output path**
 
 ```bash
 dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release -- compartment R6 src/Core/Ignixa.Search/Generated
@@ -424,7 +454,7 @@ dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specificatio
 
 Expected: `R6CompartmentDefinitions.g.cs` modified in place.
 
-- [ ] **Step 3: Run the codesystem generator for R6 with an explicit output path**
+- [ ] **Step 4: Run the codesystem generator for R6 with an explicit output path**
 
 ```bash
 dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release -- codesystem R6 src/Core/Ignixa.Search/Generated
@@ -432,7 +462,7 @@ dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specificatio
 
 Expected: `R6CodeSystemMappings.g.cs` modified in place.
 
-- [ ] **Step 4: Verify all three files landed in the correct folder with the correct namespace**
+- [ ] **Step 5: Verify all three files landed in the correct folder with the correct namespace**
 
 This is the mode most likely to drift — its default output path is wrong (that's why Steps 1-3 pass an explicit override), and this repo has previously had codegen output land in the wrong folder or with a mismatched namespace:
 
@@ -447,7 +477,7 @@ find / -maxdepth 6 -iname "Ignixa.Search" -not -path "*/src/Core/*" 2>/dev/null
 
 Expected: all three modified files are under `src/Core/Ignixa.Search/Generated/` and nowhere else; all three declare `namespace Ignixa.Search.Generated;` (matching the R4/R4B/R5/STU3 siblings — confirm with `grep "^namespace" src/Core/Ignixa.Search/Generated/R5SearchParameterDefinitions.g.cs` if in doubt); the last `find` (searched broadly, not just under `src/Core/`) returns nothing — i.e., no second `Ignixa.Search` directory was created anywhere else in the repo (e.g. `src/Ignixa.Search/`, or under `codegen/`). If a stray directory or wrong namespace turns up, delete it and re-run Steps 1-3 with the corrected explicit output path — do not hand-edit a misplaced file's namespace or move it, since that hides a generator misconfiguration that will reappear on the next regen.
 
-- [ ] **Step 5: Build the Search project**
+- [ ] **Step 6: Build the Search project**
 
 ```bash
 dotnet build src/Core/Ignixa.Search/Ignixa.Search.csproj
@@ -455,14 +485,28 @@ dotnet build src/Core/Ignixa.Search/Ignixa.Search.csproj
 
 Expected: `Build succeeded. 0 Error(s)`. If it fails, check `SearchParameterDefinitionManager.cs`, `CompartmentDefinitionManager.cs`, and `CodeSystemResolver.cs` — each switches on `FhirVersion.R6` to call a static method on the generated type; fix any renamed method/type reference following the pattern of the adjacent R5 branch.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
+
+This task touches two categories of file — the codegen fix (Step 1) and the regenerated output (Steps 2-4) — commit them together, since the regenerated output wouldn't exist without the fix:
 
 ```bash
+git add codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs
+# add codegen/Ignixa.Specification.Generators/CSharpCompartmentLanguage.cs and/or
+# CSharpCodeSystemResolverLanguage.cs too, if Step 1 found and fixed the same pattern there
 git add src/Core/Ignixa.Search/Generated/R6SearchParameterDefinitions.g.cs \
         src/Core/Ignixa.Search/Generated/R6CompartmentDefinitions.g.cs \
         src/Core/Ignixa.Search/Generated/R6CodeSystemMappings.g.cs
-# add any consumer files touched in Step 5
-git commit -m "chore(search): regenerate R6 search parameters, compartments, code systems for ballot4"
+# add any consumer files touched in Step 6
+git commit -m "fix(codegen): read raw resource-type strings via *Element/ObjectValue, not typed enum
+
+SearchParameter.Base/Target are Firely SDK convenience properties that
+cast each code to VersionIndependentResourceTypesAll -- an enum baked
+into the pinned Hl7.Fhir.R5 5.13.1 SDK that predates ballot4-only
+resource types like DeviceAlert, and throws InvalidCastException on
+access. Reading via BaseElement/TargetElement's ObjectValue instead
+gets the raw string without forcing the cast.
+
+chore(search): regenerate R6 search parameters, compartments, code systems for ballot4"
 ```
 
 ---
