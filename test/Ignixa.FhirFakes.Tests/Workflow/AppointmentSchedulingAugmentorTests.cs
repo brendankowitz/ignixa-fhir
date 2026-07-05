@@ -66,7 +66,7 @@ public class AppointmentSchedulingAugmentorTests
         augmentor.Augment(graph, new ResourceGraphAugmentationContext { SchemaProvider = schemaProvider, Faker = faker, Clock = TimeProvider.System });
 
         var appointment = graph.AllResources.Single(r => r.ResourceType == "Appointment");
-        patientContext.CurrentEncounter!.MutableNode["appointment"]!["reference"]!.ToString().ShouldBe($"Appointment/{appointment.Id}");
+        patientContext.CurrentEncounter!.MutableNode["appointment"]!.AsArray().Single()!["reference"]!.ToString().ShouldBe($"Appointment/{appointment.Id}");
     }
 
     [Fact]
