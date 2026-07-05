@@ -106,8 +106,7 @@ public sealed class TestScriptEvaluator(
             {
                 if (!IsVersionCompatible(test.FhirVersions, fhirVersion))
                 {
-                    RecordSkippedTest(recorder, test,
-                        $"Test targets FHIR version(s) [{string.Join(", ", test.FhirVersions)}] but execution requested '{fhirVersion}'");
+                    RecordSkippedTest(recorder, test, VersionMismatchReason(test.FhirVersions, fhirVersion));
                     continue;
                 }
 
@@ -172,7 +171,10 @@ public sealed class TestScriptEvaluator(
     /// numeric Major/Minor/Patch comparison that supports "4.*" (major-only), "4.0" (major.minor),
     /// and "4.0.1" (exact) against a semver-parsed <paramref name="fhirVersion"/>. Prerelease and
     /// build metadata are ignored by the granular comparison. Unparseable input fails safe (no
-    /// match via that path) rather than throwing.
+    /// match via that path) rather than throwing. An empty <paramref name="fhirVersions"/> list or
+    /// a <see langword="null"/> <paramref name="fhirVersion"/> short-circuits to a match (the test
+    /// runs) rather than a mismatch, so gating never turns into a silent skip when either side of
+    /// the comparison is unknown.
     /// </summary>
     private static bool IsVersionCompatible(IReadOnlyList<string> fhirVersions, string? fhirVersion)
     {
@@ -193,7 +195,23 @@ public sealed class TestScriptEvaluator(
         return false;
     }
 
-    private static bool MatchesVersionSpec(string spec, SemVersion actual)
+    /// <summary>
+    /// Builds the skip reason for a version mismatch, distinguishing a legitimate scoping mismatch
+    /// (at least one <paramref name="fhirVersions"/> token parses as a recognizable version spec,
+    /// it just doesn't match <paramref name="fhirVersion"/>) from every token being unrecognizable
+    /// (likely an authoring typo, e.g. "4,0" or "r4") — mirroring how
+    /// <see cref="EvaluateCapabilityRequirement"/> already distinguishes "not met" from "malformed"
+    /// so a typo doesn't read identically to an intentional version restriction.
+    /// </summary>
+    private static string VersionMismatchReason(IReadOnlyList<string> fhirVersions, string? fhirVersion)
+    {
+        var anyTokenRecognized = fhirVersions.Any(spec => TryParseVersionSpec(spec, out _, out _, out _));
+        return anyTokenRecognized
+            ? $"Test targets FHIR version(s) [{string.Join(", ", fhirVersions)}] but execution requested '{fhirVersion}'"
+            : $"Test's fhirVersions [{string.Join(", ", fhirVersions)}] contain no recognizable version spec — check for a typo";
+    }
+
+    private static bool MatchesVersionSpec(string? spec, SemVersion actual)
     {
         if (!TryParseVersionSpec(spec, out var major, out var minor, out var patch))
             return false;
@@ -207,14 +225,16 @@ public sealed class TestScriptEvaluator(
     /// <summary>
     /// Parses a spec token such as "4", "4.*", "4.0", or "4.0.1" into 1-3 numeric components.
     /// A trailing "*" segment is dropped (it's the major-only wildcard marker). Returns false for
-    /// anything that isn't 1-3 non-negative integer segments, so malformed tokens simply don't
-    /// match via the granular path rather than throwing.
+    /// <see langword="null"/> or anything that isn't 1-3 non-negative integer segments, so
+    /// malformed tokens simply don't match via the granular path rather than throwing.
     /// </summary>
-    private static bool TryParseVersionSpec(string spec, out int major, out int? minor, out int? patch)
+    private static bool TryParseVersionSpec(string? spec, out int major, out int? minor, out int? patch)
     {
         major = 0;
         minor = null;
         patch = null;
+
+        if (spec is null) return false;
 
         var segments = spec.Split('.');
         if (segments.Length > 0 && segments[^1] == "*")
