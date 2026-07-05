@@ -87,6 +87,7 @@ public sealed class MedicationOrderState : ScenarioState
         var node = medication.MutableNode;
         var version = faker.SchemaProvider.Version;
         var isStu3 = version == FhirVersion.Stu3;
+        var isR5Plus = version >= FhirVersion.R5;
 
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
@@ -101,23 +102,18 @@ public sealed class MedicationOrderState : ScenarioState
         // (faker may have generated medicationCodeableConcept, medicationReference, or medication)
         ClearMedicationChoiceElements(node);
 
-        // Set medication code using version-appropriate field name
-        // STU3 uses "medicationCodeableConcept" as choice element suffix
-        // R4+ uses the same, but we need to ensure only ONE variant exists
-        var medicationCodeable = new JsonObject
+        // STU3/R4/R4B model medication as a medication[x] choice (CodeableConcept | Reference),
+        // serialized as "medicationCodeableConcept". R5+ collapses it into a single required
+        // "medication" element typed CodeableReference, whose code lives under "concept".
+        var medicationCodeable = BuildCodeableConcept(Code);
+        if (isR5Plus)
         {
-            ["coding"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = Code.System,
-                    ["code"] = Code.Code,
-                    ["display"] = Code.Display
-                }
-            },
-            ["text"] = Code.Display
-        };
-        node["medicationCodeableConcept"] = medicationCodeable;
+            node["medication"] = new JsonObject { ["concept"] = medicationCodeable };
+        }
+        else
+        {
+            node["medicationCodeableConcept"] = medicationCodeable;
+        }
 
         // Set patient reference
         node["subject"] = new JsonObject
@@ -144,17 +140,22 @@ public sealed class MedicationOrderState : ScenarioState
         // Set authored date
         node["authoredOn"] = context.CurrentTime.ToString("o");
 
-        // Set requester if practitioner is available
+        // Set requester if practitioner is available.
+        // STU3 models requester as a BackboneElement { agent (1..1), onBehalfOf } - a bare
+        // reference is invalid there. R4+ flattened it to a plain Reference.
         if (context.CurrentPractitioner is not null)
         {
-            node["requester"] = new JsonObject
+            var practitionerReference = new JsonObject
             {
                 ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}"
             };
+            node["requester"] = isStu3
+                ? new JsonObject { ["agent"] = practitionerReference }
+                : practitionerReference;
         }
 
         // Build dosage instruction with version-aware structure
-        node["dosageInstruction"] = BuildDosageInstruction(isStu3);
+        node["dosageInstruction"] = BuildDosageInstruction(isR5Plus);
 
         // NOTE: We intentionally do NOT include dose quantity structure because the validation
         // schema provider doesn't properly expose nested type children (value, unit, system, code)
@@ -165,14 +166,13 @@ public sealed class MedicationOrderState : ScenarioState
         // Set dispense request (for chronic meds, longer duration)
         var validityDays = IsChronic ? 365 : DurationDays;
         var dispenseQuantity = IsChronic ? 90 : DurationDays;
-        node["dispenseRequest"] = new JsonObject
+        var dispenseRequest = new JsonObject
         {
             ["validityPeriod"] = new JsonObject
             {
                 ["start"] = context.CurrentTime.ToString("yyyy-MM-dd"),
                 ["end"] = context.CurrentTime.AddDays(validityDays).ToString("yyyy-MM-dd")
             },
-            ["numberOfRepeatsAllowed"] = IsChronic ? 12 : 0,
             ["quantity"] = new JsonObject
             {
                 ["value"] = dispenseQuantity,
@@ -180,36 +180,45 @@ public sealed class MedicationOrderState : ScenarioState
             }
         };
 
-        // Set reason if provided
+        // numberOfRepeatsAllowed is a positiveInt (>= 1); "no repeats" is expressed by omitting
+        // it, not by a literal 0.
+        var numberOfRepeatsAllowed = IsChronic ? 12 : 0;
+        if (numberOfRepeatsAllowed > 0)
+        {
+            dispenseRequest["numberOfRepeatsAllowed"] = numberOfRepeatsAllowed;
+        }
+
+        node["dispenseRequest"] = dispenseRequest;
+
+        // Set reason if provided.
+        // STU3/R4/R4B split this into reasonCode (CodeableConcept) and reasonReference (Reference).
+        // R5+ merges both into a single "reason" element typed CodeableReference, where a coded
+        // reason lives under "concept" and a referenced Condition under "reference".
         if (ReasonCode is not null)
         {
-            node["reasonCode"] = new JsonArray
+            var reasonConcept = new JsonObject { ["coding"] = BuildCoding(ReasonCode) };
+            if (isR5Plus)
             {
-                new JsonObject
-                {
-                    ["coding"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["system"] = ReasonCode.System,
-                            ["code"] = ReasonCode.Code,
-                            ["display"] = ReasonCode.Display
-                        }
-                    }
-                }
-            };
+                node["reason"] = new JsonArray { new JsonObject { ["concept"] = reasonConcept } };
+            }
+            else
+            {
+                node["reasonCode"] = new JsonArray { reasonConcept };
+            }
         }
         else if (!string.IsNullOrEmpty(ReasonConditionAttribute) &&
                  context.HasAttribute(ReasonConditionAttribute))
         {
             var conditionId = context.GetAttribute<string>(ReasonConditionAttribute);
-            node["reasonReference"] = new JsonArray
+            var conditionReference = new JsonObject { ["reference"] = $"Condition/{conditionId}" };
+            if (isR5Plus)
             {
-                new JsonObject
-                {
-                    ["reference"] = $"Condition/{conditionId}"
-                }
-            };
+                node["reason"] = new JsonArray { new JsonObject { ["reference"] = conditionReference } };
+            }
+            else
+            {
+                node["reasonReference"] = new JsonArray { conditionReference };
+            }
         }
 
         // Add to context
@@ -254,7 +263,7 @@ public sealed class MedicationOrderState : ScenarioState
     /// This is a known limitation that affects all FHIR versions. The text field provides
     /// a human-readable description of the dosage instructions.
     /// </remarks>
-    private JsonArray BuildDosageInstruction(bool isStu3)
+    private JsonArray BuildDosageInstruction(bool isR5Plus)
     {
         var dosageText = DosageInstructions ?? BuildDosageText();
 
@@ -263,15 +272,38 @@ public sealed class MedicationOrderState : ScenarioState
             ["text"] = dosageText
         };
 
-        // Add asNeeded for as-needed medications (version-appropriate)
+        // Dosage.asNeeded[x] was a boolean|CodeableConcept choice (asNeededBoolean) through R4B.
+        // R5+ split it into a plain boolean "asNeeded" plus a coded "asNeededFor".
         if (Frequency == "as-needed")
         {
-            // Both STU3 and R4+ support asNeededBoolean
-            dosage["asNeededBoolean"] = true;
+            if (isR5Plus)
+            {
+                dosage["asNeeded"] = true;
+            }
+            else
+            {
+                dosage["asNeededBoolean"] = true;
+            }
         }
 
         return [dosage];
     }
+
+    private static JsonObject BuildCodeableConcept(FhirCode code) => new()
+    {
+        ["coding"] = BuildCoding(code),
+        ["text"] = code.Display
+    };
+
+    private static JsonArray BuildCoding(FhirCode code) =>
+    [
+        new JsonObject
+        {
+            ["system"] = code.System,
+            ["code"] = code.Code,
+            ["display"] = code.Display
+        }
+    ];
 
     /// <summary>
     /// Builds the doseQuantity node.

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text.Json.Nodes;
 using Bogus;
 using Ignixa.Abstractions;
@@ -151,12 +152,13 @@ public sealed class ImmunizationState : ScenarioState
         // Set primary source (true = data was recorded by administering provider)
         node["primarySource"] = true;
 
-        // Set manufacturer
+        // Set manufacturer. R5 changed the type from Reference(Organization) to
+        // CodeableReference(Organization), which has no direct ".display" — the name goes in
+        // ".concept.text" instead.
         var manufacturerName = Manufacturer ?? GenerateManufacturer();
-        node["manufacturer"] = new JsonObject
-        {
-            ["display"] = manufacturerName
-        };
+        node["manufacturer"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+            ? new JsonObject { ["concept"] = new JsonObject { ["text"] = manufacturerName } }
+            : new JsonObject { ["display"] = manufacturerName };
 
         // Set lot number
         var lotNum = LotNumber ?? GenerateLotNumber();
@@ -284,9 +286,14 @@ public sealed class ImmunizationState : ScenarioState
         var protocol = new JsonObject();
         var isSTU3 = schemaProvider.Version == Ignixa.Abstractions.FhirVersion.Stu3;
 
+        // R5 collapsed doseNumber[x]/seriesDoses[x] (positiveInt choice) into single string elements.
+        var isR5Plus = schemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5;
+
         // Version-aware dose number field
         var doseNumberFieldName = schemaProvider.GetImmunizationDoseNumberFieldName();
-        protocol[doseNumberFieldName] = DoseNumber;
+        protocol[doseNumberFieldName] = isR5Plus
+            ? DoseNumber.ToString(CultureInfo.InvariantCulture)
+            : DoseNumber;
 
         // Series field is common across versions
         if (!string.IsNullOrEmpty(Series))
@@ -300,7 +307,9 @@ public sealed class ImmunizationState : ScenarioState
             var seriesDosesFieldName = schemaProvider.GetImmunizationSeriesDosesFieldName();
             if (seriesDosesFieldName is not null)
             {
-                protocol[seriesDosesFieldName] = SeriesDosesRecommended.Value;
+                protocol[seriesDosesFieldName] = isR5Plus
+                    ? SeriesDosesRecommended.Value.ToString(CultureInfo.InvariantCulture)
+                    : SeriesDosesRecommended.Value;
             }
         }
 

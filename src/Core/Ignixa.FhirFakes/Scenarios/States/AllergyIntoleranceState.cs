@@ -149,7 +149,29 @@ public sealed class AllergyIntoleranceState : ScenarioState
         }
 
         // Set type
-        node["type"] = Type;
+        // STU3/R4/R4B: "type" is a code (scalar string).
+        // R5+: "type" was widened to CodeableConcept.
+        var isR5Plus = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5;
+        if (isR5Plus)
+        {
+            node["type"] = new JsonObject
+            {
+                ["coding"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["system"] = "http://hl7.org/fhir/allergy-intolerance-type",
+                        ["code"] = Type,
+                        ["display"] = MapTypeToDisplay(Type)
+                    }
+                },
+                ["text"] = MapTypeToDisplay(Type)
+            };
+        }
+        else
+        {
+            node["type"] = Type;
+        }
 
         // Set category (infer if not specified)
         var categoryValue = Category ?? InferCategory();
@@ -217,23 +239,49 @@ public sealed class AllergyIntoleranceState : ScenarioState
         node[recordedDateField] = recordedDateTime.ToString("o");
 
         // Set recorder (who documented this allergy)
-        var recorderNode = new JsonObject
+        // R5 removed "recorder" and replaced it with a "participant" backbone (actor + function).
+        // R6 reintroduced "recorder", so only R5 uses the participant shape.
+        var actorNode = new JsonObject
         {
             ["display"] = _faker.Name.FullName() + ", MD"
         };
 
-        // Add practitioner reference if available
         if (context.CurrentPractitioner is not null)
         {
-            recorderNode["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
+            actorNode["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
         }
 
-        node["recorder"] = recorderNode;
+        if (faker.SchemaProvider.Version == Ignixa.Abstractions.FhirVersion.R5)
+        {
+            node["participant"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["function"] = new JsonObject
+                    {
+                        ["coding"] = new JsonArray
+                        {
+                            new JsonObject
+                            {
+                                ["system"] = "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
+                                ["code"] = "author",
+                                ["display"] = "Author"
+                            }
+                        }
+                    },
+                    ["actor"] = actorNode
+                }
+            };
+        }
+        else
+        {
+            node["recorder"] = actorNode;
+        }
 
         // Set reactions if provided
         if (Reactions is { Count: > 0 })
         {
-            node["reaction"] = CreateReactions();
+            node["reaction"] = CreateReactions(isR5Plus);
         }
 
         // Set note if provided
@@ -325,6 +373,13 @@ public sealed class AllergyIntoleranceState : ScenarioState
         _ => status
     };
 
+    private static string MapTypeToDisplay(string type) => type.ToUpperInvariant() switch
+    {
+        "ALLERGY" => "Allergy",
+        "INTOLERANCE" => "Intolerance",
+        _ => type
+    };
+
     private static string MapVerificationStatusToDisplay(string status) => status.ToUpperInvariant() switch
     {
         "UNCONFIRMED" => "Unconfirmed",
@@ -335,7 +390,7 @@ public sealed class AllergyIntoleranceState : ScenarioState
     };
 
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Used for test data generation only")]
-    private JsonArray CreateReactions()
+    private JsonArray CreateReactions(bool isR5Plus)
     {
         var reactions = new JsonArray();
 
@@ -343,24 +398,29 @@ public sealed class AllergyIntoleranceState : ScenarioState
         {
             var manifestationCode = MapReactionToCode(reaction);
 
-            var reactionNode = new JsonObject
+            var manifestationConcept = new JsonObject
             {
-                ["manifestation"] = new JsonArray
+                ["coding"] = new JsonArray
                 {
                     new JsonObject
                     {
-                        ["coding"] = new JsonArray
-                        {
-                            new JsonObject
-                            {
-                                ["system"] = FhirCode.Systems.SnomedCt,
-                                ["code"] = manifestationCode.Code,
-                                ["display"] = manifestationCode.Display
-                            }
-                        },
-                        ["text"] = reaction
+                        ["system"] = FhirCode.Systems.SnomedCt,
+                        ["code"] = manifestationCode.Code,
+                        ["display"] = manifestationCode.Display
                     }
                 },
+                ["text"] = reaction
+            };
+
+            // STU3/R4/R4B: manifestation is CodeableConcept[].
+            // R5+: manifestation is CodeableReference[], so the coded value moves under "concept".
+            JsonNode manifestationEntry = isR5Plus
+                ? new JsonObject { ["concept"] = manifestationConcept }
+                : manifestationConcept;
+
+            var reactionNode = new JsonObject
+            {
+                ["manifestation"] = new JsonArray { manifestationEntry },
                 ["severity"] = Severity
             };
 

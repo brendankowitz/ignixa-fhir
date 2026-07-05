@@ -59,7 +59,10 @@ public sealed class EncounterState : ScenarioState
 
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
-        node["status"] = Status;
+
+        // R5 renamed several encounter-status codes (e.g. "finished" -> "completed").
+        // Map the pre-R5 codes to their R5+ equivalents so the status validates in every version.
+        node["status"] = MapStatusForVersion(Status, faker.SchemaProvider.Version);
 
         // Set class. R4/R4B/STU3: a single Coding (0..1). R5: 0..* CodeableConcept, so it
         // must be a JSON array of CodeableConcept.
@@ -131,9 +134,14 @@ public sealed class EncounterState : ScenarioState
             }
         }
 
-        // Set participant if practitioner is available
+        // Set participant if practitioner is available.
+        // R5 renamed Encounter.participant.individual to Encounter.participant.actor.
         if (context.CurrentPractitioner is not null)
         {
+            var actorField = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+                ? "actor"
+                : "individual";
+
             node["participant"] = new JsonArray
             {
                 new JsonObject
@@ -153,7 +161,7 @@ public sealed class EncounterState : ScenarioState
                             }
                         }
                     },
-                    ["individual"] = new JsonObject
+                    [actorField] = new JsonObject
                     {
                         ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}"
                     }
@@ -176,6 +184,26 @@ public sealed class EncounterState : ScenarioState
 
         // NEW: Register with StateId for cross-references
         context.RegisterStateResource(StateId, encounter);
+    }
+
+    /// <summary>
+    /// Maps a pre-R5 encounter-status code to its R5+ equivalent. Codes shared across versions
+    /// (planned, in-progress, cancelled, entered-in-error, unknown) pass through unchanged.
+    /// </summary>
+    private static string MapStatusForVersion(string status, Ignixa.Abstractions.FhirVersion version)
+    {
+        if (version < Ignixa.Abstractions.FhirVersion.R5)
+        {
+            return status;
+        }
+
+        return status switch
+        {
+            "finished" => "completed",
+            "arrived" or "triaged" => "in-progress",
+            "onleave" => "on-hold",
+            _ => status
+        };
     }
 
     /// <summary>

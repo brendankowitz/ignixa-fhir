@@ -209,11 +209,9 @@ public sealed class OrganizationBuilder : FhirResourceBuilder<OrganizationBuilde
             orgJson["identifier"] = identifierArray;
         }
 
-        // Build addresses
-        if (_addresses.Count > 0)
-        {
-            orgJson["address"] = BuildAddresses();
-        }
+        // R5 removed Organization.telecom and Organization.address, folding both into
+        // Organization.contact (ExtendedContactDetail). Emit the version-appropriate shape.
+        var isR5Plus = SchemaProvider.Version >= FhirVersion.R5;
 
         // Build type
         if (_typeCodes.Count > 0)
@@ -221,11 +219,27 @@ public sealed class OrganizationBuilder : FhirResourceBuilder<OrganizationBuilde
             orgJson["type"] = BuildTypes();
         }
 
-        // Build telecom
         var telecomArray = BuildTelecom();
-        if (telecomArray.Count > 0)
+
+        if (isR5Plus)
         {
-            orgJson["telecom"] = telecomArray;
+            var contactArray = BuildContact(telecomArray);
+            if (contactArray.Count > 0)
+            {
+                orgJson["contact"] = contactArray;
+            }
+        }
+        else
+        {
+            if (_addresses.Count > 0)
+            {
+                orgJson["address"] = BuildAddresses();
+            }
+
+            if (telecomArray.Count > 0)
+            {
+                orgJson["telecom"] = telecomArray;
+            }
         }
 
         // Build partOf reference
@@ -283,37 +297,73 @@ public sealed class OrganizationBuilder : FhirResourceBuilder<OrganizationBuilde
 
         foreach (var addr in _addresses)
         {
-            var addressJson = new JsonObject
-            {
-                ["use"] = "work",
-                ["type"] = "physical"
-            };
-
-            if (!string.IsNullOrEmpty(addr.Line))
-            {
-                addressJson["line"] = new JsonArray { addr.Line };
-            }
-            if (!string.IsNullOrEmpty(addr.City))
-            {
-                addressJson["city"] = addr.City;
-            }
-            if (!string.IsNullOrEmpty(addr.State))
-            {
-                addressJson["state"] = addr.State;
-            }
-            if (!string.IsNullOrEmpty(addr.PostalCode))
-            {
-                addressJson["postalCode"] = addr.PostalCode;
-            }
-            if (!string.IsNullOrEmpty(addr.Country))
-            {
-                addressJson["country"] = addr.Country;
-            }
-
-            addressArray.Add(addressJson);
+            addressArray.Add(BuildAddress(addr));
         }
 
         return addressArray;
+    }
+
+    private static JsonObject BuildAddress(OrganizationAddress addr)
+    {
+        var addressJson = new JsonObject
+        {
+            ["use"] = "work",
+            ["type"] = "physical"
+        };
+
+        if (!string.IsNullOrEmpty(addr.Line))
+        {
+            addressJson["line"] = new JsonArray { addr.Line };
+        }
+        if (!string.IsNullOrEmpty(addr.City))
+        {
+            addressJson["city"] = addr.City;
+        }
+        if (!string.IsNullOrEmpty(addr.State))
+        {
+            addressJson["state"] = addr.State;
+        }
+        if (!string.IsNullOrEmpty(addr.PostalCode))
+        {
+            addressJson["postalCode"] = addr.PostalCode;
+        }
+        if (!string.IsNullOrEmpty(addr.Country))
+        {
+            addressJson["country"] = addr.Country;
+        }
+
+        return addressJson;
+    }
+
+    /// <summary>
+    /// Builds the R5+ Organization.contact array (ExtendedContactDetail). Telecom entries and the
+    /// first address collapse into a single contact; any additional addresses become their own
+    /// entries because ExtendedContactDetail.address is 0..1.
+    /// </summary>
+    private JsonArray BuildContact(JsonArray telecom)
+    {
+        var contactArray = new JsonArray();
+
+        var primary = new JsonObject();
+        if (telecom.Count > 0)
+        {
+            primary["telecom"] = telecom;
+        }
+        if (_addresses.Count > 0)
+        {
+            primary["address"] = BuildAddress(_addresses[0]);
+        }
+        if (primary.Count > 0)
+        {
+            contactArray.Add(primary);
+        }
+
+        for (var i = 1; i < _addresses.Count; i++)
+        {
+            contactArray.Add(new JsonObject { ["address"] = BuildAddress(_addresses[i]) });
+        }
+
+        return contactArray;
     }
 
     private JsonArray BuildTypes()

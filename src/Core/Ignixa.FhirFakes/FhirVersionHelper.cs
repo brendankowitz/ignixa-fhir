@@ -71,28 +71,40 @@ internal static class FhirVersionHelper
     /// <summary>
     /// Gets the correct field name for dose number within Immunization protocol.
     /// STU3: "doseSequence" (integer)
-    /// R4+: "doseNumberPositiveInt" (positiveInt) or "doseNumberString" (string)
+    /// R4/R4B: "doseNumberPositiveInt" (positiveInt) choice element
+    /// R5+: "doseNumber" (string) — R5 collapsed the doseNumber[x] choice into a single string element
     /// </summary>
     /// <param name="schemaProvider">The FHIR schema provider.</param>
     /// <returns>The version-appropriate field name for dose number.</returns>
     public static string GetImmunizationDoseNumberFieldName(this IFhirSchemaProvider schemaProvider)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
-        return schemaProvider.IsStu3() ? "doseSequence" : "doseNumberPositiveInt";
+        if (schemaProvider.IsStu3())
+        {
+            return "doseSequence";
+        }
+
+        return schemaProvider.Version >= FhirVersion.R5 ? "doseNumber" : "doseNumberPositiveInt";
     }
 
     /// <summary>
     /// Gets the correct field name for series doses in Immunization protocol.
-    /// STU3: "doseSequence" (combined with series)
-    /// R4+: "seriesDosesPositiveInt" or "seriesDosesString"
+    /// STU3: not present (implied by the series name)
+    /// R4/R4B: "seriesDosesPositiveInt" (positiveInt) choice element
+    /// R5+: "seriesDoses" (string) — R5 collapsed the seriesDoses[x] choice into a single string element
     /// </summary>
     /// <param name="schemaProvider">The FHIR schema provider.</param>
     /// <returns>The version-appropriate field name for series doses, or null if not applicable.</returns>
     public static string? GetImmunizationSeriesDosesFieldName(this IFhirSchemaProvider schemaProvider)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
-        // STU3 doesn't have a specific field for series doses - it's implied by the series name
-        return schemaProvider.IsStu3() ? null : "seriesDosesPositiveInt";
+        if (schemaProvider.IsStu3())
+        {
+            // STU3 doesn't have a specific field for series doses - it's implied by the series name
+            return null;
+        }
+
+        return schemaProvider.Version >= FhirVersion.R5 ? "seriesDoses" : "seriesDosesPositiveInt";
     }
 
     /// <summary>

@@ -255,19 +255,13 @@ public class ComprehensiveValidationTests
                     }
 
                     // Validate Medications
-                    // Note: R5+ have significant breaking changes to MedicationRequest (medication -> CodeableReference,
-                    // dosageInstruction.timing.repeat restructured, reasonCode removed, etc.)
-                    // Skip R5+ MedicationRequest validation until MedicationOrderState is updated for R5+
-                    if (version < FhirVersion.R5)
+                    foreach (var medication in built.Medications)
                     {
-                        foreach (var medication in built.Medications)
+                        var result = ValidateResource(medication, version);
+                        if (result != null)
                         {
-                            var result = ValidateResource(medication, version);
-                            if (result != null)
-                            {
-                                var errors = GetErrorIssues(result).ToList();
-                                errors.ShouldBeEmpty($"MedicationRequest in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
-                            }
+                            var errors = GetErrorIssues(result).ToList();
+                            errors.ShouldBeEmpty($"MedicationRequest in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -294,36 +288,24 @@ public class ComprehensiveValidationTests
                     }
 
                     // Validate Immunizations
-                    // Note: R5+ have significant breaking changes to Immunization (manufacturer -> CodeableReference,
-                    // doseNumber/seriesDoses changed from positiveInt to string, etc.)
-                    // Skip R5+ Immunization validation until ImmunizationState is updated for R5+
-                    if (version < FhirVersion.R5)
+                    foreach (var immunization in built.Immunizations)
                     {
-                        foreach (var immunization in built.Immunizations)
+                        var result = ValidateResource(immunization, version);
+                        if (result != null)
                         {
-                            var result = ValidateResource(immunization, version);
-                            if (result != null)
-                            {
-                                var errors = GetErrorIssues(result).ToList();
-                                errors.ShouldBeEmpty($"Immunization in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
-                            }
+                            var errors = GetErrorIssues(result).ToList();
+                            errors.ShouldBeEmpty($"Immunization in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
                     // Validate Allergies
-                    // Note: R5+ have significant breaking changes to AllergyIntolerance
-                    // (reaction.manifestation -> CodeableReference, recorder removed, etc.)
-                    // Skip R5+ AllergyIntolerance validation until AllergyIntoleranceState is updated for R5+
-                    if (version < FhirVersion.R5)
+                    foreach (var allergy in built.Allergies)
                     {
-                        foreach (var allergy in built.Allergies)
+                        var result = ValidateResource(allergy, version);
+                        if (result != null)
                         {
-                            var result = ValidateResource(allergy, version);
-                            if (result != null)
-                            {
-                                var errors = GetErrorIssues(result).ToList();
-                                errors.ShouldBeEmpty($"AllergyIntolerance in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
-                            }
+                            var errors = GetErrorIssues(result).ToList();
+                            errors.ShouldBeEmpty($"AllergyIntolerance in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
