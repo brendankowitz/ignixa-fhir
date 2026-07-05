@@ -45,14 +45,14 @@ public static class DailyAppointmentScheduleScenario
             faker.WithTag(options.Tag);
         }
 
-        var graph = new ResourceGraph();
+        var workflowGraph = new WorkflowGraphBuilder();
 
         var practitioners = new List<ResourceJsonNode>(practitionerCount);
         for (var i = 0; i < practitionerCount; i++)
         {
             var carrier = new ScenarioContext();
             PractitionerRoster[i % PractitionerRoster.Length]().Execute(carrier, faker);
-            graph.AddScenario(carrier);
+            workflowGraph.AddScenario(carrier);
             practitioners.Add(carrier.CurrentPractitioner!);
         }
 
@@ -69,21 +69,19 @@ public static class DailyAppointmentScheduleScenario
                 .AddState(EncounterState.Ambulatory("Scheduled visit"))
                 .Build();
 
-            graph.AddScenario(context);
+            workflowGraph.AddScenario(context);
             appointmentSubjects.Add((context.Patient!, context.CurrentEncounter!));
         }
 
-        if (appointmentSubjects.Count > 0)
+        var scheduleDate = new DateTimeOffset(options.Clock.GetUtcNow().UtcDateTime.Date, TimeSpan.Zero);
+        workflowGraph.WithEnrichers(_ => new AppointmentSchedulingEnricher(practitioners, appointmentSubjects, scheduleDate));
+
+        var graph = workflowGraph.Build(new ResourceGraphEnrichmentContext
         {
-            var scheduleDate = new DateTimeOffset(options.Clock.GetUtcNow().UtcDateTime.Date, TimeSpan.Zero);
-            var enricher = new AppointmentSchedulingEnricher(practitioners, appointmentSubjects, scheduleDate);
-            enricher.Enrich(graph, new ResourceGraphEnrichmentContext
-            {
-                SchemaProvider = schemaProvider,
-                Faker = faker,
-                Clock = options.Clock,
-            });
-        }
+            SchemaProvider = schemaProvider,
+            Faker = faker,
+            Clock = options.Clock,
+        });
 
         var resourceCounts = graph.AllResources
             .GroupBy(r => r.ResourceType)
