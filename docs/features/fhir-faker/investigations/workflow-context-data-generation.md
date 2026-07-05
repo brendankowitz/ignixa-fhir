@@ -38,7 +38,7 @@ Generating only valid individual resources does not exercise those paths. Genera
 1. **Keep FhirFakes public and generic.** Do not encode internal service names, private endpoint assumptions, or consumer-specific models.
 2. **Separate clinical realism from workflow realism.** Clinical states create plausible medical history; workflow composers shape that history into the FHIR response forms downstream systems ingest.
 3. **Prefer discoverable scenario packs over hardcoded methods.** Build on scenario/state discovery, metadata, domains, parameters, and theme-consistent generation.
-4. **Make extension seams first-class.** Downstream teams should be able to register private scenario packs, augmentors, and flavor adapters without forking FhirFakes.
+4. **Make extension seams first-class.** Downstream teams should be able to register private scenario packs, enrichers, and flavor adapters without forking FhirFakes.
 5. **Measure output shape.** Fixture generation should report resource counts, bundle links, included resource coverage, validation results, and deterministic seed metadata.
 
 ## Current Strengths
@@ -130,7 +130,7 @@ Workflow scenario packs
   Document context
         │
         ▼
-Resource graph augmentors
+Resource graph enrichers
   Add Appointment/List/DocumentReference/Basic/etc.
   Add organization/practitioner/location topology
   Add private or profile-specific resources through registration
@@ -241,22 +241,22 @@ public enum IncludeCompleteness { Complete, Missing, Duplicate, Stale, Unrelated
 
 Options also cover link policy for `self`, `next`, `previous`, and `related`, entry ordering, and revInclude selection — same enum-over-bool discipline.
 
-### Resource graph augmentor
+### Resource graph enricher
 
-Augmentors add workflow resources to an existing clinical graph. They are the safest place for custom resources, private profiles, and resource relationships that are not part of the core clinical state machine.
+Enrichers add workflow resources to an existing clinical graph. They are the safest place for custom resources, private profiles, and resource relationships that are not part of the core clinical state machine.
 
-`ResourceGraph` does not replace `ScenarioContext` — it aggregates the outputs of one or more patient-centric `ScenarioContext`s (plus non-patient workflow resources) into a single cross-patient registry, keeping `ScenarioBuilder`'s one-scenario-one-patient boundary intact. Consistent with the codebase's mutable-JSON-node idiom, augmentors mutate the graph in place rather than returning a copy:
+`ResourceGraph` does not replace `ScenarioContext` — it aggregates the outputs of one or more patient-centric `ScenarioContext`s (plus non-patient workflow resources) into a single cross-patient registry, keeping `ScenarioBuilder`'s one-scenario-one-patient boundary intact. Consistent with the codebase's mutable-JSON-node idiom, enrichers mutate the graph in place rather than returning a copy:
 
 ```csharp
-public interface IResourceGraphAugmentor
+public interface IResourceGraphEnricher
 {
-    void Augment(ResourceGraph graph, ResourceGraphAugmentationContext context);
+    void Enrich(ResourceGraph graph, ResourceGraphEnrichmentContext context);
 }
 ```
 
-Augmentors must be stateless: all per-run state (RNG, clock, accumulated resources) lives on the graph or the context, so a single augmentor instance can be registered once and reused across concurrent generations.
+Enrichers must be stateless: all per-run state (RNG, clock, accumulated resources) lives on the graph or the context, so a single enricher instance can be registered once and reused across concurrent generations.
 
-Built-in augmentors could add:
+Built-in enrichers could add:
 
 - Appointments around encounters.
 - Lists or groups for patient cohorts.
@@ -277,7 +277,7 @@ public interface IEhrFlavorAdapter
 }
 ```
 
-Like augmentors, adapters are stateless and mutate in place; the same instance is reused across generations.
+Like enrichers, adapters are stateless and mutate in place; the same instance is reused across generations.
 
 Examples:
 
@@ -293,9 +293,9 @@ Examples:
 FhirFakes is a plain library with no DI container — builders take `IFhirSchemaProvider` through a single constructor, and the existing extensibility precedent is explicit catalog composition (`EdgeCaseCatalog.CreateDefault()` plus registration), not `IServiceCollection`. Workflow extensibility follows the same pattern:
 
 - Workflow packs: `WorkflowScenarioCatalog.RegisterAssembly(assembly)` (attribute discovery, as above).
-- Augmentors and flavor adapters: an explicit, instance-based catalog mirroring `EdgeCaseCatalog` — `WorkflowCatalog.CreateDefault()` returns the built-ins; consumers add their own instances. No static mutable registry for these; a consumer that wants DI wraps the catalog in its own container.
+- Enrichers and flavor adapters: an explicit, instance-based catalog mirroring `EdgeCaseCatalog` — `WorkflowCatalog.CreateDefault()` returns the built-ins; consumers add their own instances. No static mutable registry for these; a consumer that wants DI wraps the catalog in its own container.
 
-Because registered augmentors/adapters are held once and reused across generations, statelessness (per the notes above) is a contract requirement, not a suggestion — the documentation for each seam must say so.
+Because registered enrichers/adapters are held once and reused across generations, statelessness (per the notes above) is a contract requirement, not a suggestion — the documentation for each seam must say so.
 
 ## Proposed Generic Scenario Packs
 
@@ -463,15 +463,15 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 ### Phase 1: Investigation and contracts
 
 - Document public workflow fixture categories. **Done** (this document).
-- Define resource graph, composer, augmentor, and manifest contracts. **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: `ResourceGraph`, `IResourceGraphAugmentor`, `ISearchResponseComposer`, `WorkflowManifest`. **Not shipped**: a flavor adapter contract (`IEhrFlavorAdapter`) — no flavor adapter type exists yet; flavor adapters remain proposed only (see Phase 4/Recommended Next Step, which already deferred them past the first pack). The shipped contracts are public from the start, not staged `internal`-then-promoted — this repo is pre-v1, so the internal-staging idea below was superseded by shipping the real public surface directly.
+- Define resource graph, composer, enricher, and manifest contracts. **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: `ResourceGraph`, `IResourceGraphEnricher`, `ISearchResponseComposer`, `WorkflowManifest`. **Not shipped**: a flavor adapter contract (`IEhrFlavorAdapter`) — no flavor adapter type exists yet; flavor adapters remain proposed only (see Phase 4/Recommended Next Step, which already deferred them past the first pack). The shipped contracts are public from the start, not staged `internal`-then-promoted — this repo is pre-v1, so the internal-staging idea below was superseded by shipping the real public surface directly.
 - Resolve the open discovery question (generalize `ScenarioCatalog` vs sibling `WorkflowScenarioCatalog`) and confirm `DiscoveredScenario`/`DiscoveredScenarioParameter` reuse. **Shipped**: resolved as a sibling catalog (`WorkflowScenarioCatalog`) sharing a newly-extracted `ScenarioParameterBinder` with `ScenarioCatalog`, per the discussion that closed this open question.
 
 ### Phase 2: High-value workflow builders
 
-- **Shipped** (via the plan above): augmentor support for `Appointment` (`AppointmentSchedulingAugmentor`), reusing the existing `PractitionerState` for practitioner generation rather than adding a new builder.
+- **Shipped** (via the plan above): enricher support for `Appointment` (`AppointmentSchedulingEnricher`), reusing the existing `PractitionerState` for practitioner generation rather than adding a new builder.
 - **Not implemented, remains proposed**: dedicated builders/states for `List`, `DocumentReference`, and `Basic` metadata markers.
 - **Not implemented, remains proposed**: organization/location topology helpers — the shipped pack reuses the existing `PractitionerState` directly; no new Organization or Location resource support was added.
-- **Partially shipped**: clock options (`WorkflowScenarioOptions.Clock`, a `TimeProvider`) shipped. Deterministic resource IDs did **not** ship — `AppointmentSchedulingAugmentor` and every existing `ScenarioState` still assign IDs via `Guid.NewGuid()`; seed-reproducibility covers Bogus-driven value picks only, not byte-identical bundle output (see this document's Fixture determinism discussion above — that gap was scoped out of the shipped plan deliberately, not an oversight).
+- **Partially shipped**: clock options (`WorkflowScenarioOptions.Clock`, a `TimeProvider`) shipped. Deterministic resource IDs did **not** ship — `AppointmentSchedulingEnricher` and every existing `ScenarioState` still assign IDs via `Guid.NewGuid()`; seed-reproducibility covers Bogus-driven value picks only, not byte-identical bundle output (see this document's Fixture determinism discussion above — that gap was scoped out of the shipped plan deliberately, not an oversight).
 
 ### Phase 3: Search response composition
 
@@ -487,7 +487,7 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 
 ### Phase 5: Extension package pattern
 
-- Document how downstream teams register private workflow packs, graph augmentors, and flavor adapters.
+- Document how downstream teams register private workflow packs, graph enrichers, and flavor adapters.
 - Add a sample extension package or test-only pack exercising `RegisterAssembly`.
 - Add CLI discovery output for workflow scenarios and supported parameters.
 - Promote the Phase 1 contracts to public once the built-in packs have exercised them.
@@ -507,7 +507,7 @@ Standard repo conventions apply (AAA with Shouldly, `GivenContext_WhenAction_The
 
 - Phase 1 contracts start `internal` (exercised by built-in packs and tests via the existing `InternalsVisibleTo`) and go public in Phase 5, after the built-in packs have proven the shapes. Widening `internal` → `public` is additive; the reverse is a major-version break.
 - Prefer additive evolution idioms already used in this package: `init`-only properties on options records (see the `FhirCode.Domain` precedent in theme-consistent-generation — positional record parameters are binary-breaking), new overloads over signature changes, and new enum members appended rather than reordered.
-- Interfaces are the least evolvable public surface (adding a member breaks external implementors). For seams downstream teams implement (`IResourceGraphAugmentor`, `IEhrFlavorAdapter`), keep them minimal — one or two members — and put anything likely to grow on the context parameter instead.
+- Interfaces are the least evolvable public surface (adding a member breaks external implementors). For seams downstream teams implement (`IResourceGraphEnricher`, `IEhrFlavorAdapter`), keep them minimal — one or two members — and put anything likely to grow on the context parameter instead.
 
 ## Open Decisions
 
@@ -527,6 +527,6 @@ Standard repo conventions apply (AAA with Shouldly, `GivenContext_WhenAction_The
 
 ## Recommended Next Step
 
-Start with the contracts and the smallest useful built-in scenario pack: **DailyAppointmentSchedule**. It exercises multi-resource graph augmentation, appointment-specific states, search response composition, paging/link metadata, and practitioner/patient/encounter relationships without requiring a full cohort modeling system first. Flavor adapters can be deferred past both initial packs — nothing in either pack requires them, and the seam is cheap to add later.
+Start with the contracts and the smallest useful built-in scenario pack: **DailyAppointmentSchedule**. It exercises multi-resource graph enrichment, appointment-specific states, search response composition, paging/link metadata, and practitioner/patient/encounter relationships without requiring a full cohort modeling system first. Flavor adapters can be deferred past both initial packs — nothing in either pack requires them, and the seam is cheap to add later.
 
 The second scenario pack should be **PractitionerPanel**, because it establishes multi-patient cohort composition and provides reusable input for schedules, patient lists, and document-context fixtures.

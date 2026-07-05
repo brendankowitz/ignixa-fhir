@@ -8,16 +8,16 @@ using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.FhirFakes.Workflow;
-using Ignixa.FhirFakes.Workflow.Augmentors;
+using Ignixa.FhirFakes.Workflow.Enrichers;
 using Ignixa.Specification.Generated;
 using Shouldly;
 
 namespace Ignixa.FhirFakes.Tests.Workflow;
 
-public class AppointmentSchedulingAugmentorTests
+public class AppointmentSchedulingEnricherTests
 {
     [Fact]
-    public void GivenPractitionersAndSubjects_WhenAugmenting_ThenAppointmentsLinkPatientAndPractitioner()
+    public void GivenPractitionersAndSubjects_WhenEnriching_ThenAppointmentsLinkPatientAndPractitioner()
     {
         var schemaProvider = new R4CoreSchemaProvider();
         var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1);
@@ -30,12 +30,12 @@ public class AppointmentSchedulingAugmentorTests
         graph.AddScenario(practitionerContext);
         graph.AddScenario(patientContext);
 
-        var augmentor = new AppointmentSchedulingAugmentor(
+        var enricher = new AppointmentSchedulingEnricher(
             [practitioner],
             [(patientContext.Patient!, patientContext.CurrentEncounter!)],
             new DateTimeOffset(2026, 7, 4, 9, 0, 0, TimeSpan.Zero));
 
-        augmentor.Augment(graph, new ResourceGraphAugmentationContext
+        enricher.Enrich(graph, new ResourceGraphEnrichmentContext
         {
             SchemaProvider = schemaProvider,
             Faker = faker,
@@ -49,7 +49,7 @@ public class AppointmentSchedulingAugmentorTests
     }
 
     [Fact]
-    public void GivenAppointmentCreated_WhenAugmenting_ThenEncounterBackReferencesAppointment()
+    public void GivenAppointmentCreated_WhenEnriching_ThenEncounterBackReferencesAppointment()
     {
         var schemaProvider = new R4CoreSchemaProvider();
         var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1);
@@ -60,30 +60,30 @@ public class AppointmentSchedulingAugmentorTests
         graph.AddScenario(practitionerContext);
         graph.AddScenario(patientContext);
 
-        var augmentor = new AppointmentSchedulingAugmentor(
+        var enricher = new AppointmentSchedulingEnricher(
             [practitionerContext.CurrentPractitioner!],
             [(patientContext.Patient!, patientContext.CurrentEncounter!)],
             new DateTimeOffset(2026, 7, 4, 9, 0, 0, TimeSpan.Zero));
 
-        augmentor.Augment(graph, new ResourceGraphAugmentationContext { SchemaProvider = schemaProvider, Faker = faker, Clock = TimeProvider.System });
+        enricher.Enrich(graph, new ResourceGraphEnrichmentContext { SchemaProvider = schemaProvider, Faker = faker, Clock = TimeProvider.System });
 
         var appointment = graph.AllResources.Single(r => r.ResourceType == "Appointment");
         patientContext.CurrentEncounter!.MutableNode["appointment"]!.AsArray().Single()!["reference"]!.ToString().ShouldBe($"Appointment/{appointment.Id}");
     }
 
     [Fact]
-    public void GivenStu3Provider_WhenAugmenting_ThenEncounterAppointmentIsScalar()
+    public void GivenStu3Provider_WhenEnriching_ThenEncounterAppointmentIsScalar()
     {
-        var appointmentNode = AugmentAndGetEncounterAppointment(new STU3CoreSchemaProvider());
+        var appointmentNode = EnrichAndGetEncounterAppointment(new STU3CoreSchemaProvider());
 
         appointmentNode.ShouldBeOfType<JsonObject>();
         appointmentNode!["reference"]!.ToString().ShouldStartWith("Appointment/");
     }
 
     [Fact]
-    public void GivenR4Provider_WhenAugmenting_ThenEncounterAppointmentIsArray()
+    public void GivenR4Provider_WhenEnriching_ThenEncounterAppointmentIsArray()
     {
-        var appointmentNode = AugmentAndGetEncounterAppointment(new R4CoreSchemaProvider());
+        var appointmentNode = EnrichAndGetEncounterAppointment(new R4CoreSchemaProvider());
 
         appointmentNode.ShouldBeOfType<JsonArray>();
         appointmentNode!.AsArray().Single()!["reference"]!.ToString().ShouldStartWith("Appointment/");
@@ -93,10 +93,10 @@ public class AppointmentSchedulingAugmentorTests
     public void GivenNoPractitioners_WhenConstructing_ThenThrowsArgumentException()
     {
         Should.Throw<ArgumentException>(() =>
-            new AppointmentSchedulingAugmentor([], [], DateTimeOffset.UtcNow));
+            new AppointmentSchedulingEnricher([], [], DateTimeOffset.UtcNow));
     }
 
-    private static JsonNode? AugmentAndGetEncounterAppointment(IFhirSchemaProvider schemaProvider)
+    private static JsonNode? EnrichAndGetEncounterAppointment(IFhirSchemaProvider schemaProvider)
     {
         var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1);
         var practitionerContext = new ScenarioContext();
@@ -106,12 +106,12 @@ public class AppointmentSchedulingAugmentorTests
         graph.AddScenario(practitionerContext);
         graph.AddScenario(patientContext);
 
-        var augmentor = new AppointmentSchedulingAugmentor(
+        var enricher = new AppointmentSchedulingEnricher(
             [practitionerContext.CurrentPractitioner!],
             [(patientContext.Patient!, patientContext.CurrentEncounter!)],
             new DateTimeOffset(2026, 7, 4, 9, 0, 0, TimeSpan.Zero));
 
-        augmentor.Augment(graph, new ResourceGraphAugmentationContext
+        enricher.Enrich(graph, new ResourceGraphEnrichmentContext
         {
             SchemaProvider = schemaProvider,
             Faker = faker,

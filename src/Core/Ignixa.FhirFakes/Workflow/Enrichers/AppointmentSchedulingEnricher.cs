@@ -7,18 +7,18 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
-namespace Ignixa.FhirFakes.Workflow.Augmentors;
+namespace Ignixa.FhirFakes.Workflow.Enrichers;
 
 /// <summary>
 /// Adds Appointment resources linking each (Patient, Encounter) subject to a rotating practitioner,
 /// and back-references the appointment from Encounter.appointment. Configuration is fixed at
-/// construction and <see cref="Augment"/> mutates no instance state, so one configured instance is
+/// construction and <see cref="Enrich"/> mutates no instance state, so one configured instance is
 /// safe to reuse across calls.
 /// </summary>
-public sealed class AppointmentSchedulingAugmentor(
+public sealed class AppointmentSchedulingEnricher(
     IReadOnlyList<ResourceJsonNode> practitioners,
     IReadOnlyList<(ResourceJsonNode Patient, ResourceJsonNode Encounter)> appointmentSubjects,
-    DateTimeOffset scheduleDate) : IResourceGraphAugmentor
+    DateTimeOffset scheduleDate) : IResourceGraphEnricher
 {
     private const int SlotMinutes = 30;
 
@@ -34,7 +34,7 @@ public sealed class AppointmentSchedulingAugmentor(
     private readonly IReadOnlyList<(ResourceJsonNode Patient, ResourceJsonNode Encounter)> _appointmentSubjects =
         appointmentSubjects ?? throw new ArgumentNullException(nameof(appointmentSubjects));
 
-    public void Augment(ResourceGraph graph, ResourceGraphAugmentationContext context)
+    public void Enrich(ResourceGraph graph, ResourceGraphEnrichmentContext context)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(context);

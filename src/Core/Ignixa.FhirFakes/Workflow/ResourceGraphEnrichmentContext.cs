@@ -8,10 +8,10 @@ using Ignixa.Abstractions;
 namespace Ignixa.FhirFakes.Workflow;
 
 /// <summary>
-/// Carries the per-run dependencies an <see cref="IResourceGraphAugmentor"/> needs: the schema
+/// Carries the per-run dependencies an <see cref="IResourceGraphEnricher"/> needs: the schema
 /// provider, a faker for any new resources it creates, and the clock backing deterministic timestamps.
 /// </summary>
-public sealed class ResourceGraphAugmentationContext
+public sealed class ResourceGraphEnrichmentContext
 {
     /// <summary>The FHIR schema provider for the target FHIR version.</summary>
     public required IFhirSchemaProvider SchemaProvider { get; init; }

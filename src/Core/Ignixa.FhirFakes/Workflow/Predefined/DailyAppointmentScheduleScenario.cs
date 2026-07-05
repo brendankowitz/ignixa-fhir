@@ -6,7 +6,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
-using Ignixa.FhirFakes.Workflow.Augmentors;
+using Ignixa.FhirFakes.Workflow.Enrichers;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Workflow.Predefined;
@@ -76,8 +76,8 @@ public static class DailyAppointmentScheduleScenario
         if (appointmentSubjects.Count > 0)
         {
             var scheduleDate = new DateTimeOffset(options.Clock.GetUtcNow().UtcDateTime.Date, TimeSpan.Zero);
-            var augmentor = new AppointmentSchedulingAugmentor(practitioners, appointmentSubjects, scheduleDate);
-            augmentor.Augment(graph, new ResourceGraphAugmentationContext
+            var enricher = new AppointmentSchedulingEnricher(practitioners, appointmentSubjects, scheduleDate);
+            enricher.Enrich(graph, new ResourceGraphEnrichmentContext
             {
                 SchemaProvider = schemaProvider,
                 Faker = faker,
