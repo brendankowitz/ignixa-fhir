@@ -404,26 +404,18 @@ git commit -m "chore(specification): regenerate R6 value set provider for ballot
 - Modify (generated): `src/Core/Ignixa.Search/Generated/R6SearchParameterDefinitions.g.cs`
 - Modify (generated): `src/Core/Ignixa.Search/Generated/R6CompartmentDefinitions.g.cs`
 - Modify (generated): `src/Core/Ignixa.Search/Generated/R6CodeSystemMappings.g.cs`
-- Possibly modify: `codegen/Ignixa.Specification.Generators/CSharpCompartmentLanguage.cs`, `codegen/Ignixa.Specification.Generators/CSharpCodeSystemResolverLanguage.cs` (check for the same `.Select(r => r.ToString())`-on-a-`Code<VersionIndependentResourceTypesAll>`-typed-list pattern before running Steps 3/4 — a prior grep found no `.Target`/`.Base` references in either file, but check broadly for any similarly-shaped resource-type-enum access, since `DeviceAlert` could surface through a different property name in those generators)
+- Likely modify: `codegen/Ignixa.Specification.Generators/CSharpCompartmentLanguage.cs`, `codegen/Ignixa.Specification.Generators/CSharpCodeSystemResolverLanguage.cs` (Step 1 is now a comprehensive audit of every enum-casting convenience-property read across all three files, not a narrow check — treat these as likely to need the same fix, not just possibly)
 - Possibly modify: `src/Core/Ignixa.Search/Definition/SearchParameterDefinitionManager.cs`, `src/Core/Ignixa.Search/Definition/CompartmentDefinitionManager.cs`, `src/Core/Ignixa.Search/Indexing/CodeSystemResolver.cs` (each has a `FhirVersion.R6 => R6...Definitions/Mappings.Get...()` branch — only touch if regen renames the static accessor method)
 
 **Interfaces:**
 - Consumes: bumped pin from Task 2; advanced + tolerant-parsing `fhir-codegen` toolchain from Tasks 3/3b. These three modes default to a stale output path (`src/Ignixa.Search/Generated`, missing the `Core/` segment) — pass the correct output directory explicitly on every invocation, as shown below.
 - Produces: `R6SearchParameterDefinitions.GetBaseSearchParameters()`, `R6CompartmentDefinitions.GetCompartments()`, `R6CodeSystemMappings.GetMappings()` reflecting ballot4.
 
-- [ ] **Step 1: Fix the `Base`/`Target` resource-type enum crash in `CSharpSearchParameterLanguage.cs`**
+- [ ] **Step 1: Audit and fix EVERY enum-casting convenience-property access in the three generator files (not just Base/Target)**
 
-In `codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs`, find:
+**This step was widened after two rounds of whack-a-mole.** The first fix (below, `Base`/`Target` → `BaseElement`/`TargetElement` + `ObjectValue`) resolved the `DeviceAlert`-in-`VersionIndependentResourceTypesAll` crash, but immediately exposed a third, structurally-identical crash on a different property: `SearchParameter.Type` (`Code<SearchParamType>`) throws `InvalidCastException: Value 'resource' cannot be cast to a member of enumeration SearchParamType` at `CSharpSearchParameterLanguage.cs:194`, because ballot4 adds a new `SearchParamType` value (`resource`, confirmed real — used by `SearchParameter-Bundle-composition.json` and `SearchParameter-Bundle-message.json` in the actual ballot4 package) that the pinned SDK's enum doesn't have. Given this is the third instance of the exact same defect shape in one file, fix all instances proactively in this step instead of continuing to discover them one crash at a time:
 
-```csharp
-        // Extract base (list of resource types)
-        var baseTypes = searchParam.Base?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
-
-        // Extract target (list of target resource types for Reference parameters)
-        var targetTypes = searchParam.Target?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
-```
-
-Change to read the raw string via `*Element`/`ObjectValue` instead of the enum-casting convenience properties:
+Apply the already-confirmed fix for `Base`/`Target`:
 
 ```csharp
         // Extract base (list of resource types) -- read raw string via BaseElement/ObjectValue,
@@ -435,7 +427,19 @@ Change to read the raw string via `*Element`/`ObjectValue` instead of the enum-c
         var targetTypes = searchParam.TargetElement?.Select(r => r.ObjectValue?.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
 ```
 
-Then check `CSharpCompartmentLanguage.cs` and `CSharpCodeSystemResolverLanguage.cs` for any similarly-shaped access (a `.Select(...)` over a list of `Code<VersionIndependentResourceTypesAll>`-typed values via a convenience property rather than its `*Element` form) — fix any found the same way. Rebuild the codegen tool (`cd codegen && dotnet build Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release`) to confirm the edit compiles before proceeding.
+Apply the same pattern to the confirmed third instance:
+
+```csharp
+        // was: string? type = searchParam.Type?.ToString();
+        // Type is Code<SearchParamType>; ballot4 adds a new value ("resource") the pinned SDK's enum lacks.
+        string? type = searchParam.TypeElement?.ObjectValue?.ToString();
+```
+
+Then **systematically find every other single- or list-valued `Code<TEnum>` property this file (and `CSharpCompartmentLanguage.cs`, `CSharpCodeSystemResolverLanguage.cs`) reads via its convenience property**, not just the ones that have crashed so far. Method: for each FHIR POCO type these three files touch (`SearchParameter` at minimum; check what `CompartmentDefinition` and `CodeSystem` properties the other two files read), the Firely SDK's naming convention is that every `Code<TEnum>`-backed primitive has a sibling `{Property}Element` property holding the raw, uncast `Code<TEnum>` (or `List<Code<TEnum>>`) — grep this file for every `searchParam.{X}` / `compartment.{X}` / `codeSystem.{X}` access, check via the actual compiled model (e.g. `dotnet-script`/a throwaway console snippet reflecting over `typeof(Hl7.Fhir.Model.SearchParameter)` etc., or by inspecting the decompiled `Hl7.Fhir.R5`/`Hl7.Fhir.Base` assemblies) whether each accessed property's type is `Code<T>` or `List<Code<T>>`, and if so, switch it to the `*Element`/`ObjectValue` form the same way — even for properties that haven't crashed yet. This is a preemptive hardening pass, not just a reactive fix: the goal is zero remaining enum-casting convenience-property reads across all three generator files before running any generator, so this task doesn't need a fourth escalation round.
+
+Known candidates likely worth checking based on what `SearchParameter` exposes: `Comparator` (`List<Code<SearchComparator>>`), `Modifier` (`List<Code<SearchModifierCode>>`), `Status` (`Code<PublicationStatus>` — long-stable enum, lower risk, but check anyway), `XpathUsage` if referenced. For `CompartmentDefinition`: its `Resource` backbone's `Code` property is `List<Code<VersionIndependentResourceTypesAll>>` — the exact same enum as `SearchParameter.Base`/`Target`, so almost certainly has the same latent defect if the compartment generator reads it via the convenience property.
+
+Rebuild the codegen tool (`cd codegen && dotnet build Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release`) to confirm all edits compile before proceeding to Step 2.
 
 - [ ] **Step 2: Run the search generator for R6 with an explicit output path**
 
