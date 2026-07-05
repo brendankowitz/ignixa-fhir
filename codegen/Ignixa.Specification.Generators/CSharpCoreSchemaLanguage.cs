@@ -73,7 +73,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             FhirReleases.FhirSequenceCodes.R4 => "4.0.1",
             FhirReleases.FhirSequenceCodes.R4B => "4.3.0",
             FhirReleases.FhirSequenceCodes.R5 => "5.0.0",
-            FhirReleases.FhirSequenceCodes.R6 => "6.0.0-ballot2",
+            FhirReleases.FhirSequenceCodes.R6 => "6.0.0-ballot4",
             FhirReleases.FhirSequenceCodes.STU3 => "3.0.2",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };

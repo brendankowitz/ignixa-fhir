@@ -64,7 +64,7 @@ string packageId = fhirVersion.ToUpperInvariant() switch
     "R4" => "hl7.fhir.r4.core#4.0.1",
     "R4B" => "hl7.fhir.r4b.core#4.3.0",
     "R5" => "hl7.fhir.r5.core#5.0.0",
-    "R6" => "hl7.fhir.r6.core#6.0.0-ballot2",
+    "R6" => "hl7.fhir.r6.core#6.0.0-ballot4",
     "STU3" => "hl7.fhir.r3.core#3.0.2",
     _ => throw new ArgumentException($"Unsupported FHIR version: {fhirVersion}")
 };
