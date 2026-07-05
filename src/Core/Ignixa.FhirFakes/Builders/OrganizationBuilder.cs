@@ -211,7 +211,7 @@ public sealed class OrganizationBuilder : FhirResourceBuilder<OrganizationBuilde
 
         // R5 removed Organization.telecom and Organization.address, folding both into
         // Organization.contact (ExtendedContactDetail). Emit the version-appropriate shape.
-        var isR5Plus = SchemaProvider.Version >= FhirVersion.R5;
+        var isR5Plus = SchemaProvider.IsR5OrLater();
 
         // Build type
         if (_typeCodes.Count > 0)

@@ -38,6 +38,17 @@ internal static class FhirVersionHelper
     }
 
     /// <summary>
+    /// Checks if the schema is R5 or later (R5, R6).
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider.</param>
+    /// <returns>True if R5 or later, false otherwise.</returns>
+    public static bool IsR5OrLater(this IFhirSchemaProvider schemaProvider)
+    {
+        ArgumentNullException.ThrowIfNull(schemaProvider);
+        return schemaProvider.Version >= FhirVersion.R5;
+    }
+
+    /// <summary>
     /// Checks if a specific property exists in a resource type definition.
     /// Useful for detecting version-specific fields.
     /// </summary>

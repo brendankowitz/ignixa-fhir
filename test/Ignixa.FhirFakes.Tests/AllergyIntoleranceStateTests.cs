@@ -494,5 +494,38 @@ public class AllergyIntoleranceStateTests
         type.ShouldBe("allergy");
     }
 
+    [Fact]
+    public void GivenNullType_WhenMappingTypeToDisplay_ThenReturnsDefaultWithoutThrowing()
+    {
+        // Arrange - Type is a non-nullable init-only property, but object-initializer construction
+        // permits `Type = null!`. MapTypeToDisplay (private static) must not NRE on .ToUpperInvariant().
+        var method = typeof(AllergyIntoleranceState).GetMethod(
+            "MapTypeToDisplay",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        method.ShouldNotBeNull("MapTypeToDisplay should exist as a private static method");
+
+        // Act
+        var result = method!.Invoke(null, [null]);
+
+        // Assert
+        result.ShouldBe("Allergy", "a null type should default rather than throw");
+    }
+
+    [Fact]
+    public void GivenIntoleranceType_WhenMappingTypeToDisplay_ThenReturnsIntolerance()
+    {
+        // Arrange
+        var method = typeof(AllergyIntoleranceState).GetMethod(
+            "MapTypeToDisplay",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        method.ShouldNotBeNull();
+
+        // Act
+        var result = method!.Invoke(null, ["intolerance"]);
+
+        // Assert
+        result.ShouldBe("Intolerance", "valid types must still map after the null guard");
+    }
+
     #endregion
 }

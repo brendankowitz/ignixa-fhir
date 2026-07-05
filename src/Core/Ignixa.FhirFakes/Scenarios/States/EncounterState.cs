@@ -72,7 +72,7 @@ public sealed class EncounterState : ScenarioState
             ["code"] = EncounterClass,
             ["display"] = EncounterType.Display
         };
-        node["class"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+        node["class"] = faker.SchemaProvider.IsR5OrLater()
             ? new JsonArray { new JsonObject { ["coding"] = new JsonArray { classCoding } } }
             : classCoding;
 
@@ -138,7 +138,7 @@ public sealed class EncounterState : ScenarioState
         // R5 renamed Encounter.participant.individual to Encounter.participant.actor.
         if (context.CurrentPractitioner is not null)
         {
-            var actorField = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+            var actorField = faker.SchemaProvider.IsR5OrLater()
                 ? "actor"
                 : "individual";
 

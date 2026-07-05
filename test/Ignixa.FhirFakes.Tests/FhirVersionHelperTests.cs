@@ -92,6 +92,37 @@ public class FhirVersionHelperTests
         result.ShouldBeFalse("STU3 schema should not be detected as R4 or later");
     }
 
+    [Theory]
+    [InlineData(typeof(R5CoreSchemaProvider))]
+    [InlineData(typeof(R6CoreSchemaProvider))]
+    public void GivenR5OrLaterSchema_WhenCheckingIsR5OrLater_ThenReturnsTrue(Type schemaType)
+    {
+        // Arrange
+        var schema = (IFhirSchemaProvider)Activator.CreateInstance(schemaType)!;
+
+        // Act
+        var result = schema.IsR5OrLater();
+
+        // Assert
+        result.ShouldBeTrue($"{schema.Version} schema should be detected as R5 or later");
+    }
+
+    [Theory]
+    [InlineData(typeof(STU3CoreSchemaProvider))]
+    [InlineData(typeof(R4CoreSchemaProvider))]
+    [InlineData(typeof(R4BCoreSchemaProvider))]
+    public void GivenPreR5Schema_WhenCheckingIsR5OrLater_ThenReturnsFalse(Type schemaType)
+    {
+        // Arrange
+        var schema = (IFhirSchemaProvider)Activator.CreateInstance(schemaType)!;
+
+        // Act
+        var result = schema.IsR5OrLater();
+
+        // Assert
+        result.ShouldBeFalse($"{schema.Version} schema should not be detected as R5 or later");
+    }
+
     #endregion
 
     #region Property Existence Tests
@@ -502,6 +533,9 @@ public class FhirVersionHelperTests
 
         var act2 = () => nullSchema!.IsR4OrLater();
         Should.Throw<ArgumentNullException>(() => act2());
+
+        var act2b = () => nullSchema!.IsR5OrLater();
+        Should.Throw<ArgumentNullException>(() => act2b());
 
         var act3 = () => nullSchema!.HasProperty("Patient", "name");
         Should.Throw<ArgumentNullException>(() => act3());

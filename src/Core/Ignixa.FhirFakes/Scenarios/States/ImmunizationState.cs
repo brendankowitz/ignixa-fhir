@@ -156,7 +156,7 @@ public sealed class ImmunizationState : ScenarioState
         // CodeableReference(Organization), which has no direct ".display" — the name goes in
         // ".concept.text" instead.
         var manufacturerName = Manufacturer ?? GenerateManufacturer();
-        node["manufacturer"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+        node["manufacturer"] = faker.SchemaProvider.IsR5OrLater()
             ? new JsonObject { ["concept"] = new JsonObject { ["text"] = manufacturerName } }
             : new JsonObject { ["display"] = manufacturerName };
 
@@ -287,7 +287,7 @@ public sealed class ImmunizationState : ScenarioState
         var isSTU3 = schemaProvider.Version == Ignixa.Abstractions.FhirVersion.Stu3;
 
         // R5 collapsed doseNumber[x]/seriesDoses[x] (positiveInt choice) into single string elements.
-        var isR5Plus = schemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5;
+        var isR5Plus = schemaProvider.IsR5OrLater();
 
         // Version-aware dose number field
         var doseNumberFieldName = schemaProvider.GetImmunizationDoseNumberFieldName();

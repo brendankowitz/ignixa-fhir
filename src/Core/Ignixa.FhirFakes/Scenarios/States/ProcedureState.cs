@@ -120,7 +120,7 @@ public sealed class ProcedureState : ScenarioState
                 }
             }
         };
-        node["category"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+        node["category"] = faker.SchemaProvider.IsR5OrLater()
             ? new JsonArray { categoryCodeableConcept }
             : categoryCodeableConcept;
 

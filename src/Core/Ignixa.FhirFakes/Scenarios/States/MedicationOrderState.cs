@@ -87,7 +87,7 @@ public sealed class MedicationOrderState : ScenarioState
         var node = medication.MutableNode;
         var version = faker.SchemaProvider.Version;
         var isStu3 = version == FhirVersion.Stu3;
-        var isR5Plus = version >= FhirVersion.R5;
+        var isR5Plus = faker.SchemaProvider.IsR5OrLater();
 
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
@@ -180,8 +180,9 @@ public sealed class MedicationOrderState : ScenarioState
             }
         };
 
-        // numberOfRepeatsAllowed is a positiveInt (>= 1); "no repeats" is expressed by omitting
-        // it, not by a literal 0.
+        // STU3 types numberOfRepeatsAllowed as positiveInt (>= 1), so 0 is invalid there. R4+
+        // widened it to unsignedInt (0 is valid), but we omit it uniformly when there are no
+        // repeats for simplicity, rather than version-branching this cosmetic case.
         var numberOfRepeatsAllowed = IsChronic ? 12 : 0;
         if (numberOfRepeatsAllowed > 0)
         {

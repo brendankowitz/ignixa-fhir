@@ -151,7 +151,7 @@ public sealed class AllergyIntoleranceState : ScenarioState
         // Set type
         // STU3/R4/R4B: "type" is a code (scalar string).
         // R5+: "type" was widened to CodeableConcept.
-        var isR5Plus = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5;
+        var isR5Plus = faker.SchemaProvider.IsR5OrLater();
         if (isR5Plus)
         {
             node["type"] = new JsonObject
@@ -373,12 +373,23 @@ public sealed class AllergyIntoleranceState : ScenarioState
         _ => status
     };
 
-    private static string MapTypeToDisplay(string type) => type.ToUpperInvariant() switch
+    private static string MapTypeToDisplay(string? type)
     {
-        "ALLERGY" => "Allergy",
-        "INTOLERANCE" => "Intolerance",
-        _ => type
-    };
+        // Type is a non-nullable init-only property, but object-initializer construction lets a
+        // caller leave it unset or pass null! without a compile error. Default rather than throw:
+        // this is a cosmetic display mapping for generated test data, not a validation boundary.
+        if (string.IsNullOrEmpty(type))
+        {
+            return "Allergy";
+        }
+
+        return type.ToUpperInvariant() switch
+        {
+            "ALLERGY" => "Allergy",
+            "INTOLERANCE" => "Intolerance",
+            _ => type
+        };
+    }
 
     private static string MapVerificationStatusToDisplay(string status) => status.ToUpperInvariant() switch
     {

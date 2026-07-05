@@ -1049,11 +1049,13 @@ public class CrossVersionCompatibilityTests
                 .AddMedicationOrder(MedicationOrderState.VitaminD50000IU())
                 .Build();
 
-            // numberOfRepeatsAllowed is a positiveInt (>= 1); a non-chronic order with no repeats
-            // must omit it rather than emit an invalid 0.
+            // STU3 types numberOfRepeatsAllowed as positiveInt (>= 1), so 0 is invalid there.
+            // R4+ uses unsignedInt (0 is valid), so omission is not strictly required there — but
+            // the generator omits it uniformly when there are no repeats, which stays valid in
+            // every version. This asserts that uniform behavior, not a per-version requirement.
             var dispenseRequest = scenario.Medications[0].MutableNode["dispenseRequest"];
             dispenseRequest.ShouldNotBeNull($"dispenseRequest should exist in {schema.Version}");
-            dispenseRequest!["numberOfRepeatsAllowed"].ShouldBeNull($"{schema.Version} must omit numberOfRepeatsAllowed when there are no repeats");
+            dispenseRequest!["numberOfRepeatsAllowed"].ShouldBeNull($"{schema.Version}: generator omits numberOfRepeatsAllowed when there are no repeats");
         }
     }
 
