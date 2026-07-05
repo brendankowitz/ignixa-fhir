@@ -70,7 +70,9 @@ public sealed class AppointmentSchedulingAugmentor(
             graph.AddResource(appointment);
 
             var appointmentReference = new JsonObject { ["reference"] = $"Appointment/{appointment.Id}" };
-            encounter.MutableNode["appointment"] = new JsonArray { appointmentReference };
+            encounter.MutableNode["appointment"] = context.SchemaProvider.Version >= FhirVersion.R4
+                ? new JsonArray { appointmentReference }
+                : appointmentReference;
         }
     }
 }

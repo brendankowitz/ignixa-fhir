@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.FhirFakes.Workflow;
@@ -70,9 +72,45 @@ public class AppointmentSchedulingAugmentorTests
     }
 
     [Fact]
-    public void GivenNoPractitioners_WhenConstructing_ThenThrowsArgumentException()
+    public void GivenStu3Provider_WhenAugmenting_ThenEncounterAppointmentIsScalar()
     {
-        Should.Throw<ArgumentException>(() =>
-            new AppointmentSchedulingAugmentor([], [], DateTimeOffset.UtcNow));
+        var appointmentNode = AugmentAndGetEncounterAppointment(new STU3CoreSchemaProvider());
+
+        appointmentNode.ShouldBeOfType<JsonObject>();
+        appointmentNode!["reference"]!.ToString().ShouldStartWith("Appointment/");
+    }
+
+    [Fact]
+    public void GivenR4Provider_WhenAugmenting_ThenEncounterAppointmentIsArray()
+    {
+        var appointmentNode = AugmentAndGetEncounterAppointment(new R4CoreSchemaProvider());
+
+        appointmentNode.ShouldBeOfType<JsonArray>();
+        appointmentNode!.AsArray().Single()!["reference"]!.ToString().ShouldStartWith("Appointment/");
+    }
+
+    private static JsonNode? AugmentAndGetEncounterAppointment(IFhirSchemaProvider schemaProvider)
+    {
+        var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1);
+        var practitionerContext = new ScenarioContext();
+        PractitionerState.FamilyPractitioner().Execute(practitionerContext, faker);
+        var patientContext = new ScenarioBuilder(schemaProvider, 2).WithPatient().AddState(EncounterState.Ambulatory()).Build();
+        var graph = new ResourceGraph();
+        graph.AddScenario(practitionerContext);
+        graph.AddScenario(patientContext);
+
+        var augmentor = new AppointmentSchedulingAugmentor(
+            [practitionerContext.CurrentPractitioner!],
+            [(patientContext.Patient!, patientContext.CurrentEncounter!)],
+            new DateTimeOffset(2026, 7, 4, 9, 0, 0, TimeSpan.Zero));
+
+        augmentor.Augment(graph, new ResourceGraphAugmentationContext
+        {
+            SchemaProvider = schemaProvider,
+            Faker = faker,
+            Clock = TimeProvider.System,
+        });
+
+        return patientContext.CurrentEncounter!.MutableNode["appointment"];
     }
 }
