@@ -85,11 +85,15 @@ public sealed class ConditionEndState : ScenarioState
                 $"Cannot end condition. No condition found with attribute '{AttributeName}' or code '{ConditionCode?.Code}'.");
         }
 
+        // Ballot4 R6 pruned condition-clinical to active/inactive/unknown; substitute removed
+        // codes (resolved/recurrence/relapse/remission) with the closest surviving one for R6 only.
+        var clinicalStatus = ConditionClinicalStatus.ForVersion(ClinicalStatus, faker.SchemaProvider.Version);
+
         // Update clinical status (version-aware)
         if (faker.SchemaProvider.IsStu3())
         {
             // STU3: simple code string
-            condition.MutableNode["clinicalStatus"] = ClinicalStatus;
+            condition.MutableNode["clinicalStatus"] = clinicalStatus;
         }
         else
         {
@@ -101,7 +105,7 @@ public sealed class ConditionEndState : ScenarioState
                     new JsonObject
                     {
                         ["system"] = "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                        ["code"] = ClinicalStatus
+                        ["code"] = clinicalStatus
                     }
                 }
             };

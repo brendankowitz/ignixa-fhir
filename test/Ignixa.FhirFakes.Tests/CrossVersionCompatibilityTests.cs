@@ -219,14 +219,21 @@ public class CrossVersionCompatibilityTests
 
             // Assert - protocolApplied should exist (R4+) or vaccinationProtocol (STU3).
             // The dose-number element differs by version:
-            //   STU3    -> vaccinationProtocol[0].doseSequence      (integer)
-            //   R4/R4B  -> protocolApplied[0].doseNumberPositiveInt (positiveInt choice)
-            //   R5+/R6  -> protocolApplied[0].doseNumber            (single string element)
+            //   STU3   -> vaccinationProtocol[0].doseSequence      (integer)
+            //   R4/R4B -> protocolApplied[0].doseNumberPositiveInt (positiveInt choice)
+            //   R5     -> protocolApplied[0].doseNumber            (single string element)
+            //   R6     -> protocolApplied[0].doseNumber            (CodeableConcept - ballot4 re-typed it again)
             if (schema.Version == FhirVersion.Stu3)
             {
                 immunization.MutableNode["vaccinationProtocol"].ShouldNotBeNull($"vaccinationProtocol should exist in {schema.Version}");
                 var doseNumber = immunization.MutableNode["vaccinationProtocol"]?[0]?["doseSequence"]?.GetValue<int>();
                 doseNumber.ShouldBe(1, $"dose number should be 1 in {schema.Version}");
+            }
+            else if (schema.Version == FhirVersion.R6)
+            {
+                immunization.MutableNode["protocolApplied"].ShouldNotBeNull($"protocolApplied should exist in {schema.Version}");
+                var doseNumber = immunization.MutableNode["protocolApplied"]?[0]?["doseNumber"]?["text"]?.GetValue<string>();
+                doseNumber.ShouldBe("1", $"dose number CodeableConcept.text should be \"1\" in {schema.Version}");
             }
             else if (schema.Version >= FhirVersion.R5)
             {
@@ -946,10 +953,21 @@ public class CrossVersionCompatibilityTests
 
             var medicationRequest = scenario.Medications[0];
 
-            // Assert - dosageInstruction should exist across all versions
-            var dosageInstruction = medicationRequest.MutableNode["dosageInstruction"] as JsonArray;
-            dosageInstruction.ShouldNotBeNull($"dosageInstruction should exist in {schema.Version}");
-            dosageInstruction!.Count.ShouldBeGreaterThan(0, $"should have dosage entries in {schema.Version}");
+            // Assert - dosageInstruction should exist across all versions.
+            // Ballot4 R6 changed dosageInstruction from a Dosage[] array (STU3-R5) to a single
+            // (0..1) DosageDetails element, which wraps the legacy Dosage content under "simple".
+            if (schema.Version == FhirVersion.R6)
+            {
+                var dosageDetails = medicationRequest.MutableNode["dosageInstruction"] as JsonObject;
+                dosageDetails.ShouldNotBeNull($"dosageInstruction should exist in {schema.Version}");
+                dosageDetails!["simple"].ShouldNotBeNull($"dosageInstruction.simple should exist in {schema.Version}");
+            }
+            else
+            {
+                var dosageInstruction = medicationRequest.MutableNode["dosageInstruction"] as JsonArray;
+                dosageInstruction.ShouldNotBeNull($"dosageInstruction should exist in {schema.Version}");
+                dosageInstruction!.Count.ShouldBeGreaterThan(0, $"should have dosage entries in {schema.Version}");
+            }
         }
     }
 

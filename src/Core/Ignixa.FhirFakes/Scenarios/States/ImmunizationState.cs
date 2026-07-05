@@ -289,11 +289,18 @@ public sealed class ImmunizationState : ScenarioState
         // R5 collapsed doseNumber[x]/seriesDoses[x] (positiveInt choice) into single string elements.
         var isR5Plus = schemaProvider.IsR5OrLater();
 
+        // Ballot4 R6 re-typed doseNumber/seriesDoses again, this time as CodeableConcept
+        // (not the plain string R5 introduced), so it needs its own branch rather than
+        // grouping with IsR5OrLater().
+        var isR6 = schemaProvider.Version == Ignixa.Abstractions.FhirVersion.R6;
+
         // Version-aware dose number field
         var doseNumberFieldName = schemaProvider.GetImmunizationDoseNumberFieldName();
-        protocol[doseNumberFieldName] = isR5Plus
-            ? DoseNumber.ToString(CultureInfo.InvariantCulture)
-            : DoseNumber;
+        protocol[doseNumberFieldName] = isR6
+            ? new JsonObject { ["text"] = DoseNumber.ToString(CultureInfo.InvariantCulture) }
+            : isR5Plus
+                ? DoseNumber.ToString(CultureInfo.InvariantCulture)
+                : DoseNumber;
 
         // Series field is common across versions
         if (!string.IsNullOrEmpty(Series))
@@ -307,9 +314,11 @@ public sealed class ImmunizationState : ScenarioState
             var seriesDosesFieldName = schemaProvider.GetImmunizationSeriesDosesFieldName();
             if (seriesDosesFieldName is not null)
             {
-                protocol[seriesDosesFieldName] = isR5Plus
-                    ? SeriesDosesRecommended.Value.ToString(CultureInfo.InvariantCulture)
-                    : SeriesDosesRecommended.Value;
+                protocol[seriesDosesFieldName] = isR6
+                    ? new JsonObject { ["text"] = SeriesDosesRecommended.Value.ToString(CultureInfo.InvariantCulture) }
+                    : isR5Plus
+                        ? SeriesDosesRecommended.Value.ToString(CultureInfo.InvariantCulture)
+                        : SeriesDosesRecommended.Value;
             }
         }
 
