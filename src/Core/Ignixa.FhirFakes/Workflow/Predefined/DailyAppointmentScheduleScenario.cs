@@ -64,7 +64,8 @@ public static class DailyAppointmentScheduleScenario
                 : new ScenarioBuilder(schemaProvider);
 
             var context = patientScenario
-                .WithPatient()
+                .WithTag(options.Tag)
+                .WithPatient(_ => { })
                 .AddState(EncounterState.Ambulatory("Scheduled visit"))
                 .Build();
 

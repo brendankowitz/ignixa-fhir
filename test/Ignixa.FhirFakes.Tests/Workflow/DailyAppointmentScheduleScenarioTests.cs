@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using Ignixa.FhirFakes.Workflow;
 using Ignixa.Specification.Generated;
 using Shouldly;
@@ -54,7 +55,7 @@ public class DailyAppointmentScheduleScenarioTests
     }
 
     [Fact]
-    public void GivenSameSeed_WhenInvokedTwice_ThenAppointmentStatusRotationMatches()
+    public void GivenSameSeed_WhenInvokedTwice_ThenPatientDemographicsMatch()
     {
         var schemaProvider = new R4CoreSchemaProvider();
         var scenario = WorkflowScenarioCatalog.Find("DailyAppointmentSchedule")!;
@@ -62,8 +63,31 @@ public class DailyAppointmentScheduleScenarioTests
         var first = WorkflowScenarioCatalog.Invoke(scenario, schemaProvider, new WorkflowScenarioOptions { Seed = 99 });
         var second = WorkflowScenarioCatalog.Invoke(scenario, schemaProvider, new WorkflowScenarioOptions { Seed = 99 });
 
-        var firstStatuses = first.Graph.AllResources.Where(r => r.ResourceType == "Appointment").Select(r => r.MutableNode["status"]!.ToString()).ToList();
-        var secondStatuses = second.Graph.AllResources.Where(r => r.ResourceType == "Appointment").Select(r => r.MutableNode["status"]!.ToString()).ToList();
-        firstStatuses.ShouldBe(secondStatuses);
+        var firstBirthDates = first.Graph.AllResources.Where(r => r.ResourceType == "Patient").Select(r => r.MutableNode["birthDate"]!.ToString()).ToList();
+        var secondBirthDates = second.Graph.AllResources.Where(r => r.ResourceType == "Patient").Select(r => r.MutableNode["birthDate"]!.ToString()).ToList();
+        firstBirthDates.ShouldBe(secondBirthDates);
+    }
+
+    [Fact]
+    public void GivenTag_WhenInvoked_ThenAllResourcesCarryTag()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var scenario = WorkflowScenarioCatalog.Find("DailyAppointmentSchedule")!;
+        const string tag = "test-tag-xyz";
+
+        var result = WorkflowScenarioCatalog.Invoke(
+            scenario, schemaProvider,
+            new WorkflowScenarioOptions { Seed = 7, Tag = tag },
+            new Dictionary<string, object?> { ["appointmentCount"] = 3 });
+
+        result.Graph.AllResources.Count.ShouldBeGreaterThan(0);
+        foreach (var resource in result.Graph.AllResources)
+        {
+            var tagCodes = resource.MutableNode["meta"]?["tag"]?.AsArray()
+                .Select(t => t!["code"]?.ToString())
+                .ToList();
+            tagCodes.ShouldNotBeNull($"{resource.ResourceType}/{resource.Id} should have meta.tag");
+            tagCodes!.ShouldContain(tag, $"{resource.ResourceType}/{resource.Id} should carry the tag");
+        }
     }
 }

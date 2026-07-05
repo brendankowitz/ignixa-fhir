@@ -36,6 +36,11 @@ internal static class WorkflowCommand
             Description = "Seed for reproducible generation"
         };
 
+        var tagOption = new Option<string?>("--tag")
+        {
+            Description = "Tag code applied to generated resources, for test isolation via the _tag search parameter"
+        };
+
         var pageSizeOption = new Option<int>("--page-size")
         {
             Description = "Maximum matching entries per composed page",
@@ -56,6 +61,7 @@ internal static class WorkflowCommand
         workflowCommand.Arguments.Add(scenarioNameArg);
         workflowCommand.Options.Add(outOption);
         workflowCommand.Options.Add(seedOption);
+        workflowCommand.Options.Add(tagOption);
         workflowCommand.Options.Add(pageSizeOption);
         workflowCommand.Options.Add(validateOption);
         workflowCommand.Options.Add(paramOption);
@@ -65,11 +71,12 @@ internal static class WorkflowCommand
             var scenarioName = parseResult.GetValue(scenarioNameArg)!;
             var outFolder = parseResult.GetValue(outOption)!;
             var seed = parseResult.GetValue(seedOption);
+            var tag = parseResult.GetValue(tagOption);
             var pageSize = parseResult.GetValue(pageSizeOption);
             var validate = parseResult.GetValue(validateOption);
             var paramValues = parseResult.GetValue(paramOption) ?? [];
 
-            await HandleWorkflowCommand(schemaProvider, fhirVersion, scenarioName, outFolder, seed, pageSize, validate, paramValues, cancellationToken);
+            await HandleWorkflowCommand(schemaProvider, fhirVersion, scenarioName, outFolder, seed, tag, pageSize, validate, paramValues, cancellationToken);
         });
 
         return workflowCommand;
@@ -81,6 +88,7 @@ internal static class WorkflowCommand
         string scenarioName,
         string outFolder,
         int? seed,
+        string? tag,
         int pageSize,
         bool validate,
         string[] paramValues,
@@ -117,7 +125,7 @@ internal static class WorkflowCommand
                 return;
             }
 
-            var options = new WorkflowScenarioOptions { Seed = seed };
+            var options = new WorkflowScenarioOptions { Seed = seed, Tag = tag };
 
             Ignixa.FhirFakes.Workflow.WorkflowScenarioResult result;
             try
