@@ -142,6 +142,7 @@ internal static class PopulationCommand
                 if (contexts.Count == 0)
                 {
                     Console.WriteLine("✗ No patients were generated");
+                    Environment.ExitCode = 1;
                     return;
                 }
 
@@ -196,6 +197,7 @@ internal static class PopulationCommand
         {
             Console.WriteLine($"✗ Error: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
+            Environment.ExitCode = 1;
         }
     }
 
