@@ -397,22 +397,7 @@ var pages = composer.Compose(result.Graph, new SearchResponseOptions
 // One Bundle per page: self/next/previous links, entry.search.mode of "match" or "include"
 ```
 
-### CLI
-
-```bash
-# Generate the built-in daily-schedule workflow pack as paged searchset bundles + a manifest
-ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --seed 42
-
-# Override pack parameters and page size
-ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --param practitionerCount=3 --param appointmentCount=30 --page-size 10
-
-# Tag every generated resource for test isolation, and validate the output
-ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --tag my-test-run --validate
-```
-
-**Output**: one `{version}-workflow-{scenario}-{guid}-page{n}.json` file per page, plus a
-`{version}-workflow-{scenario}-{guid}-manifest.json` describing the scenario id, seed, primary resource
-type, and per-type resource counts.
+See [Workflow Command](#workflow-command) in the CLI Tool section below for command-line usage.
 
 ## Code Constants
 
@@ -597,6 +582,25 @@ For Patient and Observation (minimal density), the output filename is `{version}
 
 When edge cases are applied, a sidecar `.manifest.json` file is written alongside the resource file (see [Edge-Case Manifest](#edge-case-manifest)).
 
+### Workflow Command
+
+Generate a predefined [workflow scenario pack](#workflow-scenario-packs) as paged searchset bundles plus a manifest:
+
+```bash
+# Generate the built-in daily-schedule workflow pack
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --seed 42
+
+# Override pack parameters and page size
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --param practitionerCount=3 --param appointmentCount=30 --page-size 10
+
+# Tag every generated resource for test isolation, and validate the output
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --tag my-test-run --validate
+```
+
+**Output**: one `{version}-workflow-{scenario}-{guid}-page{n}.json` file per page, plus a
+`{version}-workflow-{scenario}-{guid}-manifest.json` describing the scenario id, seed, primary resource
+type, and per-type resource counts.
+
 ### Command Reference
 
 | Command | Options |
@@ -604,6 +608,7 @@ When edge cases are applied, a sidecar `.manifest.json` file is written alongsid
 | `scenario <name>` | `--out`, `--resolved-references`, `--validate`, `--param name=value` (repeatable) |
 | `population` | `--out`, `--from`, `--count`, `--resolved-references`, `--ndjson` |
 | `resource <type> [stateName]` | `--out`, `--firstname`, `--surname`, `--from`, `--validate`, `--edge-cases [selectors]`, `--seed`, `--include-invalid`, `--density`, `--theme`, `--verbose` |
+| `workflow <name>` | `--out`, `--seed`, `--tag`, `--page-size`, `--validate`, `--param name=value` (repeatable) |
 | `help scenarios` | Lists all available predefined scenarios |
 
 ## Deterministic / Reproducible Generation
