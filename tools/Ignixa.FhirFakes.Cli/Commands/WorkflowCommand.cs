@@ -177,9 +177,7 @@ internal static class WorkflowCommand
                     Console.WriteLine($"  {resourceType}/{resourceId}: {ValidationHelper.GetSummary(validationResult)}");
                 }
 
-                Console.WriteLine(invalidCount > 0
-                    ? $"\n  {invalidCount} resource(s) have validation issues"
-                    : $"\n  All {result.Graph.AllResources.Count} resource(s) passed validation");
+                ScenarioCommand.ReportValidationSummary(invalidCount, result.Graph.AllResources.Count);
             }
         }
         catch (Exception ex)

@@ -159,20 +159,31 @@ internal static class ScenarioCommand
 
                 // Show summary of validation results
                 var invalidCount = validationResults.Count(r => !r.Value.IsValid);
-                if (invalidCount > 0)
-                {
-                    Console.WriteLine($"\n  {invalidCount} resource(s) have validation issues");
-                }
-                else
-                {
-                    Console.WriteLine($"\n  All {context.AllResources.Count} resource(s) passed validation");
-                }
+                ReportValidationSummary(invalidCount, context.AllResources.Count);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"X Error: {ex.Message}");
             Environment.ExitCode = 1;
+        }
+    }
+
+    /// <summary>
+    /// Prints the resource-validation summary line and sets <see cref="Environment.ExitCode"/> to 1
+    /// when one or more resources failed validation. Shared by <c>scenario</c> and <c>workflow</c>,
+    /// which (unlike <c>resource</c>) have no <c>--include-invalid</c> equivalent to suppress this.
+    /// </summary>
+    internal static void ReportValidationSummary(int invalidCount, int totalCount)
+    {
+        if (invalidCount > 0)
+        {
+            Console.WriteLine($"\n  {invalidCount} resource(s) have validation issues");
+            Environment.ExitCode = 1;
+        }
+        else
+        {
+            Console.WriteLine($"\n  All {totalCount} resource(s) passed validation");
         }
     }
 

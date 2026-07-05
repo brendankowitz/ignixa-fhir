@@ -37,9 +37,26 @@ public static class ResourceBundleComposer
         ArgumentNullException.ThrowIfNull(resources);
 
         var entries = new JsonArray();
+        var index = 0;
         foreach (var resource in resources)
         {
+            if (resource is null)
+            {
+                throw new ArgumentException($"Resource at index {index} is null and cannot be added to a {bundleType} bundle.", nameof(resources));
+            }
+
+            if (string.IsNullOrEmpty(resource.ResourceType))
+            {
+                throw new ArgumentException($"Resource at index {index} has no resourceType and cannot be added to a {bundleType} bundle.", nameof(resources));
+            }
+
+            if (string.IsNullOrEmpty(resource.Id))
+            {
+                throw new ArgumentException($"{resource.ResourceType} resource at index {index} has no id and cannot be added to a {bundleType} bundle.", nameof(resources));
+            }
+
             entries.Add(entryFactory(resource));
+            index++;
         }
 
         var bundleNode = new JsonObject
