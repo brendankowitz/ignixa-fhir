@@ -89,6 +89,13 @@ public class AppointmentSchedulingAugmentorTests
         appointmentNode!.AsArray().Single()!["reference"]!.ToString().ShouldStartWith("Appointment/");
     }
 
+    [Fact]
+    public void GivenNoPractitioners_WhenConstructing_ThenThrowsArgumentException()
+    {
+        Should.Throw<ArgumentException>(() =>
+            new AppointmentSchedulingAugmentor([], [], DateTimeOffset.UtcNow));
+    }
+
     private static JsonNode? AugmentAndGetEncounterAppointment(IFhirSchemaProvider schemaProvider)
     {
         var faker = new SchemaBasedFhirResourceFaker(schemaProvider, seed: 1);
