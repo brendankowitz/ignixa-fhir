@@ -308,7 +308,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             "4.0.1" => FhirVersion.R4,
             "4.3.0" => FhirVersion.R4B,
             "5.0.0" => FhirVersion.R5,
-            "6.0.0-ballot2" => FhirVersion.R6,
+            "6.0.0-ballot4" => FhirVersion.R6,
             _ => throw new NotSupportedException($"FHIR version {fhirVersionString} not supported")
         };
     }
