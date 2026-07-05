@@ -16,10 +16,17 @@ namespace Ignixa.FhirFakes.Scenarios.States;
 /// <see cref="RegisterAssembly"/>, so a downstream consumer can ship private observation states
 /// discoverable through this same catalog.
 /// </summary>
+/// <remarks>
+/// Unlike <see cref="Scenarios.ScenarioCatalog"/> and <see cref="Workflow.WorkflowScenarioCatalog"/>,
+/// this catalog scans every public type in each registered assembly with no namespace filter. That's
+/// intentional, not an oversight of the shared-registry convergence work: the all-default-parameters
+/// shape (a zero-argument-invokable factory) is already distinctive enough to identify observation
+/// state factories, whereas scenario/workflow packs require a namespace convention because their
+/// required-first-parameter shape alone would match too many unrelated methods.
+/// </remarks>
 public static class ObservationStateCatalog
 {
-    private static readonly Lock RegistrationLock = new();
-    private static readonly HashSet<Assembly> RegisteredAssemblies = [typeof(ObservationState).Assembly];
+    private static readonly AssemblyRegistry Registry = new(typeof(ObservationState).Assembly);
 
     /// <summary>
     /// Registers an additional assembly to scan for observation state factories. Idempotent —
@@ -27,14 +34,7 @@ public static class ObservationStateCatalog
     /// registered assembly follow the same convention as this library's own factories: a public static
     /// method, on any public type, returning <see cref="ObservationState"/> with all-default parameters.
     /// </summary>
-    public static void RegisterAssembly(Assembly assembly)
-    {
-        ArgumentNullException.ThrowIfNull(assembly);
-        lock (RegistrationLock)
-        {
-            RegisteredAssemblies.Add(assembly);
-        }
-    }
+    public static void RegisterAssembly(Assembly assembly) => Registry.Register(assembly);
 
     /// <summary>Gets all available observation state names, across this library's assembly and every registered assembly.</summary>
     [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs reflection-based discovery; a method conveys the work performed and matches ScenarioCatalog.GetAll.")]
@@ -82,11 +82,7 @@ public static class ObservationStateCatalog
 
     private static IReadOnlyDictionary<string, MethodInfo> Discover()
     {
-        Assembly[] assemblies;
-        lock (RegistrationLock)
-        {
-            assemblies = [.. RegisteredAssemblies];
-        }
+        var assemblies = Registry.Snapshot();
 
         var states = new Dictionary<string, MethodInfo>(StringComparer.OrdinalIgnoreCase);
         var observationStateType = typeof(ObservationState);

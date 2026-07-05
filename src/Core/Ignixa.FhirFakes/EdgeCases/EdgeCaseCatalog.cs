@@ -45,10 +45,7 @@ public sealed class EdgeCaseCatalog
     /// <summary>Returns all registered strategies in registration order.</summary>
     public IReadOnlyList<IEdgeCaseStrategy> All()
     {
-        lock (_lock)
-        {
-            return [.. _strategies];
-        }
+        return Snapshot();
     }
 
     /// <summary>
@@ -60,11 +57,7 @@ public sealed class EdgeCaseCatalog
     /// <param name="unmatched">Selectors that produced no matches.</param>
     public IReadOnlyList<IEdgeCaseStrategy> Resolve(IEnumerable<string>? selectors, out IReadOnlyList<string> unmatched)
     {
-        List<IEdgeCaseStrategy> snapshot;
-        lock (_lock)
-        {
-            snapshot = [.. _strategies];
-        }
+        var snapshot = Snapshot();
 
         var selectorList = selectors?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
         if (selectorList is null || selectorList.Count == 0)
@@ -87,11 +80,7 @@ public sealed class EdgeCaseCatalog
     /// </summary>
     public IReadOnlyList<IEdgeCaseStrategy> Resolve(IEnumerable<string>? selectors)
     {
-        List<IEdgeCaseStrategy> snapshot;
-        lock (_lock)
-        {
-            snapshot = [.. _strategies];
-        }
+        var snapshot = Snapshot();
 
         var selectorList = selectors?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
         if (selectorList is null || selectorList.Count == 0)
@@ -119,6 +108,14 @@ public sealed class EdgeCaseCatalog
 
         // Allow category-prefix matching so "string" selects "string.max-length", "string.injection-like", etc.
         return strategy.Category.StartsWith(selector + ".", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private List<IEdgeCaseStrategy> Snapshot()
+    {
+        lock (_lock)
+        {
+            return [.. _strategies];
+        }
     }
 
     private void RegisterBuiltIns()

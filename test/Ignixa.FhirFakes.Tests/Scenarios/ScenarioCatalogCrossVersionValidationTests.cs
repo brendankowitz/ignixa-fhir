@@ -21,6 +21,7 @@ namespace Ignixa.FhirFakes.Tests.Scenarios;
 /// is distinct from ComprehensiveValidationTests, which validates a hand-rolled set of ~13 generic
 /// scenarios, not the real named pathways a consumer actually calls by id.
 /// </summary>
+[Collection(CatalogRegistrationGroup.Name)]
 public class ScenarioCatalogCrossVersionValidationTests
 {
     public static IEnumerable<object[]> SchemaProviders()

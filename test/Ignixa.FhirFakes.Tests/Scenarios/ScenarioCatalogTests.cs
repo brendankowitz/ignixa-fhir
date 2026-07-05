@@ -11,6 +11,22 @@ using Shouldly;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
+/// <summary>
+/// Groups every test class that registers assemblies with <see cref="ScenarioCatalog"/>,
+/// <see cref="Ignixa.FhirFakes.Workflow.WorkflowScenarioCatalog"/>, or
+/// <see cref="Ignixa.FhirFakes.Scenarios.States.ObservationStateCatalog"/> (each of these catalogs'
+/// registered-assemblies set is static/process-lifetime with no unregister), plus every test class
+/// that reads one of those catalogs unfiltered by assembly. Without this, xUnit's default concurrent
+/// test-class execution could let a registration made by one test class leak into an unfiltered read
+/// in another, causing confusing, run-order-dependent failures.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class CatalogRegistrationGroup
+{
+    public const string Name = "CatalogRegistration";
+}
+
+[Collection(CatalogRegistrationGroup.Name)]
 public class ScenarioCatalogTests
 {
     [Fact]

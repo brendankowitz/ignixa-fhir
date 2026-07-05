@@ -18,10 +18,17 @@ namespace Ignixa.FhirFakes.Scenarios;
 /// Scans this library's own assembly plus any assembly registered via <see cref="RegisterAssembly"/>, so a
 /// downstream consumer can ship private scenarios discoverable through this same catalog.
 /// </summary>
+/// <remarks>
+/// Unlike <see cref="States.ObservationStateCatalog"/>, discovery here is scoped by namespace suffix
+/// rather than scanning every public type. A required <see cref="IFhirSchemaProvider"/> first
+/// parameter alone isn't a distinctive enough shape to exclude unrelated helper methods, so the
+/// namespace convention keeps discovery confined to intentional scenario packs. ObservationState
+/// factories don't need this because their shape (zero required parameters, keyed by method name) is
+/// already distinctive enough on its own.
+/// </remarks>
 public static class ScenarioCatalog
 {
-    private static readonly Lock RegistrationLock = new();
-    private static readonly HashSet<Assembly> RegisteredAssemblies = [typeof(DiabeticPatientScenario).Assembly];
+    private static readonly AssemblyRegistry Registry = new(typeof(DiabeticPatientScenario).Assembly);
 
     /// <summary>
     /// Attribute-bag key under which <see cref="Invoke"/> records the scenario's
@@ -37,14 +44,7 @@ public static class ScenarioCatalog
     /// ending in <c>.Scenarios.Predefined</c> (the namespace need not be under <c>Ignixa.FhirFakes</c> —
     /// it is matched by suffix, not by owning assembly).
     /// </summary>
-    public static void RegisterAssembly(Assembly assembly)
-    {
-        ArgumentNullException.ThrowIfNull(assembly);
-        lock (RegistrationLock)
-        {
-            RegisteredAssemblies.Add(assembly);
-        }
-    }
+    public static void RegisterAssembly(Assembly assembly) => Registry.Register(assembly);
 
     /// <summary>
     /// Gets all discovered scenarios, across this library's assembly and every registered assembly.
@@ -104,11 +104,7 @@ public static class ScenarioCatalog
 
     private static IReadOnlyList<DiscoveredScenario> Discover()
     {
-        Assembly[] assemblies;
-        lock (RegistrationLock)
-        {
-            assemblies = [.. RegisteredAssemblies];
-        }
+        var assemblies = Registry.Snapshot();
 
         var scenarios = new List<DiscoveredScenario>();
 

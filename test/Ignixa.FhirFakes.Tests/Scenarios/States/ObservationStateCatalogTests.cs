@@ -5,10 +5,12 @@
 
 using System.Reflection;
 using Ignixa.FhirFakes.Scenarios.States;
+using Ignixa.FhirFakes.Tests.Scenarios;
 using Shouldly;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios.States;
 
+[Collection(CatalogRegistrationGroup.Name)]
 public class ObservationStateCatalogTests
 {
     private static readonly string[] PinnedNames =

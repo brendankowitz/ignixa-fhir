@@ -6,12 +6,14 @@
 using System.Reflection;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
+using Ignixa.FhirFakes.Tests.Scenarios;
 using Ignixa.FhirFakes.Workflow;
 using Ignixa.Specification.Generated;
 using Shouldly;
 
 namespace Ignixa.FhirFakes.Tests.Workflow;
 
+[Collection(CatalogRegistrationGroup.Name)]
 public class WorkflowScenarioCatalogTests
 {
     [Fact]

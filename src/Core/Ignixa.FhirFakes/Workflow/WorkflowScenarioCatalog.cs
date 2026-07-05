@@ -23,8 +23,7 @@ namespace Ignixa.FhirFakes.Workflow;
 /// </summary>
 public static class WorkflowScenarioCatalog
 {
-    private static readonly Lock RegistrationLock = new();
-    private static readonly HashSet<Assembly> RegisteredAssemblies = [typeof(DailyAppointmentScheduleScenario).Assembly];
+    private static readonly AssemblyRegistry Registry = new(typeof(DailyAppointmentScheduleScenario).Assembly);
 
     /// <summary>
     /// Registers an additional assembly to scan for workflow scenario packs. Idempotent — registering
@@ -33,14 +32,7 @@ public static class WorkflowScenarioCatalog
     /// namespace ending in <c>.Workflow.Predefined</c> (the namespace need not be under
     /// <c>Ignixa.FhirFakes</c> — it is matched by suffix, not by owning assembly).
     /// </summary>
-    public static void RegisterAssembly(Assembly assembly)
-    {
-        ArgumentNullException.ThrowIfNull(assembly);
-        lock (RegistrationLock)
-        {
-            RegisteredAssemblies.Add(assembly);
-        }
-    }
+    public static void RegisterAssembly(Assembly assembly) => Registry.Register(assembly);
 
     /// <summary>Gets all discovered workflow scenario packs, across this library's assembly and every registered assembly.</summary>
     [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs reflection-based discovery; a method conveys the work performed and matches ScenarioCatalog.GetAll.")]
@@ -84,11 +76,7 @@ public static class WorkflowScenarioCatalog
 
     private static IReadOnlyList<DiscoveredScenario> Discover()
     {
-        Assembly[] assemblies;
-        lock (RegistrationLock)
-        {
-            assemblies = [.. RegisteredAssemblies];
-        }
+        var assemblies = Registry.Snapshot();
 
         var scenarios = new List<DiscoveredScenario>();
 
