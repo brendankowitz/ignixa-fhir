@@ -110,8 +110,8 @@ var hasAddress = element.Select("address.exists()").AsString();  // "false", not
 var birthDate = element.Select("birthDate").AsString();
 ```
 
-Returns `null` if the expression yields empty, multiple values, or a non-convertible value —
-matching `Scalar()`'s empty/multiple contract.
+Returns `null` if the expression yields empty, multiple values, or the single result has no
+primitive value (e.g. a complex/backbone element) — matching `Scalar()`'s empty/multiple contract.
 
 ### IsTrue / IsBoolean
 

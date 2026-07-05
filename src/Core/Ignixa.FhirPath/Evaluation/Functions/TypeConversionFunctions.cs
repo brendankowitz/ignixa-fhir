@@ -160,6 +160,10 @@ internal static class TypeConversionFunctions
         if (value is bool b)
             return [FunctionHelpers.CreateString(b ? "true" : "false")];
 
+        // Strings are the most common case; skip the Convert.ToString interface dispatch for them
+        if (value is string s)
+            return [FunctionHelpers.CreateString(s)];
+
         // All other types: use invariant culture so numeric/date formatting doesn't vary by server locale
         return [FunctionHelpers.CreateString(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!)];
     }

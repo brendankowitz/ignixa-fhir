@@ -127,7 +127,12 @@ public static class TypedElementExtensions
     /// (the spec's <c>toString()</c> rules: lowercase booleans, invariant-culture decimals).
     /// </summary>
     /// <param name="elements">The element collection to convert, typically the result of <see cref="Select"/></param>
-    /// <returns>The FhirPath string representation, or null if the collection is empty, has multiple items, or is not convertible</returns>
+    /// <returns>The FhirPath string representation, or null if the collection is empty, has multiple items, or the single element has no primitive value (e.g. a complex/backbone element)</returns>
+    /// <remarks>
+    /// Use this instead of <see cref="Scalar"/> followed by <c>.ToString()</c>, which produces CLR
+    /// formatting rather than the spec's — see the warning on <see cref="Scalar"/>.
+    /// </remarks>
+    /// <seealso cref="Scalar"/>
     /// <example>
     /// <code>
     /// var hasAddress = element.Select("address.exists()").AsString(); // "false", not "False"

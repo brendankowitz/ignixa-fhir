@@ -317,6 +317,21 @@ public class ConversionAndStringFunctionTests
     }
 
     [Fact]
+    public void GivenComplexElement_WhenAsString_ThenReturnsNull()
+    {
+        // Arrange - a complex/backbone element has Value == null; AsString() must report this
+        // as "not convertible" (null), not leak a CLR type name or throw.
+        var expr = _parser.Parse("name");
+        var root = CreatePatientWithName();
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void GivenDecimal_WhenAsStringUnderNonInvariantCulture_ThenUsesInvariantFormatting()
     {
         // Arrange - parse/evaluate under the default culture first (FHIRPath literal parsing
