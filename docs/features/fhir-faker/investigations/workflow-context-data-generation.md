@@ -462,31 +462,26 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 
 ### Phase 1: Investigation and contracts
 
-**Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`:
-
-- Document public workflow fixture categories.
-- Define resource graph, composer, augmentor, flavor adapter, and manifest contracts. Keep them `internal` (or in a clearly-marked preview state) until Phase 4 proves them — see Versioning and Compatibility.
-- Resolve the open discovery question (generalize `ScenarioCatalog` vs sibling `WorkflowScenarioCatalog`) and confirm `DiscoveredScenario`/`DiscoveredScenarioParameter` reuse.
+- Document public workflow fixture categories. **Done** (this document).
+- Define resource graph, composer, augmentor, and manifest contracts. **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: `ResourceGraph`, `IResourceGraphAugmentor`, `ISearchResponseComposer`, `WorkflowManifest`. **Not shipped**: a flavor adapter contract (`IEhrFlavorAdapter`) — no flavor adapter type exists yet; flavor adapters remain proposed only (see Phase 4/Recommended Next Step, which already deferred them past the first pack). The shipped contracts are public from the start, not staged `internal`-then-promoted — this repo is pre-v1, so the internal-staging idea below was superseded by shipping the real public surface directly.
+- Resolve the open discovery question (generalize `ScenarioCatalog` vs sibling `WorkflowScenarioCatalog`) and confirm `DiscoveredScenario`/`DiscoveredScenarioParameter` reuse. **Shipped**: resolved as a sibling catalog (`WorkflowScenarioCatalog`) sharing a newly-extracted `ScenarioParameterBinder` with `ScenarioCatalog`, per the discussion that closed this open question.
 
 ### Phase 2: High-value workflow builders
 
-- **Shipped** (Appointment-specific portion only, via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`): dedicated builder/augmentor support for `Appointment`.
-- Add dedicated builders/states for `List`, `DocumentReference`, and `Basic` metadata markers. — not implemented, remains proposed.
-- **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: organization/practitioner/location topology helpers.
-- **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: deterministic ID and clock options for workflow fixtures.
+- **Shipped** (via the plan above): augmentor support for `Appointment` (`AppointmentSchedulingAugmentor`), reusing the existing `PractitionerState` for practitioner generation rather than adding a new builder.
+- **Not implemented, remains proposed**: dedicated builders/states for `List`, `DocumentReference`, and `Basic` metadata markers.
+- **Not implemented, remains proposed**: organization/location topology helpers — the shipped pack reuses the existing `PractitionerState` directly; no new Organization or Location resource support was added.
+- **Partially shipped**: clock options (`WorkflowScenarioOptions.Clock`, a `TimeProvider`) shipped. Deterministic resource IDs did **not** ship — `AppointmentSchedulingAugmentor` and every existing `ScenarioState` still assign IDs via `Guid.NewGuid()`; seed-reproducibility covers Bogus-driven value picks only, not byte-identical bundle output (see this document's Fixture determinism discussion above — that gap was scoped out of the shipped plan deliberately, not an oversight).
 
 ### Phase 3: Search response composition
 
-**Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`:
-
-- Add searchset bundle composition.
-- Add include/revInclude policies.
-- Add paging and related-link generation.
-- Add request/response paired fixture output.
+- **Shipped** via the plan above: searchset bundle composition (`SearchsetBundleComposer`), paging, and `self`/`next`/`previous` link generation.
+- **Partially shipped**: include completeness has two modes, `Complete` and `Missing` (the two variants the DailyAppointmentSchedule pack's own "useful variants" called for) — `Duplicate`/`Stale`/`Unrelated`/`Mixed` were deliberately descoped, not implemented.
+- **Not implemented, remains proposed**: `related` links, and request/response paired fixture output.
 
 ### Phase 4: Built-in scenario packs
 
-- **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: daily appointment schedule (the DailyAppointmentSchedule pack).
+- **Shipped** via the plan above: daily appointment schedule (the `DailyAppointmentSchedule` pack), reachable via `ignixa-fakes {version} workflow DailyAppointmentSchedule`.
 - Practitioner panel — not implemented, remains proposed.
 - Remaining candidates (encounter context, patient list, document context, paged search results, include variants) only as consumers materialize — not implemented, remain proposed.
 
