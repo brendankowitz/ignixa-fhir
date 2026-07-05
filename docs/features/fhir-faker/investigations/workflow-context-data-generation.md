@@ -1,7 +1,7 @@
 # Investigation: Workflow and Context Data Generation
 
 **Feature**: fhir-faker
-**Status**: Proposed
+**Status**: MVP Implemented (DailyAppointmentSchedule pack; PractitionerPanel and later phases remain proposed)
 **Created**: 2026-07-04
 **Related**: Merged scenario/state discovery and theme-consistent generation APIs from PR #299
 
@@ -462,17 +462,22 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 
 ### Phase 1: Investigation and contracts
 
+**Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`:
+
 - Document public workflow fixture categories.
 - Define resource graph, composer, augmentor, flavor adapter, and manifest contracts. Keep them `internal` (or in a clearly-marked preview state) until Phase 4 proves them — see Versioning and Compatibility.
 - Resolve the open discovery question (generalize `ScenarioCatalog` vs sibling `WorkflowScenarioCatalog`) and confirm `DiscoveredScenario`/`DiscoveredScenarioParameter` reuse.
 
 ### Phase 2: High-value workflow builders
 
-- Add dedicated builders/states for `Appointment`, `List`, `DocumentReference`, and `Basic` metadata markers.
-- Add organization/practitioner/location topology helpers.
-- Add deterministic ID and clock options for workflow fixtures.
+- **Shipped** (Appointment-specific portion only, via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`): dedicated builder/augmentor support for `Appointment`.
+- Add dedicated builders/states for `List`, `DocumentReference`, and `Basic` metadata markers. — not implemented, remains proposed.
+- **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: organization/practitioner/location topology helpers.
+- **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: deterministic ID and clock options for workflow fixtures.
 
 ### Phase 3: Search response composition
+
+**Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`:
 
 - Add searchset bundle composition.
 - Add include/revInclude policies.
@@ -481,8 +486,9 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 
 ### Phase 4: Built-in scenario packs
 
-- Daily appointment schedule, then practitioner panel (the two committed packs — see Recommended Next Step).
-- Remaining candidates (encounter context, patient list, document context, paged search results, include variants) only as consumers materialize.
+- **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: daily appointment schedule (the DailyAppointmentSchedule pack).
+- Practitioner panel — not implemented, remains proposed.
+- Remaining candidates (encounter context, patient list, document context, paged search results, include variants) only as consumers materialize — not implemented, remain proposed.
 
 ### Phase 5: Extension package pattern
 
