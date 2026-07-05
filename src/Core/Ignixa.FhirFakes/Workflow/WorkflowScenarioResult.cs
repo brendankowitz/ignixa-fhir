@@ -7,8 +7,9 @@ namespace Ignixa.FhirFakes.Workflow;
 
 /// <summary>
 /// The output of invoking a workflow scenario pack: the assembled resource graph and its manifest.
-/// Response-shaping (bundles, paging, includes) is a separate step via <see cref="ISearchResponseComposer"/>
-/// — packs are responsible for graph assembly only.
+/// Bundle composition (transaction/batch) is a separate step via <see cref="ResourceBundleComposer"/>,
+/// applied to <see cref="Graph"/>'s <see cref="ResourceGraph.AllResources"/> — packs are responsible for
+/// graph assembly only.
 /// </summary>
 public sealed class WorkflowScenarioResult
 {
