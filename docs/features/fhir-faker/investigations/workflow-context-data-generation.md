@@ -465,7 +465,7 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 ### Phase 1: Investigation and contracts
 
 - Document public workflow fixture categories. **Done** (this document).
-- Define resource graph, composer, enricher, and manifest contracts. **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: `ResourceGraph`, `IResourceGraphEnricher`, `ISearchResponseComposer`, `WorkflowManifest`. **Not shipped**: a flavor adapter contract (`IEhrFlavorAdapter`) — no flavor adapter type exists yet; flavor adapters remain proposed only (see Phase 4/Recommended Next Step, which already deferred them past the first pack). The shipped contracts are public from the start, not staged `internal`-then-promoted — this repo is pre-v1, so the internal-staging idea below was superseded by shipping the real public surface directly.
+- Define resource graph, composer, enricher, and manifest contracts. **Shipped** via `docs/superpowers/plans/2026-07-04-fhir-fakes-workflow-context.md`: `ResourceGraph`, `IResourceGraphEnricher`, `WorkflowManifest`. `ISearchResponseComposer`/`SearchsetBundleComposer` also shipped initially but were **removed** — see Phase 3 below. **Not shipped**: a flavor adapter contract (`IEhrFlavorAdapter`) — no flavor adapter type exists yet; flavor adapters remain proposed only (see Phase 4/Recommended Next Step, which already deferred them past the first pack). The shipped contracts are public from the start, not staged `internal`-then-promoted — this repo is pre-v1, so the internal-staging idea below was superseded by shipping the real public surface directly.
 - Resolve the open discovery question (generalize `ScenarioCatalog` vs sibling `WorkflowScenarioCatalog`) and confirm `DiscoveredScenario`/`DiscoveredScenarioParameter` reuse. **Shipped**: resolved as a sibling catalog (`WorkflowScenarioCatalog`) sharing a newly-extracted `ScenarioParameterBinder` with `ScenarioCatalog`, per the discussion that closed this open question.
 
 ### Phase 2: High-value workflow builders
@@ -477,9 +477,8 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 
 ### Phase 3: Search response composition
 
-- **Shipped** via the plan above: searchset bundle composition (`SearchsetBundleComposer`), paging, and `self`/`next`/`previous` link generation.
-- **Partially shipped**: include completeness has two modes, `Complete` and `Missing` (the two variants the DailyAppointmentSchedule pack's own "useful variants" called for) — `Duplicate`/`Stale`/`Unrelated`/`Mixed` were deliberately descoped, not implemented.
-- **Not implemented, remains proposed**: `related` links, and request/response paired fixture output.
+- **Shipped, then reversed.** Searchset bundle composition (`SearchsetBundleComposer`), paging, `self`/`next`/`previous` links, and `IncludeCompleteness` (`Complete`/`Missing`) shipped via the plan above, then were deliberately removed: the CLI `workflow` command now emits a plain transaction/batch `Bundle` via `ResourceBundleComposer` — the same composer `ScenarioContext.ToBundle()`/`ToBatchBundle()` use — instead of a paged searchset response. Rationale: consistency with `scenario`'s output shape mattered more than a bespoke response format nothing outside this library's own CLI was consuming yet; searchset/paging remains a valid future direction if a real downstream consumer needs it, but isn't worth carrying as unused surface area pre-v1.
+- **Not implemented, remains proposed**: paged/linked search responses, `related` links, include-completeness variants beyond the two above, and request/response paired fixture output. All deferred, not descoped — see [Paged and linked search responses](#paged-and-linked-search-responses) below for the original design if this is revisited.
 
 ### Phase 4: Built-in scenario packs
 

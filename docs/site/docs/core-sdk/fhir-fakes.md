@@ -105,6 +105,52 @@ var patient = PatientBuilderFactory.Create(schemaProvider)
     .Build();
 ```
 
+#### Additional Resource Builders
+
+Beyond `PatientBuilder` and `ObservationBuilder`, the library ships fluent builders for 13 more
+resource types. Every builder follows the same shape: a static `Create(schemaProvider)` factory,
+chainable `With*`/`Add*` methods, and a `Build()` that returns a `ResourceJsonNode`.
+
+| Builder | Purpose | Notes |
+|---------|---------|-------|
+| `PractitionerBuilder` | Practitioners with name, NPI, and specialty qualifications | `Create(schemaProvider)` |
+| `PractitionerRoleBuilder` | Links a practitioner to an organization with roles, specialties, locations | `Create(schemaProvider)` |
+| `OrganizationBuilder` | Organizations with NPI/Tax ID, address, type, telecom; has `Hospital()`/`Clinic()`/`InsuranceCompany()` presets | `Create(schemaProvider)` |
+| `OrganizationAffiliationBuilder` | Affiliations between organizations (networks, roles, specialties, locations, services) | `Create(schemaProvider)` |
+| `LocationBuilder` | Locations, including building/floor/room hierarchies via `WithPartOf` | `Create(schemaProvider)` |
+| `HealthcareServiceBuilder` | Services offered by an organization, with categories, types, and locations | `Create(schemaProvider)` |
+| `CareTeamBuilder` | Care teams with participants and roles | `Create(schemaProvider)` |
+| `GroupBuilder` | Actual (member-list) or descriptive groups of patients/practitioners/devices | `Create(schemaProvider)` |
+| `DiagnosticReportBuilder` | Diagnostic report findings referencing one or more Observations | `Create(schemaProvider)` |
+| `MedicationRequestBuilder` | Medication orders, coded or by reference, with requester and timing | `Create(schemaProvider)` |
+| `MedicationDispenseBuilder` | Dispense records linked to an authorizing prescription and performer | `Create(schemaProvider)` |
+| `RiskAssessmentBuilder` | Risk predictions with a `probability` value, for testing FHIR number search parameters | `Create(schemaProvider)` |
+| `ValueSetBuilder` | Minimal ValueSet resources (url, name, status, version) | `Create(schemaProvider)` |
+
+```csharp
+using Ignixa.FhirFakes.Builders;
+
+var practitioner = PractitionerBuilder.Create(schemaProvider)
+    .WithName("Alice", "Anderson")
+    .WithNpi("1234567890")
+    .WithSpecialty("207Q00000X", system: "http://nucc.org/provider-taxonomy", display: "Family Medicine")
+    .Build();
+
+var organization = OrganizationBuilder.Create(schemaProvider)
+    .WithName("Boston Medical Center")
+    .WithAddress("725 Albany St", "Boston", "MA", "02118")
+    .WithType("prov", display: "Healthcare Provider")
+    .Build();
+
+var request = MedicationRequestBuilder.Create(schemaProvider)
+    .WithStatus("active")
+    .WithIntent("order")
+    .WithSubject(patient.Id!)
+    .WithMedicationCodeableConcept("860975", "http://www.nlm.nih.gov/research/umls/rxnorm", "Metformin 500mg")
+    .WithRequester(practitioner.Id!)
+    .Build();
+```
+
 ### Layer 3: Scenario Building
 
 Build complete clinical scenarios with patient journeys:
@@ -184,6 +230,120 @@ foreach (var state in generator.AvailableStates)
 // Output: Arizona, California, Illinois, Massachusetts,
 //         New York, Pennsylvania, Texas, Washington
 ```
+
+## Patient Lifecycle Generation
+
+`PatientLifecycleGenerator` (Layer 3) simulates a single patient's life year-by-year from birth to a
+target age, executing wellness visits, immunizations, and probabilistic condition onset as it goes.
+It's the per-patient engine that `PopulationGenerator` (Layer 4) drives once for every generated patient.
+
+```csharp
+using Ignixa.FhirFakes.Lifecycle;
+using Ignixa.FhirFakes.Scenarios;
+using Ignixa.FhirFakes.Scenarios.Codes;
+
+var lifecycle = new PatientLifecycleGenerator(schemaProvider)
+    .WithBirthYear(1980)
+    .WithGender("female")
+    .AddWellnessSchedule(pediatric: true, adult: true)
+    .AddImmunizationSchedule()
+    .AddProbabilisticCondition(
+        "Type 2 Diabetes",
+        onsetAges: 40..65,
+        probability: 0.15,
+        scenarioFactory: sp => new ScenarioBuilder(sp)
+            .AddConditionOnset(FhirCode.Conditions.DiabetesType2, severity: 2)
+            .AddMedicationOrder(FhirCode.Medications.Metformin500mg, isChronic: true, frequency: "BID", reasonCode: FhirCode.Conditions.DiabetesType2));
+
+ScenarioContext context = lifecycle.SimulateUntilAge(45);
+
+var patient = context.Patient;
+var conditions = context.Conditions; // 0 or 1 entries — probabilistic, checked once per applicable age
+```
+
+**Entry points**: `WithBirthYear`/`WithGender`/`WithGivenName`/`WithFamilyName`/`WithZipCode`/`WithAreaCode`
+configure the patient generated at age 0 (delegating to `PatientBuilder` internally).
+`AddWellnessSchedule(pediatric, adult)` and `AddImmunizationSchedule()` add deterministic, age-gated
+events (`PediatricWellnessSchedule`, `AdultWellnessSchedule`, `ImmunizationScheduleEvent`).
+`AddProbabilisticCondition(conditionName, onsetAges, probability, scenarioFactory)` registers a
+condition that's rolled once per applicable age within the given `Range` and, if it hits, invokes the
+`scenarioFactory` to add the clinical resources (condition, medications, etc.) at that point in the
+timeline. `AddEvent(ILifecycleEvent)` accepts a custom event for anything not covered by the above.
+`SimulateUntilAge(targetAge)` runs the simulation and returns the accumulated `ScenarioContext`.
+
+`DiseaseRiskCalculator` supplies evidence-based probabilities (CDC, NHANES, Framingham, SEER) so a
+condition's `probability` argument doesn't have to be a hand-picked constant:
+
+```csharp
+var riskCalc = new DiseaseRiskCalculator();
+var diabetesRisk = riskCalc.CalculateDiabetesRisk(age: 50, smoker: false, bmi: 35m, familyHistory: true);
+// CalculateHypertensionRisk, CalculateAsthmaRisk, CalculateCancerRisk, and CalculateStrokeRisk
+// follow the same pattern — age plus risk factors in, a capped 0.0-1.0 probability out.
+```
+
+`LifecycleExampleScenarios` bundles five ready-made lifecycles built from these two types —
+`GetHealthyChildLifecycle`, `GetTypicalAdultLifecycle`, `GetMetabolicSyndromeLifecycle`,
+`GetPediatricAsthmaLifecycle`, and `GetElderlyMultiMorbidityLifecycle` — usable directly or as templates
+for a custom lifecycle:
+
+```csharp
+using Ignixa.FhirFakes.Lifecycle;
+
+var context = LifecycleExampleScenarios.GetTypicalAdultLifecycle(schemaProvider);
+Console.WriteLine($"Conditions: {context.Conditions.Count}, Medications: {context.Medications.Count}");
+```
+
+**Relationship to Population Generation**: `PopulationGenerator.Generate(state, populationSize)` samples
+a city and patient demographics via `PatientBuilderFactory.Create(schemaProvider).FromCity(city)` for
+each patient, then feeds that same birth year, gender, name, zip, and area code into a fresh
+`PatientLifecycleGenerator`, adds age-appropriate wellness/immunization schedules plus age/BMI/smoking/
+family-history-stratified probabilistic conditions (via `DiseaseRiskCalculator`), and simulates each
+patient up to their sampled current age. See [Layer 4: Population Generation](#layer-4-population-generation) above.
+
+## Patient Profiles
+
+`Builders/Profiles/` implements country-specific FHIR patient profiles — the extensions, identifiers,
+and name-generation locale a `Patient` resource needs to conform to a given national base profile (US
+Core, AU Base, UK Core). `PatientBuilder.FromCity(city)` auto-selects the right profile for a city's
+country; `PatientBuilder.WithProfile(profile)` selects one explicitly.
+
+```csharp
+using Ignixa.FhirFakes.Builders;
+using Ignixa.FhirFakes.Builders.Profiles;
+using Ignixa.FhirFakes.Population;
+
+// Auto-selected: FromCity resolves the country's profile via CityDemographics.GetProfile()
+var ukPatient = PatientBuilderFactory.Create(schemaProvider)
+    .FromCity(KnownCities.London)
+    .WithAge(45)
+    .Build();
+// ukPatient carries a UK Core Ethnic Category extension and an NHS Number identifier
+// (with a verification-status extension), generated from the London ethnic-category distribution.
+
+// Explicit profile selection, with a required profile attribute supplied manually
+var usPatient = PatientBuilderFactory.Create(schemaProvider)
+    .WithProfile(PatientProfileFactory.USCore)
+    .WithAge(40)
+    .WithAttribute(USCorePatientProfile.UsCoreRaceAttribute, USCorePatientProfile.Race.Black)
+    .Build();
+```
+
+**`IPatientProfile`** is the contract every profile implements: `NameGenerationStrategy` (locale-aware
+name generation), `ProfileUrl` and `CountryCode`, `RequiredAttributes` (attribute keys
+`DemographicsDataProvider` must sample), `BuildExtensions`/`BuildIdentifiers` (the profile-specific
+FHIR extensions and identifiers to add), `ValidateAttributes`, and `SampleProfileAttributes` (draws
+profile attributes from a city's demographic distribution using a seeded `Bogus.Randomizer`).
+
+`PatientProfileFactory` centralizes lookup: `GetProfile(countryCode)` (falls back to
+`DefaultPatientProfile` for an unrecognized or missing code), the `USCore`/`AUBase`/`UKCore`/`Default`
+static accessors used above, and `RegisterProfile(countryCode, profile)` for adding a custom profile.
+
+| Profile | Country | Identifier | Key extension |
+|---------|---------|------------|----------------|
+| `USCorePatientProfile` | US | — | Race (`us-core-race`) and ethnicity (`us-core-ethnicity`) |
+| `AUBasePatientProfile` | AU | — | Indigenous Status (ABS-coded) |
+| `UKCorePatientProfile` | GB (alias `UK`) | NHS Number (Modulus-11 check digit, with verification-status extension) | Ethnic Category (ONS 2011 census codes) |
+| `DefaultPatientProfile` | fallback | — | none — used when no country-specific profile is registered |
 
 ## Predefined Scenarios
 
@@ -297,9 +457,9 @@ var scenario = new ScenarioBuilder(schemaProvider)
 `ScenarioBuilder` is deliberately one-scenario-one-patient. A workflow scenario pack sits one layer
 above it: it composes several `ScenarioContext`s (and non-patient resources like practitioners) into a
 single `ResourceGraph`, optionally links them together with a post-processing enricher, and returns a
-search-response-ready result. Use this layer when a fixture needs more than one patient in the same
-graph — e.g. a practitioner's daily appointment schedule linking multiple patients, encounters, and a
-shared practitioner roster.
+bundle-ready result. Use this layer when a fixture needs more than one patient in the same graph — e.g.
+a practitioner's daily appointment schedule linking multiple patients, encounters, and a shared
+practitioner roster.
 
 ### Building a graph: `WorkflowGraphBuilder`
 
@@ -358,6 +518,14 @@ if (found is not null)
 }
 ```
 
+**Determinism caveat:** `WorkflowScenarioOptions.Seed` only reproduces the `PatientBuilder`-generated
+demographics of each patient in the pack — names, birthdates, and other sampled attributes come out
+identical across runs with the same seed. It does **not** make the whole generated graph
+byte-reproducible: every `ScenarioState.Execute()` call mints a fresh resource id via `Guid.NewGuid()`,
+and `PractitionerState` draws names from its own unseeded `Bogus.Faker`, independent of the pack's seed.
+Don't rely on a workflow pack producing byte-identical output run-to-run — only patient demographics are
+stable today.
+
 `WorkflowScenarioCatalog.Invoke` throws `ScenarioInvocationException` (wrapping the original exception)
 if the pack's factory method itself throws.
 
@@ -377,24 +545,20 @@ Registration is idempotent and additive. The namespace convention is matched by 
 (`*.Workflow.Predefined`), not by owning assembly, so a private pack's namespace does not need to live
 under `Ignixa.FhirFakes` — only its last two segments need to be `Workflow.Predefined`.
 
-### Composing search responses: `ISearchResponseComposer`
+### Composing bundles: `ResourceBundleComposer`
 
-Once a `ResourceGraph` is assembled, `SearchsetBundleComposer` (the built-in `ISearchResponseComposer`)
-splits it into paged, spec-shaped searchset `Bundle`s:
+Once a `ResourceGraph` is assembled, `ResourceBundleComposer` — the same shared composer
+`ScenarioContext.ToBundle()`/`ToBatchBundle()` use — turns it into a transaction or batch `Bundle`,
+identically shaped to a scenario's output:
 
 ```csharp
-using Ignixa.FhirFakes.Workflow;
+using Ignixa.FhirFakes;
 
-var composer = new SearchsetBundleComposer();
-var pages = composer.Compose(result.Graph, new SearchResponseOptions
-{
-    SearchUrl = "/Appointment",
-    MatchResourceType = result.Manifest.PrimaryResourceType,
-    PageSize = 20,
-    IncludeCompleteness = IncludeCompleteness.Complete, // or Missing, to simulate a partial _include response
-});
+var transactionBundle = ResourceBundleComposer.ToTransactionBundle(result.Graph.AllResources);
+// urn:uuid fullUrls + POST requests — the server assigns ids and resolves cross-references.
 
-// One Bundle per page: self/next/previous links, entry.search.mode of "match" or "include"
+var batchBundle = ResourceBundleComposer.ToBatchBundle(result.Graph.AllResources);
+// ResourceType/id fullUrls + PUT requests — for resources that already carry their final ids.
 ```
 
 See [Workflow Command](#workflow-command) in the CLI Tool section below for command-line usage.
@@ -584,20 +748,24 @@ When edge cases are applied, a sidecar `.manifest.json` file is written alongsid
 
 ### Workflow Command
 
-Generate a predefined [workflow scenario pack](#workflow-scenario-packs) as paged searchset bundles plus a manifest:
+Generate a predefined [workflow scenario pack](#workflow-scenario-packs) as a transaction or batch
+bundle plus a manifest — the same output shape as the `scenario` command:
 
 ```bash
-# Generate the built-in daily-schedule workflow pack
+# Generate the built-in daily-schedule workflow pack (transaction bundle, default)
 ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --seed 42
 
-# Override pack parameters and page size
-ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --param practitionerCount=3 --param appointmentCount=30 --page-size 10
+# Override pack parameters
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --param practitionerCount=3 --param appointmentCount=30
+
+# Batch bundle (resolved ResourceType/id references) instead of transaction
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --resolved-references
 
 # Tag every generated resource for test isolation, and validate the output
 ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --tag my-test-run --validate
 ```
 
-**Output**: one `{version}-workflow-{scenario}-{guid}-page{n}.json` file per page, plus a
+**Output**: one `{version}-workflow-{scenario}-{guid}.json` bundle file, plus a
 `{version}-workflow-{scenario}-{guid}-manifest.json` describing the scenario id, seed, primary resource
 type, and per-type resource counts.
 
@@ -608,7 +776,7 @@ type, and per-type resource counts.
 | `scenario <name>` | `--out`, `--resolved-references`, `--validate`, `--param name=value` (repeatable) |
 | `population` | `--out`, `--from`, `--count`, `--resolved-references`, `--ndjson` |
 | `resource <type> [stateName]` | `--out`, `--firstname`, `--surname`, `--from`, `--validate`, `--edge-cases [selectors]`, `--seed`, `--include-invalid`, `--density`, `--theme`, `--verbose` |
-| `workflow <name>` | `--out`, `--seed`, `--tag`, `--page-size`, `--validate`, `--param name=value` (repeatable) |
+| `workflow <name>` | `--out`, `--seed`, `--tag`, `--resolved-references`, `--validate`, `--param name=value` (repeatable) |
 | `help scenarios` | Lists all available predefined scenarios |
 
 ## Deterministic / Reproducible Generation
