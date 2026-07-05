@@ -38,7 +38,7 @@ Generating only valid individual resources does not exercise those paths. Genera
 1. **Keep FhirFakes public and generic.** Do not encode internal service names, private endpoint assumptions, or consumer-specific models.
 2. **Separate clinical realism from workflow realism.** Clinical states create plausible medical history; workflow composers shape that history into the FHIR response forms downstream systems ingest.
 3. **Prefer discoverable scenario packs over hardcoded methods.** Build on scenario/state discovery, metadata, domains, parameters, and theme-consistent generation.
-4. **Make extension seams first-class.** Downstream teams should be able to register private providers, adapters, augmentors, and scenario packs without forking FhirFakes.
+4. **Make extension seams first-class.** Downstream teams should be able to register private scenario packs, augmentors, and flavor adapters without forking FhirFakes.
 5. **Measure output shape.** Fixture generation should report resource counts, bundle links, included resource coverage, validation results, and deterministic seed metadata.
 
 ## Current Strengths
@@ -52,8 +52,8 @@ FhirFakes already has several pieces needed for richer workflow fixtures:
 | Scenario builder | Creates patient-centered longitudinal graphs across encounters, conditions, observations, medications, diagnostic reports, procedures, immunizations, allergies, care plans, teams, practitioners, organizations, coverages, goals, and timelines | Foundation for encounter and chart-review context |
 | Population generator | Creates geography-aware populations and CLI-exportable bundles/NDJSON | Foundation for practitioner panels and multi-patient cohorts |
 | Edge-case pipeline | Produces valid-hostile and optionally invalid data with mutation manifests | Foundation for robustness fixtures |
-| CLI | Generates resources, scenarios, and populations across FHIR versions | Natural entry point for fixture pipelines |
-| Scenario/state discovery | Merged PR #299 APIs expose discoverable scenario/state metadata and theme-consistent generation | Foundation for public scenario packs and private extension catalogs |
+| CLI | Generates resources, scenarios, and populations across FHIR versions (`ignixa-fakes {stu3\|r4\|r4b\|r5\|r6} {resource\|scenario\|population}`) | Natural entry point for fixture pipelines |
+| Scenario/state discovery | `ScenarioCatalog` / `ObservationStateCatalog` (merged PR #299): attribute-driven reflection discovery of static factory methods, with `DiscoveredScenario`/`DiscoveredScenarioParameter` metadata, `Find`/`Invoke`, typed parameter overrides with Min/Max validation, and CLI `--param name=value` binding | Foundation for public scenario packs and private extension catalogs — the workflow discovery model below must extend this, not duplicate it |
 
 ## Data Categories for Context Consumers
 
@@ -69,7 +69,7 @@ The extension model should describe needs by reusable fixture category instead o
 | Refresh and synchronization markers | Incremental refresh, cursor extraction, metadata-only resources | Basic or OperationOutcome-like marker resources with extensions and timestamps |
 | Pagination and related links | Client navigation across search pages and auxiliary queries | Searchset bundle with `self`, `next`, `previous`, and `related` links |
 | Include/revInclude coverage | Consumer handling of present, missing, duplicate, stale, or unrelated included resources | Searchset bundle with controlled include completeness |
-| EHR flavor quirks | Vendor-specific identifiers, extensions, coding systems, reference styles, and date precision | Profile adapter that changes systems, extensions, status values, or reference forms |
+| EHR flavor quirks | Vendor-specific identifiers, extensions, coding systems, reference styles, and date precision | Flavor adapter that changes systems, extensions, status values, or reference forms |
 | Temporal and identifier edge cases | Timezone, partial precision, MRN collisions, multi-system identifiers | Seeded edge-case decorators layered on workflow fixtures |
 
 ## Gaps and Opportunities
@@ -96,13 +96,19 @@ Clinical states cover many patient history resources, but workflow fixtures need
 
 Different FHIR-backed systems vary in identifier systems, extension URLs, coding systems, reference formats, date precision, included resources, and metadata conventions. FhirFakes should not hardcode those variants, but it should make them easy to add.
 
-**Opportunity**: define flavor/profile adapters that alter generated graphs and bundles through explicit hooks.
+**Opportunity**: define flavor adapters that alter generated graphs and bundles through explicit hooks.
 
 ### Fixture determinism needs bundle-level semantics
 
 Seeds are useful, but workflow fixtures need deterministic resource IDs, page boundaries, timestamps, link URLs, and ordering. Otherwise tests cannot compare bundle output reliably.
 
-**Opportunity**: define deterministic fixture metadata and allow timestamp normalization or fixed clocks for generated workflow bundles.
+**Opportunity**: make determinism a concrete contract, not an aspiration. Three mechanisms, all recorded in the manifest:
+
+1. **Seed** — reuse the existing seeded `Faker`/`Random` plumbing (`SchemaBasedFhirResourceFaker(schemaProvider, seed)`, `PatientBuilder.WithSeed`). The same caveat from theme-consistent-generation applies: reproducibility holds for a fixed library version and option set; adding a draw to the sequence shifts output for a pinned seed.
+2. **Clock** — a `TimeProvider` (or fixed `DateTimeOffset`) supplied through the workflow options, so `meta.lastUpdated`, appointment times, and page timestamps derive from a fixed instant instead of `DateTime.Now`.
+3. **ID strategy** — resource IDs derived from the seeded RNG (or a sequential counter scoped to the generation run), never `Guid.NewGuid()`, so entry `fullUrl`s and `next`-link continuation tokens are stable across runs.
+
+Entry ordering and page boundaries must be a pure function of (seed, options); a test asserting the exact JSON of page 2 of 3 must pass on every run.
 
 ## Proposed Extensibility Model
 
@@ -130,7 +136,7 @@ Resource graph augmentors
   Add private or profile-specific resources through registration
         │
         ▼
-Flavor/profile adapters
+Flavor adapters
   Identifier systems
   Extension URLs
   Reference formats
@@ -152,63 +158,103 @@ Validation and manifest output
   Seed and clock metadata
 ```
 
-### Scenario pack provider
+### Scenario pack discovery — extend `ScenarioCatalog`, don't parallel it
 
-Scenario packs should be discoverable and parameterized. A provider exposes generic workflow scenarios without forcing consumers to know implementation classes.
+The repository already has a merged, tested discovery model: `ScenarioCatalog` finds attribute-annotated public static factory methods by reflection, exposes `DiscoveredScenario`/`DiscoveredScenarioParameter` metadata (including Min/Max validation and string parsing for CLI/form values), and invokes them with typed parameter overrides. An earlier draft of this proposal sketched a fresh `IWorkflowScenarioProvider { Discover(); Build(name, options); }` interface — rejected: it duplicates the catalog's discovery, metadata, and parameter-binding responsibilities with a second, stringly-typed lookup, and every consumer (CLI, UIs, downstream teams) would have to learn two discovery models.
+
+Instead, workflow scenario packs follow the same convention with a different return type:
 
 ```csharp
-public interface IWorkflowScenarioProvider
+// A workflow pack is a static factory method, discovered by attribute + signature,
+// exactly like clinical scenarios — but it returns a workflow result, not a ScenarioContext.
+public static class DailyAppointmentScheduleScenario
 {
-    IEnumerable<DiscoveredScenario> Discover();
-    WorkflowScenario Build(string scenarioName, WorkflowScenarioOptions options);
+    [WorkflowScenario(Id = "DailyAppointmentSchedule",
+        Description = "Practitioner day schedule with appointment searchset and included context")]
+    public static WorkflowScenarioResult GetDailyAppointmentSchedule(
+        IFhirSchemaProvider schemaProvider,
+        WorkflowScenarioOptions options,
+        [ScenarioParameter(Min = 1, Max = 10)] int practitionerCount = 1,
+        [ScenarioParameter(Min = 0, Max = 50)] int appointmentCount = 12) => ...;
+}
+
+public static class WorkflowScenarioCatalog
+{
+    public static IReadOnlyList<DiscoveredScenario> GetAll();
+    public static DiscoveredScenario? Find(string id);
+    public static WorkflowScenarioResult Invoke(
+        DiscoveredScenario scenario,
+        IFhirSchemaProvider schemaProvider,
+        WorkflowScenarioOptions options,
+        IReadOnlyDictionary<string, object?>? parameterOverrides = null);
+
+    // The genuinely new capability: ScenarioCatalog only scans its own assembly today.
+    // Registration is the extension seam for private downstream packs.
+    public static void RegisterAssembly(Assembly assembly);
 }
 ```
 
-Example built-in scenarios:
+`WorkflowScenarioResult` (sealed) carries the composed graph, the emitted bundles, and the manifest described under Output Contracts. `WorkflowScenarioOptions` (sealed record, `init` properties) carries the cross-cutting knobs — seed, clock, ID strategy, theme, flavor — while pack-specific knobs stay as factory-method parameters so they surface through discovery metadata. `DiscoveredScenario`/`DiscoveredScenarioParameter` and the `--param name=value` CLI binding are reused as-is.
 
-- `PractitionerPanel`
+Design notes:
+
+- All members stay synchronous. Generation is in-memory throughout FhirFakes; file and network I/O belongs to the CLI (or the caller), which is where `async`/`CancellationToken` already live.
+- `RegisterAssembly` must be thread-safe (registration at startup, lock-free reads afterward — the existing `Lazy` pattern in `ScenarioCatalog` needs rework to admit late registration; alternatively, registration is only honored before first enumeration and throws afterward, which is simpler and probably sufficient).
+- **Open question (human decision)**: generalize `ScenarioCatalog` itself to discover both return types, or add the sibling `WorkflowScenarioCatalog` shown above. A sibling keeps the merged, published `ScenarioCatalog` API untouched (it is on a stable package — see Versioning below); generalizing avoids a second static catalog. This document recommends the sibling but does not decide.
+
+Candidate built-in packs (only the first two are committed by the Recommended Next Step; the rest are backlog until a consumer asks):
+
 - `DailyAppointmentSchedule`
+- `PractitionerPanel`
 - `EncounterContext`
 - `PatientList`
 - `DocumentSelection`
 - `PagedSearchResults`
 - `MissingIncludes`
-- `EhrFlavorSmokeTest`
-
-Private downstream teams can register additional providers for proprietary workflows.
 
 ### Search response composer
 
-The composer takes a resource graph and emits a specific FHIR response shape. It owns response-level details rather than mixing them into clinical states.
+The composer takes a resource graph and emits a specific FHIR response shape. It owns response-level details rather than mixing them into clinical states. Note the return type: FhirFakes has no POCO `Bundle` model — `ScenarioContext.ToBundle()`/`ToBatchBundle()` already return `BundleJsonNode`, and the composer emits the same type. Paged output is a list of pages, never null (empty result set → one empty searchset page).
 
 ```csharp
 public interface ISearchResponseComposer
 {
-    Bundle Compose(ResourceGraph graph, SearchResponseOptions options);
+    IReadOnlyList<BundleJsonNode> Compose(ResourceGraph graph, SearchResponseOptions options);
 }
 ```
 
-Options should cover:
+`SearchResponseOptions` is a sealed record with `init` properties; behavioral choices are enums, not booleans:
 
-- FHIR version.
-- Search URL and query parameters.
-- Bundle type: `searchset`, `batch-response`, or `transaction-response`.
-- Page size and page count.
-- Include/revInclude policy.
-- Link policy for `self`, `next`, `previous`, and `related`.
-- Entry ordering.
-- Duplicate, stale, missing, or unrelated include behavior.
+```csharp
+public sealed record SearchResponseOptions
+{
+    public required string SearchUrl { get; init; }
+    public ResponseBundleType BundleType { get; init; } = ResponseBundleType.Searchset;
+    public int PageSize { get; init; } = 20;
+    public IncludeCompleteness IncludeCompleteness { get; init; } = IncludeCompleteness.Complete;
+    // seed / clock / id-strategy per the determinism contract above
+}
+
+public enum ResponseBundleType { Searchset, BatchResponse, TransactionResponse }
+public enum IncludeCompleteness { Complete, Missing, Duplicate, Stale, Unrelated, Mixed }
+```
+
+Options also cover link policy for `self`, `next`, `previous`, and `related`, entry ordering, and revInclude selection — same enum-over-bool discipline.
 
 ### Resource graph augmentor
 
 Augmentors add workflow resources to an existing clinical graph. They are the safest place for custom resources, private profiles, and resource relationships that are not part of the core clinical state machine.
 
+`ResourceGraph` does not replace `ScenarioContext` — it aggregates the outputs of one or more patient-centric `ScenarioContext`s (plus non-patient workflow resources) into a single cross-patient registry, keeping `ScenarioBuilder`'s one-scenario-one-patient boundary intact. Consistent with the codebase's mutable-JSON-node idiom, augmentors mutate the graph in place rather than returning a copy:
+
 ```csharp
 public interface IResourceGraphAugmentor
 {
-    ResourceGraph Augment(ResourceGraph graph, ResourceGraphAugmentationContext context);
+    void Augment(ResourceGraph graph, ResourceGraphAugmentationContext context);
 }
 ```
+
+Augmentors must be stateless: all per-run state (RNG, clock, accumulated resources) lives on the graph or the context, so a single augmentor instance can be registered once and reused across concurrent generations.
 
 Built-in augmentors could add:
 
@@ -218,18 +264,20 @@ Built-in augmentors could add:
 - Basic refresh markers.
 - PractitionerRole, Organization, Location, HealthcareService, and affiliation networks.
 
-### Flavor/profile adapter
+### Flavor adapter
 
-Adapters alter generated resources and bundles to match a known style without changing scenario logic.
+Adapters alter generated resources and bundles to match a known vendor style without changing scenario logic. Naming note: this document deliberately says **flavor**, not "profile" — in FHIR, "profile" means a StructureDefinition conformance profile, and overloading it for vendor quirks would mislead exactly the healthcare developers this library targets. Reserve profile/`meta.profile` language for actual conformance claims.
 
 ```csharp
-public interface IEhrFlavorProfile
+public interface IEhrFlavorAdapter
 {
     string Name { get; }
-    void Apply(ResourceGraph graph, FlavorProfileContext context);
-    void Apply(Bundle bundle, FlavorProfileContext context);
+    void Apply(ResourceGraph graph, FlavorContext context);
+    void Apply(BundleJsonNode bundle, FlavorContext context);
 }
 ```
+
+Like augmentors, adapters are stateless and mutate in place; the same instance is reused across generations.
 
 Examples:
 
@@ -239,6 +287,15 @@ Examples:
 - Date and dateTime precision.
 - Status/code preferences.
 - Include completeness and duplication patterns.
+
+### Registration model
+
+FhirFakes is a plain library with no DI container — builders take `IFhirSchemaProvider` through a single constructor, and the existing extensibility precedent is explicit catalog composition (`EdgeCaseCatalog.CreateDefault()` plus registration), not `IServiceCollection`. Workflow extensibility follows the same pattern:
+
+- Workflow packs: `WorkflowScenarioCatalog.RegisterAssembly(assembly)` (attribute discovery, as above).
+- Augmentors and flavor adapters: an explicit, instance-based catalog mirroring `EdgeCaseCatalog` — `WorkflowCatalog.CreateDefault()` returns the built-ins; consumers add their own instances. No static mutable registry for these; a consumer that wants DI wraps the catalog in its own container.
+
+Because registered augmentors/adapters are held once and reused across generations, statelessness (per the notes above) is a contract requirement, not a suggestion — the documentation for each seam must say so.
 
 ## Proposed Generic Scenario Packs
 
@@ -371,33 +428,31 @@ Workflow fixtures should emit both data and manifest metadata.
 - Resource counts by type.
 - Bundle link summary.
 - Include/revInclude coverage.
-- Flavor/profile adapter name.
+- Flavor adapter name.
 - Edge-case mutation manifest when decorators are used.
 - Validation results and known intentional-invalid markers.
 
 ## CLI Shape
 
-The CLI should keep current resource/scenario/population commands and add workflow-oriented entry points only when the library seams exist.
+The CLI should keep current resource/scenario/population commands and add workflow-oriented entry points only when the library seams exist. The command nests under the existing FHIR-version commands (`ignixa-fakes {stu3|r4|r4b|r5|r6} workflow ...`), and — following the existing `scenario` command — pack-specific parameters use the generic, repeatable `--param name=value` convention bound through `DiscoveredScenarioParameter.TryParseValue`, not bespoke per-pack flags. An unknown workflow name lists available packs and exits with code 2, mirroring `ScenarioCommand`.
 
 Possible shape:
 
 ```text
-ignixa-fakes r4 workflow PractitionerPanel --count 25 --practitioners 2 --out ./fixtures
-ignixa-fakes r4 workflow DailyAppointmentSchedule --date 2026-07-04 --theme cardiology --out ./fixtures
-ignixa-fakes r4 workflow DocumentSelection --patient-count 10 --paged --out ./fixtures
-ignixa-fakes r4 workflow PagedSearchResults --resource Patient --pages 3 --page-size 20 --out ./fixtures
+ignixa-fakes r4 workflow PractitionerPanel --param patientCount=25 --param practitionerCount=2 --out ./fixtures
+ignixa-fakes r4 workflow DailyAppointmentSchedule --param date=2026-07-04 --theme cardiology --out ./fixtures
+ignixa-fakes r4 workflow DocumentSelection --param patientCount=10 --page-size 20 --out ./fixtures
+ignixa-fakes r4 workflow PagedSearchResults --param resource=Patient --param pages=3 --page-size 20 --out ./fixtures
 ```
 
-Options:
+Cross-cutting options (shared across packs, not `--param`-bound):
 
-- `--theme`
+- `--theme` (existing `ClinicalDomain` theming)
 - `--seed`
-- `--clock`
-- `--profile`
+- `--clock` (fixed instant for deterministic timestamps)
 - `--flavor`
-- `--paged`
-- `--page-size`
-- `--include-policy complete|missing|duplicate|stale|mixed`
+- `--page-size` (presence implies paged output)
+- `--include-policy complete|missing|duplicate|stale|unrelated|mixed`
 - `--resolved-references`
 - `--ndjson`
 - `--validate`
@@ -408,8 +463,8 @@ Options:
 ### Phase 1: Investigation and contracts
 
 - Document public workflow fixture categories.
-- Define resource graph, composer, augmentor, flavor/profile, and manifest contracts.
-- Identify which merged scenario/state discovery APIs can be reused directly.
+- Define resource graph, composer, augmentor, flavor adapter, and manifest contracts. Keep them `internal` (or in a clearly-marked preview state) until Phase 4 proves them — see Versioning and Compatibility.
+- Resolve the open discovery question (generalize `ScenarioCatalog` vs sibling `WorkflowScenarioCatalog`) and confirm `DiscoveredScenario`/`DiscoveredScenarioParameter` reuse.
 
 ### Phase 2: High-value workflow builders
 
@@ -426,19 +481,39 @@ Options:
 
 ### Phase 4: Built-in scenario packs
 
-- Practitioner panel.
-- Daily appointment schedule.
-- Encounter context.
-- Patient list.
-- Document context.
-- Paged search results.
-- Missing/duplicate/stale include variants.
+- Daily appointment schedule, then practitioner panel (the two committed packs — see Recommended Next Step).
+- Remaining candidates (encounter context, patient list, document context, paged search results, include variants) only as consumers materialize.
 
 ### Phase 5: Extension package pattern
 
-- Document how downstream teams register private workflow providers, graph augmentors, and flavor profiles.
-- Add sample extension package or test-only provider.
+- Document how downstream teams register private workflow packs, graph augmentors, and flavor adapters.
+- Add a sample extension package or test-only pack exercising `RegisterAssembly`.
 - Add CLI discovery output for workflow scenarios and supported parameters.
+- Promote the Phase 1 contracts to public once the built-in packs have exercised them.
+
+## Testing Strategy
+
+Standard repo conventions apply (AAA with Shouldly, `GivenContext_WhenAction_ThenResult` naming, no `#region`), plus workflow-specific expectations:
+
+- **Determinism tests are the contract tests.** With a fixed seed, clock, and ID strategy, a composed searchset page serializes to byte-identical JSON on every run — assert exact output for at least one paged fixture per pack, the same way `RealisticDensity...BehavesIdenticallyToMinimal` pins full JSON today.
+- **Catalog tests** mirror `ScenarioCatalogTests`: discovery finds annotated packs, `Find` is case-insensitive, parameter overrides validate Min/Max, and `RegisterAssembly` surfaces packs from a test-only assembly.
+- **Composer shape tests** assert `Bundle.link` correctness across pages (`self`/`next`/`previous` chain closes), `entry.search.mode` assignment (`match` vs `include`), and each `IncludeCompleteness` mode's observable effect.
+- **Validation**: generated workflow fixtures pass schema validation by default; intentionally degraded fixtures (missing/stale includes) still validate structurally — the degradation is semantic, not syntactic — and are marked in the manifest.
+
+## Versioning and Compatibility
+
+`Ignixa.FhirFakes` publishes to NuGet.org as a **stable** package (`<PackageStability>stable</PackageStability>`, ADR 2606), so every public type this proposal adds is semver-committed the moment it ships. Consequences:
+
+- Phase 1 contracts start `internal` (exercised by built-in packs and tests via the existing `InternalsVisibleTo`) and go public in Phase 5, after the built-in packs have proven the shapes. Widening `internal` → `public` is additive; the reverse is a major-version break.
+- Prefer additive evolution idioms already used in this package: `init`-only properties on options records (see the `FhirCode.Domain` precedent in theme-consistent-generation — positional record parameters are binary-breaking), new overloads over signature changes, and new enum members appended rather than reordered.
+- Interfaces are the least evolvable public surface (adding a member breaks external implementors). For seams downstream teams implement (`IResourceGraphAugmentor`, `IEhrFlavorAdapter`), keep them minimal — one or two members — and put anything likely to grow on the context parameter instead.
+
+## Open Decisions
+
+1. **Discovery mechanism** — generalize `ScenarioCatalog` to discover workflow factory methods too, or add the sibling `WorkflowScenarioCatalog` sketched above. Recommendation: sibling catalog (leaves the published `ScenarioCatalog` API untouched); not decided.
+2. **Late registration semantics** — whether `RegisterAssembly` is allowed after first enumeration (requires reworking the `Lazy` discovery pattern) or throws once the catalog is materialized (simpler, likely sufficient for startup-time registration).
+3. **`ResourceGraph` ownership** — new type aggregating `ScenarioContext` outputs (recommended above), or grow `ScenarioContext` itself. Growing `ScenarioContext` was rejected in the body because it breaks the one-scenario-one-patient boundary, but the aggregation type's exact shape (registry reuse, reference-rewrite interaction) needs a design pass in Phase 1.
+4. **Flavor adapter timing** — the seam is defined here for completeness but neither committed pack needs it; decide during Phase 4 whether any built-in flavor ships or the seam stays extension-only.
 
 ## Non-Goals
 
@@ -446,10 +521,11 @@ Options:
 - Do not make `ScenarioBuilder` handle multi-patient workflow orchestration directly; keep it patient-centric.
 - Do not require every workflow fixture to be clinically exhaustive.
 - Do not replace schema-based generation; use it as fallback behind higher-value dedicated builders.
-- Do not guarantee vendor conformance without explicit profile/flavor adapters and validation.
+- Do not guarantee vendor conformance without explicit flavor adapters and validation.
+- Do not introduce async APIs or I/O into the core library; generation stays synchronous and in-memory, and file output remains a CLI/caller concern.
 
 ## Recommended Next Step
 
-Start with the contracts and the smallest useful built-in scenario pack: **DailyAppointmentSchedule**. It exercises multi-resource graph augmentation, appointment-specific states, search response composition, paging/link metadata, practitioner/patient/encounter relationships, and flavor/profile hooks without requiring a full cohort modeling system first.
+Start with the contracts and the smallest useful built-in scenario pack: **DailyAppointmentSchedule**. It exercises multi-resource graph augmentation, appointment-specific states, search response composition, paging/link metadata, and practitioner/patient/encounter relationships without requiring a full cohort modeling system first. Flavor adapters can be deferred past both initial packs — nothing in either pack requires them, and the seam is cheap to add later.
 
 The second scenario pack should be **PractitionerPanel**, because it establishes multi-patient cohort composition and provides reusable input for schedules, patient lists, and document-context fixtures.

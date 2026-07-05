@@ -23,16 +23,16 @@ public class ScenarioBuilderSeedTests
     }
 
     [Fact]
-    public void GivenDifferentSeeds_WhenBuilding_ThenAtLeastOneFieldDiffers()
+    public void GivenDifferentSeeds_WhenBuildingWithPatientBuilder_ThenGeneratedFieldsDiffer()
     {
         var schemaProvider = new R4CoreSchemaProvider();
 
-        var first = new ScenarioBuilder(schemaProvider, 1).WithPatient().Build();
-        var second = new ScenarioBuilder(schemaProvider, 2).WithPatient().Build();
+        var first = new ScenarioBuilder(schemaProvider, 1).WithPatient(p => { }).Build();
+        var second = new ScenarioBuilder(schemaProvider, 2).WithPatient(p => { }).Build();
 
         var firstName = first.Patient!.MutableNode["name"]!.ToJsonString();
         var secondName = second.Patient!.MutableNode["name"]!.ToJsonString();
         (firstName != secondName || first.Patient!.MutableNode["gender"]!.ToString() != second.Patient!.MutableNode["gender"]!.ToString())
-            .ShouldBeTrue("expected at least the PatientBuilder-driven fields to differ across seeds");
+            .ShouldBeTrue("expected PatientBuilder-driven fields to differ across seeds");
     }
 }

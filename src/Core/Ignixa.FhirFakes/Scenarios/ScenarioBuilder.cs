@@ -80,7 +80,9 @@ public sealed class ScenarioBuilder
     /// Creates a new scenario builder whose randomness is seeded for reproducible generation.
     /// </summary>
     /// <param name="schemaProvider">The FHIR schema provider for resource generation.</param>
-    /// <param name="seed">The seed applied to the internal <see cref="SchemaBasedFhirResourceFaker"/>.</param>
+    /// <param name="seed">The seed applied to the internal <see cref="SchemaBasedFhirResourceFaker"/> and propagated to <see cref="PatientBuilder"/> instances
+    /// created via <see cref="WithPatient(Action{PatientBuilder}, DateTime?)"/>, <see cref="WithSeattlePatient(Action{PatientBuilder}, DateTime?)"/>,
+    /// and <see cref="WithPatientFromCity(string, Action{PatientBuilder}, DateTime?)"/> overloads for reproducible patient demographic generation.</param>
     public ScenarioBuilder(IFhirSchemaProvider schemaProvider, int seed)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
