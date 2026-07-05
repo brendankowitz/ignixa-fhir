@@ -292,6 +292,128 @@ var scenario = new ScenarioBuilder(schemaProvider)
 - `LipidPanel()` - Cholesterol, LDL, HDL, triglycerides
 - `CompleteBloodCount()` - CBC with differential
 
+## Workflow Scenario Packs
+
+`ScenarioBuilder` is deliberately one-scenario-one-patient. A workflow scenario pack sits one layer
+above it: it composes several `ScenarioContext`s (and non-patient resources like practitioners) into a
+single `ResourceGraph`, optionally links them together with a post-processing enricher, and returns a
+search-response-ready result. Use this layer when a fixture needs more than one patient in the same
+graph — e.g. a practitioner's daily appointment schedule linking multiple patients, encounters, and a
+shared practitioner roster.
+
+### Building a graph: `WorkflowGraphBuilder`
+
+`WorkflowGraphBuilder` is a fluent wrapper over `ResourceGraph`. It lets you register
+`IResourceGraphEnricher` factories while the graph is still being assembled, then applies them, in
+registration order, once at `Build()` time:
+
+```csharp
+using Ignixa.FhirFakes.Workflow;
+
+var workflowGraph = new WorkflowGraphBuilder();
+
+// Add resources/scenarios as they're generated
+workflowGraph.AddScenario(practitionerContext);
+workflowGraph.AddScenario(patientEncounterContext);
+
+// Register an enricher factory — invoked at Build() time, not here, so it can read
+// graph state (e.g. every practitioner/patient added so far) that doesn't exist yet
+workflowGraph.WithEnrichers(graph => new AppointmentSchedulingEnricher(practitioners, appointmentSubjects, scheduleDate));
+
+var graph = workflowGraph.Build(new ResourceGraphEnrichmentContext
+{
+    SchemaProvider = schemaProvider,
+    Faker = faker,
+    Clock = TimeProvider.System,
+});
+```
+
+An `IResourceGraphEnricher` mutates a `ResourceGraph` in place — adding workflow-only resources
+(appointments, lists, document references) and cross-referencing them into resources already in the
+graph. Implementations should be stateless with respect to execution so one configured instance is safe
+to reuse.
+
+### Discovering and invoking packs: `WorkflowScenarioCatalog`
+
+Predefined workflow packs are public static methods on public types in a `*.Workflow.Predefined`
+namespace, discovered by reflection — the same convention `ScenarioCatalog` uses for single-patient
+scenarios, but returning `WorkflowScenarioResult` instead of `ScenarioContext`:
+
+```csharp
+using Ignixa.FhirFakes.Workflow;
+
+foreach (var pack in WorkflowScenarioCatalog.GetAll())
+{
+    Console.WriteLine($"{pack.Id}: {pack.Title} ({pack.Category})");
+}
+
+var found = WorkflowScenarioCatalog.Find("DailyAppointmentSchedule");
+if (found is not null)
+{
+    var overrides = new Dictionary<string, object?> { ["practitionerCount"] = 2, ["appointmentCount"] = 20 };
+    var result = WorkflowScenarioCatalog.Invoke(found, schemaProvider, new WorkflowScenarioOptions { Seed = 42 }, overrides);
+
+    // result.Graph is the assembled ResourceGraph; result.Manifest describes what was generated
+    Console.WriteLine(result.Manifest.ResourceCountsByType["Appointment"]);
+}
+```
+
+`WorkflowScenarioCatalog.Invoke` throws `ScenarioInvocationException` (wrapping the original exception)
+if the pack's factory method itself throws.
+
+#### Registering private workflow packs
+
+A downstream consumer can ship its own workflow packs without forking scenario-discovery logic by
+registering its assembly:
+
+```csharp
+WorkflowScenarioCatalog.RegisterAssembly(typeof(MyCompany.Fixtures.Workflow.Predefined.MyPackScenario).Assembly);
+
+// Now discoverable through the same catalog as built-in packs
+var pack = WorkflowScenarioCatalog.Find("MyPack");
+```
+
+Registration is idempotent and additive. The namespace convention is matched by suffix
+(`*.Workflow.Predefined`), not by owning assembly, so a private pack's namespace does not need to live
+under `Ignixa.FhirFakes` — only its last two segments need to be `Workflow.Predefined`.
+
+### Composing search responses: `ISearchResponseComposer`
+
+Once a `ResourceGraph` is assembled, `SearchsetBundleComposer` (the built-in `ISearchResponseComposer`)
+splits it into paged, spec-shaped searchset `Bundle`s:
+
+```csharp
+using Ignixa.FhirFakes.Workflow;
+
+var composer = new SearchsetBundleComposer();
+var pages = composer.Compose(result.Graph, new SearchResponseOptions
+{
+    SearchUrl = "/Appointment",
+    MatchResourceType = result.Manifest.PrimaryResourceType,
+    PageSize = 20,
+    IncludeCompleteness = IncludeCompleteness.Complete, // or Missing, to simulate a partial _include response
+});
+
+// One Bundle per page: self/next/previous links, entry.search.mode of "match" or "include"
+```
+
+### CLI
+
+```bash
+# Generate the built-in daily-schedule workflow pack as paged searchset bundles + a manifest
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --seed 42
+
+# Override pack parameters and page size
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --param practitionerCount=3 --param appointmentCount=30 --page-size 10
+
+# Tag every generated resource for test isolation, and validate the output
+ignixa-fakes r4 workflow DailyAppointmentSchedule --out ./output --tag my-test-run --validate
+```
+
+**Output**: one `{version}-workflow-{scenario}-{guid}-page{n}.json` file per page, plus a
+`{version}-workflow-{scenario}-{guid}-manifest.json` describing the scenario id, seed, primary resource
+type, and per-type resource counts.
+
 ## Code Constants
 
 The library provides SNOMED, LOINC, and RxNorm codes:

@@ -52,6 +52,10 @@ The FHIR Faker library generates synthetic FHIR resources for testing and develo
 - `PatientLifecycleGenerator` / `PopulationGenerator` - Layer 3/4 longitudinal and cohort-scale generation
 - `ImmunizationState` - Gold standard for version-aware resource generation
 - `FhirVersionHelper` - Cross-version compatibility utilities
+- `WorkflowScenarioCatalog` - Reflection-based discovery of workflow scenario packs (`GetAll`/`Find`/`Invoke`), scanning this library's assembly plus any assembly registered via `RegisterAssembly` — lets downstream consumers ship private workflow packs discoverable through the same catalog
+- `WorkflowGraphBuilder` - Fluent wrapper over `ResourceGraph` that registers `IResourceGraphEnricher` factories via `WithEnrichers` and applies them, in registration order, at `Build()` time — deferred so a factory can read graph state that only exists once every scenario has been added
+- `ResourceGraph` / `IResourceGraphEnricher` - Cross-scenario resource aggregation and the post-processing seam for adding workflow-only resources (appointments, lists, document references) that link across multiple patient-centric `ScenarioContext`s
+- `ISearchResponseComposer` / `SearchsetBundleComposer` - Composes a `ResourceGraph` into paged FHIR searchset `Bundle`s (`self`/`next`/`previous` links, match/include entries)
 
 ## Related ADRs
 

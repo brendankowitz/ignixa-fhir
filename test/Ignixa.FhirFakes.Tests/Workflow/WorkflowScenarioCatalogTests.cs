@@ -68,6 +68,46 @@ public class WorkflowScenarioCatalogTests
         exception.InnerException.ShouldBeOfType<InvalidOperationException>();
     }
 
+    [Fact]
+    public void GivenExternalAssemblyRegistered_WhenGettingAll_ThenItsPacksAreDiscovered()
+    {
+        WorkflowScenarioCatalog.RegisterAssembly(typeof(WorkflowScenarioCatalogTests).Assembly);
+
+        var found = WorkflowScenarioCatalog.Find("RegisteredTestPack");
+
+        found.ShouldNotBeNull();
+        found.Method.Name.ShouldBe(nameof(Ignixa.FhirFakes.Tests.Workflow.Predefined.RegisteredTestPackScenario.GetRegisteredTestPack));
+    }
+
+    [Fact]
+    public void GivenExternalAssemblyRegistered_WhenInvokedViaCatalog_ThenItRunsLikeAnyOtherPack()
+    {
+        WorkflowScenarioCatalog.RegisterAssembly(typeof(WorkflowScenarioCatalogTests).Assembly);
+        var schemaProvider = new R4CoreSchemaProvider();
+        var scenario = WorkflowScenarioCatalog.Find("RegisteredTestPack")!;
+
+        var result = WorkflowScenarioCatalog.Invoke(scenario, schemaProvider, new WorkflowScenarioOptions { Seed = 3 });
+
+        result.Manifest.Seed.ShouldBe(3);
+    }
+
+    [Fact]
+    public void GivenAssemblyRegisteredTwice_WhenGettingAll_ThenItsPacksAppearOnlyOnce()
+    {
+        WorkflowScenarioCatalog.RegisterAssembly(typeof(WorkflowScenarioCatalogTests).Assembly);
+        WorkflowScenarioCatalog.RegisterAssembly(typeof(WorkflowScenarioCatalogTests).Assembly);
+
+        var matches = WorkflowScenarioCatalog.GetAll().Count(s => s.Id == "RegisteredTestPack");
+
+        matches.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenNullAssembly_WhenRegistering_ThenThrowsArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => WorkflowScenarioCatalog.RegisterAssembly(null!));
+    }
+
     private static WorkflowScenarioResult EchoSeedPack(IFhirSchemaProvider schemaProvider, WorkflowScenarioOptions options) =>
         new()
         {

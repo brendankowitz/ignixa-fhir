@@ -256,6 +256,8 @@ public interface IResourceGraphEnricher
 
 Enrichers must be stateless: all per-run state (RNG, clock, accumulated resources) lives on the graph or the context, so a single enricher instance can be registered once and reused across concurrent generations.
 
+**Shipped**: `WorkflowGraphBuilder`, a fluent wrapper over `ResourceGraph` that registers enricher *factories* (`Func<ResourceGraph, IResourceGraphEnricher>`) via `WithEnrichers(...)` while the graph is still being assembled, then invokes them, in registration order, at `Build()` time. This was not in the original design above — it came out of PR review discussion on whether enrichers belonged in `ScenarioBuilder`'s fluent chain (they can't; `ScenarioBuilder` is one-patient-scoped and an enricher needs the full cross-scenario graph). Deferred construction is the actual value: a factory can read graph state (e.g. every practitioner added so far) that does not exist yet at registration time but is guaranteed to exist by `Build()` time, which is what let `DailyAppointmentScheduleScenario` drop its manual `appointmentSubjects.Count > 0` guard and hand-rolled accumulator wiring.
+
 Built-in enrichers could add:
 
 - Appointments around encounters.
@@ -487,10 +489,11 @@ Cross-cutting options (shared across packs, not `--param`-bound):
 
 ### Phase 5: Extension package pattern
 
-- Document how downstream teams register private workflow packs, graph enrichers, and flavor adapters.
-- Add a sample extension package or test-only pack exercising `RegisterAssembly`.
-- Add CLI discovery output for workflow scenarios and supported parameters.
-- Promote the Phase 1 contracts to public once the built-in packs have exercised them.
+- **Shipped**: `WorkflowScenarioCatalog.RegisterAssembly(Assembly)` — additive, idempotent, discovers packs by `*.Workflow.Predefined` namespace suffix (not tied to `Ignixa.FhirFakes`'s own assembly), driven by an internal real second consumer needing private packs without forking scenario-discovery logic.
+- **Shipped**: a test-only pack (`RegisteredTestPackScenario`, in the test assembly) exercising `RegisterAssembly` end-to-end (`WorkflowScenarioCatalogTests`).
+- Document how downstream teams register private workflow packs, graph enrichers, and flavor adapters — this document plus the `fhir-fakes.md` SDK doc's "Workflow Scenario Packs" section now cover packs and enrichers; flavor adapters remain undocumented because they remain unimplemented.
+- Add CLI discovery output for workflow scenarios and supported parameters. Not implemented — remains proposed.
+- Promote the Phase 1 contracts to public once the built-in packs have exercised them. Superseded — see Phase 1's note: contracts shipped public from the start (pre-v1, no internal-then-promote staging).
 
 ## Testing Strategy
 
@@ -512,7 +515,7 @@ Standard repo conventions apply (AAA with Shouldly, `GivenContext_WhenAction_The
 ## Open Decisions
 
 1. **Discovery mechanism** — generalize `ScenarioCatalog` to discover workflow factory methods too, or add the sibling `WorkflowScenarioCatalog` sketched above. Recommendation: sibling catalog (leaves the published `ScenarioCatalog` API untouched); not decided.
-2. **Late registration semantics** — whether `RegisterAssembly` is allowed after first enumeration (requires reworking the `Lazy` discovery pattern) or throws once the catalog is materialized (simpler, likely sufficient for startup-time registration).
+2. **Late registration semantics** — ~~whether `RegisterAssembly` is allowed after first enumeration (requires reworking the `Lazy` discovery pattern) or throws once the catalog is materialized (simpler, likely sufficient for startup-time registration).~~ **Resolved**: allowed after first enumeration, always. `WorkflowScenarioCatalog` dropped its `Lazy<>` cache entirely — `GetAll`/`Find` re-run the (cheap, single-pass) reflection scan on every call across the current registered-assembly set, so there is no staleness window to reason about and no cache-invalidation logic to get wrong. `RegisterAssembly` mutates a lock-protected `HashSet<Assembly>`; a snapshot copy is taken under the lock before each scan.
 3. **`ResourceGraph` ownership** — new type aggregating `ScenarioContext` outputs (recommended above), or grow `ScenarioContext` itself. Growing `ScenarioContext` was rejected in the body because it breaks the one-scenario-one-patient boundary, but the aggregation type's exact shape (registry reuse, reference-rewrite interaction) needs a design pass in Phase 1.
 4. **Flavor adapter timing** — the seam is defined here for completeness but neither committed pack needs it; decide during Phase 4 whether any built-in flavor ships or the seam stays extension-only.
 
