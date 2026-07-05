@@ -9,9 +9,11 @@ using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit.Abstractions;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -203,6 +205,211 @@ public class R5R6ShapeRegressionTests
                 var code = reasonCodeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
                 code.ShouldBe("22298006", $"reasonCode should carry the code in {schema.Version}");
             }
+        }
+    }
+
+    [Fact]
+    public void GivenResources_WhenComposedToTransactionBundle_ThenEntriesUsePostMethodAndResourceTypeUrl()
+    {
+        var resources = new List<ResourceJsonNode>
+        {
+            ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+            ResourceJsonNode.Parse("""{"resourceType":"Encounter","id":"encounter-1"}""")
+        };
+
+        var bundle = ResourceBundleComposer.ToTransactionBundle(resources);
+        var entries = (JsonArray)bundle.MutableNode["entry"]!;
+
+        entries.Count.ShouldBe(resources.Count);
+        for (var i = 0; i < resources.Count; i++)
+        {
+            var entry = entries[i]!;
+            var resource = resources[i];
+
+            entry["fullUrl"]?.GetValue<string>().ShouldBe($"urn:uuid:{resource.Id}");
+            entry["request"]?["method"]?.GetValue<string>().ShouldBe("POST");
+            entry["request"]?["url"]?.GetValue<string>().ShouldBe(resource.ResourceType);
+        }
+    }
+
+    [Fact]
+    public void GivenResources_WhenComposedToBatchBundle_ThenEntriesUsePutMethodAndResourceTypeSlashIdUrl()
+    {
+        var resources = new List<ResourceJsonNode>
+        {
+            ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+            ResourceJsonNode.Parse("""{"resourceType":"Encounter","id":"encounter-1"}""")
+        };
+
+        var bundle = ResourceBundleComposer.ToBatchBundle(resources);
+        var entries = (JsonArray)bundle.MutableNode["entry"]!;
+
+        entries.Count.ShouldBe(resources.Count);
+        for (var i = 0; i < resources.Count; i++)
+        {
+            var entry = entries[i]!;
+            var resource = resources[i];
+            var expectedUrl = $"{resource.ResourceType}/{resource.Id}";
+
+            entry["fullUrl"]?.GetValue<string>().ShouldBe(expectedUrl);
+            entry["request"]?["method"]?.GetValue<string>().ShouldBe("PUT");
+            entry["request"]?["url"]?.GetValue<string>().ShouldBe(expectedUrl);
+        }
+    }
+
+    [Fact]
+    public void GivenMedicationRequestWithReasonConditionReference_WhenGeneratedAcrossAllVersions_ThenUsesVersionCorrectReasonReferenceShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing MedicationRequest.reason (condition reference) with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddEncounter("Follow-up")
+                .AddConditionOnset(FhirCode.Conditions.DiabetesType2, assignToAttribute: "test_condition")
+                .AddMedicationOrder(new MedicationOrderState
+                {
+                    Name = "Reasoned_Medication",
+                    Code = FhirCode.Medications.Metformin500mg,
+                    ReasonConditionAttribute = "test_condition"
+                })
+                .Build();
+
+            var conditionId = scenario.Conditions[0].Id;
+            var medication = scenario.Medications[0].MutableNode;
+
+            // R5 merged MedicationRequest.reasonCode/reasonReference into a single "reason"
+            // element typed CodeableReference; a referenced Condition lives under ".reference",
+            // not ".concept" (both are schema-legal, so only asserting the value here would miss
+            // a swap of the two branches).
+            if (schema.Version >= FhirVersion.R5)
+            {
+                medication["reasonReference"].ShouldBeNull($"R5+ has no MedicationRequest.reasonReference in {schema.Version}");
+                var reason = medication["reason"] as JsonArray;
+                reason.ShouldNotBeNull($"R5+ should use MedicationRequest.reason in {schema.Version}");
+                reason![0]?["concept"].ShouldBeNull($"a condition reference must not be under .concept in {schema.Version}");
+                var reference = reason[0]?["reference"]?["reference"]?.GetValue<string>();
+                // KNOWN GAP (not fixed here): the generated reference metadata
+                // (Ignixa.Specification/Generated/*ReferenceMetadata.g.cs) has no entry for R5+'s
+                // "reason" field on MedicationRequest/Procedure — CodeableReference-typed fields
+                // appear to be missing wholesale from the metadata generator's output, so
+                // ReferenceRewriterService never rewrites this nested reference. Pre-R5's flat
+                // Reference-typed reasonReference IS covered and correctly rewritten (see the else
+                // branch below). This asserts the current, unrewritten value rather than papering
+                // over the inconsistency; fixing the metadata generator is a separate, larger task.
+                reference.ShouldBe($"Condition/{conditionId}", $"reason.reference in {schema.Version} (unrewritten — see comment above)");
+            }
+            else
+            {
+                medication["reason"].ShouldBeNull($"pre-R5 has no MedicationRequest.reason in {schema.Version}");
+                var reasonReference = medication["reasonReference"] as JsonArray;
+                reasonReference.ShouldNotBeNull($"pre-R5 should use MedicationRequest.reasonReference in {schema.Version}");
+                var reference = reasonReference![0]?["reference"]?.GetValue<string>();
+                reference.ShouldBe($"urn:uuid:{conditionId}", $"reasonReference should point at the condition in {schema.Version}");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenProcedureWithReasonConditionReference_WhenGeneratedAcrossAllVersions_ThenUsesVersionCorrectReasonReferenceShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing Procedure.reason (condition reference) with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddEncounter("Follow-up")
+                .AddConditionOnset(FhirCode.Conditions.Hypertension, assignToAttribute: "test_condition")
+                .AddProcedure(new ProcedureState
+                {
+                    Name = "Reasoned_Procedure",
+                    Code = Procedures.CardiacCatheterization,
+                    ReasonConditionAttribute = "test_condition"
+                })
+                .Build();
+
+            var conditionId = scenario.Conditions[0].Id;
+            var procedure = scenario.Procedures[0].MutableNode;
+
+            // Same CodeableReference merge as MedicationRequest: a referenced Condition must
+            // land under Procedure.reason[].reference, not .concept.
+            if (schema.Version >= FhirVersion.R5)
+            {
+                procedure["reasonReference"].ShouldBeNull($"R5+ has no Procedure.reasonReference in {schema.Version}");
+                var reason = procedure["reason"] as JsonArray;
+                reason.ShouldNotBeNull($"R5+ should use Procedure.reason in {schema.Version}");
+                reason![0]?["concept"].ShouldBeNull($"a condition reference must not be under .concept in {schema.Version}");
+                var reference = reason[0]?["reference"]?["reference"]?.GetValue<string>();
+                // KNOWN GAP (not fixed here): the generated reference metadata
+                // (Ignixa.Specification/Generated/*ReferenceMetadata.g.cs) has no entry for R5+'s
+                // "reason" field on MedicationRequest/Procedure — CodeableReference-typed fields
+                // appear to be missing wholesale from the metadata generator's output, so
+                // ReferenceRewriterService never rewrites this nested reference. Pre-R5's flat
+                // Reference-typed reasonReference IS covered and correctly rewritten (see the else
+                // branch below). This asserts the current, unrewritten value rather than papering
+                // over the inconsistency; fixing the metadata generator is a separate, larger task.
+                reference.ShouldBe($"Condition/{conditionId}", $"reason.reference in {schema.Version} (unrewritten — see comment above)");
+            }
+            else
+            {
+                procedure["reason"].ShouldBeNull($"pre-R5 has no Procedure.reason in {schema.Version}");
+                var reasonReference = procedure["reasonReference"] as JsonArray;
+                reasonReference.ShouldNotBeNull($"pre-R5 should use Procedure.reasonReference in {schema.Version}");
+                var reference = reasonReference![0]?["reference"]?.GetValue<string>();
+                reference.ShouldBe($"urn:uuid:{conditionId}", $"reasonReference should point at the condition in {schema.Version}");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("arrived")]
+    [InlineData("triaged")]
+    public void GivenEncounterWithArrivedOrTriagedStatus_WhenGeneratedAcrossAllVersions_ThenMapsToInProgressOnR5Plus(string status)
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing Encounter.status '{status}' mapping with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddState(new EncounterState
+                {
+                    Name = $"{status}_Encounter",
+                    Status = status
+                })
+                .Build();
+
+            var mappedStatus = scenario.Encounters[0].MutableNode["status"]?.GetValue<string>();
+
+            // R5 dropped "arrived"/"triaged" from the encounter-status value set in favor of "in-progress".
+            var expected = schema.Version >= FhirVersion.R5 ? "in-progress" : status;
+            mappedStatus.ShouldBe(expected, $"status should be '{expected}' in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenEncounterWithOnLeaveStatus_WhenGeneratedAcrossAllVersions_ThenMapsToOnHoldOnR5Plus()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing Encounter.status 'onleave' mapping with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddState(new EncounterState
+                {
+                    Name = "OnLeave_Encounter",
+                    Status = "onleave"
+                })
+                .Build();
+
+            var status = scenario.Encounters[0].MutableNode["status"]?.GetValue<string>();
+
+            // R5 dropped "onleave" from the encounter-status value set in favor of "on-hold".
+            var expected = schema.Version >= FhirVersion.R5 ? "on-hold" : "onleave";
+            status.ShouldBe(expected, $"status should be '{expected}' in {schema.Version}");
         }
     }
 }
