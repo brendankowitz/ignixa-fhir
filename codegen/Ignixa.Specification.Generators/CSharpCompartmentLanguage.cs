@@ -134,7 +134,9 @@ public sealed class CSharpCompartmentLanguage : ILanguage
                 string? code = null;
                 try
                 {
-                    code = compartment.Code?.ToString();
+                    // Code is Code<CompartmentType>; read the raw string via CodeElement/ObjectValue
+                    // instead of the enum-casting Code convenience property.
+                    code = compartment.CodeElement?.ObjectValue?.ToString();
                 }
                 catch
                 {
@@ -201,7 +203,9 @@ public sealed class CSharpCompartmentLanguage : ILanguage
         string? code = null;
         try
         {
-            code = compartment.Code?.ToString();
+            // Code is Code<CompartmentType>; read the raw string via CodeElement/ObjectValue
+            // instead of the enum-casting Code convenience property.
+            code = compartment.CodeElement?.ObjectValue?.ToString();
         }
         catch
         {
@@ -223,7 +227,10 @@ public sealed class CSharpCompartmentLanguage : ILanguage
                 string? resCode = null;
                 try
                 {
-                    resCode = res.Code?.ToString();
+                    // Code is Code<ResourceType>; ballot4-only resource types (e.g. DeviceAlert)
+                    // predate the pinned SDK's enum, so read the raw string via CodeElement/ObjectValue
+                    // instead of the enum-casting Code convenience property.
+                    resCode = res.CodeElement?.ObjectValue?.ToString();
                 }
                 catch
                 {

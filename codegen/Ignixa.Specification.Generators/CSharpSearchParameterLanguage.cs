@@ -191,15 +191,19 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
         string? url = searchParam.Url;
         string? name = searchParam.Name;
         string? code = searchParam.Code;
-        string? type = searchParam.Type?.ToString();
+        // Type is Code<SearchParamType>; ballot4 adds a new value ("resource") the pinned SDK's enum lacks,
+        // so read the raw string via TypeElement/ObjectValue instead of the enum-casting Type convenience property.
+        string? type = searchParam.TypeElement?.ObjectValue?.ToString();
         string? expression = searchParam.Expression;
         string? description = searchParam.Description;
 
-        // Extract base (list of resource types)
-        var baseTypes = searchParam.Base?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+        // Extract base (list of resource types) -- read raw string via BaseElement/ObjectValue,
+        // not the Base convenience property, which casts to VersionIndependentResourceTypesAll
+        // and throws on ballot4-only resource types (e.g. DeviceAlert) that predate the pinned SDK's enum.
+        var baseTypes = searchParam.BaseElement?.Select(r => r.ObjectValue?.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
 
-        // Extract target (list of target resource types for Reference parameters)
-        var targetTypes = searchParam.Target?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+        // Extract target (list of target resource types for Reference parameters) -- same reasoning.
+        var targetTypes = searchParam.TargetElement?.Select(r => r.ObjectValue?.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
 
         // Extract component (for composite search parameters)
         var components = new List<(string definition, string expression)>();

@@ -19,6 +19,12 @@ public enum CompartmentType
     Device,
     [EnumLiteral("Encounter", "http://hl7.org/fhir/compartment-type")]
     Encounter,
+    // Note: "Group" is used by CompartmentDefinition-group.json in the FHIR R6 ballot4 package,
+    // but is NOT (yet) listed in that same package's CodeSystem-compartment-type.json --
+    // a confirmed inconsistency in HL7's ballot4 content, not a tooling gap. Added by hand
+    // pending upstream correction.
+    [EnumLiteral("Group", "http://hl7.org/fhir/compartment-type")]
+    Group,
     [EnumLiteral("Patient", "http://hl7.org/fhir/compartment-type")]
     Patient,
     [EnumLiteral("Practitioner", "http://hl7.org/fhir/compartment-type")]
