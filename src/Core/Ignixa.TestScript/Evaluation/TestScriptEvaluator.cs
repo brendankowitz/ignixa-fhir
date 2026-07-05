@@ -11,6 +11,7 @@ using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Model;
 using Ignixa.TestScript.Reporting;
 using Ignixa.TestScript.Validation;
+using Semver;
 
 namespace Ignixa.TestScript.Evaluation;
 
@@ -164,11 +165,75 @@ public sealed class TestScriptEvaluator(
         return recorder.Build(definition.Metadata.Name, startTime, DateTimeOffset.UtcNow);
     }
 
+    /// <summary>
+    /// Matches a test's declared <c>fhirVersions</c> spec tokens against the actual FHIR version
+    /// being targeted. Each spec token is checked two ways: an exact case-insensitive string match
+    /// (preserving today's behavior for existing suites, e.g. "4.0" == "4.0"), or a granular
+    /// numeric Major/Minor/Patch comparison that supports "4.*" (major-only), "4.0" (major.minor),
+    /// and "4.0.1" (exact) against a semver-parsed <paramref name="fhirVersion"/>. Prerelease and
+    /// build metadata are ignored by the granular comparison. Unparseable input fails safe (no
+    /// match via that path) rather than throwing.
+    /// </summary>
     private static bool IsVersionCompatible(IReadOnlyList<string> fhirVersions, string? fhirVersion)
     {
         if (fhirVersions.Count == 0) return true;
         if (fhirVersion is null) return true;
-        return fhirVersions.Contains(fhirVersion, StringComparer.OrdinalIgnoreCase);
+
+        var parsedActual = SemVersion.TryParse(fhirVersion, SemVersionStyles.Any, out var actual) ? actual : null;
+
+        foreach (var spec in fhirVersions)
+        {
+            if (string.Equals(spec, fhirVersion, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (parsedActual is not null && MatchesVersionSpec(spec, parsedActual))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool MatchesVersionSpec(string spec, SemVersion actual)
+    {
+        if (!TryParseVersionSpec(spec, out var major, out var minor, out var patch))
+            return false;
+
+        if (actual.Major != major) return false;
+        if (minor is not null && actual.Minor != minor) return false;
+        if (patch is not null && actual.Patch != patch) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Parses a spec token such as "4", "4.*", "4.0", or "4.0.1" into 1-3 numeric components.
+    /// A trailing "*" segment is dropped (it's the major-only wildcard marker). Returns false for
+    /// anything that isn't 1-3 non-negative integer segments, so malformed tokens simply don't
+    /// match via the granular path rather than throwing.
+    /// </summary>
+    private static bool TryParseVersionSpec(string spec, out int major, out int? minor, out int? patch)
+    {
+        major = 0;
+        minor = null;
+        patch = null;
+
+        var segments = spec.Split('.');
+        if (segments.Length > 0 && segments[^1] == "*")
+            segments = segments[..^1];
+
+        if (segments.Length is 0 or > 3) return false;
+
+        var values = new int?[3];
+        for (var i = 0; i < segments.Length; i++)
+        {
+            if (!int.TryParse(segments[i], NumberStyles.None, CultureInfo.InvariantCulture, out var value))
+                return false;
+            values[i] = value;
+        }
+
+        major = values[0]!.Value;
+        minor = values[1];
+        patch = values[2];
+        return true;
     }
 
     /// <summary>

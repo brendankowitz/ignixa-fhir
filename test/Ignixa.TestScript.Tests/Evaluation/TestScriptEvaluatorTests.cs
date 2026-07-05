@@ -293,6 +293,77 @@ public class TestScriptEvaluatorTests
         await _mockProvider.Received(1).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData("4.*", "4.0.1")]
+    [InlineData("4.0", "4.0.1")]
+    [InlineData("4.0.1", "4.0.1")]
+    [InlineData("6.0.0", "6.0.0-ballot3")]
+    [InlineData("4.0", "4.0")]
+    public async Task GivenVersionSpec_WhenActualVersionMatchesGranularity_ThenTestRuns(string spec, string fhirVersion)
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "VersionGranularityMatch" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "GranularVersion",
+                    FhirVersions = [spec],
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Patient", Params = "?identifier:of-type=x" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None, fhirVersion: fhirVersion);
+
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldNotBe(TestScriptOutcome.Skip);
+        await _mockProvider.Received(1).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("4.*", "5.0.0")]
+    [InlineData("4.0", "4.3.0")]
+    [InlineData("4.0.1", "4.0.2")]
+    [InlineData("not-a-version", "4.0.1")]
+    public async Task GivenVersionSpec_WhenActualVersionDoesNotMatchGranularity_ThenTestIsSkipped(string spec, string fhirVersion)
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "VersionGranularityMismatch" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "GranularVersion",
+                    FhirVersions = [spec],
+                    Actions =
+                    [
+                        new OperationExpression { Type = "search", Resource = "Patient", Params = "?identifier:of-type=x" }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None, fhirVersion: fhirVersion);
+
+        report.TestResults.Count.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+        await _mockProvider.DidNotReceive().ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+    }
+
     private static ResourceJsonNode CapabilityStatementWithPatientEverything() => ResourceJsonNode.Parse("""
         {
           "resourceType": "CapabilityStatement",

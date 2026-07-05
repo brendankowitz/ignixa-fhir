@@ -98,6 +98,8 @@
     <PackageVersion Include="System.Text.Json" Version="8.0.6" />
     <!-- SearchParameter Conflict Resolution -->
     <PackageVersion Include="NuGet.Versioning" Version="6.14.0" />
+    <!-- Semantic version parsing (TestScript FHIR version gating) -->
+    <PackageVersion Include="Semver" Version="3.0.0" />
     <!-- gRPC (for Sidecar.Contracts) -->
     <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
     <PackageVersion Include="Grpc.AspNetCore" Version="2.76.0" />
