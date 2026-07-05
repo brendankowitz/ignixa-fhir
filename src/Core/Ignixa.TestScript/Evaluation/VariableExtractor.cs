@@ -79,7 +79,7 @@ internal static class VariableExtractor
         if (body is null) return null;
         try
         {
-            return body.ToElement(schema).Scalar(expression)?.ToString();
+            return body.ToElement(schema).Select(expression).AsString();
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) when (ex is FormatException or InvalidOperationException or NotSupportedException or ArgumentException)

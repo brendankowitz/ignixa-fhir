@@ -4,6 +4,7 @@
  * Unit tests for FhirPath type conversion, string manipulation, and utility functions (Phase 3).
  */
 
+using System.Globalization;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
@@ -239,6 +240,123 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Empty(result);
+    }
+
+    #endregion
+
+    #region AsString Extension Tests
+
+    [Fact]
+    public void GivenBooleanTrue_WhenAsString_ThenReturnsLowercaseTrue()
+    {
+        // Arrange
+        var expr = _parser.Parse("true");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Equal("true", result);
+    }
+
+    [Fact]
+    public void GivenBooleanFalse_WhenAsString_ThenReturnsLowercaseFalse()
+    {
+        // Arrange - this is the bug PR #294 fixed: Scalar()?.ToString() gave "False", not "false"
+        var expr = _parser.Parse("false");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Equal("false", result);
+    }
+
+    [Fact]
+    public void GivenString_WhenAsString_ThenReturnsSameValue()
+    {
+        // Arrange
+        var expr = _parser.Parse("'hello'");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Equal("hello", result);
+    }
+
+    [Fact]
+    public void GivenEmptyCollection_WhenAsString_ThenReturnsNull()
+    {
+        // Arrange
+        var expr = _parser.Parse("{}");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void GivenMultipleValues_WhenAsString_ThenReturnsNull()
+    {
+        // Arrange
+        var expr = _parser.Parse("1 | 2");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void GivenComplexElement_WhenAsString_ThenReturnsNull()
+    {
+        // Arrange - a complex/backbone element has Value == null; AsString() must report this
+        // as "not convertible" (null), not leak a CLR type name or throw.
+        var expr = _parser.Parse("name");
+        var root = CreatePatientWithName();
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).AsString();
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void GivenDecimal_WhenAsStringUnderNonInvariantCulture_ThenUsesInvariantFormatting()
+    {
+        // Arrange - parse/evaluate under the default culture first (FHIRPath literal parsing
+        // is a separate, pre-existing concern not covered by this fix). Only the AsString()
+        // conversion itself needs to be culture-invariant, so switch culture just for that call.
+        var expr = _parser.Parse("1.5");
+        var root = CreateIntegerElement(0);
+        var elements = _evaluator.Evaluate(root, expr).ToList();
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            // de-DE uses ',' as the decimal separator; FHIRPath toString() must still render "1.5".
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+
+            // Act
+            var result = elements.AsString();
+
+            // Assert
+            Assert.Equal("1.5", result);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     #endregion

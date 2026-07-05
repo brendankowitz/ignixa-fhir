@@ -454,6 +454,61 @@ public class AssertionEvaluatorTests
     }
 
     [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenExpressionReturnsBoolean_ThenComparesAsLowercaseString()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Patient", "id": "abc"}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/abc" },
+            new AssertExpression
+            {
+                Criteria = new FhirPathValueCriteria("Patient.address.exists()", "false", AssertOperator.Equals)
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenFhirPathValueCriteria_WhenExpressionReturnsDecimal_ThenComparesAsString()
+    {
+        // Arrange - proves the AsString() path (not just bool) flows correctly through the
+        // TestScriptEvaluator assertion pipeline end-to-end.
+        //
+        // Deliberately NOT forcing a non-invariant CurrentCulture here: SchemaAwareElement.Value
+        // (src/Core/Ignixa.Serialization/SourceNodes/SchemaAwareElement.cs:185) parses the JSON
+        // decimal text via decimal.TryParse(text) with no NumberStyles/CultureInfo, so under e.g.
+        // de-DE "1.5" is misparsed as 15 (the decimal VALUE, not just its later string rendering) -
+        // that's a separate, pre-existing bug in JSON->IElement materialization, out of scope for
+        // this PR's AsString()/toString() fix and not reproducible in isolation at this level.
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse("""{"resourceType": "Observation", "id": "1", "valueQuantity": {"value": 1.5, "unit": "mg"}}""")
+            });
+
+        var definition = BuildDefinition(
+            new OperationExpression { Type = "read", Resource = "Observation", Params = "/1" },
+            new AssertExpression
+            {
+                Criteria = new FhirPathValueCriteria("Observation.valueQuantity.value", "1.5", AssertOperator.Equals)
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
     public async Task GivenFhirPathValueCriteria_WhenValueDoesNotMatch_ThenFails()
     {
         _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())

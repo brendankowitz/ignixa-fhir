@@ -621,7 +621,7 @@ public sealed class TestScriptEvaluator(
 
         var resolvedExpr = VariableResolver.Resolve(c.Expression, context);
         var resolvedValue = VariableResolver.Resolve(c.Value ?? string.Empty, context);
-        var actual = body.ToElement(schemaProvider).Scalar(resolvedExpr)?.ToString();
+        var actual = body.ToElement(schemaProvider).Select(resolvedExpr).AsString();
 
         var passed = EvaluateWithOperator(actual, resolvedValue, c.Operator);
         return (passed, passed
