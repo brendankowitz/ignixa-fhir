@@ -14,8 +14,9 @@
 - `dotnet build All.sln` must end at 0 warnings, 0 errors (per repo CLAUDE.md checklist).
 - `dotnet test All.sln` must pass in full before the plan is considered done.
 - All generation commands run from the repo root (`E:\data\src\ignixa-fhir`) — the generator resolves relative output paths against the process's current working directory, not the tool's own binary location.
-- **Superseded constraint, recorded for history:** this plan originally said not to advance the `third-party/fhir-codegen` submodule's pinned commit beyond what the remote move required. Task 3 execution discovered the pinned commit (`173e7fd3`, 2024-09-27) is ~432 commits behind upstream and cannot parse ballot4 content at all — it throws `InvalidCastException` on the `DeviceAlert` resource type (confirmed genuine, new-in-ballot4 FHIR content, not bad spec data). Task 3 now advances the submodule to latest `origin/main` and re-verifies the toolchain before any regeneration proceeds. Do not treat this as license for further unrelated submodule changes beyond what Task 3 does.
-- Tasks 4-6 (all R6 regeneration) depend on Task 3's submodule advance — do not attempt them against the stale pin.
+- **Superseded constraint, recorded for history:** this plan originally said not to advance the `third-party/fhir-codegen` submodule's pinned commit beyond what the remote move required. Task 3 execution discovered the pinned commit (`173e7fd3`, 2024-09-27) is ~432 commits behind upstream and cannot parse ballot4 content at all — it throws `InvalidCastException` on the `DeviceAlert` resource type (confirmed genuine, new-in-ballot4 FHIR content, not bad spec data). Task 3 advances the submodule to latest `origin/main`, which fixes `DeviceAlert` but exposes a second gap (see Task 3b).
+- **Second superseded constraint:** advancing to upstream's latest commit was not sufficient — R6 was never wired into `PackageLoader.cs`'s parsing switches at all (falls through to R5's POCO model), causing a second crash on `SearchParameter.aliasCode`. Per user direction, Task 3b patches this directly in a branch of the user's personal fork (`brendankowitz/fhir-codegen`) and repoints the submodule remote at it, deferring an upstream PR until proven out. This means the submodule temporarily tracks a fork, not `FHIR/fhir-codegen` — expected and intentional, not drift to "fix."
+- Tasks 4-6 (all R6 regeneration) depend on Task 3 AND Task 3b's fixes — do not attempt them against a submodule state where the `coreschema R6` smoke test still crashes.
 - `R6CoreSchemaProvider.Partial.cs` is hand-maintained; never regenerate or overwrite it.
 - This repo has previously had codegen output land in the wrong folder or under a drifted namespace — every regeneration task in this plan includes an explicit folder/namespace verification step. Do not skip these even though they feel redundant with the build step; a wrong-namespace file can still compile (as an unused duplicate type) without a build error.
 - Commit after every task.
@@ -104,41 +105,171 @@ git status --short
 
 Expected: `git status --short` shows only `codegen/fhir-codegen` (the submodule pointer) staged — this stages the new pinned commit for the superproject, nothing else.
 
-- [ ] **Step 3: Rebuild the full codegen toolchain against the new pin**
+- [x] **Step 3: Rebuild the full codegen toolchain against the new pin — DONE.** The advance included an upstream project/namespace rename (`Microsoft.Health.Fhir.CodeGen*` → `Fhir.CodeGen.*`) and required bumping our generator's `TargetFramework` from `net8.0` to `net9.0` (the renamed library now targets `net9.0` only). `codegen/IgnixaCodegen.sln`, `Ignixa.Specification.Generators.csproj`, and all 10 `CSharp*Language.cs` files plus `Program.cs` needed `using`-namespace updates (mechanical rename only, no behavior change). Build succeeds, 0 errors.
 
-```bash
-cd codegen && dotnet build IgnixaCodegen.sln -c Release
-```
+- [x] **Step 4: Smoke-test the fix — PARTIAL SUCCESS, second blocker found and split into Task 3b.** The original `DeviceAlert` `InvalidCastException` is confirmed gone. However, package loading now fails on a *different* unrecognized ballot4 element, `SearchParameter.aliasCode` — confirmed genuine ballot4 content, not bad data. Root cause: `PackageLoader.cs`'s FHIR-version switches have no `case FhirSequenceCodes.R6:` at all — R6 content silently falls through to R5's POCO model classes, which don't know about ballot4-era elements. This is a missing-feature gap in the vendored tool (R6 was never fully wired into the parsing layer), not a resolvable-by-pin-advance problem — see Task 3b. Per user direction, this task's scope stops at "the DeviceAlert crash is fixed and the toolchain builds/runs against latest upstream `main`"; the `aliasCode` gap is explicitly out of scope here.
 
-Expected: `Build succeeded. 0 Error(s)`. If `Ignixa.Specification.Generators` fails to compile, the ~432 commits of upstream change likely renamed or restructured part of the `Microsoft.Health.Fhir.CodeGen*` API our custom `ILanguage` implementations depend on (`CSharpCoreSchemaLanguage`, `CSharpSearchParameterLanguage`, `CSharpValueSetProviderLanguage`, `CSharpCompartmentLanguage`, `CSharpCodeSystemResolverLanguage`, `CSharpStructureProviderLanguage`, `CSharpInvariantLanguage`, `CSharpInMemoryTerminologyLanguage`, `CSharpNarrativeTemplateLanguage` — all in `codegen/Ignixa.Specification.Generators/`). Fix each compile error by adapting the call site to the new API shape; do not change the *behavior* of our generators, only what's needed to match the upstream API.
-
-- [ ] **Step 4: Smoke-test the fix**
-
-```bash
-cd /e/data/src/ignixa-fhir
-dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release -- coreschema R6
-```
-
-Expected: no `InvalidCastException`; console output ends with `✓ Generation complete!`. This is a smoke test only — the actual regeneration (and its commit) is Task 4's job, not this task's. Discard whatever this smoke-test run wrote so this task's commit contains only the submodule pointer bump (and any Step 3 API-adaptation fixes):
+Discard the smoke-test's generated-file output (Task 4 will do the real regeneration and commit):
 
 ```bash
 git checkout -- src/Core/Ignixa.Specification/Generated/R6CoreSchemaProvider.g.cs
 git status --short
 ```
 
-Expected: only `codegen/fhir-codegen` (and, if Step 3 required fixes, the specific `Ignixa.Specification.Generators/*.cs` files touched) remain in the diff — no `Generated/*.g.cs` files.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit — DONE.**
 
 ```bash
-git add codegen/fhir-codegen
-# also add any codegen/Ignixa.Specification.Generators/*.cs files touched in Step 3, if any
+git add codegen/fhir-codegen \
+        codegen/IgnixaCodegen.sln \
+        codegen/Ignixa.Specification.Generators/
 git commit -m "chore(codegen): advance fhir-codegen submodule to latest main
 
 Pinned commit (173e7fd3, 2024-09-27) predates R6 ballot4 resource
 types (e.g. DeviceAlert), causing an InvalidCastException when
 parsing hl7.fhir.r6.core#6.0.0-ballot4. Advancing to latest
-FHIR/fhir-codegen main resolves it."
+FHIR/fhir-codegen main resolves it (confirmed via smoke test).
+Required a mechanical using-namespace rename across our generator
+files (upstream renamed Microsoft.Health.Fhir.CodeGen* -> Fhir.CodeGen.*)
+and a net8.0 -> net9.0 TFM bump (the renamed library is net9.0-only).
+
+A second, different ballot4 parse failure (SearchParameter.aliasCode)
+remains -- root-caused to R6 never being wired into PackageLoader's
+parsing switches (falls through to R5 POCO classes). Tracked as a
+separate task (Task 3b), since it requires patching the vendored
+submodule's own code on a fork branch, not just advancing its pin."
+```
+
+---
+
+### Task 3b: Wire up native R6 parsing support in a fork branch
+
+**Why this task exists:** Task 3 advanced the submodule and fixed the `DeviceAlert` crash, but found R6 was never fully wired into the vendored tool's parsing layer — `PackageLoader.cs`'s FHIR-version switches (at minimum the POCO-parsing dispatch around line 988, and similar switches around lines 435, 511, 780-781, 1058) have no `case FhirSequenceCodes.R6:`, so R6 content is parsed using R5's POCO model classes as a silent stand-in. This is why `SearchParameter.aliasCode` (a genuine, confirmed ballot4 element) crashes the loader. The SDK package needed to fix this properly, `Hl7.Fhir.R6`, is *already* referenced elsewhere in the submodule at the same `5.13.1` version line (`src/Fhir.CodeGen.Packages.Tests/Fhir.CodeGen.Packages.Tests.csproj:35`) — just not in the actual parsing library, `Fhir.CodeGen.Lib.csproj`. No existing upstream branch has this wired up (`origin/FirelyTeam/main` was checked and is 0 commits ahead of `origin/main` — already merged, not a source of unmerged work). Per user direction: implement this fix on a branch of the user's personal fork (`brendankowitz/fhir-codegen`, confirmed to already exist), point our submodule at that branch, and defer opening an upstream PR until the fix is proven out in our own build/test — do not open the PR as part of this task.
+
+**Files:**
+- Modify (in the fork, not this repo directly): `codegen/fhir-codegen/src/Fhir.CodeGen.Lib/Fhir.CodeGen.Lib.csproj` (add `Hl7.Fhir.R6` package reference, matching the `5.13.1` version already used for the R4/R5/STU3 references in the same file)
+- Modify (in the fork): `codegen/fhir-codegen/src/Fhir.CodeGen.Lib/Loader/PackageLoader.cs` (add real `case FhirReleases.FhirSequenceCodes.R6:` branches to the FHIR-version switches that currently fall through to R5 — locate every switch matching the pattern `case FhirReleases.FhirSequenceCodes.R5:` in this file and add a sibling R6 case using the R6 model equivalent, following the exact pattern each R5 case already uses)
+- Modify (this repo): `.gitmodules` (point `third-party/fhir-codegen` at the fork URL) and the submodule pointer itself (pin to the new commit on the fork branch)
+
+**Interfaces:**
+- Consumes: the submodule state left by Task 3 (advanced to upstream `origin/main` tip, our generator code already adapted to the renamed namespaces).
+- Produces: a `fhir-codegen` build that parses `hl7.fhir.r6.core#6.0.0-ballot4` end-to-end without any `InvalidCastException` or unrecognized-element crash — using genuine R6 POCO model classes, not an R5 fallback.
+
+- [ ] **Step 1: Create the fork branch**
+
+```bash
+cd /e/data/src/ignixa-fhir/codegen/fhir-codegen
+git remote add fork https://github.com/brendankowitz/fhir-codegen.git 2>/dev/null || true
+git fetch fork
+git checkout -b add-r6-package-loading-support origin/main
+```
+
+Expected: new local branch `add-r6-package-loading-support`, based on the same commit Task 3 already advanced to (`e73390d74...` or later if `origin/main` has since moved — confirm with `git log -1`).
+
+- [ ] **Step 2: Add the `Hl7.Fhir.R6` package reference**
+
+In `src/Fhir.CodeGen.Lib/Fhir.CodeGen.Lib.csproj`, find the existing `<PackageReference Include="Hl7.Fhir.R5" Version="5.13.1" />` line and add a sibling line for R6 at the same version (confirmed available on NuGet at `5.13.1`):
+
+```xml
+<PackageReference Include="Hl7.Fhir.R6" Version="5.13.1" />
+```
+
+- [ ] **Step 3: Wire up R6 cases in `PackageLoader.cs`**
+
+Search the file for every switch statement matching on `FhirReleases.FhirSequenceCodes`:
+
+```bash
+grep -n "FhirReleases.FhirSequenceCodes.R5" src/Fhir.CodeGen.Lib/Loader/PackageLoader.cs
+```
+
+For each match, read the surrounding `case FhirSequenceCodes.R5:` block to see exactly what R5-specific type or method it invokes (e.g. `ParseContentsPoco` variants, `FHIRVersion` enum mapping), then add a `case FhirSequenceCodes.R6:` immediately before or alongside it that does the equivalent using the R6-namespaced type (e.g. if the R5 case parses via an `Hl7.Fhir.Model` POCO type resolved for R5, the R6 case must resolve the R6-namespaced equivalent from the newly-added `Hl7.Fhir.R6` package — the exact namespace/type names depend on how `Hl7.Fhir.R6` structures its model classes, which you'll need to inspect directly, e.g. via `dotnet-tool` or by browsing the extracted NuGet package contents under `~/.nuget/packages/hl7.fhir.r6/5.13.1/`). Do not simply duplicate the R5 branch verbatim and relabel it R6 — verify each one actually resolves an R6-specific type, otherwise you've just re-created the same silent-fallback bug with extra steps.
+
+- [ ] **Step 4: Build the toolchain**
+
+```bash
+cd /e/data/src/ignixa-fhir/codegen && dotnet build IgnixaCodegen.sln -c Release
+```
+
+Expected: `Build succeeded. 0 Error(s)`.
+
+- [ ] **Step 5: Smoke-test against the actual ballot4 package**
+
+```bash
+cd /e/data/src/ignixa-fhir
+dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release -- coreschema R6
+```
+
+Expected: no `InvalidCastException`, no unrecognized-element parse exception; console output ends with `✓ Generation complete!`. If a *third* distinct unrecognized-element crash appears, that's expected per the scoping investigation's caveat ("R6's POCO model in this SDK line may itself have gaps for newer ballot4 elements") — report it rather than pushing through with further undirected fixes; it may mean this SDK line's R6 model itself needs a newer version, which is a new plan-level decision.
+
+Discard the smoke test's output the same way Task 3 did (Task 4 does the real regeneration):
+
+```bash
+git checkout -- src/Core/Ignixa.Specification/Generated/R6CoreSchemaProvider.g.cs
+```
+
+- [ ] **Step 6: Push the fix to the fork**
+
+```bash
+cd codegen/fhir-codegen
+git add src/Fhir.CodeGen.Lib/Fhir.CodeGen.Lib.csproj src/Fhir.CodeGen.Lib/Loader/PackageLoader.cs
+git commit -m "Add native R6 package-loading support
+
+R6 previously fell through to R5's POCO model classes in every
+FhirSequenceCodes switch in PackageLoader.cs, since Hl7.Fhir.R6 was
+referenced elsewhere in the repo (test project) but never in
+Fhir.CodeGen.Lib itself. This caused crashes on any R6 ballot content
+using elements R5's model doesn't know about (DeviceAlert,
+SearchParameter.aliasCode). Wires up the already-available Hl7.Fhir.R6
+package at the same 5.13.1 version line."
+git push fork add-r6-package-loading-support
+```
+
+Expected: branch pushed to `https://github.com/brendankowitz/fhir-codegen`. Do NOT open a PR to `FHIR/fhir-codegen` in this step — that's explicitly deferred.
+
+- [ ] **Step 7: Repoint this repo's submodule at the fork branch**
+
+```bash
+cd /e/data/src/ignixa-fhir
+```
+
+In `.gitmodules`, change the `third-party/fhir-codegen` URL to the fork:
+
+```
+[submodule "third-party/fhir-codegen"]
+	path = codegen/fhir-codegen
+	url = https://github.com/brendankowitz/fhir-codegen.git
+```
+
+```bash
+git submodule sync codegen/fhir-codegen
+cd codegen/fhir-codegen && git checkout add-r6-package-loading-support && cd /e/data/src/ignixa-fhir
+git add .gitmodules codegen/fhir-codegen
+git status --short
+```
+
+Expected: `.gitmodules` and the submodule pointer both staged; the submodule now resolves to the fork's `add-r6-package-loading-support` branch tip.
+
+- [ ] **Step 8: Final rebuild + smoke test on the repointed submodule**
+
+```bash
+cd codegen && dotnet build IgnixaCodegen.sln -c Release
+cd /e/data/src/ignixa-fhir
+dotnet run --project codegen/Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj -c Release -- coreschema R6
+git checkout -- src/Core/Ignixa.Specification/Generated/R6CoreSchemaProvider.g.cs
+```
+
+Expected: same clean result as Step 5, now confirmed against the repointed (fork-remote) submodule rather than the local branch created in Step 1.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add .gitmodules codegen/fhir-codegen
+git commit -m "chore(codegen): point fhir-codegen submodule at fork with R6 wiring fix
+
+Temporarily tracks brendankowitz/fhir-codegen#add-r6-package-loading-support
+instead of upstream FHIR/fhir-codegen, pending an upstream PR (not yet
+opened). Upstream's PackageLoader.cs never wired R6 into its parsing
+switches, causing crashes on ballot4 content; this fork branch adds
+the missing Hl7.Fhir.R6 package reference and case-R6 branches."
 ```
 
 ---
@@ -151,7 +282,7 @@ FHIR/fhir-codegen main resolves it."
 - Possibly modify: `src/Application/Ignixa.Application/Features/Search/FhirVersionContext.cs`, `src/Core/Ignixa.Specification/Extensions/FhirSpecificationExtensions.cs` (both construct `new R6CoreSchemaProvider()` — only touch if the regen renames/removes a type or member they reference)
 
 **Interfaces:**
-- Consumes: bumped pin from Task 2; advanced `fhir-codegen` toolchain from Task 3.
+- Consumes: bumped pin from Task 2; advanced + R6-wired `fhir-codegen` toolchain from Tasks 3 and 3b.
 - Produces: `R6CoreSchemaProvider` and `R6ReferenceMetadata` types reflecting ballot4 (same public shape as before unless the FHIR spec itself changed a resource/element in a way that breaks the generated API).
 
 - [ ] **Step 1: Run the coreschema generator for R6**
@@ -515,7 +646,7 @@ Follow the same section structure/frontmatter for consistency with the most rece
 
 Create `docs/adr/adr-2607-fhir-r6-ballot4-upgrade.md` covering:
 - **Context:** R6 was pinned to ballot2 (2024-08-13); ballot3 (2025-04-03) and ballot4 (2025-12-18) have since shipped.
-- **Decision:** bump the pin to ballot4, regenerate all derived artifacts, repoint the `fhir-codegen` submodule remote (`microsoft/fhir-codegen` → `FHIR/fhir-codegen`, same repo, moved under HL7's org), and advance its pinned commit (Task 3 — the original pin was 432 commits stale and could not parse ballot4-era resource types like `DeviceAlert`).
+- **Decision:** bump the pin to ballot4, regenerate all derived artifacts, repoint the `fhir-codegen` submodule remote (`microsoft/fhir-codegen` → `FHIR/fhir-codegen`, same repo, moved under HL7's org), advance its pinned commit (Task 3 — the original pin was 432 commits stale and could not parse ballot4-era resource types like `DeviceAlert`), and — because upstream had never wired R6 into its own parsing layer even at the latest commit (Task 3b) — temporarily repoint the submodule at a branch of a personal fork (`brendankowitz/fhir-codegen`) carrying a fix that adds the missing `Hl7.Fhir.R6` package reference and `case R6:` branches to `PackageLoader.cs`. An upstream PR is intended but not yet opened as of this ADR.
 - **Structural changes found:** fill in with the actual diff observations noted during Task 4 Step 4 and any test fixes from Task 8 (e.g., "no structural changes affected consumer code" or list specifics — do not write this section until Tasks 4-8 are done, since it must reflect what was actually found, not a speculative guess).
 - **Consequences:** R6 remains a preview/limited-support version tracking a moving ballot target; future ballot bumps should follow this same ADR as a template, and should check the vendored codegen tool's currency against the target ballot's resource set *before* assuming a version-string bump is sufficient (this upgrade's Task 3 detour is the reason why).
 
