@@ -897,13 +897,13 @@ public class SchemaBasedFhirResourceFaker
     /// Picks a themed code from the pool for the resolved theme, falling back to the given default
     /// when theming is disabled or the pool has no code tagged for the active theme.
     /// </summary>
-    private FhirCode PickThemedOrDefault(FhirCode[] pool, FhirCode noThemeDefault)
+    private FhirCode PickThemedOrDefault(IReadOnlyList<FhirCode> pool, FhirCode noThemeDefault)
     {
         var theme = GetOrResolveTheme();
         if (theme == ClinicalDomain.Unspecified)
             return noThemeDefault;
 
-        var themed = Array.FindAll(pool, c => c.Domain == theme);
+        var themed = pool.Where(c => c.Domain == theme).ToArray();
         return themed.Length > 0 ? _faker.PickRandom(themed) : noThemeDefault;
     }
 
@@ -939,13 +939,13 @@ public class SchemaBasedFhirResourceFaker
         if (lowerContext.Contains("procedure", StringComparison.OrdinalIgnoreCase))
         {
             var procedureCodes = BindingCodeMapper.GetAllProcedureCodes();
-            if (procedureCodes.Length > 0)
+            if (procedureCodes.Count > 0)
             {
                 var theme = GetOrResolveTheme();
                 var themedProcedures = theme == ClinicalDomain.Unspecified
                     ? procedureCodes
-                    : Array.FindAll(procedureCodes, c => c.Domain == theme) is { Length: > 0 } themed ? themed : procedureCodes;
-                fhirCode = _faker.PickRandom(themedProcedures);
+                    : procedureCodes.Where(c => c.Domain == theme).ToArray() is { Length: > 0 } themed ? themed : procedureCodes;
+                fhirCode = _faker.PickRandom(themedProcedures.ToArray());
                 return true;
             }
         }
@@ -953,9 +953,9 @@ public class SchemaBasedFhirResourceFaker
         if (lowerContext.Contains("allergy", StringComparison.OrdinalIgnoreCase))
         {
             var allergenCodes = BindingCodeMapper.GetAllAllergenCodes();
-            if (allergenCodes.Length > 0)
+            if (allergenCodes.Count > 0)
             {
-                fhirCode = _faker.PickRandom(allergenCodes);
+                fhirCode = _faker.PickRandom(allergenCodes.ToArray());
                 return true;
             }
         }
@@ -964,9 +964,9 @@ public class SchemaBasedFhirResourceFaker
             lowerContext.Contains("immunization", StringComparison.OrdinalIgnoreCase))
         {
             var vaccineCodes = BindingCodeMapper.GetAllImmunizationCodes();
-            if (vaccineCodes.Length > 0)
+            if (vaccineCodes.Count > 0)
             {
-                fhirCode = _faker.PickRandom(vaccineCodes);
+                fhirCode = _faker.PickRandom(vaccineCodes.ToArray());
                 return true;
             }
         }
