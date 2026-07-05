@@ -11,6 +11,7 @@ using Shouldly;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
+[Collection(CatalogRegistrationGroup.Name)]
 public class ScenarioCatalogInvariantTests
 {
     private static readonly string[] KnownCategories =

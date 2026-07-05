@@ -9,6 +9,7 @@ using Shouldly;
 
 namespace Ignixa.FhirFakes.Cli.Tests;
 
+[Collection(CliExitCodeGroup.Name)]
 public class PopulationCommandTests
 {
     [Fact]

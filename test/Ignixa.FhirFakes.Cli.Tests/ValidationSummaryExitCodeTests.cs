@@ -10,6 +10,17 @@ using Shouldly;
 namespace Ignixa.FhirFakes.Cli.Tests;
 
 /// <summary>
+/// Groups every test class that reads or writes the process-global <see cref="Environment.ExitCode"/>.
+/// Without this, xUnit's default concurrent test-class execution could let one class's exit-code
+/// write race with another class's assertion, causing confusing, run-order-dependent failures.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class CliExitCodeGroup
+{
+    public const string Name = "CliExitCode";
+}
+
+/// <summary>
 /// Covers the <c>scenario</c>/<c>workflow</c> <c>--validate</c> exit-code fix: both commands
 /// previously computed an invalid-resource count but never set <see cref="Environment.ExitCode"/>,
 /// so a caller scripting around a validation failure could not detect it. Constructing a genuinely
@@ -19,6 +30,7 @@ namespace Ignixa.FhirFakes.Cli.Tests;
 /// logic (<see cref="ScenarioCommand.ReportValidationSummary"/>) directly, and separately proves a
 /// real end-to-end run of both commands still exits 0 when nothing is invalid.
 /// </summary>
+[Collection(CliExitCodeGroup.Name)]
 public class ValidationSummaryExitCodeTests
 {
     [Fact]
