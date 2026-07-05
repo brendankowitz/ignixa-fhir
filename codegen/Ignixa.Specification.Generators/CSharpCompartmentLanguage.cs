@@ -5,10 +5,10 @@
 
 using System.Text;
 using System.Text.Json;
-using Microsoft.Health.Fhir.CodeGen.Language;
-using Microsoft.Health.Fhir.CodeGen.Models;
-using Microsoft.Health.Fhir.CodeGenCommon.Models;
-using Microsoft.Health.Fhir.CodeGenCommon.Packaging;
+using Fhir.CodeGen.Lib.Language;
+using Fhir.CodeGen.Lib.Models;
+using Fhir.CodeGen.Common.Models;
+using Fhir.CodeGen.Common.Packaging;
 
 namespace Ignixa.Specification.Generators;
 

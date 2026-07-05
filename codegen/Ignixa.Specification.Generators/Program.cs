@@ -3,9 +3,9 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Microsoft.Health.Fhir.CodeGen.Configuration;
-using Microsoft.Health.Fhir.CodeGen.Loader;
-using Microsoft.Health.Fhir.CodeGen.Models;
+using Fhir.CodeGen.Lib.Configuration;
+using Fhir.CodeGen.Lib.Loader;
+using Fhir.CodeGen.Lib.Models;
 using Ignixa.Specification.Generators;
 
 // Parse command line arguments
