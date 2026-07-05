@@ -21,6 +21,11 @@ public sealed class SearchsetBundleComposer : ISearchResponseComposer
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(options);
 
+        if (options.PageSize <= 0)
+        {
+            throw new ArgumentException($"PageSize must be greater than zero, but was {options.PageSize}.", nameof(options));
+        }
+
         var matches = graph.AllResources.Where(r => r.ResourceType == options.MatchResourceType).ToList();
         var includes = graph.AllResources.Where(r => r.ResourceType != options.MatchResourceType).ToList();
 

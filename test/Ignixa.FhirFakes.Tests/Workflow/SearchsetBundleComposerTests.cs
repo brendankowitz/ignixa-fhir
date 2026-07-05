@@ -65,4 +65,30 @@ public class SearchsetBundleComposerTests
         pages[0].Entry.Count.ShouldBe(1);
         pages[0].Entry[0].Resource!.ResourceType.ShouldBe("Encounter");
     }
+
+    [Fact]
+    public void GivenPageSizeZero_WhenComposing_ThenThrowsArgumentException()
+    {
+        var graph = new ResourceGraph();
+        var composer = new SearchsetBundleComposer();
+
+        var ex = Should.Throw<ArgumentException>(() =>
+            composer.Compose(graph, new SearchResponseOptions { SearchUrl = "/Appointment", MatchResourceType = "Appointment", PageSize = 0 }));
+
+        ex.Message.ShouldContain("PageSize");
+        ex.Message.ShouldContain("0");
+    }
+
+    [Fact]
+    public void GivenPageSizeNegative_WhenComposing_ThenThrowsArgumentException()
+    {
+        var graph = new ResourceGraph();
+        var composer = new SearchsetBundleComposer();
+
+        var ex = Should.Throw<ArgumentException>(() =>
+            composer.Compose(graph, new SearchResponseOptions { SearchUrl = "/Appointment", MatchResourceType = "Appointment", PageSize = -5 }));
+
+        ex.Message.ShouldContain("PageSize");
+        ex.Message.ShouldContain("-5");
+    }
 }

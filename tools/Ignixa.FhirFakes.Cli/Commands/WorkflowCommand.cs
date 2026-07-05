@@ -110,6 +110,13 @@ internal static class WorkflowCommand
                 return;
             }
 
+            if (pageSize <= 0)
+            {
+                Console.WriteLine($"X --page-size must be greater than zero, but was {pageSize}");
+                Environment.ExitCode = 2;
+                return;
+            }
+
             var options = new WorkflowScenarioOptions { Seed = seed };
 
             Ignixa.FhirFakes.Workflow.WorkflowScenarioResult result;
