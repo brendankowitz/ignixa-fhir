@@ -88,6 +88,18 @@ public class DemographicsDataProviderTests
     }
 
     [Fact]
+    public void GivenUnsupportedPostalCodeFormat_WhenSamplingZipCode_ThenThrowsNotSupportedException()
+    {
+        // Arrange
+        var provider = DemographicsDataProvider.CreateDefault();
+        var city = MakeCity("XX", (PostalCodeFormat)99);
+        var randomizer = new Bogus.Randomizer();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => provider.SampleZipCode(city, randomizer));
+    }
+
+    [Fact]
     public void GivenSameSeed_WhenSamplingZipCodeTwice_ThenReturnsSameValue()
     {
         // Arrange

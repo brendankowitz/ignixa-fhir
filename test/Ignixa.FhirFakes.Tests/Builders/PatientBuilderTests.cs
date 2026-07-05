@@ -1074,6 +1074,41 @@ public class PatientBuilderTests
         attributes[UKCorePatientProfile.EthnicCategoryAttribute].ShouldBe(UKCorePatientProfile.EthnicCategory.Indian);
     }
 
+    [Fact]
+    public void GivenValidDistribution_WhenSamplingProfileAttributes_ThenReturnsCodeMatchingCumulativeWeight()
+    {
+        // Arrange
+        var cityWithValidDistribution = new CityDemographics(
+            Name: "Testville",
+            State: "Test State",
+            Country: "GB",
+            Population: 1000,
+            AgeGroupDistribution: new Dictionary<string, double> { ["18-44"] = 1.0 },
+            MaleRatio: 0.5,
+            ZipCodePrefix: "AB1",
+            AreaCodes: ["000"],
+            Attributes: new Dictionary<string, object>
+            {
+                [UKCorePatientProfile.EthnicCategoryDistributionKey] = new Dictionary<string, double>
+                {
+                    [UKCorePatientProfile.EthnicCategory.British] = 0.1,
+                    [UKCorePatientProfile.EthnicCategory.Irish] = 0.2,
+                    [UKCorePatientProfile.EthnicCategory.Indian] = 0.3,
+                    [UKCorePatientProfile.EthnicCategory.Chinese] = 0.4
+                }
+            });
+        // Seed 1 draws randomizer.Double() ~= 0.2487, which falls in the cumulative range
+        // (0.1, 0.3] - past British's slice and into Irish's - proving the loop walks the
+        // cumulative sum rather than always returning the first or last key.
+        var randomizer = new Bogus.Randomizer(1);
+
+        // Act
+        var attributes = UKCorePatientProfile.Instance.SampleProfileAttributes(cityWithValidDistribution, randomizer);
+
+        // Assert
+        attributes[UKCorePatientProfile.EthnicCategoryAttribute].ShouldBe(UKCorePatientProfile.EthnicCategory.Irish);
+    }
+
     [Theory]
     [InlineData("9434765919", true)]   // valid: base 943476591, computed check digit 9
     [InlineData("9434765910", false)]  // same base, wrong check digit (9 corrupted to 0)
