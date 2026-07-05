@@ -481,34 +481,78 @@ find / -maxdepth 6 -iname "Ignixa.Search" -not -path "*/src/Core/*" 2>/dev/null
 
 Expected: all three modified files are under `src/Core/Ignixa.Search/Generated/` and nowhere else; all three declare `namespace Ignixa.Search.Generated;` (matching the R4/R4B/R5/STU3 siblings — confirm with `grep "^namespace" src/Core/Ignixa.Search/Generated/R5SearchParameterDefinitions.g.cs` if in doubt); the last `find` (searched broadly, not just under `src/Core/`) returns nothing — i.e., no second `Ignixa.Search` directory was created anywhere else in the repo (e.g. `src/Ignixa.Search/`, or under `codegen/`). If a stray directory or wrong namespace turns up, delete it and re-run Steps 1-3 with the corrected explicit output path — do not hand-edit a misplaced file's namespace or move it, since that hides a generator misconfiguration that will reappear on the next regen.
 
-- [ ] **Step 6: Build the Search project**
+- [ ] **Step 6: Build the Search project — expect a 4th toolchain gap, now scoped and resolved below**
 
 ```bash
 dotnet build src/Core/Ignixa.Search/Ignixa.Search.csproj
 ```
 
-Expected: `Build succeeded. 0 Error(s)`. If it fails, check `SearchParameterDefinitionManager.cs`, `CompartmentDefinitionManager.cs`, and `CodeSystemResolver.cs` — each switches on `FhirVersion.R6` to call a static method on the generated type; fix any renamed method/type reference following the pattern of the adjacent R5 branch.
+A prior attempt hit exactly this: `CS0117: 'SearchParamType' does not contain a definition for 'Resource'` and `CS0117: 'CompartmentType' does not contain a definition for 'Group'`. Root cause: `SearchParamType`/`CompartmentType` (`src/Core/Ignixa.Specification/ValueSets/Normative/SearchParamType.cs`/`CompartmentType.cs`) are **version-agnostic, shared enums** used by every FHIR version (each file's header says "Generated from FHIR R4 ValueSet" — they were generated once from R4 as the stable canonical source, not per-version like the other generated files this plan touches), and ballot4 introduces two new codes neither file has: `SearchParamType` needs `resource` (confirmed real: `CodeSystem-search-param-type.json` in the ballot4 package lists `"code":"resource","display":"Resource","definition":"A search parameter defined to chain through into embedded resources."`); `CompartmentType` needs `Group` (confirmed real: `CompartmentDefinition-group.json` exists in ballot4 and uses `code: "Group"` — but ballot4's own `CodeSystem-compartment-type.json` does NOT list `Group` as a valid concept, a genuine inconsistency in HL7's ballot4 package content, not a tooling bug).
+
+**Resolution (deliberately NOT a full regen of these shared files):** these two enums are consumed by every FHIR version (R4/R4B/R5/STU3 too), so regenerating them wholesale from R6 content (which would require adding an `R6` case to a 4th generator, `CSharpValueSetLanguage.cs`, whose `FhirSequence` switch currently has no R6 case) risks unintended changes to the canonical enum shape for versions this plan isn't touching. Instead, hand-add just the two missing members directly, matching each file's existing attribute pattern exactly:
+
+In `src/Core/Ignixa.Specification/ValueSets/Normative/SearchParamType.cs`, add (alphabetically, matching the existing ordering convention in the file):
+
+```csharp
+    /// <summary>Resource (new in FHIR R6 ballot4)</summary>
+    [EnumLiteral("resource", "http://hl7.org/fhir/search-param-type")]
+    Resource,
+```
+
+In `src/Core/Ignixa.Specification/ValueSets/Normative/CompartmentType.cs`, add (matching the existing ordering convention):
+
+```csharp
+    // Note: "Group" is used by CompartmentDefinition-group.json in the FHIR R6 ballot4 package,
+    // but is NOT (yet) listed in that same package's CodeSystem-compartment-type.json --
+    // a confirmed inconsistency in HL7's ballot4 content, not a tooling gap. Added by hand
+    // pending upstream correction.
+    [EnumLiteral("Group", "http://hl7.org/fhir/compartment-type")]
+    Group,
+```
+
+Do NOT touch `CSharpValueSetLanguage.cs` or attempt a `-- valueset R6` regen — that's explicitly out of scope for this fix; these two hand-added members are a deliberately minimal, low-risk patch to a shared cross-version file.
+
+Re-run the build:
+
+```bash
+dotnet build src/Core/Ignixa.Search/Ignixa.Search.csproj
+```
+
+Expected: `Build succeeded. 0 Error(s)`. If it still fails, check `SearchParameterDefinitionManager.cs`, `CompartmentDefinitionManager.cs`, and `CodeSystemResolver.cs` — each switches on `FhirVersion.R6` to call a static method on the generated type; fix any renamed method/type reference following the pattern of the adjacent R5 branch.
 
 - [ ] **Step 7: Commit**
 
 This task touches two categories of file — the codegen fix (Step 1) and the regenerated output (Steps 2-4) — commit them together, since the regenerated output wouldn't exist without the fix:
 
 ```bash
-git add codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs
-# add codegen/Ignixa.Specification.Generators/CSharpCompartmentLanguage.cs and/or
-# CSharpCodeSystemResolverLanguage.cs too, if Step 1 found and fixed the same pattern there
+git add codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs \
+        codegen/Ignixa.Specification.Generators/CSharpCompartmentLanguage.cs
+# add CSharpCodeSystemResolverLanguage.cs too, only if Step 1 found and fixed something there
 git add src/Core/Ignixa.Search/Generated/R6SearchParameterDefinitions.g.cs \
         src/Core/Ignixa.Search/Generated/R6CompartmentDefinitions.g.cs \
         src/Core/Ignixa.Search/Generated/R6CodeSystemMappings.g.cs
+git add src/Core/Ignixa.Specification/ValueSets/Normative/SearchParamType.cs \
+        src/Core/Ignixa.Specification/ValueSets/Normative/CompartmentType.cs
 # add any consumer files touched in Step 6
-git commit -m "fix(codegen): read raw resource-type strings via *Element/ObjectValue, not typed enum
+git commit -m "fix(codegen): read raw codes via *Element/ObjectValue instead of casting to enum
 
-SearchParameter.Base/Target are Firely SDK convenience properties that
-cast each code to VersionIndependentResourceTypesAll -- an enum baked
-into the pinned Hl7.Fhir.R5 5.13.1 SDK that predates ballot4-only
-resource types like DeviceAlert, and throws InvalidCastException on
-access. Reading via BaseElement/TargetElement's ObjectValue instead
-gets the raw string without forcing the cast.
+SearchParameter.Base/Target/Type and CompartmentDefinition.Code (and
+its Resource backbone's Code) are Firely SDK convenience properties
+that cast each code to an enum baked into the pinned Hl7.Fhir.R5
+5.13.1 SDK -- VersionIndependentResourceTypesAll / SearchParamType --
+which predate ballot4-only codes (DeviceAlert, SearchParamType
+'resource') and throw InvalidCastException on access. Reading via
+*Element's ObjectValue instead gets the raw string without forcing
+the cast. Found via a systematic reflection-based audit of every
+Code<T>-backed property these generators read, not reactively.
+
+Also hand-adds two ballot4-only codes to Ignixa's own shared,
+version-agnostic SearchParamType/CompartmentType enums (SearchParamType.Resource,
+CompartmentType.Group) rather than regenerating those files from R6 --
+CompartmentType.Group in particular can't come from a mechanical regen,
+since ballot4's own CodeSystem-compartment-type.json doesn't list it
+despite CompartmentDefinition-group.json using it (a confirmed HL7
+content inconsistency, not a tooling gap).
 
 chore(search): regenerate R6 search parameters, compartments, code systems for ballot4"
 ```
