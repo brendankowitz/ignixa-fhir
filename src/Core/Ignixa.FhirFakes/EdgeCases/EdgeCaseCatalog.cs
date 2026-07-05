@@ -14,6 +14,7 @@ namespace Ignixa.FhirFakes.EdgeCases;
 /// </summary>
 public sealed class EdgeCaseCatalog
 {
+    private readonly Lock _lock = new();
     private readonly List<IEdgeCaseStrategy> _strategies = [];
 
     /// <summary>Creates an empty catalog. Prefer <see cref="CreateDefault"/> for the built-in set.</summary>
@@ -33,12 +34,22 @@ public sealed class EdgeCaseCatalog
     public EdgeCaseCatalog Register(IEdgeCaseStrategy strategy)
     {
         ArgumentNullException.ThrowIfNull(strategy);
-        _strategies.Add(strategy);
+        lock (_lock)
+        {
+            _strategies.Add(strategy);
+        }
+
         return this;
     }
 
     /// <summary>Returns all registered strategies in registration order.</summary>
-    public IReadOnlyList<IEdgeCaseStrategy> All() => _strategies;
+    public IReadOnlyList<IEdgeCaseStrategy> All()
+    {
+        lock (_lock)
+        {
+            return [.. _strategies];
+        }
+    }
 
     /// <summary>
     /// Resolves selectors to matching strategies and reports which selectors matched nothing.
@@ -49,16 +60,22 @@ public sealed class EdgeCaseCatalog
     /// <param name="unmatched">Selectors that produced no matches.</param>
     public IReadOnlyList<IEdgeCaseStrategy> Resolve(IEnumerable<string>? selectors, out IReadOnlyList<string> unmatched)
     {
+        List<IEdgeCaseStrategy> snapshot;
+        lock (_lock)
+        {
+            snapshot = [.. _strategies];
+        }
+
         var selectorList = selectors?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
         if (selectorList is null || selectorList.Count == 0)
         {
             unmatched = [];
-            return _strategies;
+            return snapshot;
         }
 
-        var matched = _strategies.Where(s => MatchesAny(s, selectorList)).ToList();
+        var matched = snapshot.Where(s => MatchesAny(s, selectorList)).ToList();
         unmatched = selectorList
-            .Where(sel => !_strategies.Any(s => Matches(s, sel)))
+            .Where(sel => !snapshot.Any(s => Matches(s, sel)))
             .ToList();
         return matched;
     }
@@ -70,13 +87,19 @@ public sealed class EdgeCaseCatalog
     /// </summary>
     public IReadOnlyList<IEdgeCaseStrategy> Resolve(IEnumerable<string>? selectors)
     {
+        List<IEdgeCaseStrategy> snapshot;
+        lock (_lock)
+        {
+            snapshot = [.. _strategies];
+        }
+
         var selectorList = selectors?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
         if (selectorList is null || selectorList.Count == 0)
         {
-            return _strategies;
+            return snapshot;
         }
 
-        return _strategies.Where(s => MatchesAny(s, selectorList)).ToList();
+        return snapshot.Where(s => MatchesAny(s, selectorList)).ToList();
     }
 
     private static bool MatchesAny(IEdgeCaseStrategy strategy, List<string> selectors)

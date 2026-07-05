@@ -12,13 +12,16 @@ namespace Ignixa.FhirFakes.Scenarios;
 
 /// <summary>
 /// Discovers and invokes predefined FHIR scenarios by convention: public static extension methods on
-/// types in the <c>Ignixa.FhirFakes.Scenarios.Predefined</c> namespace whose first parameter is
+/// types in a <c>*.Scenarios.Predefined</c> namespace whose first parameter is
 /// <see cref="IFhirSchemaProvider"/> and that return <see cref="ScenarioContext"/>. A leading "Get" is
 /// stripped from the method name to form the scenario id (e.g. "GetDiabeticPatient" -> "DiabeticPatient").
+/// Scans this library's own assembly plus any assembly registered via <see cref="RegisterAssembly"/>, so a
+/// downstream consumer can ship private scenarios discoverable through this same catalog.
 /// </summary>
 public static class ScenarioCatalog
 {
-    private static readonly Lazy<IReadOnlyList<DiscoveredScenario>> Scenarios = new(Discover);
+    private static readonly Lock RegistrationLock = new();
+    private static readonly HashSet<Assembly> RegisteredAssemblies = [typeof(DiabeticPatientScenario).Assembly];
 
     /// <summary>
     /// Attribute-bag key under which <see cref="Invoke"/> records the scenario's
@@ -28,17 +31,36 @@ public static class ScenarioCatalog
     public const string ClinicalDomainAttributeKey = "clinicalDomain";
 
     /// <summary>
-    /// Gets all discovered scenarios.
+    /// Registers an additional assembly to scan for predefined scenarios. Idempotent — registering
+    /// the same assembly more than once has no additional effect. Scenarios in the registered assembly
+    /// follow the same convention as this library's own scenarios: a public static type in a namespace
+    /// ending in <c>.Scenarios.Predefined</c> (the namespace need not be under <c>Ignixa.FhirFakes</c> —
+    /// it is matched by suffix, not by owning assembly).
     /// </summary>
-    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
-    public static IReadOnlyList<DiscoveredScenario> GetAll() => Scenarios.Value;
+    public static void RegisterAssembly(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+        lock (RegistrationLock)
+        {
+            RegisteredAssemblies.Add(assembly);
+        }
+    }
+
+    /// <summary>
+    /// Gets all discovered scenarios, across this library's assembly and every registered assembly.
+    /// </summary>
+    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
+    public static IReadOnlyList<DiscoveredScenario> GetAll() => Discover();
 
     /// <summary>
     /// Finds a scenario by id (case-insensitive). Returns <see langword="null"/> if no scenario matches —
     /// this is expected control flow for an unknown id, not an error.
     /// </summary>
-    public static DiscoveredScenario? Find(string id) =>
-        Scenarios.Value.FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    public static DiscoveredScenario? Find(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        return Discover().FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Invokes a discovered scenario's factory method, applying <paramref name="parameterOverrides"/>
@@ -82,38 +104,47 @@ public static class ScenarioCatalog
 
     private static IReadOnlyList<DiscoveredScenario> Discover()
     {
-        var assembly = typeof(DiabeticPatientScenario).Assembly;
-
-        var scenarioTypes = assembly.GetTypes()
-            .Where(t => t.Namespace == "Ignixa.FhirFakes.Scenarios.Predefined" && t.IsClass && t.IsPublic);
+        Assembly[] assemblies;
+        lock (RegistrationLock)
+        {
+            assemblies = [.. RegisteredAssemblies];
+        }
 
         var scenarios = new List<DiscoveredScenario>();
 
-        foreach (var type in scenarioTypes)
+        foreach (var assembly in assemblies)
         {
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .Where(m => m.ReturnType == typeof(ScenarioContext));
+            var scenarioTypes = assembly.GetTypes()
+                .Where(t => t.Namespace is not null
+                    && t.Namespace.EndsWith(".Scenarios.Predefined", StringComparison.Ordinal)
+                    && t.IsClass && t.IsPublic);
 
-            foreach (var method in methods)
+            foreach (var type in scenarioTypes)
             {
-                var parameters = method.GetParameters();
-                if (parameters.Length == 0 || parameters[0].ParameterType != typeof(IFhirSchemaProvider))
-                    continue;
+                var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Where(m => m.ReturnType == typeof(ScenarioContext));
 
-                var attribute = method.GetCustomAttribute<ScenarioAttribute>();
-                var id = attribute?.Id
-                    ?? (method.Name.StartsWith("Get", StringComparison.Ordinal) ? method.Name["Get".Length..] : method.Name);
-
-                scenarios.Add(new DiscoveredScenario
+                foreach (var method in methods)
                 {
-                    Id = id,
-                    Category = attribute?.Category,
-                    Title = attribute?.Title ?? ScenarioParameterBinder.Humanize(id),
-                    Description = attribute?.Description,
-                    Parameters = parameters.Skip(1).Select(ScenarioParameterBinder.BuildParameter).ToList(),
-                    Domain = attribute is null || attribute.Domain == ClinicalDomain.Unspecified ? null : attribute.Domain,
-                    Method = method,
-                });
+                    var parameters = method.GetParameters();
+                    if (parameters.Length == 0 || parameters[0].ParameterType != typeof(IFhirSchemaProvider))
+                        continue;
+
+                    var attribute = method.GetCustomAttribute<ScenarioAttribute>();
+                    var id = attribute?.Id
+                        ?? (method.Name.StartsWith("Get", StringComparison.Ordinal) ? method.Name["Get".Length..] : method.Name);
+
+                    scenarios.Add(new DiscoveredScenario
+                    {
+                        Id = id,
+                        Category = attribute?.Category,
+                        Title = attribute?.Title ?? ScenarioParameterBinder.Humanize(id),
+                        Description = attribute?.Description,
+                        Parameters = parameters.Skip(1).Select(ScenarioParameterBinder.BuildParameter).ToList(),
+                        Domain = attribute is null || attribute.Domain == ClinicalDomain.Unspecified ? null : attribute.Domain,
+                        Method = method,
+                    });
+                }
             }
         }
 

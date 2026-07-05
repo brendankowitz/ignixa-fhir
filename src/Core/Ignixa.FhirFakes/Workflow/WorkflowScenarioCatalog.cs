@@ -47,8 +47,11 @@ public static class WorkflowScenarioCatalog
     public static IReadOnlyList<DiscoveredScenario> GetAll() => Discover();
 
     /// <summary>Finds a workflow scenario pack by id (case-insensitive), or null if none matches.</summary>
-    public static DiscoveredScenario? Find(string id) =>
-        Discover().FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    public static DiscoveredScenario? Find(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        return Discover().FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Invokes a discovered workflow scenario pack's factory method, applying

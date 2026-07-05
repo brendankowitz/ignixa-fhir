@@ -92,7 +92,14 @@ public class ScenarioCatalogInvariantTests
     [Fact]
     public void GivenTheCatalog_WhenListingIds_ThenMatchesThePinnedContract()
     {
-        var ids = ScenarioCatalog.GetAll().Select(s => s.Id).OrderBy(s => s, StringComparer.Ordinal).ToArray();
+        // Scoped to this library's own assembly: other tests may have registered additional
+        // assemblies via ScenarioCatalog.RegisterAssembly, and that registration is process-lifetime
+        // (no unregister), so the pinned contract must only cover this library's built-in scenarios.
+        var ids = ScenarioCatalog.GetAll()
+            .Where(s => s.Method.DeclaringType!.Assembly == typeof(ScenarioAttribute).Assembly)
+            .Select(s => s.Id)
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToArray();
 
         ids.ShouldBe(PinnedIds);
     }

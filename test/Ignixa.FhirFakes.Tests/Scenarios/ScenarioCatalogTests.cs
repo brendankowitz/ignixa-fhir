@@ -286,4 +286,50 @@ public class ScenarioCatalogTests
 
     private static ScenarioContext ThrowingScenario(IFhirSchemaProvider schemaProvider) =>
         throw new InvalidOperationException("boom");
+
+    [Fact]
+    public void GivenExternalAssemblyRegistered_WhenGettingAll_ThenItsScenariosAreDiscovered()
+    {
+        ScenarioCatalog.RegisterAssembly(typeof(ScenarioCatalogTests).Assembly);
+
+        var found = ScenarioCatalog.Find("RegisteredTestScenario");
+
+        found.ShouldNotBeNull();
+        found.Method.Name.ShouldBe(nameof(Ignixa.FhirFakes.Tests.Scenarios.Predefined.RegisteredTestScenario.GetRegisteredTestScenario));
+    }
+
+    [Fact]
+    public void GivenExternalAssemblyRegistered_WhenInvokedViaCatalog_ThenItRunsLikeAnyOtherScenario()
+    {
+        ScenarioCatalog.RegisterAssembly(typeof(ScenarioCatalogTests).Assembly);
+        var schemaProvider = new R4CoreSchemaProvider();
+        var scenario = ScenarioCatalog.Find("RegisteredTestScenario")!;
+
+        var context = ScenarioCatalog.Invoke(scenario, schemaProvider);
+
+        context.GetAttribute<bool>("registered").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenAssemblyRegisteredTwice_WhenGettingAll_ThenItsScenarioAppearsOnlyOnce()
+    {
+        ScenarioCatalog.RegisterAssembly(typeof(ScenarioCatalogTests).Assembly);
+        ScenarioCatalog.RegisterAssembly(typeof(ScenarioCatalogTests).Assembly);
+
+        var matches = ScenarioCatalog.GetAll().Count(s => s.Id == "RegisteredTestScenario");
+
+        matches.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenNullAssembly_WhenRegistering_ThenThrowsArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => ScenarioCatalog.RegisterAssembly(null!));
+    }
+
+    [Fact]
+    public void GivenNullId_WhenFinding_ThenThrowsArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => ScenarioCatalog.Find(null!));
+    }
 }
