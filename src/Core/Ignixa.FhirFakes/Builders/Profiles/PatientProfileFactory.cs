@@ -18,6 +18,8 @@ public static class PatientProfileFactory
     {
         ["US"] = USCorePatientProfile.Instance,
         ["AU"] = AUBasePatientProfile.Instance,
+        ["GB"] = UKCorePatientProfile.Instance,
+        ["UK"] = UKCorePatientProfile.Instance,
     };
 
     /// <summary>
@@ -46,6 +48,11 @@ public static class PatientProfileFactory
     /// Gets the AU Base profile.
     /// </summary>
     public static IPatientProfile AUBase => AUBasePatientProfile.Instance;
+
+    /// <summary>
+    /// Gets the UK Core profile.
+    /// </summary>
+    public static IPatientProfile UKCore => UKCorePatientProfile.Instance;
 
     /// <summary>
     /// Gets the default profile (no country-specific extensions).

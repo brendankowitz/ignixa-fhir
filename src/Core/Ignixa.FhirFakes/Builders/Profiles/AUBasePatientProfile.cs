@@ -108,7 +108,7 @@ public sealed class AUBasePatientProfile : IPatientProfile
     }
 
     /// <inheritdoc />
-    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes)
+    public IEnumerable<JsonObject>? BuildIdentifiers(IReadOnlyDictionary<string, object> attributes, Bogus.Randomizer randomizer)
     {
         // AU Base could include Medicare number, IHI, DVA number, etc.
         // Not implemented in this initial version

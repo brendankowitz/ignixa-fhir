@@ -359,7 +359,7 @@ public sealed class OrganizationState : ScenarioState
             City: city.Name,
             State: city.State,
             PostalCode: zipCode,
-            Country: "USA"
+            Country: city.Country
         );
     }
 

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Shouldly;
+using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
@@ -464,7 +465,30 @@ public class OrganizationStateTests
         address!["city"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
         address["state"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
         address["postalCode"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
-        address["country"]?.GetValue<string>().ShouldBe("USA");
+        address["country"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void GivenOrganization_WhenGeneratedFromKnownCity_ThenCountryMatchesThatCitysCountry()
+    {
+        // Arrange
+        var demographics = DemographicsDataProvider.CreateDefault();
+
+        // Act
+        var scenario = new ScenarioBuilder(_schemaProvider)
+            .WithPatient()
+            .AddHospital()
+            .Build();
+
+        // Assert
+        var organization = scenario.Organizations[0];
+        var address = organization.MutableNode["address"]![0];
+        var cityName = address!["city"]?.GetValue<string>();
+        var country = address["country"]?.GetValue<string>();
+
+        cityName.ShouldNotBeNullOrEmpty();
+        var matchingCity = demographics.Cities.Single(c => c.Name == cityName);
+        country.ShouldBe(matchingCity.Country);
     }
 
     [Fact]

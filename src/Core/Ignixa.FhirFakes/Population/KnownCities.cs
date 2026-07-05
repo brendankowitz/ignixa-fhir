@@ -161,6 +161,16 @@ public sealed class KnownCities
     public static CityDemographics Amsterdam => DefaultProvider.Cities.First(c => c.Name == "Amsterdam");
 
     /// <summary>
+    /// London, Greater London, United Kingdom (Population: 8,799,800)
+    /// </summary>
+    /// <remarks>
+    /// - Postal Code Prefix: SW1A (illustrative — London spans dozens of outward postcodes)
+    /// - Area Code: 020
+    /// - Demographics: approximate 2021 Census ethnicity breakdown across ONS ethnic category codes
+    /// </remarks>
+    public static CityDemographics London => DefaultProvider.Cities.First(c => c.Name == "London");
+
+    /// <summary>
     /// Gets all available cities.
     /// </summary>
     public static IReadOnlyList<CityDemographics> All => DefaultProvider.Cities;

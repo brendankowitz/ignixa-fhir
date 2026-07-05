@@ -863,9 +863,10 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
             patientJson["multipleBirthBoolean"] = _multipleBirthBoolean.Value;
         }
 
-        if (HasIdentifiers())
+        var identifiers = BuildIdentifiers();
+        if (identifiers.Count > 0)
         {
-            patientJson["identifier"] = BuildIdentifiers();
+            patientJson["identifier"] = identifiers;
         }
 
         var resource = JsonSourceNodeFactory.Parse<ResourceJsonNode>(patientJson);
@@ -1228,14 +1229,19 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         return this;
     }
 
-    private bool HasIdentifiers()
-    {
-        return _identifiers.Count > 0;
-    }
-
     private JsonArray BuildIdentifiers()
     {
         var identifierArray = new JsonArray();
+
+        // Profile-specific identifiers (e.g. UK Core NHS Number)
+        var profileIdentifiers = _profile.BuildIdentifiers(_profileAttributes, _faker.Random);
+        if (profileIdentifiers is not null)
+        {
+            foreach (var identifier in profileIdentifiers)
+            {
+                identifierArray.Add(identifier);
+            }
+        }
 
         foreach (var config in _identifiers)
         {

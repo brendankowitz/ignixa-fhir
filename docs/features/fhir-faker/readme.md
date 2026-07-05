@@ -16,6 +16,8 @@ Test data generation library for creating realistic FHIR resources across versio
 | [improvements-summary](investigations/improvements-summary.md) | Complete | 2025-12-02 | Implementation summary of cross-version compatibility work |
 | [adversarial-data-generation](investigations/adversarial-data-generation.md) | In Progress | 2026-06-16 | Edge-case/fuzz data as a first-class type — extensible category catalog + seeded decorator pipeline, validity measured & bucketed |
 | [theme-consistent-generation](investigations/theme-consistent-generation.md) | MVP Implemented | 2026-07-04 | Carry a clinical "theme" through generation so sibling coded fields on one resource stay semantically coherent, independent of density |
+| [uk-core-patient-profile](investigations/uk-core-patient-profile.md) | Implemented | 2026-07-04 | UKCorePatientProfile (NHS number + ONS ethnic category) and London, following the US Core/AU Base pattern |
+| [country-aware-postal-codes](investigations/country-aware-postal-codes.md) | Implemented | 2026-07-04 | Fixed `SampleZipCode`'s US-shaped numeric-suffix logic — was already producing invalid postcodes for Melbourne/Sydney/Amsterdam |
 
 ## Overview
 

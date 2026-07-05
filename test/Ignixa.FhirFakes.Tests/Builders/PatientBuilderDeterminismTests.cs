@@ -132,6 +132,25 @@ public class PatientBuilderDeterminismTests
         Canonicalize(first).ShouldBe(Canonicalize(second));
     }
 
+    [Fact]
+    public void GivenSameSeed_WhenBuildingUKCorePatientTwice_ThenNhsNumberIsIdentical()
+    {
+        // Arrange & Act
+        var patient1 = PatientBuilderFactory.Create(_schemaProvider, seed: 42)
+            .FromCity(KnownCities.London)
+            .Build();
+        var patient2 = PatientBuilderFactory.Create(_schemaProvider, seed: 42)
+            .FromCity(KnownCities.London)
+            .Build();
+
+        // Assert
+        var nhsNumber1 = patient1.MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
+        var nhsNumber2 = patient2.MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
+
+        nhsNumber1.ShouldNotBeNullOrEmpty();
+        nhsNumber1.ShouldBe(nhsNumber2);
+    }
+
     private JsonNode BuildAutoNamedPatient(int seed) =>
         PatientBuilderFactory.Create(_schemaProvider, seed)
             .WithAge(35)

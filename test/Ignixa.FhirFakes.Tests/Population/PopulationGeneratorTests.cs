@@ -332,7 +332,7 @@ public class PopulationGeneratorTests
         var allCities = KnownCities.All;
 
         // Assert
-        allCities.Count.ShouldBe(14);
+        allCities.Count.ShouldBe(15);
         allCities.ShouldContain(c => c.Name == "Boston");
         allCities.ShouldContain(c => c.Name == "Seattle");
         allCities.ShouldContain(c => c.Name == "New York");
@@ -340,6 +340,7 @@ public class PopulationGeneratorTests
         allCities.ShouldContain(c => c.Name == "Melbourne");
         allCities.ShouldContain(c => c.Name == "Sydney");
         allCities.ShouldContain(c => c.Name == "Amsterdam");
+        allCities.ShouldContain(c => c.Name == "London");
     }
 
     [Fact]
