@@ -67,6 +67,55 @@ public class SearchsetBundleComposerTests
     }
 
     [Fact]
+    public void GivenMultiplePages_WhenComposing_ThenPageLinksUseValidQueryStringSeparator()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var graph = new ResourceGraph();
+        for (var i = 0; i < 5; i++)
+        {
+            graph.AddScenario(new ScenarioBuilder(schemaProvider).WithPatient().Build());
+        }
+        var composer = new SearchsetBundleComposer();
+
+        var pages = composer.Compose(graph, new SearchResponseOptions { SearchUrl = "/Patient", MatchResourceType = "Patient", PageSize = 2 });
+
+        var nextUrl = pages[0].Link.Single(l => l.Relation == "next").Url;
+        nextUrl.ShouldContain("?_page=");
+        nextUrl.ShouldNotContain("&_page=");
+        nextUrl.ShouldStartWith("http://localhost/fhir/Patient");
+    }
+
+    [Fact]
+    public void GivenSearchUrlWithExistingQueryString_WhenComposing_ThenPageLinksAppendWithAmpersand()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var graph = new ResourceGraph();
+        for (var i = 0; i < 5; i++)
+        {
+            graph.AddScenario(new ScenarioBuilder(schemaProvider).WithPatient().Build());
+        }
+        var composer = new SearchsetBundleComposer();
+
+        var pages = composer.Compose(graph, new SearchResponseOptions { SearchUrl = "/Patient?_count=2", MatchResourceType = "Patient", PageSize = 2 });
+
+        var nextUrl = pages[0].Link.Single(l => l.Relation == "next").Url;
+        nextUrl.ShouldBe("http://localhost/fhir/Patient?_count=2&_page=1");
+    }
+
+    [Fact]
+    public void GivenComposedPage_WhenReadingEntryFullUrl_ThenFullUrlIsAbsolute()
+    {
+        var schemaProvider = new R4CoreSchemaProvider();
+        var graph = new ResourceGraph();
+        graph.AddScenario(new ScenarioBuilder(schemaProvider).WithPatient().Build());
+        var composer = new SearchsetBundleComposer();
+
+        var pages = composer.Compose(graph, new SearchResponseOptions { SearchUrl = "/Patient", MatchResourceType = "Patient" });
+
+        pages[0].Entry[0].FullUrl.ShouldStartWith("http://localhost/fhir/Patient/");
+    }
+
+    [Fact]
     public void GivenPageSizeZero_WhenComposing_ThenThrowsArgumentException()
     {
         var graph = new ResourceGraph();

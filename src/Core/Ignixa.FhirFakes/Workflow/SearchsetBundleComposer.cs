@@ -55,25 +55,25 @@ public sealed class SearchsetBundleComposer : ISearchResponseComposer
         var entries = new JsonArray();
         foreach (var match in pageMatches)
         {
-            entries.Add(CreateEntry(match, searchMode: "match"));
+            entries.Add(CreateEntry(match, searchMode: "match", options.BaseUrl));
         }
 
         if (options.IncludeCompleteness == IncludeCompleteness.Complete)
         {
             foreach (var include in includes)
             {
-                entries.Add(CreateEntry(include, searchMode: "include"));
+                entries.Add(CreateEntry(include, searchMode: "include", options.BaseUrl));
             }
         }
 
-        var links = new JsonArray { CreateLink("self", PageUrl(options.SearchUrl, pageIndex)) };
+        var links = new JsonArray { CreateLink("self", PageUrl(options.BaseUrl, options.SearchUrl, pageIndex)) };
         if (pageIndex > 0)
         {
-            links.Add(CreateLink("previous", PageUrl(options.SearchUrl, pageIndex - 1)));
+            links.Add(CreateLink("previous", PageUrl(options.BaseUrl, options.SearchUrl, pageIndex - 1)));
         }
         if (pageIndex < pageCount - 1)
         {
-            links.Add(CreateLink("next", PageUrl(options.SearchUrl, pageIndex + 1)));
+            links.Add(CreateLink("next", PageUrl(options.BaseUrl, options.SearchUrl, pageIndex + 1)));
         }
 
         var bundleNode = new JsonObject
@@ -89,9 +89,9 @@ public sealed class SearchsetBundleComposer : ISearchResponseComposer
         return new BundleJsonNode(bundleNode);
     }
 
-    private static JsonObject CreateEntry(ResourceJsonNode resource, string searchMode) => new()
+    private static JsonObject CreateEntry(ResourceJsonNode resource, string searchMode, string baseUrl) => new()
     {
-        ["fullUrl"] = $"{resource.ResourceType}/{resource.Id}",
+        ["fullUrl"] = $"{baseUrl}/{resource.ResourceType}/{resource.Id}",
         ["resource"] = resource.MutableNode.DeepClone(),
         ["search"] = new JsonObject { ["mode"] = searchMode },
     };
@@ -102,8 +102,16 @@ public sealed class SearchsetBundleComposer : ISearchResponseComposer
         ["url"] = url,
     };
 
-    private static string PageUrl(string searchUrl, int pageIndex) =>
-        pageIndex == 0 ? searchUrl : $"{searchUrl}&_page={pageIndex}";
+    private static string PageUrl(string baseUrl, string searchUrl, int pageIndex)
+    {
+        var fullSearchUrl = $"{baseUrl}{searchUrl}";
+        if (pageIndex == 0)
+        {
+            return fullSearchUrl;
+        }
+        var separator = fullSearchUrl.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{fullSearchUrl}{separator}_page={pageIndex}";
+    }
 
     private static string GetBundleTypeLiteral(ResponseBundleType type) => type switch
     {
