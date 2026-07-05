@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Semver" />
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
