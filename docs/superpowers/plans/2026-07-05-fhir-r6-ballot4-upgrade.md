@@ -639,6 +639,65 @@ git commit -m "test(fhirfakes): update R6 shape expectations for ballot4"
 
 If Step 1 passed with no failures, skip Steps 2-3 and note in the ADR (Task 10) that no FhirFakes test changes were needed.
 
+**Actual outcome:** 2 test methods failed (4 failures across net9.0/net10.0), all three root-caused to genuine production bugs in `src/Core/Ignixa.FhirFakes/` (not outdated test expectations) — see Task 8a below, added to fix them. No test files were changed by Task 8 itself; per this task's own escalation criteria, production bugs are out of its scope.
+
+---
+
+### Task 8a: Fix FhirFakes production bugs surfaced by the ballot4 regen
+
+**Why this task exists:** Task 8 found the regenerated ballot4 R6 schema/valueset is genuinely incompatible with 3 hardcoded ballot2-era assumptions in the FhirFakes scenario builders — real production bugs, not test drift. Per user direction, fixing all 3 now rather than deferring, since the test suite already covers them (fix, then confirm both previously-failing tests go green).
+
+**Files:**
+- Modify: `src/Core/Ignixa.FhirFakes/Scenarios/States/ImmunizationState.cs` (`CreateProtocolApplied`, ~line 284)
+- Modify: `src/Core/Ignixa.FhirFakes/Scenarios/States/MedicationOrderState.cs` (`BuildDosageInstruction`, ~line 267)
+- Modify: `src/Core/Ignixa.FhirFakes/Scenarios/ConditionClinicalStatus.cs`
+- Modify: `src/Core/Ignixa.FhirFakes/Scenarios/States/ConditionEndState.cs` (~line 89, the `IsStu3()`/else clinicalStatus branch)
+- Possibly modify: `src/Core/Ignixa.FhirFakes/Scenarios/States/ConditionOnsetState.cs` (has the same clinicalStatus-building pattern at line 70/75 — check whether its default status is one of the removed R6 codes; if it only ever defaults to `active`, which remains valid in ballot4, no change is needed there, but verify rather than assume)
+
+**Interfaces:**
+- Consumes: the regenerated ballot4 R6 schema/valueset artifacts from Tasks 4-6 (`R6CoreSchemaProvider.g.cs`, `R6ValueSetProviderResources.resx`).
+- Produces: FhirFakes-generated R6 resources that pass schema/valueset validation; the two previously-failing tests (`ComprehensiveValidationTests.GivenAllScenarios_WhenBuiltAndValidatedAcrossAllVersions_ThenAllPassValidation`, `ScenarioCatalogCrossVersionValidationTests.GivenEveryPredefinedScenario_WhenGeneratedAndValidated_ThenAllResourcesPassSchemaValidation`) pass.
+
+- [ ] **Step 1: Fix `Immunization.protocolApplied[].doseNumber`/`.seriesDoses` typing for R6**
+
+In `ImmunizationState.cs`, `CreateProtocolApplied` currently uses `schemaProvider.IsR5OrLater()` to decide string-vs-int, but ballot4 R6 specifically types these as `CodeableConcept` (confirmed in `R6CoreSchemaProvider.g.cs` ~lines 117918-117944 — `primitive: FhirPrimitive.None`, `types: [CodeableConcept]`), diverging from R5's plain string. Add an R6-specific branch (check `schemaProvider.Version == Ignixa.Abstractions.FhirVersion.R6` — do not reuse `IsR5OrLater()`, which incorrectly groups R6 with R5 for this field) that emits a `CodeableConcept`-shaped `JsonObject` instead of a string, following the existing `CodeableConcept` construction pattern already used elsewhere in this same file (e.g. the `vaccineCode` construction a few lines above, which builds `{ "coding": [...], "text": ... }`) — a `{ "text": "<number>" }`-only object is a valid, minimal `CodeableConcept` and is sufficient here (there's no meaningful `coding.system` for an arbitrary dose-number value). Apply the same treatment to both `doseNumberFieldName` and `seriesDosesFieldName`.
+
+- [ ] **Step 2: Rework `MedicationRequest.dosageInstruction` construction for R6's `DosageDetails` type**
+
+In `MedicationOrderState.cs`, `BuildDosageInstruction` currently builds a legacy `Dosage`-shaped object (`text`, `asNeeded`/`asNeededBoolean`). Ballot4 R6 types `dosageInstruction` (and the `MedicationDispense`/`MedicationUsage` equivalents) as the new `DosageDetails` complex type instead (confirmed: `DosageDetails_Children()` in `R6CoreSchemaProvider.g.cs`, ~line 84418, and the `DosageDetails.Step` sub-type ~line 6262). Before writing code, **investigate the actual generated schema** for `DosageDetails`, `DosageDetails.Step`, `DosageSafety`, and `DosageCondition` in `R6CoreSchemaProvider.g.cs` (search for `DosageDetails_Children`, `Str_DosageDetails`, `DosageCondition_Children`) to confirm the exact child element names and where "as-needed" semantics now live (Task 8's investigation found children `renderedInstruction`, `simple` (a nested `Dosage`), `step` (`DosageDetails.Step[]`), `safety` (`DosageSafety`), but did not confirm exactly which of `step`/`safety`/`DosageCondition` carries the as-needed-style conditional trigger — confirm this against the actual schema rather than guessing). Add an R6-specific branch that builds the `DosageDetails` shape (likely: existing `Dosage`-style content under `simple`, using `context.CurrentTime`/existing text as before) while preserving non-R6 behavior unchanged. If the exact placement of as-needed semantics in the new model is still ambiguous after inspecting the generated schema, it's acceptable to omit that specific piece for R6 (documented with a comment) rather than guess incorrectly — the test only requires the generated resource to pass schema validation, not full semantic fidelity to the old as-needed behavior.
+
+- [ ] **Step 3: Make `Condition.clinicalStatus` version-aware for R6's pruned valueset**
+
+Ballot4's `condition-clinical` valueset was pruned to `active`/`inactive`/`unknown` only (confirmed via `R6ValueSetProviderResources.resx` vs R5's 7-code set including `resolved`/`recurrence`/`relapse`/`remission`). `ConditionClinicalStatus.cs` currently defines these as plain string constants with no version awareness, and `ConditionEndState.cs` defaults to `ConditionClinicalStatus.Resolved` unconditionally. Add a small version-aware mapping — e.g. a static method on `ConditionClinicalStatus` (or a check at the `ConditionEndState.Execute`/`ConditionOnsetState` call site) that, when `faker.SchemaProvider.Version == FhirVersion.R6` and the requested status is one of the removed codes (`resolved`, `recurrence`, `relapse`, `remission`), substitutes the closest still-valid ballot4 code (`inactive` is the reasonable substitute for all four, since ballot4 collapsed this distinction) — leave the requested code unchanged for all other FHIR versions. Check `ConditionOnsetState.cs` too; only change it if it can actually request one of the four now-removed codes for R6.
+
+- [ ] **Step 4: Build and run the full FhirFakes test suite**
+
+```bash
+dotnet build src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj
+dotnet test test/Ignixa.FhirFakes.Tests/Ignixa.FhirFakes.Tests.csproj
+```
+
+Expected: `Build succeeded. 0 Error(s)`; all tests pass, specifically confirming `ComprehensiveValidationTests.GivenAllScenarios_WhenBuiltAndValidatedAcrossAllVersions_ThenAllPassValidation` and `ScenarioCatalogCrossVersionValidationTests.GivenEveryPredefinedScenario_WhenGeneratedAndValidated_ThenAllResourcesPassSchemaValidation` (both TFMs) now pass, where they previously failed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/Core/Ignixa.FhirFakes/Scenarios/States/ImmunizationState.cs \
+        src/Core/Ignixa.FhirFakes/Scenarios/States/MedicationOrderState.cs \
+        src/Core/Ignixa.FhirFakes/Scenarios/ConditionClinicalStatus.cs \
+        src/Core/Ignixa.FhirFakes/Scenarios/States/ConditionEndState.cs
+# add ConditionOnsetState.cs too, only if Step 3 changed it
+git commit -m "fix(fhirfakes): update scenario builders for R6 ballot4 schema changes
+
+Three ballot2-era assumptions no longer hold for R6 ballot4:
+Immunization.protocolApplied.doseNumber/seriesDoses are now
+CodeableConcept, not string; MedicationRequest.dosageInstruction is
+now the new DosageDetails type, not legacy Dosage; and the
+condition-clinical valueset was pruned to active/inactive/unknown,
+dropping resolved/recurrence/relapse/remission. All three fixes are
+scoped to R6 only -- other FHIR versions are unaffected."
+```
+
 ---
 
 ### Task 9: Update version-referencing docs
@@ -730,7 +789,7 @@ git commit -m "docs: update FHIR R6 references from ballot2 to ballot4"
 **Files:**
 - Create: `docs/adr/adr-2607-fhir-r6-ballot4-upgrade.md`
 
-**Interfaces:** none (documentation only). This task runs last because it documents the concrete findings from Tasks 1-8 (what actually changed structurally, what broke, what didn't).
+**Interfaces:** none (documentation only). This task runs last because it documents the concrete findings from Tasks 1-8a (what actually changed structurally, what broke, what didn't).
 
 - [ ] **Step 1: Check the existing ADR format**
 
@@ -745,8 +804,8 @@ Follow the same section structure/frontmatter for consistency with the most rece
 Create `docs/adr/adr-2607-fhir-r6-ballot4-upgrade.md` covering:
 - **Context:** R6 was pinned to ballot2 (2024-08-13); ballot3 (2025-04-03) and ballot4 (2025-12-18) have since shipped.
 - **Decision:** bump the pin to ballot4, regenerate all derived artifacts, repoint the `fhir-codegen` submodule remote (`microsoft/fhir-codegen` → `FHIR/fhir-codegen`, same repo, moved under HL7's org), advance its pinned commit (Task 3 — the original pin was 432 commits stale and could not parse ballot4-era resource types like `DeviceAlert`), and — because upstream's parsing pipeline is R5-canonical throughout with no R6 model support and no R6->R5 converter (discovered investigating native R6 wiring, Task 3b) — temporarily repoint the submodule at a branch of a personal fork (`brendankowitz/fhir-codegen`) carrying a fix that makes R6 parsing tolerant of unrecognized ballot4-only elements/resources instead of crashing, rather than a full native-R6 rewrite. An upstream PR is intended but not yet opened as of this ADR. **This ADR must explicitly document the residual limitation:** R6-only content not representable in R5's model (e.g. `SearchParameter.aliasCode`, the `DeviceAlert` resource) is silently absent from the generated R6 schema — this is an accepted trade-off matching R6's "Preview / Limited support" status, not an oversight.
-- **Structural changes found:** fill in with the actual diff observations noted during Task 4 Step 4 and any test fixes from Task 8 (e.g., "no structural changes affected consumer code" or list specifics — do not write this section until Tasks 4-8 are done, since it must reflect what was actually found, not a speculative guess).
-- **Consequences:** R6 remains a preview/limited-support version tracking a moving ballot target; future ballot bumps should follow this same ADR as a template, and should check the vendored codegen tool's currency against the target ballot's resource set *before* assuming a version-string bump is sufficient (this upgrade's Task 3 detour is the reason why).
+- **Structural changes found:** fill in with the actual diff observations noted during Task 4 Step 4 and Task 8/8a's findings (do not write this section until Tasks 4-8a are done, since it must reflect what was actually found, not a speculative guess). At minimum this must cover: ~30 whole resources removed from FHIR core between ballot2 and ballot4 (moved to HL7 incubator IGs — TestScript, MedicationKnowledge, Citation, GraphDefinition, ChargeItem, Permission, several Substance* variants, etc.), confirmed genuine via official HL7 ballot4 pages, not a tooling artifact; new content added (DeviceAlert resource, a new structured Dosage model — DosageDetails/DosageCondition/DosageSafety — replacing the legacy Dosage type on MedicationRequest.dosageInstruction and equivalents, several new RelatesTo backbones, SearchParamType gaining a `resource` value, CompartmentType needing a hand-added `Group` member since ballot4's own CodeSystem-compartment-type.json is missing it despite CompartmentDefinition-group.json using it); and that 3 FhirFakes scenario builders needed updates (Task 8a) because their ballot2-era assumptions no longer held (Immunization dose-field typing, MedicationRequest dosage shape, Condition clinical-status valueset pruning).
+- **Consequences:** R6 remains a preview/limited-support version tracking a moving ballot target; future ballot bumps should follow this same ADR as a template, and should check the vendored codegen tool's currency against the target ballot's resource set *before* assuming a version-string bump is sufficient (this upgrade's Task 3/3b detour is the reason why). Note explicitly that `SearchParameter.aliasCode` and any other R6-only element the tolerant-parsing fix from Task 3b silently skips are not represented in the generated schema — a known, accepted gap, not a defect to chase in a future task without a deliberate decision to do so.
 
 - [ ] **Step 3: Commit**
 
