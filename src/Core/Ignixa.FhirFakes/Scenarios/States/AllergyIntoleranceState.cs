@@ -90,6 +90,17 @@ public sealed class AllergyIntoleranceState : ScenarioState
             throw new InvalidOperationException("Cannot create AllergyIntolerance without a Patient. Ensure InitialState runs first.");
         }
 
+        // These properties are non-nullable and default-initialized, but object-initializer
+        // construction lets a caller bypass that with e.g. Type = null!. Fail fast here, at the
+        // point a ScenarioState materializes into a resource, rather than let a null slip through
+        // into the generated FHIR payload (e.g. a coding.code of null paired with a defaulted
+        // display, or a bare "type": null) — an internally inconsistent resource with no clear
+        // origin once emitted.
+        ArgumentException.ThrowIfNullOrEmpty(Type);
+        ArgumentException.ThrowIfNullOrEmpty(ClinicalStatus);
+        ArgumentException.ThrowIfNullOrEmpty(VerificationStatus);
+        ArgumentException.ThrowIfNullOrEmpty(Severity);
+
         var allergy = faker.Generate("AllergyIntolerance");
         var node = allergy.MutableNode;
 
@@ -373,23 +384,12 @@ public sealed class AllergyIntoleranceState : ScenarioState
         _ => status
     };
 
-    private static string MapTypeToDisplay(string? type)
+    private static string MapTypeToDisplay(string type) => type.ToUpperInvariant() switch
     {
-        // Type is a non-nullable init-only property, but object-initializer construction lets a
-        // caller leave it unset or pass null! without a compile error. Default rather than throw:
-        // this is a cosmetic display mapping for generated test data, not a validation boundary.
-        if (string.IsNullOrEmpty(type))
-        {
-            return "Allergy";
-        }
-
-        return type.ToUpperInvariant() switch
-        {
-            "ALLERGY" => "Allergy",
-            "INTOLERANCE" => "Intolerance",
-            _ => type
-        };
-    }
+        "ALLERGY" => "Allergy",
+        "INTOLERANCE" => "Intolerance",
+        _ => type
+    };
 
     private static string MapVerificationStatusToDisplay(string status) => status.ToUpperInvariant() switch
     {
