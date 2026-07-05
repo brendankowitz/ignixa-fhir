@@ -1106,7 +1106,11 @@ public class SchemaBasedFhirResourceFaker
             meta["tag"] = tagArray;
         }
 
-        tagArray.Add(new JsonObject { ["code"] = _tag });
+        tagArray.Add(new JsonObject
+        {
+            ["system"] = "http://ignixa.dev/test-isolation",
+            ["code"] = _tag
+        });
     }
 
     /// <summary>

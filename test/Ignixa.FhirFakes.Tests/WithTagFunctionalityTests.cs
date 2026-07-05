@@ -53,7 +53,7 @@ public class WithTagFunctionalityTests
         tagArray.Count.ShouldBe(1);
 
         var tag = tagArray[0]!.AsObject();
-        tag["code"].ShouldNotBeNull();
+        tag["system"]!.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
         tag["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 
