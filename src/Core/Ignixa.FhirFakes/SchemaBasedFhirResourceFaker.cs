@@ -531,7 +531,7 @@ public class SchemaBasedFhirResourceFaker
         }
 
         // Pick a random code from the available codes
-        var selectedCode = _faker.PickRandom(codes);
+        var selectedCode = _faker.PickRandom(codes.ToArray());
 
         // Determine output format based on element type
         var info = element.Info;
@@ -647,7 +647,7 @@ public class SchemaBasedFhirResourceFaker
         {
             if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
-                var selectedCode = _faker.PickRandom(codes);
+                var selectedCode = _faker.PickRandom(codes.ToArray());
                 return JsonValue.Create(selectedCode.Code)!;
             }
 
@@ -802,7 +802,7 @@ public class SchemaBasedFhirResourceFaker
         {
             if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) && codes.Length > 0)
             {
-                var selectedCode = _faker.PickRandom(codes);
+                var selectedCode = _faker.PickRandom(codes.ToArray());
                 return CreateCodeableConcept(selectedCode);
             }
         }
@@ -830,7 +830,7 @@ public class SchemaBasedFhirResourceFaker
         {
             if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) && codes.Length > 0)
             {
-                var selectedCode = _faker.PickRandom(codes);
+                var selectedCode = _faker.PickRandom(codes.ToArray());
                 return new JsonObject
                 {
                     ["concept"] = CreateCodeableConcept(selectedCode)
@@ -878,7 +878,7 @@ public class SchemaBasedFhirResourceFaker
         {
             if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, GetOrResolveTheme(), out var codes) && codes.Length > 0)
             {
-                var selectedCode = _faker.PickRandom(codes);
+                var selectedCode = _faker.PickRandom(codes.ToArray());
                 return CreateCoding(selectedCode);
             }
         }
@@ -939,13 +939,13 @@ public class SchemaBasedFhirResourceFaker
         if (lowerContext.Contains("procedure", StringComparison.OrdinalIgnoreCase))
         {
             var procedureCodes = BindingCodeMapper.GetAllProcedureCodes();
-            if (procedureCodes.Count > 0)
+            if (procedureCodes.Length > 0)
             {
                 var theme = GetOrResolveTheme();
                 var themedProcedures = theme == ClinicalDomain.Unspecified
-                    ? procedureCodes
-                    : procedureCodes.Where(c => c.Domain == theme).ToArray() is { Length: > 0 } themed ? themed : procedureCodes;
-                fhirCode = _faker.PickRandom(themedProcedures.ToArray());
+                    ? procedureCodes.ToArray()
+                    : procedureCodes.Where(c => c.Domain == theme).ToArray() is { Length: > 0 } themed ? themed : procedureCodes.ToArray();
+                fhirCode = _faker.PickRandom(themedProcedures);
                 return true;
             }
         }
@@ -953,7 +953,7 @@ public class SchemaBasedFhirResourceFaker
         if (lowerContext.Contains("allergy", StringComparison.OrdinalIgnoreCase))
         {
             var allergenCodes = BindingCodeMapper.GetAllAllergenCodes();
-            if (allergenCodes.Count > 0)
+            if (allergenCodes.Length > 0)
             {
                 fhirCode = _faker.PickRandom(allergenCodes.ToArray());
                 return true;
@@ -964,7 +964,7 @@ public class SchemaBasedFhirResourceFaker
             lowerContext.Contains("immunization", StringComparison.OrdinalIgnoreCase))
         {
             var vaccineCodes = BindingCodeMapper.GetAllImmunizationCodes();
-            if (vaccineCodes.Count > 0)
+            if (vaccineCodes.Length > 0)
             {
                 fhirCode = _faker.PickRandom(vaccineCodes.ToArray());
                 return true;
@@ -1004,7 +1004,7 @@ public class SchemaBasedFhirResourceFaker
         {
             if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
-                return _faker.PickRandom(codes).Code;
+                return _faker.PickRandom(codes.ToArray()).Code;
             }
         }
 

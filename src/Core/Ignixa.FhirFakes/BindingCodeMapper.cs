@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Immutable;
 using System.Reflection;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios.Codes;
@@ -46,17 +47,19 @@ internal static class BindingCodeMapper
         public const string Example = "example";
     }
 
-    // Cached code arrays for value sets - loaded lazily from static properties
-    private static FhirCode[]? _allergenCodes;
-    private static FhirCode[]? _immunizationCodes;
-    private static FhirCode[]? _labObservationCodes;
-    private static FhirCode[]? _procedureCodes;
-    private static FhirCode[]? _vitalSignCodes;
-    private static FhirCode[]? _diagnosticReportCodes;
-    private static FhirCode[]? _medicationCodes;
-    private static FhirCode[]? _conditionCodes;
-    private static FhirCode[]? _encounterTypeCodes;
-    private static FhirCode[]? _observationCodes;
+    // Cached code arrays for value sets - loaded lazily from static properties.
+    // ImmutableArray<T> (not T[]) so the cache cannot be mutated through a downcast of the public return value.
+    // Default (IsDefault == true) is the "not yet computed" sentinel.
+    private static ImmutableArray<FhirCode> _allergenCodes;
+    private static ImmutableArray<FhirCode> _immunizationCodes;
+    private static ImmutableArray<FhirCode> _labObservationCodes;
+    private static ImmutableArray<FhirCode> _procedureCodes;
+    private static ImmutableArray<FhirCode> _vitalSignCodes;
+    private static ImmutableArray<FhirCode> _diagnosticReportCodes;
+    private static ImmutableArray<FhirCode> _medicationCodes;
+    private static ImmutableArray<FhirCode> _conditionCodes;
+    private static ImmutableArray<FhirCode> _encounterTypeCodes;
+    private static ImmutableArray<FhirCode> _observationCodes;
 
     /// <summary>
     /// Attempts to get predefined codes for a value set URI.
@@ -65,7 +68,7 @@ internal static class BindingCodeMapper
     /// <param name="valueSetProvider">The version-specific value set provider for FHIR spec codes.</param>
     /// <param name="codes">The array of predefined codes if found.</param>
     /// <returns>True if codes were found for this value set, false otherwise.</returns>
-    public static bool TryGetCodesForValueSet(string? valueSetUri, IValueSetProvider? valueSetProvider, out FhirCode[] codes)
+    public static bool TryGetCodesForValueSet(string? valueSetUri, IValueSetProvider? valueSetProvider, out ImmutableArray<FhirCode> codes)
     {
         if (string.IsNullOrEmpty(valueSetUri))
         {
@@ -82,7 +85,7 @@ internal static class BindingCodeMapper
     /// to the full pool when the theme is <see cref="ClinicalDomain.Unspecified"/> or has no tagged match.
     /// </summary>
     public static bool TryGetCodesForValueSet(
-        string? valueSetUri, IValueSetProvider? valueSetProvider, ClinicalDomain theme, out FhirCode[] codes)
+        string? valueSetUri, IValueSetProvider? valueSetProvider, ClinicalDomain theme, out ImmutableArray<FhirCode> codes)
     {
         if (!TryGetCodesForValueSet(valueSetUri, valueSetProvider, out var all))
         {
@@ -96,7 +99,7 @@ internal static class BindingCodeMapper
             return true;
         }
 
-        var themed = Array.FindAll(all, c => c.Domain == theme);
+        var themed = all.Where(c => c.Domain == theme).ToImmutableArray();
         codes = themed.Length > 0 ? themed : all;
         return true;
     }
@@ -106,7 +109,7 @@ internal static class BindingCodeMapper
     /// </summary>
     /// <param name="valueSetUri">The canonical URL of the value set.</param>
     /// <param name="valueSetProvider">The version-specific value set provider.</param>
-    private static FhirCode[] GetCodesForValueSetInternal(string valueSetUri, IValueSetProvider? valueSetProvider)
+    private static ImmutableArray<FhirCode> GetCodesForValueSetInternal(string valueSetUri, IValueSetProvider? valueSetProvider)
     {
         // Normalize the URI (remove version suffixes like |4.0.1)
         var normalizedUri = NormalizeValueSetUri(valueSetUri);
@@ -120,28 +123,28 @@ internal static class BindingCodeMapper
             "http://hl7.org/fhir/ValueSet/observation-codes" => GetAllLabAndVitalSignCodes(),
 
             // Procedure Codes (SNOMED CT) - http://hl7.org/fhir/ValueSet/procedure-code
-            "http://hl7.org/fhir/ValueSet/procedure-code" => GetAllProcedureCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/procedure-code" => GetAllProcedureCodes(),
 
             // AllergyIntolerance Code (SNOMED CT) - http://hl7.org/fhir/ValueSet/allergyintolerance-code
-            "http://hl7.org/fhir/ValueSet/allergyintolerance-code" => GetAllAllergenCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/allergyintolerance-code" => GetAllAllergenCodes(),
 
             // Immunization Vaccine Codes (CVX) - http://hl7.org/fhir/ValueSet/vaccine-code
-            "http://hl7.org/fhir/ValueSet/vaccine-code" => GetAllImmunizationCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/vaccine-code" => GetAllImmunizationCodes(),
 
             // Medication Codes (RxNorm) - http://hl7.org/fhir/ValueSet/medication-codes
-            "http://hl7.org/fhir/ValueSet/medication-codes" => GetAllMedicationCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/medication-codes" => GetAllMedicationCodes(),
 
             // Condition Code (SNOMED CT) - http://hl7.org/fhir/ValueSet/condition-code
-            "http://hl7.org/fhir/ValueSet/condition-code" => GetAllConditionCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/condition-code" => GetAllConditionCodes(),
 
             // Diagnostic Report Codes (LOINC) - http://hl7.org/fhir/ValueSet/report-codes
-            "http://hl7.org/fhir/ValueSet/report-codes" => GetAllDiagnosticReportCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/report-codes" => GetAllDiagnosticReportCodes(),
 
             // Encounter Type - http://hl7.org/fhir/ValueSet/encounter-type
-            "http://hl7.org/fhir/ValueSet/encounter-type" => GetAllEncounterTypeCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/encounter-type" => GetAllEncounterTypeCodes(),
 
             // Vital Signs Profile codes (subset of observation-codes)
-            "http://hl7.org/fhir/ValueSet/observation-vitalsignresult" => GetAllVitalSignCodes().ToArray(),
+            "http://hl7.org/fhir/ValueSet/observation-vitalsignresult" => GetAllVitalSignCodes(),
 
             _ => []
         };
@@ -160,7 +163,7 @@ internal static class BindingCodeMapper
             if (codes is not null)
             {
                 // Convert from Ignixa.Abstractions.FhirCode to Ignixa.FhirFakes.Scenarios.Codes.FhirCode
-                return codes.Select(c => new FhirCode(c.System, c.Code, c.Display)).ToArray();
+                return codes.Select(c => new FhirCode(c.System, c.Code, c.Display)).ToImmutableArray();
             }
         }
 
@@ -181,87 +184,127 @@ internal static class BindingCodeMapper
     /// <summary>
     /// Gets all allergen codes from the Allergens class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllAllergenCodes()
+    public static ImmutableArray<FhirCode> GetAllAllergenCodes()
     {
-        return _allergenCodes ??= GetCodesFromStaticProperties(typeof(Allergens));
+        if (_allergenCodes.IsDefault)
+        {
+            _allergenCodes = GetCodesFromStaticProperties(typeof(Allergens));
+        }
+        return _allergenCodes;
     }
 
     /// <summary>
     /// Gets all immunization (vaccine) codes from the Immunizations class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllImmunizationCodes()
+    public static ImmutableArray<FhirCode> GetAllImmunizationCodes()
     {
-        return _immunizationCodes ??= GetCodesFromStaticProperties(typeof(Immunizations));
+        if (_immunizationCodes.IsDefault)
+        {
+            _immunizationCodes = GetCodesFromStaticProperties(typeof(Immunizations));
+        }
+        return _immunizationCodes;
     }
 
     /// <summary>
     /// Gets all laboratory observation codes from the LabObservations class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllLabObservationCodes()
+    public static ImmutableArray<FhirCode> GetAllLabObservationCodes()
     {
-        return _labObservationCodes ??= GetCodesFromStaticProperties(typeof(LabObservations));
+        if (_labObservationCodes.IsDefault)
+        {
+            _labObservationCodes = GetCodesFromStaticProperties(typeof(LabObservations));
+        }
+        return _labObservationCodes;
     }
 
     /// <summary>
     /// Gets all procedure codes from the Procedures class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllProcedureCodes()
+    public static ImmutableArray<FhirCode> GetAllProcedureCodes()
     {
-        return _procedureCodes ??= GetCodesFromStaticProperties(typeof(Procedures));
+        if (_procedureCodes.IsDefault)
+        {
+            _procedureCodes = GetCodesFromStaticProperties(typeof(Procedures));
+        }
+        return _procedureCodes;
     }
 
     /// <summary>
     /// Gets all vital sign observation codes from the VitalSigns class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllVitalSignCodes()
+    public static ImmutableArray<FhirCode> GetAllVitalSignCodes()
     {
-        return _vitalSignCodes ??= GetCodesFromStaticProperties(typeof(VitalSigns));
+        if (_vitalSignCodes.IsDefault)
+        {
+            _vitalSignCodes = GetCodesFromStaticProperties(typeof(VitalSigns));
+        }
+        return _vitalSignCodes;
     }
 
     /// <summary>
     /// Gets all diagnostic report type codes from the DiagnosticReports class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllDiagnosticReportCodes()
+    public static ImmutableArray<FhirCode> GetAllDiagnosticReportCodes()
     {
-        return _diagnosticReportCodes ??= GetCodesFromStaticProperties(typeof(DiagnosticReports));
+        if (_diagnosticReportCodes.IsDefault)
+        {
+            _diagnosticReportCodes = GetCodesFromStaticProperties(typeof(DiagnosticReports));
+        }
+        return _diagnosticReportCodes;
     }
 
     /// <summary>
     /// Gets all medication codes from the FhirCode.Medications nested class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllMedicationCodes()
+    public static ImmutableArray<FhirCode> GetAllMedicationCodes()
     {
-        return _medicationCodes ??= GetCodesFromStaticFields(typeof(FhirCode.Medications));
+        if (_medicationCodes.IsDefault)
+        {
+            _medicationCodes = GetCodesFromStaticFields(typeof(FhirCode.Medications));
+        }
+        return _medicationCodes;
     }
 
     /// <summary>
     /// Gets all condition codes from the FhirCode.Conditions nested class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllConditionCodes()
+    public static ImmutableArray<FhirCode> GetAllConditionCodes()
     {
-        return _conditionCodes ??= GetCodesFromStaticFields(typeof(FhirCode.Conditions));
+        if (_conditionCodes.IsDefault)
+        {
+            _conditionCodes = GetCodesFromStaticFields(typeof(FhirCode.Conditions));
+        }
+        return _conditionCodes;
     }
 
     /// <summary>
     /// Gets all encounter type codes from the FhirCode.EncounterTypes nested class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllEncounterTypeCodes()
+    public static ImmutableArray<FhirCode> GetAllEncounterTypeCodes()
     {
-        return _encounterTypeCodes ??= GetCodesFromStaticFields(typeof(FhirCode.EncounterTypes));
+        if (_encounterTypeCodes.IsDefault)
+        {
+            _encounterTypeCodes = GetCodesFromStaticFields(typeof(FhirCode.EncounterTypes));
+        }
+        return _encounterTypeCodes;
     }
 
     /// <summary>
     /// Gets all observation codes from the FhirCode.Observations nested class.
     /// </summary>
-    public static IReadOnlyList<FhirCode> GetAllObservationCodes()
+    public static ImmutableArray<FhirCode> GetAllObservationCodes()
     {
-        return _observationCodes ??= GetCodesFromStaticFields(typeof(FhirCode.Observations));
+        if (_observationCodes.IsDefault)
+        {
+            _observationCodes = GetCodesFromStaticFields(typeof(FhirCode.Observations));
+        }
+        return _observationCodes;
     }
 
     /// <summary>
     /// Gets combined lab observation and vital sign codes.
     /// </summary>
-    private static FhirCode[] GetAllLabAndVitalSignCodes()
+    private static ImmutableArray<FhirCode> GetAllLabAndVitalSignCodes()
     {
         var labCodes = GetAllLabObservationCodes();
         var vitalCodes = GetAllVitalSignCodes();
@@ -271,25 +314,25 @@ internal static class BindingCodeMapper
     /// <summary>
     /// Extracts FhirCode values from all public static properties of a type.
     /// </summary>
-    private static FhirCode[] GetCodesFromStaticProperties(Type type)
+    private static ImmutableArray<FhirCode> GetCodesFromStaticProperties(Type type)
     {
         return type
             .GetProperties(BindingFlags.Public | BindingFlags.Static)
             .Where(p => p.PropertyType == typeof(FhirCode))
             .Select(p => (FhirCode)p.GetValue(null)!)
-            .ToArray();
+            .ToImmutableArray();
     }
 
     /// <summary>
     /// Extracts FhirCode values from all public static fields of a type.
     /// </summary>
-    private static FhirCode[] GetCodesFromStaticFields(Type type)
+    private static ImmutableArray<FhirCode> GetCodesFromStaticFields(Type type)
     {
         return type
             .GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.FieldType == typeof(FhirCode))
             .Select(f => (FhirCode)f.GetValue(null)!)
-            .ToArray();
+            .ToImmutableArray();
     }
 
     /// <summary>
