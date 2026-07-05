@@ -92,6 +92,37 @@ public class FhirVersionHelperTests
         result.ShouldBeFalse("STU3 schema should not be detected as R4 or later");
     }
 
+    [Theory]
+    [InlineData(typeof(R5CoreSchemaProvider))]
+    [InlineData(typeof(R6CoreSchemaProvider))]
+    public void GivenR5OrLaterSchema_WhenCheckingIsR5OrLater_ThenReturnsTrue(Type schemaType)
+    {
+        // Arrange
+        var schema = (IFhirSchemaProvider)Activator.CreateInstance(schemaType)!;
+
+        // Act
+        var result = schema.IsR5OrLater();
+
+        // Assert
+        result.ShouldBeTrue($"{schema.Version} schema should be detected as R5 or later");
+    }
+
+    [Theory]
+    [InlineData(typeof(STU3CoreSchemaProvider))]
+    [InlineData(typeof(R4CoreSchemaProvider))]
+    [InlineData(typeof(R4BCoreSchemaProvider))]
+    public void GivenPreR5Schema_WhenCheckingIsR5OrLater_ThenReturnsFalse(Type schemaType)
+    {
+        // Arrange
+        var schema = (IFhirSchemaProvider)Activator.CreateInstance(schemaType)!;
+
+        // Act
+        var result = schema.IsR5OrLater();
+
+        // Assert
+        result.ShouldBeFalse($"{schema.Version} schema should not be detected as R5 or later");
+    }
+
     #endregion
 
     #region Property Existence Tests
@@ -420,8 +451,7 @@ public class FhirVersionHelperTests
     [Theory]
     [InlineData(typeof(R4CoreSchemaProvider))]
     [InlineData(typeof(R4BCoreSchemaProvider))]
-    [InlineData(typeof(R5CoreSchemaProvider))]
-    public void GivenR4OrLater_WhenGettingImmunizationDoseNumberFieldName_ThenReturnsDoseNumberPositiveInt(Type schemaType)
+    public void GivenR4OrR4B_WhenGettingImmunizationDoseNumberFieldName_ThenReturnsDoseNumberPositiveInt(Type schemaType)
     {
         // Arrange
         var schema = (IFhirSchemaProvider)Activator.CreateInstance(schemaType)!;
@@ -430,7 +460,20 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationDoseNumberFieldName();
 
         // Assert
-        fieldName.ShouldBe("doseNumberPositiveInt", $"{schema.Version} uses doseNumberPositiveInt");
+        fieldName.ShouldBe("doseNumberPositiveInt", $"{schema.Version} uses the doseNumber[x] positiveInt choice");
+    }
+
+    [Fact]
+    public void GivenR5_WhenGettingImmunizationDoseNumberFieldName_ThenReturnsDoseNumber()
+    {
+        // Arrange - R5 collapsed doseNumber[x] into a single string element named "doseNumber".
+        var schema = new R5CoreSchemaProvider();
+
+        // Act
+        var fieldName = schema.GetImmunizationDoseNumberFieldName();
+
+        // Assert
+        fieldName.ShouldBe("doseNumber", "R5 uses a single string doseNumber element");
     }
 
     [Fact]
@@ -449,8 +492,7 @@ public class FhirVersionHelperTests
     [Theory]
     [InlineData(typeof(R4CoreSchemaProvider))]
     [InlineData(typeof(R4BCoreSchemaProvider))]
-    [InlineData(typeof(R5CoreSchemaProvider))]
-    public void GivenR4OrLater_WhenGettingImmunizationSeriesDosesFieldName_ThenReturnsSeriesDosesPositiveInt(Type schemaType)
+    public void GivenR4OrR4B_WhenGettingImmunizationSeriesDosesFieldName_ThenReturnsSeriesDosesPositiveInt(Type schemaType)
     {
         // Arrange
         var schema = (IFhirSchemaProvider)Activator.CreateInstance(schemaType)!;
@@ -459,7 +501,20 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationSeriesDosesFieldName();
 
         // Assert
-        fieldName.ShouldBe("seriesDosesPositiveInt", $"{schema.Version} uses seriesDosesPositiveInt");
+        fieldName.ShouldBe("seriesDosesPositiveInt", $"{schema.Version} uses the seriesDoses[x] positiveInt choice");
+    }
+
+    [Fact]
+    public void GivenR5_WhenGettingImmunizationSeriesDosesFieldName_ThenReturnsSeriesDoses()
+    {
+        // Arrange - R5 collapsed seriesDoses[x] into a single string element named "seriesDoses".
+        var schema = new R5CoreSchemaProvider();
+
+        // Act
+        var fieldName = schema.GetImmunizationSeriesDosesFieldName();
+
+        // Assert
+        fieldName.ShouldBe("seriesDoses", "R5 uses a single string seriesDoses element");
     }
 
     #endregion
@@ -478,6 +533,9 @@ public class FhirVersionHelperTests
 
         var act2 = () => nullSchema!.IsR4OrLater();
         Should.Throw<ArgumentNullException>(() => act2());
+
+        var act2b = () => nullSchema!.IsR5OrLater();
+        Should.Throw<ArgumentNullException>(() => act2b());
 
         var act3 = () => nullSchema!.HasProperty("Patient", "name");
         Should.Throw<ArgumentNullException>(() => act3());

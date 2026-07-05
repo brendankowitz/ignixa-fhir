@@ -4,9 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Reflection;
-using System.Text;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 
@@ -14,13 +12,23 @@ namespace Ignixa.FhirFakes.Scenarios;
 
 /// <summary>
 /// Discovers and invokes predefined FHIR scenarios by convention: public static extension methods on
-/// types in the <c>Ignixa.FhirFakes.Scenarios.Predefined</c> namespace whose first parameter is
+/// types in a <c>*.Scenarios.Predefined</c> namespace whose first parameter is
 /// <see cref="IFhirSchemaProvider"/> and that return <see cref="ScenarioContext"/>. A leading "Get" is
 /// stripped from the method name to form the scenario id (e.g. "GetDiabeticPatient" -> "DiabeticPatient").
+/// Scans this library's own assembly plus any assembly registered via <see cref="RegisterAssembly"/>, so a
+/// downstream consumer can ship private scenarios discoverable through this same catalog.
 /// </summary>
+/// <remarks>
+/// Unlike <see cref="States.ObservationStateCatalog"/>, discovery here is scoped by namespace suffix
+/// rather than scanning every public type. A required <see cref="IFhirSchemaProvider"/> first
+/// parameter alone isn't a distinctive enough shape to exclude unrelated helper methods, so the
+/// namespace convention keeps discovery confined to intentional scenario packs. ObservationState
+/// factories don't need this because their shape (zero required parameters, keyed by method name) is
+/// already distinctive enough on its own.
+/// </remarks>
 public static class ScenarioCatalog
 {
-    private static readonly Lazy<IReadOnlyList<DiscoveredScenario>> Scenarios = new(Discover);
+    private static readonly AssemblyRegistry Registry = new(typeof(DiabeticPatientScenario).Assembly);
 
     /// <summary>
     /// Attribute-bag key under which <see cref="Invoke"/> records the scenario's
@@ -30,17 +38,29 @@ public static class ScenarioCatalog
     public const string ClinicalDomainAttributeKey = "clinicalDomain";
 
     /// <summary>
-    /// Gets all discovered scenarios.
+    /// Registers an additional assembly to scan for predefined scenarios. Idempotent — registering
+    /// the same assembly more than once has no additional effect. Scenarios in the registered assembly
+    /// follow the same convention as this library's own scenarios: a public static type in a namespace
+    /// ending in <c>.Scenarios.Predefined</c> (the namespace need not be under <c>Ignixa.FhirFakes</c> —
+    /// it is matched by suffix, not by owning assembly).
     /// </summary>
-    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
-    public static IReadOnlyList<DiscoveredScenario> GetAll() => Scenarios.Value;
+    public static void RegisterAssembly(Assembly assembly) => Registry.Register(assembly);
+
+    /// <summary>
+    /// Gets all discovered scenarios, across this library's assembly and every registered assembly.
+    /// </summary>
+    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs reflection-based discovery; a method conveys the work performed and matches ObservationStateCatalog.GetNames.")]
+    public static IReadOnlyList<DiscoveredScenario> GetAll() => Discover();
 
     /// <summary>
     /// Finds a scenario by id (case-insensitive). Returns <see langword="null"/> if no scenario matches —
     /// this is expected control flow for an unknown id, not an error.
     /// </summary>
-    public static DiscoveredScenario? Find(string id) =>
-        Scenarios.Value.FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    public static DiscoveredScenario? Find(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        return Discover().FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Invokes a discovered scenario's factory method, applying <paramref name="parameterOverrides"/>
@@ -61,30 +81,7 @@ public static class ScenarioCatalog
         ArgumentNullException.ThrowIfNull(scenario);
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
-        var parameters = scenario.Method.GetParameters();
-        var args = new object?[parameters.Length];
-        args[0] = schemaProvider;
-
-        var overrides = parameterOverrides == null
-            ? null
-            : new Dictionary<string, object?>(parameterOverrides, StringComparer.OrdinalIgnoreCase);
-
-        for (var i = 1; i < parameters.Length; i++)
-        {
-            var parameter = parameters[i];
-            if (overrides != null && overrides.TryGetValue(parameter.Name!, out var overrideValue))
-            {
-                args[i] = CoerceAndValidateOverride(scenario.Id, parameter, overrideValue);
-            }
-            else if (parameter.HasDefaultValue)
-            {
-                args[i] = parameter.DefaultValue;
-            }
-            else
-            {
-                args[i] = DefaultForType(parameter.ParameterType);
-            }
-        }
+        var args = ScenarioParameterBinder.BuildArguments(scenario.Id, scenario.Method, parameterOverrides, "parameterOverrides", schemaProvider);
 
         ScenarioContext context;
         try
@@ -105,136 +102,48 @@ public static class ScenarioCatalog
         return context;
     }
 
-    private static object? DefaultForType(Type type)
-    {
-        if (type.IsValueType && Nullable.GetUnderlyingType(type) == null)
-        {
-            return Activator.CreateInstance(type);
-        }
-
-        return null;
-    }
-
-    private static readonly HashSet<Type> NumericTypes =
-    [
-        typeof(sbyte), typeof(byte), typeof(short), typeof(ushort),
-        typeof(int), typeof(uint), typeof(long), typeof(ulong),
-        typeof(float), typeof(double), typeof(decimal),
-    ];
-
-    /// <summary>
-    /// Validates an override value against a parameter's declared type, coercing compatible numeric
-    /// widening/narrowing conversions (e.g. an <see langword="int"/> override for a
-    /// <see langword="decimal"/> parameter) rather than rejecting them outright — a common shape for
-    /// values arriving from JSON deserialization or other loosely-typed callers. Deliberately does NOT
-    /// coerce strings: string-to-value conversion belongs to <see cref="DiscoveredScenarioParameter.TryParseValue"/>,
-    /// which also enforces Min/Max; routing strings through here would silently bypass that check.
-    /// </summary>
-    [SuppressMessage("Usage", "CA2208:Instantiate argument exceptions correctly", Justification = "paramName intentionally names the public Invoke argument 'parameterOverrides', the surface a caller can fix.")]
-    private static object? CoerceAndValidateOverride(string scenarioId, ParameterInfo parameter, object? value)
-    {
-        var effectiveType = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
-
-        if (value is null)
-        {
-            if (parameter.ParameterType.IsValueType && Nullable.GetUnderlyingType(parameter.ParameterType) is null)
-            {
-                throw new ArgumentException(
-                    $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is null, but the parameter type '{parameter.ParameterType.Name}' is a non-nullable value type.",
-                    "parameterOverrides");
-            }
-
-            return null;
-        }
-
-        if (effectiveType.IsInstanceOfType(value))
-        {
-            return value;
-        }
-
-        if (NumericTypes.Contains(effectiveType) && NumericTypes.Contains(value.GetType()))
-        {
-            try
-            {
-                return Convert.ChangeType(value, effectiveType, CultureInfo.InvariantCulture);
-            }
-            catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException)
-            {
-                // Falls through to the throw below (e.g. a long value too large for an int parameter).
-            }
-        }
-
-        throw new ArgumentException(
-            $"Scenario '{scenarioId}': override for parameter '{parameter.Name}' is of type '{value.GetType().Name}', but the parameter expects '{effectiveType.Name}'.",
-            "parameterOverrides");
-    }
-
     private static IReadOnlyList<DiscoveredScenario> Discover()
     {
-        var assembly = typeof(DiabeticPatientScenario).Assembly;
-
-        var scenarioTypes = assembly.GetTypes()
-            .Where(t => t.Namespace == "Ignixa.FhirFakes.Scenarios.Predefined" && t.IsClass && t.IsPublic);
+        var assemblies = Registry.Snapshot();
 
         var scenarios = new List<DiscoveredScenario>();
 
-        foreach (var type in scenarioTypes)
+        foreach (var assembly in assemblies)
         {
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .Where(m => m.ReturnType == typeof(ScenarioContext));
+            var scenarioTypes = assembly.GetTypes()
+                .Where(t => t.Namespace is not null
+                    && t.Namespace.EndsWith(".Scenarios.Predefined", StringComparison.Ordinal)
+                    && t.IsClass && t.IsPublic);
 
-            foreach (var method in methods)
+            foreach (var type in scenarioTypes)
             {
-                var parameters = method.GetParameters();
-                if (parameters.Length == 0 || parameters[0].ParameterType != typeof(IFhirSchemaProvider))
-                    continue;
+                var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Where(m => m.ReturnType == typeof(ScenarioContext));
 
-                var attribute = method.GetCustomAttribute<ScenarioAttribute>();
-                var id = attribute?.Id
-                    ?? (method.Name.StartsWith("Get", StringComparison.Ordinal) ? method.Name["Get".Length..] : method.Name);
-
-                scenarios.Add(new DiscoveredScenario
+                foreach (var method in methods)
                 {
-                    Id = id,
-                    Category = attribute?.Category,
-                    Title = attribute?.Title ?? Humanize(id),
-                    Description = attribute?.Description,
-                    Parameters = parameters.Skip(1).Select(BuildParameter).ToList(),
-                    Domain = attribute is null || attribute.Domain == ClinicalDomain.Unspecified ? null : attribute.Domain,
-                    Method = method,
-                });
+                    var parameters = method.GetParameters();
+                    if (parameters.Length == 0 || parameters[0].ParameterType != typeof(IFhirSchemaProvider))
+                        continue;
+
+                    var attribute = method.GetCustomAttribute<ScenarioAttribute>();
+                    var id = attribute?.Id
+                        ?? (method.Name.StartsWith("Get", StringComparison.Ordinal) ? method.Name["Get".Length..] : method.Name);
+
+                    scenarios.Add(new DiscoveredScenario
+                    {
+                        Id = id,
+                        Category = attribute?.Category,
+                        Title = attribute?.Title ?? ScenarioParameterBinder.Humanize(id),
+                        Description = attribute?.Description,
+                        Parameters = parameters.Skip(1).Select(ScenarioParameterBinder.BuildParameter).ToList(),
+                        Domain = attribute is null || attribute.Domain == ClinicalDomain.Unspecified ? null : attribute.Domain,
+                        Method = method,
+                    });
+                }
             }
         }
 
         return scenarios;
-    }
-
-    private static DiscoveredScenarioParameter BuildParameter(ParameterInfo parameter)
-    {
-        var attribute = parameter.GetCustomAttribute<ScenarioParameterAttribute>();
-
-        return new DiscoveredScenarioParameter
-        {
-            Name = parameter.Name!,
-            Type = parameter.ParameterType,
-            DefaultValue = parameter.HasDefaultValue ? parameter.DefaultValue : null,
-            HasDefaultValue = parameter.HasDefaultValue,
-            Min = attribute is null || double.IsNaN(attribute.Min) ? null : attribute.Min,
-            Max = attribute is null || double.IsNaN(attribute.Max) ? null : attribute.Max,
-            Description = attribute?.Description,
-        };
-    }
-
-    private static string Humanize(string id)
-    {
-        var builder = new StringBuilder();
-        foreach (var c in id)
-        {
-            if (builder.Length > 0 && char.IsUpper(c) && !char.IsUpper(builder[^1]))
-                builder.Append(' ');
-            builder.Append(c);
-        }
-
-        return builder.ToString();
     }
 }

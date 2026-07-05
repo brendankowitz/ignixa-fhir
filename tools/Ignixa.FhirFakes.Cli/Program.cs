@@ -69,6 +69,7 @@ class Program
         command.Subcommands.Add(ResourceCommand.Create(schemaProvider, versionCode));
         command.Subcommands.Add(ScenarioCommand.Create(schemaProvider, versionCode));
         command.Subcommands.Add(PopulationCommand.Create(schemaProvider, versionCode));
+        command.Subcommands.Add(WorkflowCommand.Create(schemaProvider, versionCode));
         root.Subcommands.Add(command);
     }
 }

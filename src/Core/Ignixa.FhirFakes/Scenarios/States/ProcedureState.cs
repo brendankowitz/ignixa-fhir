@@ -120,7 +120,7 @@ public sealed class ProcedureState : ScenarioState
                 }
             }
         };
-        node["category"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5
+        node["category"] = faker.SchemaProvider.IsR5OrLater()
             ? new JsonArray { categoryCodeableConcept }
             : categoryCodeableConcept;
 
@@ -234,7 +234,7 @@ public sealed class ProcedureState : ScenarioState
         };
 
         // Set reason (code or reference)
-        SetReason(node, context);
+        SetReason(node, context, faker.SchemaProvider.Version);
 
         // Set body site if provided
         if (!string.IsNullOrEmpty(BodySite))
@@ -423,48 +423,52 @@ public sealed class ProcedureState : ScenarioState
         };
     }
 
-    private void SetReason(JsonObject node, ScenarioContext context)
+    // R5 merged Procedure.reasonCode (CodeableConcept[]) and Procedure.reasonReference (Reference[])
+    // into a single Procedure.reason (CodeableReference[]), whose entries carry a "concept" for
+    // codes and a "reference" for references.
+    private void SetReason(JsonObject node, ScenarioContext context, Ignixa.Abstractions.FhirVersion version)
     {
+        var isR5Plus = version >= Ignixa.Abstractions.FhirVersion.R5;
+
         if (ReasonCode is not null)
         {
-            node["reasonCode"] = new JsonArray
+            var concept = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["coding"] = new JsonArray
+                    new JsonObject
                     {
-                        new JsonObject
-                        {
-                            ["system"] = ReasonCode.System,
-                            ["code"] = ReasonCode.Code,
-                            ["display"] = ReasonCode.Display
-                        }
+                        ["system"] = ReasonCode.System,
+                        ["code"] = ReasonCode.Code,
+                        ["display"] = ReasonCode.Display
                     }
                 }
             };
+            SetReasonConcept(node, concept, isR5Plus);
         }
         else if (!string.IsNullOrEmpty(ReasonConditionAttribute) &&
                  context.HasAttribute(ReasonConditionAttribute))
         {
             var conditionId = context.GetAttribute<string>(ReasonConditionAttribute);
-            node["reasonReference"] = new JsonArray
+            var reference = new JsonObject { ["reference"] = $"Condition/{conditionId}" };
+
+            node[isR5Plus ? "reason" : "reasonReference"] = new JsonArray
             {
-                new JsonObject
-                {
-                    ["reference"] = $"Condition/{conditionId}"
-                }
+                isR5Plus ? new JsonObject { ["reference"] = reference } : reference
             };
         }
         else if (!string.IsNullOrEmpty(Reason))
         {
-            node["reasonCode"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["text"] = Reason
-                }
-            };
+            SetReasonConcept(node, new JsonObject { ["text"] = Reason }, isR5Plus);
         }
+    }
+
+    private static void SetReasonConcept(JsonObject node, JsonObject concept, bool isR5Plus)
+    {
+        node[isR5Plus ? "reason" : "reasonCode"] = new JsonArray
+        {
+            isR5Plus ? new JsonObject { ["concept"] = concept } : concept
+        };
     }
 
     private static string MapCategoryToCode(string category) => category.ToUpperInvariant() switch

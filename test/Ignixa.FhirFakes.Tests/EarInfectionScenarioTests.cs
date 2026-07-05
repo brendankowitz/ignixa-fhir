@@ -327,10 +327,11 @@ public class EarInfectionScenarioTests
         dosageText.ShouldNotBeNullOrEmpty("should have dosage text description");
         dosageText!.ShouldContain("twice daily", Case.Insensitive);
 
-        // Check that it's not chronic (10-day course)
+        // Check that it's not chronic (10-day course). positiveInt can't be 0, so "no repeats"
+        // is represented by omitting the field entirely rather than emitting a literal 0.
         var dispenseRequest = amoxicillin.MutableNode["dispenseRequest"];
-        var numberOfRepeats = dispenseRequest?["numberOfRepeatsAllowed"]?.GetValue<int>();
-        numberOfRepeats.ShouldBe(0, "should not have repeats for acute treatment");
+        var numberOfRepeats = dispenseRequest?["numberOfRepeatsAllowed"];
+        numberOfRepeats.ShouldBeNull("should omit numberOfRepeatsAllowed for acute (non-chronic) treatment");
     }
 
     [Fact]

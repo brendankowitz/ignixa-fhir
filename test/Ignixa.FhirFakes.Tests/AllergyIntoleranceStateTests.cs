@@ -494,5 +494,41 @@ public class AllergyIntoleranceStateTests
         type.ShouldBe("allergy");
     }
 
+    [Fact]
+    public void GivenIntoleranceType_WhenMappingTypeToDisplay_ThenReturnsIntolerance()
+    {
+        // Arrange
+        var method = typeof(AllergyIntoleranceState).GetMethod(
+            "MapTypeToDisplay",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        method.ShouldNotBeNull();
+
+        // Act
+        var result = method!.Invoke(null, ["intolerance"]);
+
+        // Assert
+        result.ShouldBe("Intolerance");
+    }
+
+    [Theory]
+    [InlineData(nameof(AllergyIntoleranceState.Type))]
+    [InlineData(nameof(AllergyIntoleranceState.ClinicalStatus))]
+    [InlineData(nameof(AllergyIntoleranceState.VerificationStatus))]
+    [InlineData(nameof(AllergyIntoleranceState.Severity))]
+    public void GivenNullOrEmptyRequiredProperty_WhenBuilding_ThenThrowsArgumentException(string propertyName)
+    {
+        // Arrange - the property is non-nullable and default-initialized, but object-initializer
+        // construction lets a caller bypass that with e.g. Type = null!. Execute() must fail fast
+        // rather than emit an internally inconsistent resource.
+        var allergy = AllergyIntoleranceState.PeanutAllergy();
+        typeof(AllergyIntoleranceState).GetProperty(propertyName)!.SetValue(allergy, null);
+        var scenario = new ScenarioBuilder(_schemaProvider)
+            .WithPatient()
+            .AddAllergy(allergy);
+
+        // Act & Assert
+        Should.Throw<ArgumentException>(() => scenario.Build());
+    }
+
     #endregion
 }

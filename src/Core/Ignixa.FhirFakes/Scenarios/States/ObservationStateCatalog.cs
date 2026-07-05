@@ -11,17 +11,34 @@ namespace Ignixa.FhirFakes.Scenarios.States;
 
 /// <summary>
 /// Discovers and creates predefined <see cref="ObservationState"/> instances by convention: public
-/// static factory methods on <see cref="ObservationState"/> that return <see cref="ObservationState"/>
-/// and whose parameters all have default values.
+/// static factory methods that return <see cref="ObservationState"/> and whose parameters all have
+/// default values. Scans this library's own assembly plus any assembly registered via
+/// <see cref="RegisterAssembly"/>, so a downstream consumer can ship private observation states
+/// discoverable through this same catalog.
 /// </summary>
+/// <remarks>
+/// Unlike <see cref="Scenarios.ScenarioCatalog"/> and <see cref="Workflow.WorkflowScenarioCatalog"/>,
+/// this catalog scans every public type in each registered assembly with no namespace filter. That's
+/// intentional, not an oversight of the shared-registry convergence work: the all-default-parameters
+/// shape (a zero-argument-invokable factory) is already distinctive enough to identify observation
+/// state factories, whereas scenario/workflow packs require a namespace convention because their
+/// required-first-parameter shape alone would match too many unrelated methods.
+/// </remarks>
 public static class ObservationStateCatalog
 {
-    private static readonly Lazy<IReadOnlyDictionary<string, MethodInfo>> StateFactoriesByName = new(Discover);
-    private static readonly Lazy<IReadOnlyList<string>> StateNames = new(() => [.. StateFactoriesByName.Value.Keys]);
+    private static readonly AssemblyRegistry Registry = new(typeof(ObservationState).Assembly);
 
-    /// <summary>Gets all available observation state names.</summary>
-    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs lazy reflection-based discovery; a method conveys the work performed and matches ScenarioCatalog.GetAll.")]
-    public static IReadOnlyList<string> GetNames() => StateNames.Value;
+    /// <summary>
+    /// Registers an additional assembly to scan for observation state factories. Idempotent —
+    /// registering the same assembly more than once has no additional effect. Factories in the
+    /// registered assembly follow the same convention as this library's own factories: a public static
+    /// method, on any public type, returning <see cref="ObservationState"/> with all-default parameters.
+    /// </summary>
+    public static void RegisterAssembly(Assembly assembly) => Registry.Register(assembly);
+
+    /// <summary>Gets all available observation state names, across this library's assembly and every registered assembly.</summary>
+    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Backs reflection-based discovery; a method conveys the work performed and matches ScenarioCatalog.GetAll.")]
+    public static IReadOnlyList<string> GetNames() => [.. Discover().Keys];
 
     /// <summary>
     /// Tries to find an observation state factory by name (case-insensitive) and create it using
@@ -33,7 +50,7 @@ public static class ObservationStateCatalog
         ArgumentNullException.ThrowIfNull(name);
         state = null;
 
-        if (!StateFactoriesByName.Value.TryGetValue(name, out var method))
+        if (!Discover().TryGetValue(name, out var method))
             return false;
 
         var parameters = method.GetParameters();
@@ -65,17 +82,24 @@ public static class ObservationStateCatalog
 
     private static IReadOnlyDictionary<string, MethodInfo> Discover()
     {
+        var assemblies = Registry.Snapshot();
+
         var states = new Dictionary<string, MethodInfo>(StringComparer.OrdinalIgnoreCase);
         var observationStateType = typeof(ObservationState);
 
-        var methods = observationStateType.GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(m => m.ReturnType == observationStateType
-                && !m.IsGenericMethodDefinition
-                && !m.IsSpecialName
-                && m.GetParameters().All(p => p.HasDefaultValue));
+        foreach (var assembly in assemblies)
+        {
+            var methods = assembly.GetTypes()
+                .Where(t => t.IsClass && t.IsPublic)
+                .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                .Where(m => m.ReturnType == observationStateType
+                    && !m.IsGenericMethodDefinition
+                    && !m.IsSpecialName
+                    && m.GetParameters().All(p => p.HasDefaultValue));
 
-        foreach (var method in methods)
-            states[method.Name] = method;
+            foreach (var method in methods)
+                states[method.Name] = method;
+        }
 
         return states;
     }

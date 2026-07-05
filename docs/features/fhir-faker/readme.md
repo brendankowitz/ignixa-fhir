@@ -18,6 +18,7 @@ Test data generation library for creating realistic FHIR resources across versio
 | [theme-consistent-generation](investigations/theme-consistent-generation.md) | MVP Implemented | 2026-07-04 | Carry a clinical "theme" through generation so sibling coded fields on one resource stay semantically coherent, independent of density |
 | [uk-core-patient-profile](investigations/uk-core-patient-profile.md) | Implemented | 2026-07-04 | UKCorePatientProfile (NHS number + ONS ethnic category) and London, following the US Core/AU Base pattern |
 | [country-aware-postal-codes](investigations/country-aware-postal-codes.md) | Implemented | 2026-07-04 | Fixed `SampleZipCode`'s US-shaped numeric-suffix logic — was already producing invalid postcodes for Melbourne/Sydney/Amsterdam |
+| [workflow-context-data-generation](investigations/workflow-context-data-generation.md) | MVP Implemented | 2026-07-04 | Workflow-shaped fixture data, transaction/batch bundle composition, and extension seams for downstream context consumers |
 
 ## Overview
 
@@ -43,14 +44,21 @@ The FHIR Faker library generates synthetic FHIR resources for testing and develo
 - `ClinicalDomain` - Coarse clinical-specialty taxonomy (mirrors `Specialties.cs`) used to filter curated code pools so sibling coded fields agree with each other
 - `ScenarioCatalog` / `ObservationStateCatalog` - Public, attribute-driven discovery of predefined `Predefined/*.cs` scenarios and `ObservationState` factories by reflection, so a UI or other consumer can enumerate/invoke them without hard-coding extension method names (`GetAll`/`Find`/`Invoke`, `GetNames`/`TryCreate`)
 - `PatientBuilder` / `PatientBuilderFactory` - Fluent builder with `WithSeed(int)` for reproducible generation and `WithEdgeCases(int? seed, IEnumerable<string>? selectors)` for opt-in edge-case perturbation
+- 13 non-Patient resource builders beyond `PatientBuilder`/`ObservationBuilder` - `PractitionerBuilder`, `PractitionerRoleBuilder`, `OrganizationBuilder`, `OrganizationAffiliationBuilder`, `LocationBuilder`, `HealthcareServiceBuilder`, `CareTeamBuilder`, `GroupBuilder`, `DiagnosticReportBuilder`, `MedicationRequestBuilder`, `MedicationDispenseBuilder`, `RiskAssessmentBuilder`, `ValueSetBuilder` - all following the same `Create(schemaProvider)` fluent-builder shape
+- `IPatientProfile` / `PatientProfileFactory` - Country-specific FHIR patient profile contract (extensions, identifiers, name-generation locale) plus a country-code-keyed lookup (`GetProfile`, `USCore`/`AUBase`/`UKCore`/`Default`, `RegisterProfile`); implementations are `USCorePatientProfile`, `AUBasePatientProfile`, and `UKCorePatientProfile` (NHS Number + ONS ethnic category), with `DefaultPatientProfile` as the no-country-extensions fallback
 - `EdgeCaseCatalog` - Extensible registry of edge-case strategies; create the default set via `EdgeCaseCatalog.CreateDefault()`; select by family (`unicode`, `temporal`, `string`) or category (`unicode.rtl`, `temporal.leap-year`, etc.)
 - `EdgeCasePipeline` - Seeded decorator that walks the schema-typed element tree and applies one eligible strategy per leaf; emits a `MutationManifest` for replay
 - `MutationManifest` / `MutationRecord` - Structured record of every applied mutation (category, path, before, after, description); serialises to JSON via `ToJson()`
 - `GenerationDensity` enum - `Minimal` (required only, default), `Realistic` (currently identical to Minimal), `Maximum` (all optional elements populated)
 - `ScenarioBuilder` - Fluent API for clinical scenarios
 - `PatientLifecycleGenerator` / `PopulationGenerator` - Layer 3/4 longitudinal and cohort-scale generation
+- `DiseaseRiskCalculator` - Evidence-based (CDC/NHANES/Framingham/SEER) age- and risk-factor-adjusted probabilities for diabetes, hypertension, asthma, cancer, and stroke, used to parameterize `PatientLifecycleGenerator.AddProbabilisticCondition` calls
 - `ImmunizationState` - Gold standard for version-aware resource generation
 - `FhirVersionHelper` - Cross-version compatibility utilities
+- `WorkflowScenarioCatalog` - Reflection-based discovery of workflow scenario packs (`GetAll`/`Find`/`Invoke`), scanning this library's assembly plus any assembly registered via `RegisterAssembly` — lets downstream consumers ship private workflow packs discoverable through the same catalog
+- `WorkflowGraphBuilder` - Fluent wrapper over `ResourceGraph` that registers `IResourceGraphEnricher` factories via `WithEnrichers` and applies them, in registration order, at `Build()` time — deferred so a factory can read graph state that only exists once every scenario has been added
+- `ResourceGraph` / `IResourceGraphEnricher` - Cross-scenario resource aggregation and the post-processing seam for adding workflow-only resources (appointments, lists, document references) that link across multiple patient-centric `ScenarioContext`s
+- `ResourceBundleComposer` - Composes an ordered set of resources into a FHIR transaction or batch `Bundle`; shared by `ScenarioContext.ToBundle()`/`ToBatchBundle()` and the `workflow` CLI command so both emit identically-shaped bundles
 
 ## Related ADRs
 

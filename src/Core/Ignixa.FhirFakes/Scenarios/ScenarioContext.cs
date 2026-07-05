@@ -552,28 +552,7 @@ public sealed class ScenarioContext
     /// Each entry uses urn:uuid references for client-assigned IDs.
     /// </summary>
     /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
-    public BundleJsonNode ToBundle()
-    {
-        var entries = new JsonArray();
-
-        // Add all resources in generation order
-        // (Patient is already first in _allResources since PatientBuilderState adds it)
-        foreach (var resource in _allResources)
-        {
-            entries.Add(CreateBundleEntry(resource));
-        }
-
-        // Create the bundle
-        var bundleNode = new JsonObject
-        {
-            ["resourceType"] = "Bundle",
-            ["id"] = Guid.NewGuid().ToString(),
-            ["type"] = "transaction",
-            ["entry"] = entries
-        };
-
-        return new BundleJsonNode(bundleNode);
-    }
+    public BundleJsonNode ToBundle() => ResourceBundleComposer.ToTransactionBundle(_allResources);
 
     /// <summary>
     /// Creates a batch Bundle containing all resources from this scenario.
@@ -582,68 +561,13 @@ public sealed class ScenarioContext
     /// Suitable for scenarios where resources are already created on the server.
     /// </summary>
     /// <returns>A BundleJsonNode representing a FHIR batch bundle.</returns>
-    public BundleJsonNode ToBatchBundle()
-    {
-        var entries = new JsonArray();
-
-        // Add all resources in generation order
-        foreach (var resource in _allResources)
-        {
-            entries.Add(CreateBatchBundleEntry(resource));
-        }
-
-        // Create the bundle
-        var bundleNode = new JsonObject
-        {
-            ["resourceType"] = "Bundle",
-            ["id"] = Guid.NewGuid().ToString(),
-            ["type"] = "batch",
-            ["entry"] = entries
-        };
-
-        return new BundleJsonNode(bundleNode);
-    }
+    public BundleJsonNode ToBatchBundle() => ResourceBundleComposer.ToBatchBundle(_allResources);
 
     /// <summary>
     /// Alias for ToBundle(). Creates a transaction bundle with urn:uuid references.
     /// </summary>
     /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
     public BundleJsonNode ToTransactionBundle() => ToBundle();
-
-    /// <summary>
-    /// Creates a bundle entry for a resource with POST request.
-    /// </summary>
-    private static JsonObject CreateBundleEntry(ResourceJsonNode resource)
-    {
-        return new JsonObject
-        {
-            ["fullUrl"] = $"urn:uuid:{resource.Id}",
-            ["resource"] = resource.MutableNode.DeepClone(),
-            ["request"] = new JsonObject
-            {
-                ["method"] = "POST",
-                ["url"] = resource.ResourceType
-            }
-        };
-    }
-
-    /// <summary>
-    /// Creates a batch bundle entry for a resource with PUT request.
-    /// Uses resolved references (ResourceType/id format).
-    /// </summary>
-    private static JsonObject CreateBatchBundleEntry(ResourceJsonNode resource)
-    {
-        return new JsonObject
-        {
-            ["fullUrl"] = $"{resource.ResourceType}/{resource.Id}",
-            ["resource"] = resource.MutableNode.DeepClone(),
-            ["request"] = new JsonObject
-            {
-                ["method"] = "PUT",
-                ["url"] = $"{resource.ResourceType}/{resource.Id}"
-            }
-        };
-    }
 
     /// <summary>
     /// Registers a resource created by a state with the given StateId.

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Bogus;
 using Ignixa.FhirFakes.EdgeCases;
 using Shouldly;
 
@@ -10,6 +11,36 @@ namespace Ignixa.FhirFakes.Tests.EdgeCases;
 
 public class EdgeCaseCatalogTests
 {
+    [Fact]
+    public void GivenConcurrentRegistrations_WhenResolvingConcurrently_ThenAllStrategiesAreVisibleAndUncorrupted()
+    {
+        var catalog = new EdgeCaseCatalog();
+        var strategies = Enumerable.Range(0, 100)
+            .Select(i => new FakeEdgeCaseStrategy($"test.category-{i}"))
+            .ToList();
+
+        Parallel.ForEach(strategies, s => catalog.Register(s));
+        Parallel.For(0, 20, _ => catalog.Resolve(null));
+
+        var all = catalog.All();
+
+        all.Count.ShouldBe(strategies.Count);
+        all.Select(s => s.Category).ToHashSet().Count.ShouldBe(strategies.Count);
+    }
+
+    private sealed class FakeEdgeCaseStrategy(string category) : IEdgeCaseStrategy
+    {
+        public string Category { get; } = category;
+
+        public EdgeCaseFamily Family => EdgeCaseFamily.Unicode;
+
+        public ValidityIntent Intent => ValidityIntent.PreservesValidity;
+
+        public bool CanApply(MutationTarget target) => throw new NotSupportedException();
+
+        public MutationResult Apply(MutationTarget target, Randomizer rng) => throw new NotSupportedException();
+    }
+
     [Fact]
     public void GivenDefaultCatalog_WhenListingAll_ThenRegistersUnicodeAndTemporalStrategies()
     {

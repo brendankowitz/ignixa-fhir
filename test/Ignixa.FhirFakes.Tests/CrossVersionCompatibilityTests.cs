@@ -217,13 +217,22 @@ public class CrossVersionCompatibilityTests
 
             var immunization = scenario.Immunizations[0];
 
-            // Assert - protocolApplied should exist (R4+) or vaccinationProtocol (STU3)
+            // Assert - protocolApplied should exist (R4+) or vaccinationProtocol (STU3).
+            // The dose-number element differs by version:
+            //   STU3    -> vaccinationProtocol[0].doseSequence      (integer)
+            //   R4/R4B  -> protocolApplied[0].doseNumberPositiveInt (positiveInt choice)
+            //   R5+/R6  -> protocolApplied[0].doseNumber            (single string element)
             if (schema.Version == FhirVersion.Stu3)
             {
-                // STU3 uses vaccinationProtocol instead of protocolApplied
                 immunization.MutableNode["vaccinationProtocol"].ShouldNotBeNull($"vaccinationProtocol should exist in {schema.Version}");
                 var doseNumber = immunization.MutableNode["vaccinationProtocol"]?[0]?["doseSequence"]?.GetValue<int>();
                 doseNumber.ShouldBe(1, $"dose number should be 1 in {schema.Version}");
+            }
+            else if (schema.Version >= FhirVersion.R5)
+            {
+                immunization.MutableNode["protocolApplied"].ShouldNotBeNull($"protocolApplied should exist in {schema.Version}");
+                var doseNumber = immunization.MutableNode["protocolApplied"]?[0]?["doseNumber"]?.GetValue<string>();
+                doseNumber.ShouldBe("1", $"dose number should be the string \"1\" in {schema.Version}");
             }
             else
             {
@@ -318,7 +327,7 @@ public class CrossVersionCompatibilityTests
     }
 
     [Fact]
-    public void GivenImmunization_WhenGeneratedWithR5_ThenUsesR4FieldNames()
+    public void GivenImmunization_WhenGeneratedWithR5_ThenUsesR5DoseNumberString()
     {
         // Arrange
         var r5Schema = new R5CoreSchemaProvider();
@@ -333,11 +342,14 @@ public class CrossVersionCompatibilityTests
 
         var immunization = scenario.Immunizations[0];
 
-        // Assert - R5 uses same field names as R4
+        // Assert - R5 keeps the top-level 'protocolApplied' element, but collapsed the
+        // doseNumber[x]/seriesDoses[x] choices into single string elements 'doseNumber'/'seriesDoses'.
         immunization.MutableNode["protocolApplied"].ShouldNotBeNull("R5 should use 'protocolApplied'");
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
         protocol.ShouldNotBeNull();
-        protocol!["doseNumberPositiveInt"].ShouldNotBeNull("R5 should use 'doseNumberPositiveInt'");
+        protocol!["doseNumberPositiveInt"].ShouldBeNull("R5 dropped the 'doseNumberPositiveInt' choice element");
+        protocol["doseNumber"]?.GetValue<string>().ShouldBe("1", "R5 uses a single string 'doseNumber'");
+        protocol["seriesDoses"]?.GetValue<string>().ShouldBe("2", "R5 uses a single string 'seriesDoses'");
     }
 
     #endregion
@@ -418,6 +430,96 @@ public class CrossVersionCompatibilityTests
             var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
             reactions.ShouldNotBeNull($"reaction should exist in {schema.Version}");
             reactions!.Count.ShouldBeGreaterThan(0, $"should have reactions in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenAllergyIntolerance_WhenGeneratedAcrossAllVersions_ThenTypeMatchesVersionShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            // Arrange & Act
+            var allergy = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddPeanutAllergy()
+                .Build()
+                .Allergies[0];
+
+            var typeNode = allergy.MutableNode["type"];
+            typeNode.ShouldNotBeNull($"type should exist in {schema.Version}");
+
+            // Assert - R5+ widened "type" from code to CodeableConcept
+            if (schema.Version >= FhirVersion.R5)
+            {
+                var typeObject = typeNode as JsonObject;
+                typeObject.ShouldNotBeNull($"type should be a CodeableConcept object in {schema.Version}");
+                (typeObject!["coding"] as JsonArray).ShouldNotBeNull($"type.coding should exist in {schema.Version}");
+                typeObject["coding"]![0]!["code"]!.GetValue<string>().ShouldBe("allergy");
+            }
+            else
+            {
+                (typeNode as JsonObject).ShouldBeNull($"type should be a scalar code in {schema.Version}");
+                typeNode.GetValue<string>().ShouldBe("allergy");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenAllergyWithReactions_WhenGeneratedAcrossAllVersions_ThenManifestationMatchesVersionShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            // Arrange & Act
+            var allergy = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddPeanutAllergy()
+                .Build()
+                .Allergies[0];
+
+            var manifestation = (allergy.MutableNode["reaction"] as JsonArray)![0]!["manifestation"] as JsonArray;
+            manifestation.ShouldNotBeNull($"manifestation should exist in {schema.Version}");
+
+            // Assert - R5+ retyped manifestation from CodeableConcept to CodeableReference
+            if (schema.Version >= FhirVersion.R5)
+            {
+                var concept = manifestation![0]!["concept"] as JsonObject;
+                concept.ShouldNotBeNull($"manifestation.concept should exist in {schema.Version}");
+                (concept!["coding"] as JsonArray).ShouldNotBeNull($"manifestation.concept.coding should exist in {schema.Version}");
+                (manifestation[0]!["coding"] as JsonArray).ShouldBeNull($"manifestation should not carry coding directly in {schema.Version}");
+            }
+            else
+            {
+                (manifestation![0]!["coding"] as JsonArray).ShouldNotBeNull($"manifestation.coding should exist in {schema.Version}");
+                (manifestation[0]!["concept"] as JsonObject).ShouldBeNull($"manifestation should not use concept wrapper in {schema.Version}");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenAllergyIntolerance_WhenGeneratedAcrossAllVersions_ThenRecorderOrParticipantMatchesVersionShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            // Arrange & Act
+            var allergy = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddPeanutAllergy()
+                .Build()
+                .Allergies[0];
+
+            // Assert - R5 replaced "recorder" with a "participant" backbone; R6 reintroduced "recorder"
+            if (schema.Version == FhirVersion.R5)
+            {
+                var participant = allergy.MutableNode["participant"] as JsonArray;
+                participant.ShouldNotBeNull("R5 should emit participant");
+                (participant![0]!["actor"] as JsonObject).ShouldNotBeNull("R5 participant.actor should exist");
+                allergy.MutableNode["recorder"].ShouldBeNull("R5 should not emit recorder");
+            }
+            else
+            {
+                allergy.MutableNode["recorder"].ShouldNotBeNull($"recorder should exist in {schema.Version}");
+                allergy.MutableNode["participant"].ShouldBeNull($"participant should not exist in {schema.Version}");
+            }
         }
     }
 
@@ -801,21 +903,30 @@ public class CrossVersionCompatibilityTests
 
             var medicationRequest = scenario.Medications[0];
 
-            // Assert - All FHIR versions use medication[x] choice element
-            // STU3/R4/R4B/R5 all serialize as "medicationCodeableConcept" or "medicationReference"
-            // (STU3 spec: medication[x][1..1]: CodeableConcept|Reference(Medication))
-            var hasMedicationCodeableConcept = medicationRequest.MutableNode["medicationCodeableConcept"] != null;
-            var hasMedicationReference = medicationRequest.MutableNode["medicationReference"] != null;
-
-            (hasMedicationCodeableConcept || hasMedicationReference)
-                .ShouldBeTrue($"{schema.Version} should have medicationCodeableConcept or medicationReference");
-
-            // If using CodeableConcept, verify structure
-            if (hasMedicationCodeableConcept)
+            // STU3/R4/R4B model medication as a medication[x] choice, serialized as
+            // "medicationCodeableConcept" / "medicationReference". R5+ replaced it with a single
+            // "medication" element typed CodeableReference, whose code lives under "concept".
+            if (schema.Version >= FhirVersion.R5)
             {
-                var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
-                coding.ShouldNotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
+                var coding = medicationRequest.MutableNode["medication"]?["concept"]?["coding"]?[0];
+                coding.ShouldNotBeNull($"medication.concept should have coding in {schema.Version}");
                 coding?["code"]?.GetValue<string>().ShouldNotBeNullOrEmpty($"should have medication code in {schema.Version}");
+                medicationRequest.MutableNode["medicationCodeableConcept"].ShouldBeNull($"{schema.Version} must not use the legacy medicationCodeableConcept element");
+            }
+            else
+            {
+                var hasMedicationCodeableConcept = medicationRequest.MutableNode["medicationCodeableConcept"] != null;
+                var hasMedicationReference = medicationRequest.MutableNode["medicationReference"] != null;
+
+                (hasMedicationCodeableConcept || hasMedicationReference)
+                    .ShouldBeTrue($"{schema.Version} should have medicationCodeableConcept or medicationReference");
+
+                if (hasMedicationCodeableConcept)
+                {
+                    var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
+                    coding.ShouldNotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
+                    coding?["code"]?.GetValue<string>().ShouldNotBeNullOrEmpty($"should have medication code in {schema.Version}");
+                }
             }
         }
     }
@@ -839,6 +950,112 @@ public class CrossVersionCompatibilityTests
             var dosageInstruction = medicationRequest.MutableNode["dosageInstruction"] as JsonArray;
             dosageInstruction.ShouldNotBeNull($"dosageInstruction should exist in {schema.Version}");
             dosageInstruction!.Count.ShouldBeGreaterThan(0, $"should have dosage entries in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenMedicationRequest_WhenGeneratedAcrossAllVersions_ThenRequesterMatchesVersionShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddPractitioner(PractitionerState.FamilyPractitioner())
+                .AddEncounter("Medication visit")
+                .AddMedicationOrder(MedicationOrderState.Lisinopril10mg())
+                .Build();
+
+            var requester = scenario.Medications[0].MutableNode["requester"];
+            requester.ShouldNotBeNull($"requester should be set in {schema.Version}");
+
+            if (schema.Version == FhirVersion.Stu3)
+            {
+                // STU3 requester is a BackboneElement whose agent (1..1) carries the reference.
+                requester!["agent"]?["reference"]?.GetValue<string>()
+                    .ShouldNotBeNullOrEmpty("STU3 requester.agent must reference the practitioner");
+                requester["reference"].ShouldBeNull("STU3 requester must not carry a bare reference");
+            }
+            else
+            {
+                // R4+ requester is a plain Reference.
+                requester!["reference"]?.GetValue<string>()
+                    .ShouldNotBeNullOrEmpty($"{schema.Version} requester must be a plain Reference");
+                requester["agent"].ShouldBeNull($"{schema.Version} requester must not be a BackboneElement");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenMedicationRequest_WhenGeneratedAcrossAllVersions_ThenReasonMatchesVersionShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddMedicationOrder(MedicationOrderState.Lisinopril10mg())
+                .Build();
+
+            var node = scenario.Medications[0].MutableNode;
+
+            if (schema.Version >= FhirVersion.R5)
+            {
+                // R5+ merges reasonCode/reasonReference into a CodeableReference "reason".
+                node["reason"]?[0]?["concept"]?["coding"]?[0]?["code"]?.GetValue<string>()
+                    .ShouldNotBeNullOrEmpty($"{schema.Version} should carry a coded reason.concept");
+                node["reasonCode"].ShouldBeNull($"{schema.Version} must not use legacy reasonCode");
+            }
+            else
+            {
+                node["reasonCode"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>()
+                    .ShouldNotBeNullOrEmpty($"{schema.Version} should carry reasonCode");
+                node["reason"].ShouldBeNull($"{schema.Version} must not use the R5+ reason element");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenAsNeededMedication_WhenGeneratedAcrossAllVersions_ThenAsNeededMatchesVersionShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddMedicationOrder(MedicationOrderState.Albuterol())
+                .Build();
+
+            var dosage = scenario.Medications[0].MutableNode["dosageInstruction"]?[0];
+            dosage.ShouldNotBeNull($"dosageInstruction should exist in {schema.Version}");
+
+            if (schema.Version >= FhirVersion.R5)
+            {
+                dosage!["asNeeded"]?.GetValue<bool>().ShouldBe(true, $"{schema.Version} should use boolean asNeeded");
+                dosage["asNeededBoolean"].ShouldBeNull($"{schema.Version} must not use the legacy asNeededBoolean");
+            }
+            else
+            {
+                dosage!["asNeededBoolean"]?.GetValue<bool>().ShouldBe(true, $"{schema.Version} should use asNeededBoolean");
+                dosage["asNeeded"].ShouldBeNull($"{schema.Version} must not use the R5+ asNeeded element");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenNonChronicMedication_WhenGeneratedAcrossAllVersions_ThenOmitsZeroNumberOfRepeatsAllowed()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddMedicationOrder(MedicationOrderState.VitaminD50000IU())
+                .Build();
+
+            // STU3 types numberOfRepeatsAllowed as positiveInt (>= 1), so 0 is invalid there.
+            // R4+ uses unsignedInt (0 is valid), so omission is not strictly required there — but
+            // the generator omits it uniformly when there are no repeats, which stays valid in
+            // every version. This asserts that uniform behavior, not a per-version requirement.
+            var dispenseRequest = scenario.Medications[0].MutableNode["dispenseRequest"];
+            dispenseRequest.ShouldNotBeNull($"dispenseRequest should exist in {schema.Version}");
+            dispenseRequest!["numberOfRepeatsAllowed"].ShouldBeNull($"{schema.Version}: generator omits numberOfRepeatsAllowed when there are no repeats");
         }
     }
 

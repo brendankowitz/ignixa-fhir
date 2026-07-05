@@ -103,6 +103,13 @@ internal static class PopulationCommand
 
             var contexts = generator.Generate(state, count).ToList();
 
+            if (contexts.Count == 0)
+            {
+                Console.WriteLine("✗ No patients were generated");
+                Environment.ExitCode = 1;
+                return;
+            }
+
             if (ndjson)
             {
                 // Generate ndjson files - one file per resource type across all patients
@@ -138,13 +145,6 @@ internal static class PopulationCommand
             else
             {
                 // Generate a single large transaction bundle with all patients
-                // Check if we have any contexts
-                if (contexts.Count == 0)
-                {
-                    Console.WriteLine("✗ No patients were generated");
-                    return;
-                }
-
                 var id = Guid.NewGuid().ToString();
                 var sanitizedState = SanitizeFileName(state);
                 var filename = $"{fhirVersion}-bundle-population-{sanitizedState}-{count}-{id}.json";
@@ -196,6 +196,7 @@ internal static class PopulationCommand
         {
             Console.WriteLine($"✗ Error: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
+            Environment.ExitCode = 1;
         }
     }
 
