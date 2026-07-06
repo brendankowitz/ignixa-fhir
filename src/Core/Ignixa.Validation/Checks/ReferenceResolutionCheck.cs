@@ -54,19 +54,36 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
     {
         foreach (var child in element.Children())
         {
-            if (child.Name == "reference" && child.Value is string reference && IsLocalReference(reference, rootIsBundle))
+            if (child.Name == "reference" && child.Value is string reference
+                && IsLocalReference(reference, rootIsBundle)
+                && resolver(reference) is null)
             {
-                if (resolver(reference) is null)
-                {
-                    issues.Add(ValidationIssue.InvariantFailure(
-                        "ref-resolve",
-                        $"Local reference '{reference}' does not resolve within the resource",
-                        child.Location));
-                }
+                issues.Add(ValidationIssue.InvariantFailure(
+                    "ref-resolve",
+                    $"Local reference '{reference}' does not resolve within the resource",
+                    child.Location));
             }
 
-            CollectUnresolved(child, resolver, rootIsBundle, issues);
+            // Crossing into a nested resource (contained[], Bundle.entry.resource,
+            // Parameters.parameter.resource): fragment references inside it resolve against that
+            // resource's own contained set, so re-scope the resolver to the nested resource (chained
+            // to the outer resolver so intra-Bundle relative references still resolve against the
+            // Bundle). Without this, a valid nested fragment (#payer -> that resource's contained) is
+            // falsely flagged against the outer resource's contained.
+            var childResolver = child.Name is "contained" or "resource"
+                ? BuildNestedResolver(child, resolver)
+                : resolver;
+
+            CollectUnresolved(child, childResolver, rootIsBundle, issues);
         }
+    }
+
+    private static Func<string, IElement?> BuildNestedResolver(
+        IElement nestedResource,
+        Func<string, IElement?> outerResolver)
+    {
+        var index = ReferenceIndex.Build(nestedResource);
+        return reference => index.Resolve(reference) ?? outerResolver(reference);
     }
 
     private static bool IsLocalReference(string reference, bool rootIsBundle)
