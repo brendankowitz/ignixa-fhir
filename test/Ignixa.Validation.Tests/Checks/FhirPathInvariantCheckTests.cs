@@ -454,6 +454,43 @@ public class FhirPathInvariantCheckTests
     }
 
     /// <summary>
+    /// An expression that parses but throws at evaluation time — an unimplemented FHIRPath function
+    /// such as conformsTo() — is a validator/engine limitation, not a resource error. It must yield a
+    /// non-failing Warning ("could not be evaluated"), matching the parse-failure contract, rather
+    /// than a failing Error. Regression guard for conformance over-strictness (txt-1/htmlChecks etc.).
+    /// </summary>
+    [Fact]
+    public void GivenExpressionThatThrowsAtEvaluation_WhenValidating_ThenResultIsNonFailingWithWarning()
+    {
+        // Arrange — conformsTo() parses fine but throws NotSupportedException at evaluation.
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "eng-1",
+            Severity = ConstraintSeverity.Error,
+            Human = "Uses an unimplemented function",
+            Expression = "conformsTo('http://hl7.org/fhir/StructureDefinition/Patient')",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert — engine limitation must NOT fail validation
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("eng-1");
+        result.Issues[0].Message.ShouldContain("could not be evaluated");
+    }
+
+    /// <summary>
     /// Tests expression that returns empty collection (treated as false).
     /// </summary>
     [Fact]

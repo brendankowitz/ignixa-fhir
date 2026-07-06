@@ -255,9 +255,25 @@ public class StructureDefinitionSchemaBuilder
             _activeTypeNames.Value = visiting;
         }
         var addedToVisiting = visiting.Add(typeDefinition.Info.Name);
+
+        // Children that resolve to their own nested schema (backbone/complex datatypes). A
+        // constraint owned exclusively by such an element (e.g. Patient.contact's pat-1) is
+        // element-scoped: it is evaluated at that element's altitude by the nested schema, not
+        // hoisted to the resource root. Computed under the cycle guard so it matches exactly
+        // which elements ExtractNestedTypeChecks descends into.
+        var nestedElementNames = new HashSet<string>(StringComparer.Ordinal);
         try
         {
-            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService, _logger, _parser);
+            foreach (var e in elements)
+            {
+                if (ResolveNestedType(e, typeDefinition, schema, out _, out _) == NestedTypeResolution.Resolved)
+                {
+                    nestedElementNames.Add(e.Info.Name);
+                }
+            }
+
+            var rootScopedConstraintKeys = CollectRootScopedConstraintKeys(elements, typeDefinition, nestedElementNames);
+            var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService, rootScopedConstraintKeys, _logger, _parser);
             specChecks.AddRange(nestedTypeChecks);
         }
         finally
@@ -304,8 +320,16 @@ public class StructureDefinitionSchemaBuilder
         // This includes constraints like ele-1, dom-1, resource-specific invariants
         // Moved to Profile tier to avoid false positives on minimal resources
         // Constraints are scoped to the current resource type (see ExtractInvariantChecks for filtering)
-        var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser, _logger);
+        var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser, nestedElementNames, _logger);
         profileChecks.AddRange(invariantChecks);
+
+        // Reference-integrity (Full tier): flag local references (#id, intra-Bundle Type/id) that
+        // fail to resolve against the scoped resolver. No-ops when no resolver is seeded, so it is
+        // inert outside the scoped validation pipeline.
+        if (typeDefinition.Info.IsResource)
+        {
+            profileChecks.Add(new ReferenceResolutionCheck());
+        }
 
         // Build the canonical URL from the type name
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
@@ -359,6 +383,7 @@ public class StructureDefinitionSchemaBuilder
         IType typeDefinition,
         ISchema schema,
         FhirPathParser parser,
+        IReadOnlySet<string> nestedElementNames,
         ILogger? logger = null)
     {
         var checks = new List<IValidationCheck>();
@@ -367,11 +392,14 @@ public class StructureDefinitionSchemaBuilder
         // Multiple elements may reference the same constraint (e.g., ele-1 on every element)
         var seenConstraints = new HashSet<string>(StringComparer.Ordinal);
 
-        // Walk the root type AND each child element. Codegen typically duplicates root-level
-        // invariants (ele-1, dom-*) onto every child, but adapter-produced types may keep them
-        // only on the root - so we must inspect both to find them all.
+        // Walk the root type AND each NON-NESTED child element. Codegen typically duplicates
+        // root-level invariants (ele-1, dom-*) onto every child, but adapter-produced types may
+        // keep them only on the root - so we must inspect both to find them all. Nested
+        // complex/backbone children are excluded: a constraint owned only by such an element
+        // (e.g. Patient.contact's pat-1) is element-scoped and is evaluated at that element's
+        // altitude by its nested schema (see ExtractNestedTypeChecks), not at the resource root.
         var elementsToScan = new List<IType>(elements.Count + 1) { typeDefinition };
-        elementsToScan.AddRange(elements);
+        elementsToScan.AddRange(elements.Where(e => !nestedElementNames.Contains(e.Info.Name)));
 
         foreach (var element in elementsToScan)
         {
@@ -425,6 +453,7 @@ public class StructureDefinitionSchemaBuilder
         IType typeDefinition,
         ISchema schema,
         ITerminologyService? terminologyService,
+        IReadOnlySet<string> rootScopedConstraintKeys,
         ILogger<StructureDefinitionSchemaBuilder>? logger = null,
         FhirPathParser? parser = null)
     {
@@ -432,83 +461,221 @@ public class StructureDefinitionSchemaBuilder
 
         foreach (var element in elements)
         {
-            if (element.Info.IsPrimitive)
+            switch (ResolveNestedType(element, typeDefinition, schema, out var nestedTypeName, out var nestedTypeDefinition))
             {
-                continue;
-            }
-
-            if (element.Info.IsChoiceElement)
-            {
-                continue;
-            }
-
-            var typeName = GetTypeName(element);
-
-            if (string.IsNullOrEmpty(typeName) || typeName == element.Info.Name)
-            {
-                // If no type found or type is same as element name (no extended metadata), skip
-                // This happens for elements without ITypeExtended metadata
-                continue;
-            }
-
-            // Skip special types that have dedicated checks
-            // Also skip xhtml - it's a primitive that stores content directly, not in child elements
-            // Skip "Resource" type - this is used for contained resources, which are handled by ContainedResourceCheck
-            if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource")
-            {
-                continue;
-            }
-
-            // Determine the nested type name
-            string nestedTypeName;
-            if (typeName == "BackboneElement")
-            {
-                // BackboneElement: ResourceType.ElementName (e.g., "AuditEvent.Agent")
-                nestedTypeName = $"{typeDefinition.Info.Name}.{CapitalizeFirst(element.Info.Name)}";
-            }
-            else if (typeName == "Element")
-            {
-                // Element type might be a BackboneElement in complex datatypes (e.g., Timing.repeat)
-                // Try to find a specific type like "Timing.Repeat" first
-                var potentialBackboneType = $"{typeDefinition.Info.Name}.{CapitalizeFirst(element.Info.Name)}";
-                if (schema.GetTypeDefinition(potentialBackboneType) == null)
-                {
-                    // No specific BackboneElement type found, skip Element type
+                case NestedTypeResolution.NotNested:
                     continue;
-                }
-                nestedTypeName = potentialBackboneType;
-            }
-            else
-            {
-                // Complex datatype: Use as-is (e.g., "Address", "HumanName")
-                nestedTypeName = typeName;
-            }
-
-            // Try to get the nested type schema
-            var nestedTypeDefinition = schema.GetTypeDefinition(nestedTypeName);
-            if (nestedTypeDefinition == null)
-            {
-                logger?.LogWarning("Nested type '{NestedTypeName}' not found in schema - subtree will not be validated", nestedTypeName);
-                continue;
-            }
-
-            // Cycle guard: if this nested type is already on the active-build stack
-            // (e.g. Element->Element via contentReference, or a profile that recurses
-            // through a layered schema provider), skip to avoid infinite recursion.
-            var visiting = _activeTypeNames.Value;
-            if (visiting != null && visiting.Contains(nestedTypeName))
-            {
-                logger?.LogDebug("Cycle detected building type '{NestedTypeName}' - skipping to prevent infinite recursion", nestedTypeName);
-                continue;
+                case NestedTypeResolution.NotFound:
+                    logger?.LogWarning("Nested type '{NestedTypeName}' not found in schema - subtree will not be validated", nestedTypeName);
+                    continue;
+                case NestedTypeResolution.Cycle:
+                    // Element->Element via contentReference, or a profile that recurses through a
+                    // layered schema provider. Skip to avoid infinite recursion.
+                    logger?.LogDebug("Cycle detected building type '{NestedTypeName}' - skipping to prevent infinite recursion", nestedTypeName);
+                    continue;
             }
 
             // Build the nested schema
             var nestedBuilder = new StructureDefinitionSchemaBuilder(parser, logger);
-            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition, schema, terminologyService);
+            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition!, schema, terminologyService);
+
+            // Inject constraints owned by THIS element (e.g. Patient.contact's pat-1) into the
+            // nested schema so they are evaluated once per occurrence, in the element's own
+            // FHIRPath context, and skipped entirely when the element is absent. Universal
+            // constraints already hoisted to the resource root (ele-1, ext-1) are excluded to
+            // avoid duplicate evaluation. Parser is always supplied by BuildSchema; guard keeps
+            // the nullable signature honest.
+            if (parser is not null)
+            {
+                var elementScopedChecks = BuildElementScopedInvariantChecks(
+                    element, rootScopedConstraintKeys, schema, parser, logger);
+                if (elementScopedChecks.Count > 0)
+                {
+                    var injection = new ValidationSchema(
+                        nestedSchema.CanonicalUrl,
+                        nestedSchema.ResourceType,
+                        universalChecks: Array.Empty<IValidationCheck>(),
+                        specChecks: Array.Empty<IValidationCheck>(),
+                        profileChecks: elementScopedChecks);
+                    nestedSchema = ValidationSchema.Compose(new[] { nestedSchema, injection });
+                }
+            }
 
             // Create the nested type check
             var check = new NestedComplexTypeCheck(element.Info.Name, element.IsCollection, nestedSchema);
             checks.Add(check);
+        }
+
+        return checks;
+    }
+
+    /// <summary>
+    /// Outcome of resolving whether a child element has its own nested validation schema.
+    /// </summary>
+    private enum NestedTypeResolution
+    {
+        /// <summary>The element is a primitive, choice, or specially-handled type - no nested schema.</summary>
+        NotNested,
+
+        /// <summary>A nested type definition was found and is safe to build.</summary>
+        Resolved,
+
+        /// <summary>The declared nested type name could not be resolved in the schema.</summary>
+        NotFound,
+
+        /// <summary>The nested type is already on the active-build stack (recursion cycle).</summary>
+        Cycle,
+    }
+
+    /// <summary>
+    /// Determines whether a child element has its own nested validation schema (BackboneElement or
+    /// complex datatype), and if so resolves the nested type definition. Shared by
+    /// <see cref="ExtractNestedTypeChecks"/> (which builds the schema) and the pre-pass in
+    /// <see cref="BuildSchema"/> (which classifies constraints as root- vs element-scoped), so both
+    /// agree exactly on which elements form a nested altitude.
+    /// </summary>
+    private static NestedTypeResolution ResolveNestedType(
+        IType element,
+        IType typeDefinition,
+        ISchema schema,
+        out string nestedTypeName,
+        out IType? nestedTypeDefinition)
+    {
+        nestedTypeName = string.Empty;
+        nestedTypeDefinition = null;
+
+        if (element.Info.IsPrimitive || element.Info.IsChoiceElement)
+        {
+            return NestedTypeResolution.NotNested;
+        }
+
+        var typeName = GetTypeName(element);
+
+        // No type found, or type is same as element name (no extended metadata) - skip.
+        if (string.IsNullOrEmpty(typeName) || typeName == element.Info.Name)
+        {
+            return NestedTypeResolution.NotNested;
+        }
+
+        // Special types have dedicated checks; xhtml stores content directly; "Resource" is a
+        // contained resource handled by ContainedResourceCheck.
+        if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource")
+        {
+            return NestedTypeResolution.NotNested;
+        }
+
+        if (typeName == "BackboneElement")
+        {
+            // BackboneElement: ResourceType.ElementName (e.g., "AuditEvent.Agent").
+            nestedTypeName = $"{typeDefinition.Info.Name}.{CapitalizeFirst(element.Info.Name)}";
+        }
+        else if (typeName == "Element")
+        {
+            // Element type might be a BackboneElement in complex datatypes (e.g., Timing.repeat).
+            // Only treat it as nested when a specific type (e.g. "Timing.Repeat") exists.
+            var potentialBackboneType = $"{typeDefinition.Info.Name}.{CapitalizeFirst(element.Info.Name)}";
+            if (schema.GetTypeDefinition(potentialBackboneType) == null)
+            {
+                return NestedTypeResolution.NotNested;
+            }
+            nestedTypeName = potentialBackboneType;
+        }
+        else
+        {
+            // Complex datatype: use as-is (e.g., "Address", "HumanName").
+            nestedTypeName = typeName;
+        }
+
+        var resolved = schema.GetTypeDefinition(nestedTypeName);
+        if (resolved == null)
+        {
+            return NestedTypeResolution.NotFound;
+        }
+
+        var visiting = _activeTypeNames.Value;
+        if (visiting != null && visiting.Contains(nestedTypeName))
+        {
+            return NestedTypeResolution.Cycle;
+        }
+
+        nestedTypeDefinition = resolved;
+        return NestedTypeResolution.Resolved;
+    }
+
+    /// <summary>
+    /// Collects the constraint keys that are scoped to the resource root: keys carried by the root
+    /// type node or by any non-nested child element. Constraints that appear ONLY on nested
+    /// complex/backbone children are element-scoped and are excluded here so they can be evaluated
+    /// at the element's altitude instead of the resource root.
+    /// </summary>
+    private static HashSet<string> CollectRootScopedConstraintKeys(
+        IReadOnlyList<IType> elements,
+        IType typeDefinition,
+        IReadOnlySet<string> nestedElementNames)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        AddConstraintKeys(typeDefinition, keys);
+
+        foreach (var element in elements)
+        {
+            if (nestedElementNames.Contains(element.Info.Name))
+            {
+                continue;
+            }
+
+            AddConstraintKeys(element, keys);
+        }
+
+        return keys;
+    }
+
+    private static void AddConstraintKeys(IType element, HashSet<string> keys)
+    {
+        if (element is ITypeExtended extended && extended.Constraints is { Count: > 0 } constraints)
+        {
+            foreach (var constraint in constraints)
+            {
+                keys.Add(constraint.Key);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds invariant checks for the constraints owned by a nested element that are NOT already
+    /// evaluated at the resource root (i.e. genuinely element-scoped invariants such as pat-1).
+    /// These are attached to the element's nested schema so they run once per occurrence in the
+    /// element's own FHIRPath context.
+    /// </summary>
+    private static List<IValidationCheck> BuildElementScopedInvariantChecks(
+        IType element,
+        IReadOnlySet<string> rootScopedConstraintKeys,
+        ISchema schema,
+        FhirPathParser parser,
+        ILogger? logger)
+    {
+        var checks = new List<IValidationCheck>();
+
+        if (element is not ITypeExtended extended || extended.Constraints is not { Count: > 0 } constraints)
+        {
+            return checks;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var constraint in constraints)
+        {
+            // Universal constraints (ele-1, ext-1, ...) are already hoisted to the resource root.
+            if (rootScopedConstraintKeys.Contains(constraint.Key))
+            {
+                continue;
+            }
+
+            if (!seen.Add(constraint.Key))
+            {
+                continue;
+            }
+
+            var appliesTo = ResolveAppliesTo(constraint);
+            checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo, logger));
         }
 
         return checks;

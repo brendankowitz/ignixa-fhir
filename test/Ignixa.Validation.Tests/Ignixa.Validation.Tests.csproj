@@ -9,7 +9,8 @@
     <LangVersion>latest</LangVersion>
     <!-- Allow BDD-style test naming with underscores (Given_When_Then) -->
     <!-- Suppress CA1307 (StringComparison) and CS8604 (nullable) in test code for brevity -->
-    <NoWarn>$(NoWarn);CA1307;CA1707;CS8604</NoWarn>
+    <!-- CA2227/CA1002: conformance manifest DTOs use mutable List<T> collections for JSON deserialization -->
+    <NoWarn>$(NoWarn);CA1307;CA1707;CS8604;CA2227;CA1002</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -164,8 +164,12 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         try
         {
-            // Evaluate the FHIRPath expression
-            var result = _evaluator.Value.Evaluate(element, expression);
+            // Evaluate the FHIRPath expression. When tree-context scope has been seeded
+            // (resource roots and contained recursion), supply %resource / %rootResource /
+            // resolve() so root-referencing invariants (dom-*, bdl-*) evaluate correctly.
+            // When scope is unseeded (some direct callers/tests), fall back to context-free
+            // evaluation, which defaults %resource to the constrained element as before.
+            var result = _evaluator.Value.Evaluate(element, expression, BuildEvaluationContext(state));
 
             // Convert result to boolean
             // Per FHIRPath spec: empty result = false, single boolean true = true, all else = false
@@ -199,16 +203,64 @@ public class FhirPathInvariantCheck : IValidationCheck
         {
             throw;
         }
+        catch (NotSupportedException ex)
+        {
+            // A KNOWN engine limitation — an unimplemented FHIRPath function (htmlChecks() /
+            // conformsTo() / memberOf()) or operator, which the engine throws NotSupportedException
+            // for. Not a resource error: degrade to a non-failing Warning, consistent with the
+            // parse-failure path above, so we never reject a resource on our own engine gap.
+            // (Reference validators likewise never hard-fail a resource on an unevaluable constraint.)
+            _logger?.LogWarning(
+                ex,
+                "Constraint {ConstraintKey} uses an unsupported FHIRPath feature; treating as non-failing",
+                _constraint.Key);
+
+            var issue = new ValidationIssue(
+                IssueSeverity.Warning,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
+
+            return new ValidationResult(isValid: true, issues: new[] { issue });
+        }
         catch (Exception ex)
         {
+            // An UNEXPECTED evaluation failure — a defect in our engine or malformed data, not a known
+            // limitation. Surface it loudly (failing Error + Error log) rather than masking it as a
+            // benign warning, so it cannot silently pass a resource or inflate conformance metrics.
+            _logger?.LogError(
+                ex,
+                "Unexpected error evaluating constraint {ConstraintKey}",
+                _constraint.Key);
+
             var issue = new ValidationIssue(
                 IssueSeverity.Error,
                 _constraint.Key,
                 element.Location ?? string.Empty,
-                $"{_constraint.Key}: Failed to evaluate FHIRPath expression: {ex.Message}");
+                $"{_constraint.Key}: unexpected error evaluating FHIRPath expression: {ex.Message}");
 
             return ValidationResult.Failure(issue);
         }
+    }
+
+    /// <summary>
+    /// Builds the FHIRPath evaluation context from the validation scope. Returns null when no
+    /// resource scope has been seeded, preserving context-free evaluation for direct callers.
+    /// </summary>
+    private static EvaluationContext? BuildEvaluationContext(ValidationState state)
+    {
+        var scope = state.Scope;
+        if (scope.Resource is null)
+        {
+            return null;
+        }
+
+        return new FhirEvaluationContext
+        {
+            Resource = scope.Resource,
+            RootResource = scope.RootResource,
+            ElementResolver = scope.Resolver
+        };
     }
 
     /// <summary>
