@@ -113,16 +113,18 @@ Rust reference (`rh-foundation/src/snapshot/generator.rs` + `merger.rs`): recurs
 `baseDefinition`, merges differential onto base via `ElementMerger::merge_elements`, uses a
 pre-existing snapshot as-is when present, detects circular dependencies via a `visited` set.
 
-Design fork (Transformer decision, to be resolved with Phase 1 data in hand):
+**Decision (locked): build our own `ElementMerger`** — not Firely's `SnapshotGenerator`. No
+`Hl7.Fhir.*` coupling in Core/package layers, full control, Rust-informed. Firely's generator is kept
+in the **test layer only** as a differential oracle. The seam is isolated: `StructureDefinitionTypeAdapter`
+is snapshot-only today, so we insert a generation step upstream of it and leave the schema builder,
+checks, and resolver untouched.
 
-| Option | Cost | Trade-off |
-|---|---|---|
-| A. Firely `SnapshotGenerator` | Low | Battle-tested; pulls `Hl7.Fhir.*` into a load path — placement decision (Core layer rules). Good as the Phase-1 **test oracle** immediately. |
-| B. Own differential merger (Rust-style) | High | Full control, no Firely coupling, idiomatic. The "complete our own implementation" answer. |
-| C. Codegen-time only | Low | Already effectively done for core; does **not** help runtime-loaded IGs (the actual gap). |
+Milestones: M1 base-merge constraint tightening (no slicing) → M2 slicing/extension element insertion
+(feeds slicing) → M3 type expansion + edge cases. Measured by **enabling the deferred profile/package
+conformance slice** — Phase 2's payoff shows up there, not on clean-base.
 
-**Exit criteria:** differential-only profiles validate correctly; `snapshot` triage bucket collapses.
-See `investigations/differential-snapshot-generation.md` (to be created).
+**Exit criteria:** differential-only profiles validate correctly; the profile/package conformance
+slice runs. Detailed plan: [differential-snapshot-generation](investigations/differential-snapshot-generation.md).
 
 ## Phase 3 — Gap completion
 
@@ -133,7 +135,7 @@ triage buckets; the list below is the candidate set.
 |---|---|---|
 | Slicing / discriminators | Not implemented (`SlicingMetadata` captured, unused) | In-progress investigation. Blocked on discriminator-`type` field in codegen + `conformsTo()` stub. |
 | `conformsTo()` / `memberOf()` / `validateVS()` | `NotSupportedException` stubs | Unblocks `profile` slicing discriminators. Needs profile-validation infra + tree-context. |
-| Terminology completeness | Membership-only; `$lookup`/`$expand`/`$translate`/`$subsumes` stubbed | Local-first model (per Rust) + optional TX fallback. Steal the ValueSet-membership LRU. |
+| Terminology completeness | Membership-only; `$lookup`/`$expand`/`$translate`/`$subsumes` stubbed | **Decision locked:** (1) error-vs-warn severity — never error on an unverifiable binding; (2) expanded local valuesets; (3) remote TX server API as fallback. Local-first per Rust; membership LRU. Biggest lever on the current slice. Detailed plan: [terminology-completeness](investigations/terminology-completeness.md). |
 | Primitive value validation | Loose `TypeCheck` on non-choice primitives | Empty strings + impossible dates pass. Strict `FhirPrimitiveValidator` wired only into `ChoiceElementCheck`. Cheap fix. |
 | `$validate` mode handlers | DELETE/CREATE/UPDATE integrity checks are TODOs | Referential integrity, uniqueness, immutability. |
 | Extensible/Preferred bindings | Warning-only | No real extensible enforcement beyond membership warnings. |
@@ -172,8 +174,9 @@ triage buckets; the list below is the candidate set.
 | [tree-context-scoping](investigations/tree-context-scoping.md) | Viable (PR #286) | Phase 3 enabler |
 | [slicing-discriminators](investigations/slicing-discriminators.md) | In Progress | Phase 3 |
 | [primitive-value-validation-gap](investigations/primitive-value-validation-gap.md) | Viable | Phase 3 |
-| conformance-harness | To create | Phase 1 |
-| differential-snapshot-generation | To create | Phase 2 |
+| conformance-harness | Landed (`ValidatorConformanceRunner`) | Phase 1 |
+| [differential-snapshot-generation](investigations/differential-snapshot-generation.md) | Planned (own `ElementMerger`) | Phase 2 |
+| [terminology-completeness](investigations/terminology-completeness.md) | Planned (local + severity + remote) | Phase 3 |
 | engine-architecture | To create | Cross-cutting |
 
 ## Reference: what we learned from `rh-validator` (Rust)
