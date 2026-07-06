@@ -83,6 +83,22 @@ shared root causes, ranked:
 Under-strict (missed errors) is mostly the known gaps: extension-definition validation, terminology,
 a few invariants. Deferred slices: IG-package cases, `supporting`/`profile` cases, non-R4 versions.
 
+### Progression (R4 clean-base, 187 cases)
+
+| Step | Pass | Over-strict | Under-strict | Note |
+|---|---|---|---|---|
+| Baseline (`main`) | 63.6% | 54 | 14 | |
+| + unevaluable-invariant → warning (`53f4c58`) | 62.6% | 48 | 22 | `htmlChecks()` etc. no longer spurious errors |
+| + element-scoped invariant altitude (`23301c8`) | 61.5% | 18 | 54 | `pat-1`/`bdl-5`/`inv-1`/`vsd-1` fire at owning element |
+| + PR #286 tree-context merged & seeded (`efb7850`) | 64.7% | 19 | 47 | `resolve()`/`%resource` catch broken local refs |
+
+**The real scoreboard is the split, not the headline.** Over-strict (valid resources we wrongly
+reject — a validator's worst failure) fell **54 → 19 (−65%)**. Under-strict rose because removing
+spurious errors *unmasked* pre-existing terminology/semantic gaps that were coincidentally rejecting
+the right resources for the wrong reasons — those are honest Phase 2/3 work (terminology, snapshot,
+extension-versioning), not regressions. Architecture rationale recorded in
+[ADR 2607: Forward-Only Nodes with Descending Context Scopes](../../adr/adr-2607-forward-only-validation-context.md).
+
 ## Phase 2 — Differential → snapshot generation
 
 **Objective:** build our own snapshot generator, informed by the Rust `ElementMerger`.
