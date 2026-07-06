@@ -83,6 +83,16 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
         Func<string, IElement?> outerResolver)
     {
         var index = ReferenceIndex.Build(nestedResource);
+
+        // Chain to the outer resolver on a local miss. This is deliberately correct for BOTH boundary
+        // kinds we descend through:
+        //  - contained[]: a contained resource has no own `contained` (FHIR forbids nested contained),
+        //    so its index is empty and a fragment (#id) must fall through to the CONTAINER's pool —
+        //    contained resources legitimately reference each other via #id (FHIR contained-peer refs).
+        //  - Bundle.entry.resource / Parameters.parameter.resource: an independent resource resolves
+        //    fragments against its own `contained` (indexed here); relative Type/id refs fall through
+        //    to the Bundle. The fall-through is harmless for its fragments because those containers
+        //    carry no root-level `contained` to collide with.
         return reference => index.Resolve(reference) ?? outerResolver(reference);
     }
 

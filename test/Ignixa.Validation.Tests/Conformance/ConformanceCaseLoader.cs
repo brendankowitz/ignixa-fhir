@@ -122,7 +122,7 @@ public static class ConformanceCaseLoader
         };
 
         return errorCount is { } count
-            ? new ConformanceExpectation(count == 0, count, "java")
+            ? new ConformanceExpectation(count, "java")
             : null;
     }
 

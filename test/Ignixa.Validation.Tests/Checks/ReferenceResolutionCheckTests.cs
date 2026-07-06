@@ -86,6 +86,25 @@ public class ReferenceResolutionCheckTests
     }
 
     [Fact]
+    public void GivenContainedResourceReferencingPeerContained_WhenValidating_ThenNoIssue()
+    {
+        // FHIR contained-peer reference: a contained resource references another contained resource
+        // of the same container via #id. The fragment must resolve against the CONTAINER's contained
+        // pool (the nested resource has no own contained), so it must not be flagged. Regression guard:
+        // isolating nested fragments would falsely flag this.
+        var result = Validate(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""p1"",
+            ""contained"": [
+                { ""resourceType"": ""Organization"", ""id"": ""org1"" },
+                { ""resourceType"": ""Patient"", ""id"": ""linked"", ""managingOrganization"": { ""reference"": ""#org1"" } }
+            ]
+        }");
+
+        result.Issues.ShouldNotContain(i => i.Code == "ref-resolve");
+    }
+
+    [Fact]
     public void GivenRootFragmentReferenceUnresolved_WhenValidating_ThenReportsRefResolve()
     {
         var result = Validate(@"{
