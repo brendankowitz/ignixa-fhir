@@ -15,6 +15,11 @@ FHIR validation is critical for production servers but must balance correctness,
 - Must integrate with terminology services for binding validation
 - Architecture inspired by Firely's compiled schema pattern
 
+## Roadmap
+
+See **[roadmap.md](roadmap.md)** — the phased implementation plan (conformance harness → differential
+snapshot generation → gap completion) that sequences the investigations below.
+
 ## Investigations
 
 | Investigation | Status | Summary |
