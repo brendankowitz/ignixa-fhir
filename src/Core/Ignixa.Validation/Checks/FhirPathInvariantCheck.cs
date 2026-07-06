@@ -203,16 +203,16 @@ public class FhirPathInvariantCheck : IValidationCheck
         {
             throw;
         }
-        catch (Exception ex)
+        catch (NotSupportedException ex)
         {
-            // An invariant the engine cannot evaluate — e.g. an unimplemented FHIRPath function such
-            // as htmlChecks() / conformsTo() / memberOf() — is a validator limitation, not a resource
-            // error. Degrade to a non-failing Warning, consistent with the parse-failure path above,
-            // so we never reject a resource on our own engine gap. Logged to keep the gap visible.
+            // A KNOWN engine limitation — an unimplemented FHIRPath function (htmlChecks() /
+            // conformsTo() / memberOf()) or operator, which the engine throws NotSupportedException
+            // for. Not a resource error: degrade to a non-failing Warning, consistent with the
+            // parse-failure path above, so we never reject a resource on our own engine gap.
             // (Reference validators likewise never hard-fail a resource on an unevaluable constraint.)
             _logger?.LogWarning(
                 ex,
-                "Constraint {ConstraintKey} could not be evaluated (engine limitation); treating as non-failing",
+                "Constraint {ConstraintKey} uses an unsupported FHIRPath feature; treating as non-failing",
                 _constraint.Key);
 
             var issue = new ValidationIssue(
@@ -222,6 +222,24 @@ public class FhirPathInvariantCheck : IValidationCheck
                 $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
+        }
+        catch (Exception ex)
+        {
+            // An UNEXPECTED evaluation failure — a defect in our engine or malformed data, not a known
+            // limitation. Surface it loudly (failing Error + Error log) rather than masking it as a
+            // benign warning, so it cannot silently pass a resource or inflate conformance metrics.
+            _logger?.LogError(
+                ex,
+                "Unexpected error evaluating constraint {ConstraintKey}",
+                _constraint.Key);
+
+            var issue = new ValidationIssue(
+                IssueSeverity.Error,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                $"{_constraint.Key}: unexpected error evaluating FHIRPath expression: {ex.Message}");
+
+            return ValidationResult.Failure(issue);
         }
     }
 
