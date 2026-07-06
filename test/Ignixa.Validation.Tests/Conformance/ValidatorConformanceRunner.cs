@@ -1,9 +1,10 @@
-// <copyright file="ValidatorConformanceRunner.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
@@ -35,17 +36,28 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
     public void Baseline_R4_CleanBase_AgainstJavaReference()
     {
         var validatorDir = ConformanceCaseLoader.FindValidatorDir();
-        var cases = ConformanceCaseLoader.LoadR4CleanBaseCases();
-        cases.ShouldNotBeEmpty();
+        var loadResult = ConformanceCaseLoader.LoadR4CleanBaseCases();
+        loadResult.Cases.ShouldNotBeEmpty();
 
         var mismatches = new List<TriageRow>();
+        var errored = new List<ErroredRow>();
         var passed = 0;
 
-        foreach (var (testCase, expected) in cases)
+        foreach (var (testCase, expected) in loadResult.Cases)
         {
             var inputPath = Path.Combine(validatorDir, testCase.File!);
-            var actualValid = TryValidate(inputPath, out var errorCount, out var firstError);
+            var outcome = TryValidate(inputPath, out var errorCount, out var firstError);
 
+            if (outcome == ValidationOutcome.Errored)
+            {
+                errored.Add(new ErroredRow(
+                    testCase.Name ?? testCase.File!,
+                    testCase.Module ?? "(none)",
+                    firstError ?? "(no message)"));
+                continue;
+            }
+
+            var actualValid = outcome == ValidationOutcome.Valid;
             if (actualValid == expected.ExpectedValid)
             {
                 passed++;
@@ -63,13 +75,25 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
             }
         }
 
-        WriteReport(cases.Count, passed, mismatches);
+        WriteReport(loadResult, passed, mismatches, errored);
 
         // Observational baseline — do not fail on pass rate. Guard only that the suite actually ran.
-        cases.Count.ShouldBeGreaterThan(0);
+        loadResult.Cases.Count.ShouldBeGreaterThan(0);
     }
 
-    private static bool TryValidate(string inputPath, out int errorCount, out string? firstError)
+    /// <summary>
+    /// Outcome bucket for a single conformance attempt. <see cref="Errored"/> is kept separate from
+    /// <see cref="Valid"/>/<see cref="Invalid"/> so an Ignixa pipeline bug never masquerades as a
+    /// pass/fail verdict against the reference validator.
+    /// </summary>
+    private enum ValidationOutcome
+    {
+        Valid,
+        Invalid,
+        Errored,
+    }
+
+    private static ValidationOutcome TryValidate(string inputPath, out int errorCount, out string? firstError)
     {
         try
         {
@@ -78,7 +102,7 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
             {
                 errorCount = 1;
                 firstError = "empty/null JSON";
-                return false;
+                return ValidationOutcome.Invalid;
             }
 
             var sourceNode = JsonNodeSourceNode.Create(json);
@@ -88,7 +112,7 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
             {
                 errorCount = 1;
                 firstError = $"no schema for resourceType '{resourceType}'";
-                return false;
+                return ValidationOutcome.Invalid;
             }
 
             var settings = new ValidationSettings { Depth = ValidationDepth.Full };
@@ -104,20 +128,37 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
                 .ToList();
             errorCount = errors.Count;
             firstError = errors.Count > 0 ? errors[0].Message : null;
-            return errorCount == 0;
+            return errorCount == 0 ? ValidationOutcome.Valid : ValidationOutcome.Invalid;
+        }
+        catch (JsonException ex)
+        {
+            // Malformed input JSON is a genuinely invalid resource — the reference validator rejects
+            // these too, so it belongs in the pass/fail tally, not the errored bucket.
+            errorCount = 1;
+            firstError = $"{ex.GetType().Name}: {ex.Message}";
+            return ValidationOutcome.Invalid;
         }
         catch (Exception ex)
         {
-            // Parse/navigation failures count as "invalid" — the reference validator rejects these too.
-            errorCount = 1;
+            // An unexpected pipeline/engine exception (NullReferenceException, InvalidOperationException,
+            // etc.) is a defect in OUR validator, not a verdict about the resource. Scoring it as
+            // "invalid" would let an engine bug masquerade as a correct rejection on expected-invalid
+            // cases, and mischarge it as "over-strict" on expected-valid cases. Bucket it separately.
+            errorCount = 0;
             firstError = $"{ex.GetType().Name}: {ex.Message}";
-            return false;
+            return ValidationOutcome.Errored;
         }
     }
 
-    private void WriteReport(int total, int passed, List<TriageRow> mismatches)
+    private void WriteReport(
+        ConformanceLoadResult loadResult,
+        int passed,
+        List<TriageRow> mismatches,
+        List<ErroredRow> errored)
     {
-        var passRate = total == 0 ? 0 : 100.0 * passed / total;
+        var total = loadResult.Cases.Count;
+        var attempted = total - errored.Count;
+        var passRate = attempted == 0 ? 0 : 100.0 * passed / attempted;
 
         // Over-strict: we report errors the reference accepts. Under-strict: we miss errors it catches.
         var overStrict = mismatches.Count(r => !r.ActualValid && r.ExpectedValid);
@@ -126,14 +167,30 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         var summary = new StringBuilder();
         summary.AppendLine("=== Ignixa R4 clean-base conformance vs Java reference ===");
         summary.AppendLine(
-            $"Total: {total}  Passed: {passed}  Failed: {mismatches.Count}  Pass rate: {passRate:F1}%");
+            $"Total: {total}  Passed: {passed}  Failed: {mismatches.Count}  Errored: {errored.Count}  Pass rate (of attempted): {passRate:F1}%");
         summary.AppendLine($"Over-strict  (we reject, ref accepts): {overStrict}");
         summary.AppendLine($"Under-strict (we accept, ref rejects): {underStrict}");
+        summary.AppendLine($"Skipped (in-scope, outcome unresolved): {loadResult.Skips.Count}");
         summary.AppendLine();
+
         summary.AppendLine("Failures by module:");
         foreach (var group in mismatches.GroupBy(r => r.Module).OrderByDescending(g => g.Count()))
         {
             summary.AppendLine($"  {group.Key,-16} {group.Count()}");
+        }
+
+        summary.AppendLine();
+        summary.AppendLine("Errored by exception type:");
+        foreach (var group in errored.GroupBy(r => ExceptionTypeOf(r.FirstError)).OrderByDescending(g => g.Count()))
+        {
+            summary.AppendLine($"  {group.Key,-24} {group.Count()}");
+        }
+
+        summary.AppendLine();
+        summary.AppendLine("Skipped by reason:");
+        foreach (var group in loadResult.Skips.GroupBy(s => s.Reason).OrderByDescending(g => g.Count()))
+        {
+            summary.AppendLine($"  {group.Key,-24} {group.Count()}");
         }
 
         var csvPath = Path.Combine(AppContext.BaseDirectory, "conformance-triage-r4.csv");
@@ -141,9 +198,19 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         summary.AppendLine();
         summary.AppendLine($"Triage CSV: {csvPath}");
 
+        var erroredCsvPath = Path.Combine(AppContext.BaseDirectory, "conformance-errored-r4.csv");
+        File.WriteAllText(erroredCsvPath, BuildErroredCsv(errored));
+        summary.AppendLine($"Errored CSV: {erroredCsvPath}");
+
         var text = summary.ToString();
         _output.WriteLine(text);
         Console.WriteLine(text);
+    }
+
+    private static string ExceptionTypeOf(string firstError)
+    {
+        var separator = firstError.IndexOf(':', StringComparison.Ordinal);
+        return separator < 0 ? firstError : firstError[..separator];
     }
 
     private static string BuildTriageCsv(List<TriageRow> mismatches)
@@ -168,6 +235,23 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         return csv.ToString();
     }
 
+    private static string BuildErroredCsv(List<ErroredRow> errored)
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("name,module,exceptionType,message");
+        foreach (var r in errored.OrderBy(r => r.Module).ThenBy(r => r.Name))
+        {
+            csv.AppendLine(string.Join(
+                ',',
+                Csv(r.Name),
+                Csv(r.Module),
+                Csv(ExceptionTypeOf(r.FirstError)),
+                Csv(r.FirstError)));
+        }
+
+        return csv.ToString();
+    }
+
     private static string Csv(string value)
     {
         var escaped = value.Replace("\r", " ").Replace("\n", " ").Replace("\"", "\"\"");
@@ -182,4 +266,6 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         int ExpectedErrorCount,
         int ActualErrorCount,
         string? FirstError);
+
+    private sealed record ErroredRow(string Name, string Module, string FirstError);
 }

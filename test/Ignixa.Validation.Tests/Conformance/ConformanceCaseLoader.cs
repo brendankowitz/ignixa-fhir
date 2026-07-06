@@ -1,7 +1,7 @@
-// <copyright file="ConformanceCaseLoader.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
 
@@ -55,9 +55,11 @@ public static class ConformanceCaseLoader
     /// <summary>
     /// Loads the manifest and returns the R4 "clean base" cases — those validatable against the base
     /// spec with no IG packages, supporting resources, or explicit profiles — that have a resolvable
-    /// Java reference outcome and a present JSON input file.
+    /// Java reference outcome and a present JSON input file. Every in-scope case whose outcome could
+    /// NOT be resolved is returned as a skip (with a reason) rather than silently dropped, so the
+    /// resulting sample's denominator is never invisibly shrunk.
     /// </summary>
-    public static IReadOnlyList<(ConformanceTestCase Case, ConformanceExpectation Expected)> LoadR4CleanBaseCases()
+    public static ConformanceLoadResult LoadR4CleanBaseCases()
     {
         var validatorDir = FindValidatorDir();
         var manifestJson = File.ReadAllText(Path.Combine(validatorDir, "manifest.json"));
@@ -65,6 +67,8 @@ public static class ConformanceCaseLoader
             ?? throw new InvalidOperationException("Failed to deserialize validator manifest.json.");
 
         var results = new List<(ConformanceTestCase, ConformanceExpectation)>();
+        var skips = new List<ConformanceSkip>();
+
         foreach (var testCase in manifest.TestCases)
         {
             if (!IsR4CleanBase(testCase, validatorDir))
@@ -72,109 +76,63 @@ public static class ConformanceCaseLoader
                 continue;
             }
 
-            var expected = TryResolveJavaExpectation(testCase, validatorDir);
+            var (expected, skipReason) = ResolveJavaExpectation(testCase, validatorDir);
             if (expected is not null)
             {
                 results.Add((testCase, expected));
             }
-        }
-
-        return results;
-    }
-
-    private static bool IsR4CleanBase(ConformanceTestCase c, string validatorDir)
-    {
-        if (c.Version != "4.0" || !c.UseTest)
-        {
-            return false;
-        }
-
-        if (c.File is null || !c.File.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (c.Packages is { Count: > 0 } || c.Supporting is { Count: > 0 }
-            || c.Profiles is { Count: > 0 } || c.Profile is not null || c.Logical is not null)
-        {
-            return false;
-        }
-
-        return File.Exists(Path.Combine(validatorDir, c.File));
-    }
-
-    /// <summary>
-    /// Resolves the Java reference outcome (inline object or path under <c>outcomes/</c>) into an
-    /// expectation. Returns null when no usable Java outcome is available.
-    /// </summary>
-    private static ConformanceExpectation? TryResolveJavaExpectation(ConformanceTestCase c, string validatorDir)
-    {
-        if (c.Java is not { } java)
-        {
-            return null;
-        }
-
-        int? errorCount = java.ValueKind switch
-        {
-            JsonValueKind.String => CountErrorsInOutcomeFile(validatorDir, java.GetString()!),
-            JsonValueKind.Object => CountErrorsInInlineOutcome(java),
-            _ => null,
-        };
-
-        return errorCount is { } count
-            ? new ConformanceExpectation(count, "java")
-            : null;
-    }
-
-    private static int? CountErrorsInInlineOutcome(JsonElement inline)
-    {
-        if (inline.TryGetProperty("errorCount", out var ec) && ec.TryGetInt32(out var count))
-        {
-            return count;
-        }
-
-        // Some entries embed a nested OperationOutcome under "outcome" instead of a count.
-        if (inline.TryGetProperty("outcome", out var outcome) && outcome.ValueKind == JsonValueKind.Object)
-        {
-            return CountErrorIssues(outcome);
-        }
-
-        return null;
-    }
-
-    private static int? CountErrorsInOutcomeFile(string validatorDir, string relativePath)
-    {
-        var path = Path.Combine(
-            validatorDir,
-            "outcomes",
-            relativePath.Replace('/', Path.DirectorySeparatorChar));
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-
-        using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        return CountErrorIssues(doc.RootElement);
-    }
-
-    private static int CountErrorIssues(JsonElement operationOutcome)
-    {
-        if (!operationOutcome.TryGetProperty("issue", out var issues) || issues.ValueKind != JsonValueKind.Array)
-        {
-            return 0;
-        }
-
-        var count = 0;
-        foreach (var issue in issues.EnumerateArray())
-        {
-            if (issue.TryGetProperty("severity", out var sev)
-                && sev.ValueKind == JsonValueKind.String
-                && sev.GetString() is "error" or "fatal")
+            else
             {
-                count++;
+                skips.Add(new ConformanceSkip(testCase.Name ?? testCase.File ?? "(unnamed)", skipReason!.Value));
             }
         }
 
-        return count;
+        return new ConformanceLoadResult(results, skips);
+    }
+
+    private static bool IsR4CleanBase(ConformanceTestCase testCase, string validatorDir) =>
+        ConformanceCaseAnalysis.IsR4CleanBase(
+            testCase,
+            file => File.Exists(Path.Combine(validatorDir, file)));
+
+    /// <summary>
+    /// Resolves the Java reference outcome (inline object or path under <c>outcomes/</c>) into an
+    /// expectation. Returns a skip reason instead of throwing when the outcome file is missing or
+    /// malformed — a broken vendored fixture should not abort the whole suite.
+    /// </summary>
+    private static (ConformanceExpectation? Expected, ConformanceSkipReason? Skip) ResolveJavaExpectation(
+        ConformanceTestCase testCase, string validatorDir)
+    {
+        if (testCase.Java is not { } java)
+        {
+            return (null, ConformanceSkipReason.NoOutcomeField);
+        }
+
+        switch (java.ValueKind)
+        {
+            case JsonValueKind.String:
+                var path = Path.Combine(
+                    validatorDir,
+                    "outcomes",
+                    java.GetString()!.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(path))
+                {
+                    return (null, ConformanceSkipReason.OutcomeFileMissing);
+                }
+
+                var count = ConformanceCaseAnalysis.TryCountErrorsInOutcomeContent(File.ReadAllText(path));
+                return count is { } fileCount
+                    ? (new ConformanceExpectation(fileCount, "java"), null)
+                    : (null, ConformanceSkipReason.OutcomeFileMalformed);
+
+            case JsonValueKind.Object:
+                var inlineCount = ConformanceCaseAnalysis.TryCountErrorsInInlineOutcome(java);
+                return inlineCount is { } ic
+                    ? (new ConformanceExpectation(ic, "java"), null)
+                    : (null, ConformanceSkipReason.UnrecognizedOutcomeShape);
+
+            default:
+                return (null, ConformanceSkipReason.UnrecognizedOutcomeShape);
+        }
     }
 }

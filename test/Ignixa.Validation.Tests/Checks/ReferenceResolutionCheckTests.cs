@@ -1,7 +1,7 @@
-// <copyright file="ReferenceResolutionCheckTests.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
@@ -114,5 +114,55 @@ public class ReferenceResolutionCheckTests
         }");
 
         result.Issues.ShouldContain(i => i.Code == "ref-resolve");
+    }
+
+    [Fact]
+    public void GivenBundleEntryResourceWithRelativeReferenceToSiblingEntry_WhenValidating_ThenNoIssue()
+    {
+        // entry[0].resource holds a RELATIVE reference that does NOT resolve within its own (empty)
+        // contained set - it only resolves by falling through to the outer Bundle resolver, which
+        // indexes entry[1]'s resource by Type/id. Regression guard: dropping the nested resolver's
+        // "?? outerResolver" chain would falsely flag this as unresolved.
+        var result = Validate(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""p1"",
+                        ""managingOrganization"": { ""reference"": ""Organization/o1"" }
+                    }
+                },
+                {
+                    ""resource"": { ""resourceType"": ""Organization"", ""id"": ""o1"" }
+                }
+            ]
+        }");
+
+        result.Issues.ShouldNotContain(i => i.Code == "ref-resolve");
+    }
+
+    [Fact]
+    public void GivenBundleEntryResourceFragmentResolvingWithinItsOwnContained_WhenValidating_ThenNoIssue()
+    {
+        // Bundle.entry.resource is an independent resource root within the Bundle: a fragment
+        // reference inside it must resolve against ITS OWN contained set, not the Bundle's.
+        var result = Validate(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Coverage"",
+                        ""id"": ""c1"",
+                        ""contained"": [{ ""resourceType"": ""Organization"", ""id"": ""payer"" }],
+                        ""payor"": [{ ""reference"": ""#payer"" }]
+                    }
+                }
+            ]
+        }");
+
+        result.Issues.ShouldNotContain(i => i.Code == "ref-resolve");
     }
 }

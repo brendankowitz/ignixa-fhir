@@ -1,7 +1,7 @@
-// <copyright file="ConformanceTestCase.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -58,8 +58,4 @@ public sealed class ConformanceTestCase
     /// </summary>
     [JsonPropertyName("java")]
     public JsonElement? Java { get; set; }
-
-    /// <summary>Expected outcome from the Firely .NET SDK (cross-check oracle). Same dual shape as <see cref="Java"/>.</summary>
-    [JsonPropertyName("firely-sdk-current")]
-    public JsonElement? FirelySdkCurrent { get; set; }
 }

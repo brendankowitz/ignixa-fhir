@@ -3,13 +3,11 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace Ignixa.Validation.Tests.Conformance;
 
-/// <summary>Root of the official FHIR validator <c>manifest.json</c>.</summary>
-public sealed class ConformanceManifest
-{
-    [JsonPropertyName("test-cases")]
-    public List<ConformanceTestCase> TestCases { get; set; } = [];
-}
+/// <summary>
+/// An R4 clean-base manifest entry that was excluded from the conformance sample, and why.
+/// </summary>
+/// <param name="Name">The manifest entry's name (or file name when unnamed).</param>
+/// <param name="Reason">Why the entry's Java reference outcome could not be resolved.</param>
+public sealed record ConformanceSkip(string Name, ConformanceSkipReason Reason);
