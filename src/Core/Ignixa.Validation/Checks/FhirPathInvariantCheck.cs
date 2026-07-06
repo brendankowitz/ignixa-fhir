@@ -201,13 +201,23 @@ public class FhirPathInvariantCheck : IValidationCheck
         }
         catch (Exception ex)
         {
+            // An invariant the engine cannot evaluate — e.g. an unimplemented FHIRPath function such
+            // as htmlChecks() / conformsTo() / memberOf() — is a validator limitation, not a resource
+            // error. Degrade to a non-failing Warning, consistent with the parse-failure path above,
+            // so we never reject a resource on our own engine gap. Logged to keep the gap visible.
+            // (Reference validators likewise never hard-fail a resource on an unevaluable constraint.)
+            _logger?.LogWarning(
+                ex,
+                "Constraint {ConstraintKey} could not be evaluated (engine limitation); treating as non-failing",
+                _constraint.Key);
+
             var issue = new ValidationIssue(
-                IssueSeverity.Error,
+                IssueSeverity.Warning,
                 _constraint.Key,
                 element.Location ?? string.Empty,
-                $"{_constraint.Key}: Failed to evaluate FHIRPath expression: {ex.Message}");
+                $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
 
-            return ValidationResult.Failure(issue);
+            return new ValidationResult(isValid: true, issues: new[] { issue });
         }
     }
 
