@@ -29,6 +29,14 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
     /// <returns>A validation result with an issue per unresolved local reference.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
+        // Full-tier only. The schema builder registers this in profileChecks (Full), so it is already
+        // gated there; this guard makes the check self-protecting for direct callers and keeps the
+        // potentially-expensive reference walk off the Spec/Compatibility paths.
+        if (settings.Depth < ValidationDepth.Full)
+        {
+            return ValidationResult.Success();
+        }
+
         var resolver = state.Scope.Resolver;
         if (resolver is null)
         {
