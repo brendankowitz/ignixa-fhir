@@ -91,6 +91,7 @@ a few invariants. Deferred slices: IG-package cases, `supporting`/`profile` case
 | + unevaluable-invariant → warning (`53f4c58`) | 62.6% | 48 | 22 | `htmlChecks()` etc. no longer spurious errors |
 | + element-scoped invariant altitude (`23301c8`) | 61.5% | 18 | 54 | `pat-1`/`bdl-5`/`inv-1`/`vsd-1` fire at owning element |
 | + PR #286 tree-context merged & seeded (`efb7850`) | 64.7% | 19 | 47 | `resolve()`/`%resource` catch broken local refs |
+| + nested-resource fragment re-scoping (`1027232`) | 63.6% | 18 | 50 | `#payer` in `parameter.resource` resolves in its own scope |
 
 **The real scoreboard is the split, not the headline.** Over-strict (valid resources we wrongly
 reject — a validator's worst failure) fell **54 → 19 (−65%)**. Under-strict rose because removing
