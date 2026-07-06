@@ -193,7 +193,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                         Depth = validationDepth,
                         TerminologyService = _terminologyService
                     };
-                    var state = new ValidationState();
+                    var state = new ValidationState().EnterRootResource(element);
                     var validationResult = schema.Validate(element, settings, state);
 
                 if (!validationResult.IsValid)

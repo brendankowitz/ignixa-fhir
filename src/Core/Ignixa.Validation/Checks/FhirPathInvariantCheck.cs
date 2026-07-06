@@ -164,8 +164,12 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         try
         {
-            // Evaluate the FHIRPath expression
-            var result = _evaluator.Value.Evaluate(element, expression);
+            // Evaluate the FHIRPath expression. When tree-context scope has been seeded
+            // (resource roots and contained recursion), supply %resource / %rootResource /
+            // resolve() so root-referencing invariants (dom-*, bdl-*) evaluate correctly.
+            // When scope is unseeded (some direct callers/tests), fall back to context-free
+            // evaluation, which defaults %resource to the constrained element as before.
+            var result = _evaluator.Value.Evaluate(element, expression, BuildEvaluationContext(state));
 
             // Convert result to boolean
             // Per FHIRPath spec: empty result = false, single boolean true = true, all else = false
@@ -219,6 +223,26 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
         }
+    }
+
+    /// <summary>
+    /// Builds the FHIRPath evaluation context from the validation scope. Returns null when no
+    /// resource scope has been seeded, preserving context-free evaluation for direct callers.
+    /// </summary>
+    private static EvaluationContext? BuildEvaluationContext(ValidationState state)
+    {
+        var scope = state.Scope;
+        if (scope.Resource is null)
+        {
+            return null;
+        }
+
+        return new FhirEvaluationContext
+        {
+            Resource = scope.Resource,
+            RootResource = scope.RootResource,
+            ElementResolver = scope.Resolver
+        };
     }
 
     /// <summary>

@@ -3,6 +3,8 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.Abstractions;
+
 namespace Ignixa.Validation;
 
 /// <summary>
@@ -44,6 +46,13 @@ public record ValidationState
     public LocationState Location { get; init; }
 
     /// <summary>
+    /// Gets the FHIRPath tree-context scope (%resource, %rootResource, resolve()) for the
+    /// resource currently being validated. Seeded at resource boundaries via
+    /// <see cref="EnterRootResource"/> / <see cref="EnterContainedResource"/>.
+    /// </summary>
+    public ResourceScope Scope { get; init; } = new();
+
+    /// <summary>
     /// Creates a new state with updated instance information.
     /// </summary>
     /// <param name="resourceType">The resource type being validated (e.g., "Patient").</param>
@@ -75,6 +84,57 @@ public record ValidationState
             {
                 InstancePath = instancePath,
                 DefinitionPath = definitionPath
+            }
+        };
+    }
+
+    /// <summary>
+    /// Enters a resource that becomes a validation root: a standalone resource or an independent
+    /// Bundle entry. Both %resource and %rootResource point at the resource itself (a Bundle entry's
+    /// resource is not "contained" in the Bundle in the FHIRPath sense). Builds a fresh resolver
+    /// rooted at this resource.
+    /// </summary>
+    /// <param name="resource">The resource element becoming the validation root.</param>
+    /// <returns>A new validation state scoped to this resource.</returns>
+    public ValidationState EnterRootResource(IElement resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        var index = ReferenceIndex.Build(resource);
+        return this with
+        {
+            Scope = new ResourceScope
+            {
+                Resource = resource,
+                RootResource = resource,
+                Resolver = index.Resolve
+            }
+        };
+    }
+
+    /// <summary>
+    /// Enters a contained resource C inside the current parent resource P: %resource becomes C and
+    /// %rootResource becomes P (the containing resource). The resolver chains C's own contained set
+    /// to the parent scope's resolver, matching FHIR resolution order (contained-of-current then
+    /// bundle/contained-of-root).
+    /// </summary>
+    /// <param name="contained">The contained resource element being entered.</param>
+    /// <returns>A new validation state scoped to the contained resource.</returns>
+    public ValidationState EnterContainedResource(IElement contained)
+    {
+        ArgumentNullException.ThrowIfNull(contained);
+
+        var parentScope = Scope;
+        var index = ReferenceIndex.Build(contained);
+        var parentResolver = parentScope.Resolver;
+
+        return this with
+        {
+            Scope = parentScope with
+            {
+                Resource = contained,
+                RootResource = parentScope.Resource,
+                Resolver = reference => index.Resolve(reference) ?? parentResolver?.Invoke(reference)
             }
         };
     }
