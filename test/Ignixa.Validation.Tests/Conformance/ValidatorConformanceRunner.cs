@@ -92,7 +92,13 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
             }
 
             var settings = new ValidationSettings { Depth = ValidationDepth.Full };
-            var result = schema.Validate(sourceNode.ToElement(Schema), settings, new ValidationState());
+
+            // Seed tree-context scope exactly as the production handler does (ValidateResourceHandler),
+            // so %resource / %rootResource / resolve() engage for dom-*/bdl-* invariants and reference
+            // resolution. Without this, invariant evaluation falls back to context-free mode.
+            var element = sourceNode.ToElement(Schema);
+            var state = new ValidationState().EnterRootResource(element);
+            var result = schema.Validate(element, settings, state);
             var errors = result.Issues
                 .Where(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal)
                 .ToList();
