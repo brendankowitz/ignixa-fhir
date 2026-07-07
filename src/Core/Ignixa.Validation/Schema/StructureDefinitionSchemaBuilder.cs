@@ -527,6 +527,28 @@ public class StructureDefinitionSchemaBuilder
         var elementsToScan = new List<IType>(elements.Count + 1) { typeDefinition };
         elementsToScan.AddRange(elements.Where(e => !nestedElementNames.Contains(e.Info.Name)));
 
+        // Count how often each constraint key appears across the scanned elements. Universal
+        // invariants (ele-1, ext-1, dom-*) are duplicated by codegen onto many child elements, so
+        // hoisting them to the type altitude is safe — their expressions are container-relative. A
+        // key that appears on a SINGLE primitive child is element-scoped (e.g. eld-3 on
+        // ElementDefinition.max, whose expression `empty() or ($this='*') or (toInteger()>=0)` treats
+        // the focus as the max scalar). Hoisting such a constraint to the type altitude evaluates it
+        // against the whole complex object, where it can never satisfy and spuriously fails on every
+        // occurrence. Only the type root's own constraints, and child constraints that recur across
+        // multiple elements, are hoisted; single-child element-scoped constraints are left out here
+        // (they would need per-element-altitude evaluation, tracked as future work).
+        var childKeyOccurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var element in elements.Where(e => !nestedElementNames.Contains(e.Info.Name)))
+        {
+            if (element is ITypeExtended ext && ext.Constraints is { Count: > 0 } cs)
+            {
+                foreach (var c in cs)
+                {
+                    childKeyOccurrences[c.Key] = childKeyOccurrences.GetValueOrDefault(c.Key) + 1;
+                }
+            }
+        }
+
         foreach (var element in elementsToScan)
         {
             if (element is not ITypeExtended extendedMetadata)
@@ -540,9 +562,17 @@ public class StructureDefinitionSchemaBuilder
                 continue;
             }
 
+            var isRootType = ReferenceEquals(element, typeDefinition);
+
             foreach (var constraint in constraints)
             {
                 if (seenConstraints.Contains(constraint.Key))
+                {
+                    continue;
+                }
+
+                // Element-scoped constraint owned by exactly one primitive child: skip hoisting.
+                if (!isRootType && childKeyOccurrences.GetValueOrDefault(constraint.Key) <= 1)
                 {
                     continue;
                 }

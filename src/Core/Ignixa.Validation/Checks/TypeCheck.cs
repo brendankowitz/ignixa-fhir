@@ -4,6 +4,7 @@
 // </copyright>
 
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -21,6 +22,9 @@ public class TypeCheck : IValidationCheck
 {
     private readonly string _elementName;
     private readonly string _expectedType;
+
+    // FHIR: no string-valued primitive may exceed 1 MB (1,048,576 bytes).
+    private const int MaxStringByteLength = 1024 * 1024;
 
     // Regex patterns for primitive type validation (from FHIR spec)
     private static readonly Regex IdPattern = new(@"^[A-Za-z0-9\-\.]{1,64}$", RegexOptions.Compiled);
@@ -108,6 +112,19 @@ public class TypeCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
+        // FHIR caps any string-valued primitive at 1 MB (1,048,576 bytes UTF-8). This applies to the
+        // string family broadly (string, id, code, markdown, uri, ...), including Element.id — the only
+        // constraint an Element.id (a plain System.String) carries. Checked here so an oversized value
+        // is rejected on length rather than slipping through the format rules below.
+        if (IsStringFamily(_expectedType) && Encoding.UTF8.GetByteCount(text) > MaxStringByteLength)
+        {
+            return ValidationResult.Failure(
+                ValidationIssue.InvariantFailure(
+                    "type-1",
+                    $"Value is longer than permitted maximum length of 1 MB ({MaxStringByteLength} bytes)",
+                    location));
+        }
+
         // Element-name-based validation: Some FHIR types inherit from base types but have specialized rules.
         // Check element name first to apply specialized validation for inherited types.
         // Example: "id" inherits from string but requires ID format validation.
@@ -166,8 +183,10 @@ public class TypeCheck : IValidationCheck
 
         return _elementName switch
         {
-            // Identifier-like types
-            "id" => IdPattern.IsMatch(text),
+            // Note: an element merely NAMED "id" is not id-format-validated here. Only the FHIR `id`
+            // datatype (Resource.id) carries the [A-Za-z0-9\-\.]{1,64} rule; Element.id is a plain
+            // System.String and accepts values like "/foobar==". The regex is applied by type in
+            // GetValidationByType ("id" => IdPattern), reached when _expectedType == "id".
 
             // URI-like types
             "uri" => UriPattern.IsMatch(text),
@@ -193,6 +212,7 @@ public class TypeCheck : IValidationCheck
         return _expectedType switch
         {
             "string" => true, // All text is valid string
+            "id" => IdPattern.IsMatch(text), // FHIR id datatype (Resource.id): [A-Za-z0-9\-\.]{1,64}
             // Boolean comparison is case-insensitive to handle both JSON "true"/"false"
             // and .NET boolean ToString() which returns "True"/"False"
             "boolean" => text.Equals("true", StringComparison.OrdinalIgnoreCase) ||
@@ -217,6 +237,14 @@ public class TypeCheck : IValidationCheck
     {
         return Guid.TryParse(text, out _);
     }
+
+    /// <summary>
+    /// Whether the FHIR type is a text/string-family primitive subject to the 1 MB length cap.
+    /// Excludes base64Binary (large binary payloads are legitimate) and the format-bounded
+    /// temporal types, which cannot approach the limit.
+    /// </summary>
+    private static bool IsStringFamily(string fhirType) =>
+        fhirType is "string" or "code" or "id" or "markdown" or "uri" or "url" or "canonical" or "oid" or "uuid";
 
     /// <summary>
     /// Validates that the JSON type matches the expected FHIR type.
