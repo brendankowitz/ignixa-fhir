@@ -183,7 +183,10 @@ public class InMemoryTerminologyService : ITerminologyService
                     Severity: IssueSeverity.Warning,
                     Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - provider does not contain this ValueSet"));
             }
-            membership = _valueSets.GetOrAdd(normalizedUrl, new ValueSetMembership(providerCodes));
+            membership = _valueSets.GetOrAdd(
+                normalizedUrl,
+                static (_, codes) => new ValueSetMembership(codes),
+                providerCodes);
         }
 
         var hasSystem = !string.IsNullOrWhiteSpace(system);
@@ -367,6 +370,13 @@ public class InMemoryTerminologyService : ITerminologyService
         {
             foreach (var entry in codes)
             {
+                // FhirCode is a non-nullable readonly record struct, so entry/entry.Code can't be
+                // null; guard only against an empty code (a malformed expansion entry).
+                if (string.IsNullOrEmpty(entry.Code))
+                {
+                    continue;
+                }
+
                 _codes.Add(entry.Code);
                 if (!string.IsNullOrWhiteSpace(entry.System))
                 {

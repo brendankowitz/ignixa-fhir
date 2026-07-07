@@ -28,8 +28,8 @@ public sealed class ShippedSnapshotOracleTests(ITestOutputHelper output)
 
     private readonly ITestOutputHelper _output = output;
 
-    public static TheoryData<string> ProfileFixtures() =>
-    [
+    public static TheoryData<string> ProfileFixtures() => new()
+    {
         "StructureDefinition-shareablemeasure.json",
         "StructureDefinition-cqllibrary.json",
         "StructureDefinition-shareablelibrary.json",
@@ -37,7 +37,7 @@ public sealed class ShippedSnapshotOracleTests(ITestOutputHelper output)
         "StructureDefinition-groupdefinition.json",
         "StructureDefinition-ehrsrle-provenance.json",
         "StructureDefinition-synthesis.json",
-    ];
+    };
 
     [Theory]
     [MemberData(nameof(ProfileFixtures))]
