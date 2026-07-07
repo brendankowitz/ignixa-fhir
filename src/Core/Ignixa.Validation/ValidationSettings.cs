@@ -35,6 +35,32 @@ public class ValidationSettings
     public ITerminologyService? TerminologyService { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether contained resources are validated against their own
+    /// schema. Maps to the reference validator's <c>validateContains</c> setting; when false
+    /// (<c>IGNORE</c>) contained resources are not validated. Defaults to true.
+    /// </summary>
+    public bool ValidateContainedResources { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the security-checks mode is enabled. When on, string
+    /// values that look like embedded HTML tags are rejected. Off by default (mode-gated).
+    /// </summary>
+    public bool SecurityChecks { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether embedded HTML in markdown is rejected. When on, markdown
+    /// values containing what looks like an HTML tag are flagged. Off by default (mode-gated).
+    /// </summary>
+    public bool NoHtmlInMarkdown { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether example URLs (example.org / acme.com) are rejected in
+    /// URL-valued elements. Corresponds to the reference validator's non-spec (<c>examples: false</c>)
+    /// mode. Off by default (mode-gated); when off, example URLs are permitted.
+    /// </summary>
+    public bool CheckExampleUrls { get; set; }
+
+    /// <summary>
     /// Unified depth (alias for backward compatibility).
     /// </summary>
     public ValidationDepth ValidationDepth

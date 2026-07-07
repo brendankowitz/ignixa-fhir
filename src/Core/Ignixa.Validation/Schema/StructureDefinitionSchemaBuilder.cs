@@ -86,6 +86,19 @@ public class StructureDefinitionSchemaBuilder
             universalChecks.Add(new NarrativeCheck());
         }
 
+        // Bundle-specific structural checks: closed-world rules with no terminology dependency.
+        if (typeDefinition.Info.Name == "Bundle")
+        {
+            universalChecks.Add(new BundleFullUrlCheck());
+            universalChecks.Add(new BundleLinkRelationCheck());
+        }
+
+        // Attachment.size, when stated, must match the decoded Attachment.data length.
+        if (typeDefinition.Info.Name == "Attachment")
+        {
+            universalChecks.Add(new AttachmentSizeCheck());
+        }
+
         // Extract cardinality checks (moved to Fast tier for Microsoft FHIR Server alignment)
         // Cardinality checks enforce both minimum (required fields have min=1) and maximum cardinality
         // This eliminates the need for a separate RequiredFieldCheck
@@ -157,6 +170,30 @@ public class StructureDefinitionSchemaBuilder
                     typeName);
             });
         specChecks.AddRange(shapeChecks);
+
+        // Mode-gated semantic checks (default OFF; each no-ops unless its ValidationSettings flag is
+        // set). Wired per primitive element by declared type so they carry no cost when disabled:
+        // string -> embedded-HTML (security-checks); markdown -> embedded-HTML (noHtmlInMarkdown);
+        // url/uri/canonical -> example-domain URLs (examples/non-spec mode).
+        var primitiveElements = elements.Where(e => e.Info.IsPrimitive && !e.Info.IsChoiceElement).ToList();
+        specChecks.AddRange(primitiveElements
+            .Where(e => GetTypeName(e) == "string")
+            .Select(e => new EmbeddedHtmlStringCheck(e.Info.Name)));
+        specChecks.AddRange(primitiveElements
+            .Where(e => GetTypeName(e) == "markdown")
+            .Select(e => new MarkdownHtmlCheck(e.Info.Name)));
+        specChecks.AddRange(primitiveElements
+            .Where(e => GetTypeName(e) is "url" or "uri" or "canonical")
+            .Select(e => new ExampleUrlCheck(e.Info.Name)));
+
+        // Empty-array rejection (ele-1) at resource altitude: closes the gap StructuralShapeCheck
+        // leaves for complex datatypes (CodeableConcept, Coding, ...) that never get their own nested
+        // schema, so an empty array nested inside one (e.g. category[0].coding: []) would otherwise
+        // go unchecked. Runs once per resource via a single raw-JSON walk; see EmptyArrayCheck remarks.
+        if (typeDefinition.Info.IsResource)
+        {
+            specChecks.Add(new EmptyArrayCheck());
+        }
 
         // Extract reference format checks - check the type name, not element name
         // Skip choice elements: their DefaultTypeName may be Reference but the actual type
@@ -329,7 +366,72 @@ public class StructureDefinitionSchemaBuilder
         if (typeDefinition.Info.IsResource)
         {
             profileChecks.Add(new ReferenceResolutionCheck());
+
+            // Closed-world, terminology-independent structural rules the HL7 reference validator
+            // enforces. Registered in the profile (Full) tier so Compatibility depth is unaffected.
+            profileChecks.Add(new ExtensionUrlVersionCheck());
+            profileChecks.Add(new ExtensionDefinitionCheck());
+
+            switch (typeDefinition.Info.Name)
+            {
+                case "ValueSet":
+                    profileChecks.Add(new ValueSetIncludeSystemCheck());
+                    profileChecks.Add(new ValueSetFilterCheck());
+                    break;
+                case "CodeSystem":
+                    profileChecks.Add(new CodeSystemSupplementContentCheck());
+                    profileChecks.Add(new CodeSystemPropertyTypeCheck());
+                    break;
+            }
         }
+
+        // Choice-variant nested validation (Full tier): a complex value[x] variant (e.g.
+        // valueAttachment) is skipped by ChoiceElementCheck, which only recurses into primitive
+        // variants. Route each complex variant through its datatype's own schema — reusing
+        // NestedComplexTypeCheck against the concrete variant name — so nested rules (base64Binary on
+        // Attachment.data, cardinality, shape) apply. A no-op when that variant is absent. Profile
+        // tier keeps Compatibility depth unchanged.
+        //
+        // Seed the cycle guard with the current type first: the `finally` above cleared
+        // _activeTypeNames, and BuildChoiceVariantChecks re-enters BuildSchema per complex variant.
+        // Without the current type in the visited set, a cyclic choice-variant datatype graph would
+        // recurse until it overflowed. Re-establishing it here makes the visited-set guard inside
+        // BuildChoiceVariantChecks effective across that recursion.
+        var choiceVisiting = _activeTypeNames.Value ?? new HashSet<string>(StringComparer.Ordinal);
+        var ownsChoiceVisiting = _activeTypeNames.Value is null;
+        if (ownsChoiceVisiting)
+        {
+            _activeTypeNames.Value = choiceVisiting;
+        }
+        var addedChoiceType = choiceVisiting.Add(typeDefinition.Info.Name);
+        try
+        {
+            foreach (var choiceElement in elements.Where(e => e.Info.IsChoiceElement))
+            {
+                profileChecks.AddRange(BuildChoiceVariantChecks(
+                    choiceElement, schema, terminologyService, _logger, _parser));
+            }
+        }
+        finally
+        {
+            if (addedChoiceType)
+            {
+                choiceVisiting.Remove(typeDefinition.Info.Name);
+            }
+            if (ownsChoiceVisiting)
+            {
+                _activeTypeNames.Value = null;
+            }
+        }
+
+        // Slicing (Full tier): enforce per-slice cardinality and closed/openAtEnd rules for elements
+        // whose profile declares named slices. Only elements carrying named slices produce a check —
+        // a bare open slicing header (e.g. base Extension.extension, open by url with no named slices)
+        // enforces nothing, so no check is created and valid base resources are never rejected.
+        var slicingChecks = elements
+            .Where(e => e is ITypeExtended ext && ext.Slicing is { Slices.Count: > 0 })
+            .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!));
+        profileChecks.AddRange(slicingChecks);
 
         // Build the canonical URL from the type name
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
@@ -364,6 +466,72 @@ public class StructureDefinitionSchemaBuilder
         {
             ["ext-1"] = new[] { "Extension" },
         };
+
+    /// <summary>
+    /// Known FHIR R4.0.1 constraint errata: the published core StructureDefinitions carry an
+    /// incorrect FHIRPath expression that the HL7 reference validator evaluates with a correction.
+    /// Keyed by constraint key, each entry replaces one exact source expression with its corrected
+    /// form. The match is on the full expression so we only ever touch the precise erratum; if the
+    /// generated schema is regenerated with a fixed expression, the substitution silently no-ops.
+    /// <para>
+    /// que-12 shipped as <c>enableWhen.count() &gt; 2</c> in R4.0.1 (should be <c>&gt;= 2</c> per the
+    /// human text "If there are more than one enableWhen"); corrected in R4B/R5. Without the fix an
+    /// item with exactly two enableWhen and no enableBehavior is wrongly accepted.
+    /// </para>
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, (string From, string To)> ConstraintExpressionErrata =
+        new Dictionary<string, (string From, string To)>(StringComparer.Ordinal)
+        {
+            ["que-12"] = (
+                "enableWhen.count() > 2 implies enableBehavior.exists()",
+                "enableWhen.count() >= 2 implies enableBehavior.exists()"),
+        };
+
+    /// <summary>
+    /// Datatype invariants absent from the generated core schema (the codegen emits
+    /// <c>constraints: null</c> for complex datatypes such as Period) but enforced by the HL7
+    /// reference validator. Injected into the datatype's own build so they evaluate once per
+    /// occurrence at that element's altitude, exactly like any element-owned constraint. Keyed by
+    /// the datatype name.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<IConstraint>> SupplementalDatatypeConstraints =
+        new Dictionary<string, IReadOnlyList<IConstraint>>(StringComparer.Ordinal)
+        {
+            ["Period"] = new IConstraint[]
+            {
+                new Ignixa.Abstractions.ConstraintDefinition
+                {
+                    Key = "per-1",
+                    Severity = "error",
+                    Human = "If present, start SHALL have a lower or equal value than end",
+                    Expression = "start.hasValue().not() or end.hasValue().not() or (start <= end)",
+                    Xpath = null,
+                },
+            },
+        };
+
+    /// <summary>
+    /// Applies a known-erratum correction to a constraint's FHIRPath expression, if one is registered
+    /// for its key and the source expression matches exactly. Returns the original constraint
+    /// otherwise.
+    /// </summary>
+    private static IConstraint NormalizeConstraint(IConstraint constraint)
+    {
+        if (ConstraintExpressionErrata.TryGetValue(constraint.Key, out var erratum)
+            && string.Equals(constraint.Expression, erratum.From, StringComparison.Ordinal))
+        {
+            return new Ignixa.Abstractions.ConstraintDefinition
+            {
+                Key = constraint.Key,
+                Severity = constraint.Severity,
+                Human = constraint.Human,
+                Expression = erratum.To,
+                Xpath = constraint.Xpath,
+            };
+        }
+
+        return constraint;
+    }
 
     private static IReadOnlyList<string>? ResolveAppliesTo(IConstraint constraint)
     {
@@ -401,6 +569,28 @@ public class StructureDefinitionSchemaBuilder
         var elementsToScan = new List<IType>(elements.Count + 1) { typeDefinition };
         elementsToScan.AddRange(elements.Where(e => !nestedElementNames.Contains(e.Info.Name)));
 
+        // Count how often each constraint key appears across the scanned elements. Universal
+        // invariants (ele-1, ext-1, dom-*) are duplicated by codegen onto many child elements, so
+        // hoisting them to the type altitude is safe — their expressions are container-relative. A
+        // key that appears on a SINGLE primitive child is element-scoped (e.g. eld-3 on
+        // ElementDefinition.max, whose expression `empty() or ($this='*') or (toInteger()>=0)` treats
+        // the focus as the max scalar). Hoisting such a constraint to the type altitude evaluates it
+        // against the whole complex object, where it can never satisfy and spuriously fails on every
+        // occurrence. Only the type root's own constraints, and child constraints that recur across
+        // multiple elements, are hoisted; single-child element-scoped constraints are left out here
+        // (they would need per-element-altitude evaluation, tracked as future work).
+        var childKeyOccurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var element in elements.Where(e => !nestedElementNames.Contains(e.Info.Name)))
+        {
+            if (element is ITypeExtended ext && ext.Constraints is { Count: > 0 } cs)
+            {
+                foreach (var c in cs)
+                {
+                    childKeyOccurrences[c.Key] = childKeyOccurrences.GetValueOrDefault(c.Key) + 1;
+                }
+            }
+        }
+
         foreach (var element in elementsToScan)
         {
             if (element is not ITypeExtended extendedMetadata)
@@ -414,9 +604,17 @@ public class StructureDefinitionSchemaBuilder
                 continue;
             }
 
+            var isRootType = ReferenceEquals(element, typeDefinition);
+
             foreach (var constraint in constraints)
             {
                 if (seenConstraints.Contains(constraint.Key))
+                {
+                    continue;
+                }
+
+                // Element-scoped constraint owned by exactly one primitive child: skip hoisting.
+                if (!isRootType && childKeyOccurrences.GetValueOrDefault(constraint.Key) <= 1)
                 {
                     continue;
                 }
@@ -432,7 +630,20 @@ public class StructureDefinitionSchemaBuilder
                 }
 
                 seenConstraints.Add(constraint.Key);
-                checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo, logger));
+                checks.Add(new FhirPathInvariantCheck(NormalizeConstraint(constraint), schema, parser, appliesTo, logger));
+            }
+        }
+
+        // Inject datatype invariants missing from codegen (e.g. Period's per-1). These belong to the
+        // type currently being built, so they run at this altitude once per occurrence.
+        if (SupplementalDatatypeConstraints.TryGetValue(typeDefinition.Info.Name, out var supplemental))
+        {
+            foreach (var constraint in supplemental)
+            {
+                if (seenConstraints.Add(constraint.Key))
+                {
+                    checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo: null, logger));
+                }
             }
         }
 
@@ -675,10 +886,63 @@ public class StructureDefinitionSchemaBuilder
             }
 
             var appliesTo = ResolveAppliesTo(constraint);
-            checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo, logger));
+            checks.Add(new FhirPathInvariantCheck(NormalizeConstraint(constraint), schema, parser, appliesTo, logger));
         }
 
         return checks;
+    }
+
+    /// <summary>
+    /// Builds nested-schema checks for the complex variants of a choice element. Primitive variants
+    /// are handled by <see cref="ChoiceElementCheck"/>; specially-handled datatypes (Reference,
+    /// CodeableConcept, Coding, Extension, Resource, xhtml) are left to their own dedicated checks to
+    /// keep the newly-lit validation surface narrow. Each remaining complex variant yields a
+    /// <see cref="NestedComplexTypeCheck"/> targeting the concrete variant name (e.g. "valueAttachment").
+    /// </summary>
+    private static IEnumerable<IValidationCheck> BuildChoiceVariantChecks(
+        IType choiceElement,
+        ISchema schema,
+        ITerminologyService? terminologyService,
+        ILogger<StructureDefinitionSchemaBuilder>? logger,
+        FhirPathParser? parser)
+    {
+        if (choiceElement is not ITypeExtended extended || extended.Types.Count == 0)
+        {
+            yield break;
+        }
+
+        var baseName = choiceElement.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+            ? choiceElement.Info.Name[..^3]
+            : choiceElement.Info.Name;
+
+        var isCollection = IsCollectionElement(choiceElement);
+        var visiting = _activeTypeNames.Value;
+        var seenTypes = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var typeReference in extended.Types)
+        {
+            var typeName = typeReference.Code;
+            if (string.IsNullOrEmpty(typeName)
+                || !seenTypes.Add(typeName)
+                || IsPrimitiveType(typeName)
+                || typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource"
+                || (visiting is not null && visiting.Contains(typeName)))
+            {
+                continue;
+            }
+
+            var typeDefinition = schema.GetTypeDefinition(typeName);
+            if (typeDefinition is null)
+            {
+                continue;
+            }
+
+            var nestedSchema = new StructureDefinitionSchemaBuilder(parser, logger)
+                .BuildSchema(typeDefinition, schema, terminologyService);
+
+            yield return new ChoiceVariantNestedCheck(
+                baseName + CapitalizeFirst(typeName), isCollection, nestedSchema);
+        }
     }
 
     /// <summary>
@@ -722,6 +986,16 @@ public class StructureDefinitionSchemaBuilder
         // "scalar" verdict from incomplete extended metadata.
         return element.IsCollection;
     }
+
+    /// <summary>
+    /// The name used to navigate the sliced array via <see cref="IElement.Children(string)"/>.
+    /// Strips a choice <c>[x]</c> suffix so navigation matches the concrete typed children, mirroring
+    /// the cardinality pass.
+    /// </summary>
+    private static string SlicedElementName(IType element)
+        => element.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+            ? element.Info.Name[..^3]
+            : element.Info.Name;
 
     /// <summary>
     /// Gets the FHIR type name from an element definition.

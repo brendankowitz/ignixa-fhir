@@ -80,13 +80,15 @@ public class ConformanceCaseLoaderTests
     }
 
     [Fact]
-    public void GivenInlineOutcomeWithNeitherRecognizedShape_WhenCounting_ThenReturnsNull()
+    public void GivenInlineOutcomeWithNoErrorInformation_WhenCounting_ThenReturnsZero()
     {
+        // An outcome object with neither errorCount nor a nested outcome (e.g. an empty {} or a
+        // warnings-only object) records no errors, so it is expected-valid, not unscoreable.
         using var doc = JsonDocument.Parse("""{"unrelated": true}""");
 
         var result = ConformanceCaseAnalysis.TryCountErrorsInInlineOutcome(doc.RootElement);
 
-        result.ShouldBeNull();
+        result.ShouldBe(0);
     }
 
     [Fact]

@@ -141,6 +141,22 @@ public class FhirPathInvariantCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
+        // ele-1 ("must have @value or children") is an Element-sourced invariant that also lands on
+        // the resource root, where its literal expression (hasValue() or children().count() > id.count())
+        // rejects an otherwise-legal empty/near-empty resource (an empty Parameters, or a Patient
+        // carrying only an id). The reference validator never fires ele-1 on the resource root itself —
+        // a resource's presence is guaranteed — so exempt it here. The exemption keys off Scope.Resource,
+        // and EnterContainedResource re-points Scope.Resource to the contained resource, so a contained
+        // resource's own root is exempt on the same footing as the top-level root. Nested elements
+        // (datatypes, backbones) still get ele-1; empty complex datatypes remain covered structurally
+        // by StructuralShapeCheck.
+        if (string.Equals(_constraint.Key, "ele-1", StringComparison.Ordinal)
+            && state.Scope.Resource is { } resourceRoot
+            && ReferenceEquals(element, resourceRoot))
+        {
+            return ValidationResult.Success();
+        }
+
         // Scope filter: skip when AppliesTo is set and the element's resource type is out of scope.
         if (_appliesTo.Count > 0)
         {

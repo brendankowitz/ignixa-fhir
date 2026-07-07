@@ -127,9 +127,7 @@ public static class ConformanceCaseLoader
 
             case JsonValueKind.Object:
                 var inlineCount = ConformanceCaseAnalysis.TryCountErrorsInInlineOutcome(java);
-                return inlineCount is { } ic
-                    ? (new ConformanceExpectation(ic, "java"), null)
-                    : (null, ConformanceSkipReason.UnrecognizedOutcomeShape);
+                return (new ConformanceExpectation(inlineCount, "java"), null);
 
             default:
                 return (null, ConformanceSkipReason.UnrecognizedOutcomeShape);

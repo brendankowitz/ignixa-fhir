@@ -356,4 +356,28 @@ public class FhirPrimitiveValidatorConformanceTests
         result.IsValid.ShouldBeFalse("Expected invalid dateTime (2000-13) even with shadow but validation passed");
         result.Issues.ShouldContain(i => i.Code == "type-1");
     }
+
+    // -------------------------------------------------------------------------
+    // valueBase64Binary
+    // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("\"aGVscCBpJ20gYSBidWc=\"")] // "help i'm a bug"
+    [InlineData("\"Zm9v\"")] // "foo"
+    public void GivenValidBase64Binary_WhenValidating_ThenReturnsSuccess(string jsonValue)
+    {
+        var result = ValidatePrimitive("valueBase64Binary", jsonValue, new[] { "base64Binary" });
+        result.IsValid.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("\"...\"")]
+    [InlineData("\"%%%2@()()\"")]
+    [InlineData("\"abc\"")] // length not a multiple of 4
+    public void GivenInvalidBase64Binary_WhenValidating_ThenReturnsError(string jsonValue)
+    {
+        var result = ValidatePrimitive("valueBase64Binary", jsonValue, new[] { "base64Binary" });
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
+    }
 }

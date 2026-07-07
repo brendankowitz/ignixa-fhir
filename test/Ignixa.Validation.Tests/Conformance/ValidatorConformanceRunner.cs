@@ -7,10 +7,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.PackageManagement.Models;
+using Ignixa.PackageManagement.Validation;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Tests.TestHelpers.Packages;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -24,12 +27,70 @@ namespace Ignixa.Validation.Tests.Conformance;
 /// </summary>
 public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
 {
-    private static readonly ISchema Schema = new R4CoreSchemaProvider();
+    private static readonly R4CoreSchemaProvider BaseProvider = new();
+    private static readonly ISchema Schema = BaseProvider;
+
+    // Load the R4 core package from the local FHIR cache (offline) so core extensions and
+    // CodeSystems RESOLVE through the layered setup. Base-type StructureDefinitions are EXCLUDED and
+    // package ValueSets are NOT layered, so the scored base-schema + ValidateCode path stays
+    // byte-identical to base-only validation — the hard zero-over-strict gate holds. The package only
+    // ADDS resolvable extension StructureDefinitions and CodeSystem content, proven by the diagnostic
+    // R4CorePackage_ResolvesExtensionsAndCodeSystems below. Null when the package is absent (CI
+    // without the cache), in which case the runner falls back to the base-only resolver.
+    private static readonly IReadOnlyList<ExtractedResource>? R4CorePackage = LocalFhirPackageLoader.TryLoadR4Core();
+
+    private static readonly PackageBackedValidationSetup? PackageSetup =
+        R4CorePackage is null
+            ? null
+            : PackageBackedValidator.Create(new PackageValidationOptions
+            {
+                BaseSchemaProvider = BaseProvider,
+                PackageResources = R4CorePackage,
+                ExcludeBaseTypeStructureDefinitions = true,
+                LayerPackageValueSets = false,
+            });
 
     private static readonly IValidationSchemaResolver Resolver =
-        new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(Schema));
+        (IValidationSchemaResolver?)PackageSetup?.SchemaResolver
+        ?? new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(Schema));
 
     private readonly ITestOutputHelper _output = output;
+
+    /// <summary>
+    /// Offline resolution proof for the package-backed setup: with the R4 core package loaded, a core
+    /// extension StructureDefinition resolves by canonical/id, a base type still resolves to the
+    /// generated (un-shadowed) schema, and a core CodeSystem code resolves to its display through the
+    /// terminology <c>$lookup</c> surface. This proves resolution WORKS without acting on it (no new
+    /// checks). Skips when the package is not in the local FHIR cache.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Conformance")]
+    public async Task R4CorePackage_ResolvesExtensionsAndCodeSystems()
+    {
+        if (PackageSetup is null)
+        {
+            _output.WriteLine("R4 core package not present in local FHIR cache — skipping resolution proof.");
+            return;
+        }
+
+        // Extension StructureDefinition resolves — by id on the schema provider and by canonical
+        // through the resolver used for validation.
+        PackageSetup.SchemaProvider.GetTypeDefinition("patient-birthTime").ShouldNotBeNull();
+        Resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/patient-birthTime").ShouldNotBeNull();
+        Resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/data-absent-reason").ShouldNotBeNull();
+
+        // Base type still resolves to the generated schema — the package did not shadow it.
+        Resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient").ShouldNotBeNull();
+
+        // CodeSystem code resolves to its display through the terminology $lookup surface.
+        PackageSetup.CodeSystemProvider
+            .GetDisplay("http://hl7.org/fhir/administrative-gender", "male")
+            .ShouldBe("Male");
+        var lookup = await PackageSetup.TerminologyService
+            .LookupCodeAsync("http://hl7.org/fhir/administrative-gender", "male", version: null, CancellationToken.None);
+        lookup.Found.ShouldBeTrue();
+        lookup.Display.ShouldBe("Male");
+    }
 
     [Fact]
     [Trait("Category", "Conformance")]
@@ -46,7 +107,7 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         foreach (var (testCase, expected) in loadResult.Cases)
         {
             var inputPath = Path.Combine(validatorDir, testCase.File!);
-            var outcome = TryValidate(inputPath, out var errorCount, out var firstError);
+            var outcome = TryValidate(inputPath, testCase, out var errorCount, out var firstError);
 
             if (outcome == ValidationOutcome.Errored)
             {
@@ -93,11 +154,17 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         Errored,
     }
 
-    private static ValidationOutcome TryValidate(string inputPath, out int errorCount, out string? firstError)
+    private static ValidationOutcome TryValidate(string inputPath, ConformanceTestCase testCase, out int errorCount, out string? firstError)
     {
         try
         {
-            var json = JsonNode.Parse(File.ReadAllText(inputPath));
+            // Honour the JSON5 allow-comments flag: only cases that opt in tolerate // comments; for
+            // every other case a comment is still a JsonException (a genuinely malformed resource).
+            var documentOptions = new JsonDocumentOptions
+            {
+                CommentHandling = testCase.AllowComments ? JsonCommentHandling.Skip : JsonCommentHandling.Disallow,
+            };
+            var json = JsonNode.Parse(File.ReadAllText(inputPath), documentOptions: documentOptions);
             if (json is null)
             {
                 errorCount = 1;
@@ -115,7 +182,21 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
                 return ValidationOutcome.Invalid;
             }
 
-            var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+            var settings = new ValidationSettings
+            {
+                Depth = ValidationDepth.Full,
+                SecurityChecks = testCase.SecurityChecks,
+                NoHtmlInMarkdown = testCase.NoHtmlInMarkdown,
+
+                // examples: only an explicit `false` turns the example-URL check ON. Absent or true
+                // (spec mode) leaves it off, so the many resources that legitimately carry example.org
+                // URLs are unaffected and never flip to over-strict.
+                CheckExampleUrls = testCase.Examples == false,
+
+                // validateContains: IGNORE skips contained-resource validation.
+                ValidateContainedResources =
+                    !string.Equals(testCase.ValidateContains, "IGNORE", StringComparison.OrdinalIgnoreCase),
+            };
 
             // Seed tree-context scope exactly as the production handler does (ValidateResourceHandler),
             // so %resource / %rootResource / resolve() engage for dom-*/bdl-* invariants and reference

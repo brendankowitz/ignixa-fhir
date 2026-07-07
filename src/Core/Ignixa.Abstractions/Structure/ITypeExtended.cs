@@ -184,4 +184,14 @@ public interface ITypeExtended : IType
     /// Format: "#" + element path
     /// </remarks>
     string? ContentReference { get; }
+
+    /// <summary>
+    /// Slicing metadata for this element, when it declares <c>ElementDefinition.slicing</c>.
+    /// Used for validation Tier 3 (Full) - slice assignment and per-slice cardinality.
+    /// </summary>
+    /// <remarks>
+    /// Null for elements that are not sliced. Carries the structured discriminators and, for
+    /// profile-constrained elements, the named slices with their per-slice cardinality.
+    /// </remarks>
+    SlicingMetadata? Slicing => null;
 }

@@ -50,6 +50,10 @@ public sealed class ReferenceIndex
         {
             IndexBundleEntries(root, byBundleKey);
         }
+        else if (root.InstanceType == "Parameters")
+        {
+            IndexParametersEntries(root, byBundleKey);
+        }
 
         return new ReferenceIndex(byContainedId, byBundleKey);
     }
@@ -114,6 +118,37 @@ public sealed class ReferenceIndex
             if (!string.IsNullOrEmpty(versionId))
             {
                 byBundleKey.TryAdd($"{type}/{id}/_history/{versionId}", resource);
+            }
+        }
+    }
+
+    private static void IndexParametersEntries(IElement parameters, Dictionary<string, IElement> byBundleKey)
+    {
+        IndexParameterList(parameters.Children("parameter"), byBundleKey);
+    }
+
+    private static void IndexParameterList(
+        IReadOnlyList<IElement> parameterEntries,
+        Dictionary<string, IElement> byBundleKey)
+    {
+        foreach (var parameter in parameterEntries)
+        {
+            var resourceChildren = parameter.Children("resource");
+            if (resourceChildren.Count > 0)
+            {
+                var resource = resourceChildren[0];
+                var id = FirstChildValue(resource, "id");
+                if (!string.IsNullOrEmpty(id))
+                {
+                    byBundleKey.TryAdd($"{resource.InstanceType}/{id}", resource);
+                }
+            }
+
+            // Parameters nest via parameter.part; a resource can live at any depth.
+            var parts = parameter.Children("part");
+            if (parts.Count > 0)
+            {
+                IndexParameterList(parts, byBundleKey);
             }
         }
     }

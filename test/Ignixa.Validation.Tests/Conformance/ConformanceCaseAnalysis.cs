@@ -51,12 +51,14 @@ internal static class ConformanceCaseAnalysis
     }
 
     /// <summary>
-    /// Counts error/fatal issues from an inline <c>java</c> outcome object: either an <c>errorCount</c>
-    /// property, or a nested <c>outcome</c> OperationOutcome.
+    /// Counts error/fatal issues from an inline <c>java</c> outcome object: an <c>errorCount</c>
+    /// property, or a nested <c>outcome</c> OperationOutcome. An object carrying neither (e.g. an
+    /// empty <c>{}</c> or a warnings-only object) records no errors, so it counts as zero — absent
+    /// counts default to zero in the manifest schema, i.e. the case is expected-valid.
     /// </summary>
     /// <param name="inline">The inline JSON object from the manifest's <c>java</c> property.</param>
-    /// <returns>The error count, or null when neither recognized shape is present.</returns>
-    public static int? TryCountErrorsInInlineOutcome(JsonElement inline)
+    /// <returns>The error count (zero when no error information is present).</returns>
+    public static int TryCountErrorsInInlineOutcome(JsonElement inline)
     {
         if (inline.TryGetProperty("errorCount", out var ec) && ec.TryGetInt32(out var count))
         {
@@ -68,7 +70,7 @@ internal static class ConformanceCaseAnalysis
             return CountErrorIssues(outcome);
         }
 
-        return null;
+        return 0;
     }
 
     /// <summary>

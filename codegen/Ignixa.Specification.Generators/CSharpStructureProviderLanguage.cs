@@ -437,7 +437,8 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         if (element.Slicing != null)
         {
             var discriminators = element.Slicing.Discriminator?
-                .Select(d => $"{d.Type}:{d.Path}")
+                .Where(d => d.Type != null && !string.IsNullOrEmpty(d.Path))
+                .Select(d => $"new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.{d.Type}, \"{EscapeString(d.Path)}\")")
                 .ToArray() ?? Array.Empty<string>();
 
             string rules = element.Slicing.Rules?.ToString() ?? "Open";
@@ -445,7 +446,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
 
             if (discriminators.Length > 0)
             {
-                string discriminatorArray = $"new[] {{ {string.Join(", ", discriminators.Select(d => $"\"{EscapeString(d)}\""))} }}";
+                string discriminatorArray = $"new Ignixa.Abstractions.DiscriminatorDefinition[] {{ {string.Join(", ", discriminators)} }}";
                 slicing = $"new SlicingMetadata({discriminatorArray}, \"{rules}\", {(ordered ? "true" : "false")})";
             }
         }

@@ -33,6 +33,7 @@ internal sealed class AdaptedType : ITypeExtended
         string? defaultTypeName,
         IReadOnlyList<string> referenceTargets,
         string? contentReference,
+        SlicingMetadata? slicing = null,
         bool inSummary = false)
     {
         Info = info;
@@ -51,6 +52,7 @@ internal sealed class AdaptedType : ITypeExtended
         DefaultTypeName = defaultTypeName;
         ReferenceTargets = referenceTargets ?? Array.Empty<string>();
         ContentReference = contentReference;
+        Slicing = slicing;
     }
 
     public TypeInfo Info { get; }
@@ -70,4 +72,5 @@ internal sealed class AdaptedType : ITypeExtended
     public string? DefaultTypeName { get; }
     public IReadOnlyList<string> ReferenceTargets { get; }
     public string? ContentReference { get; }
+    public SlicingMetadata? Slicing { get; }
 }

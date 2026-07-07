@@ -230,6 +230,26 @@ public class BindingCheck : IValidationCheck
             // Handle different failure modes
             if (!result.IsValid || result.Severity == IssueSeverity.Error)
             {
+                // An Example binding provides sample codes only: a code outside its value set is
+                // never an error (the reference reports it, at most, as a warning). Downgrade those
+                // misses to a non-failing warning — e.g. the Example-strength Questionnaire.item.code
+                // binding, where a bare code with no system yields a warning, not an error. Extensible
+                // and Preferred keep their existing (baseline) treatment here to avoid masking the
+                // errors the reference still raises for codes that name a system but aren't valid in it.
+                if (strengthEnum == BindingStrength.Example)
+                {
+                    return new ValidationResult(
+                        isValid: true,
+                        issues: new[]
+                        {
+                            new ValidationIssue(
+                                IssueSeverity.Warning,
+                                "code-invalid",
+                                location,
+                                result.Message ?? "Code validation failed"),
+                        });
+                }
+
                 // Terminology validation failed
                 return ValidationResult.Failure(
                     new ValidationIssue(

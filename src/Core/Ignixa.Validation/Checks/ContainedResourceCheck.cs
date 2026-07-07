@@ -45,6 +45,12 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
     /// <returns>A validation result with issues from all contained resource validations.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
+        // validateContains=IGNORE: contained resources are not validated against their own schema.
+        if (!settings.ValidateContainedResources)
+        {
+            return ValidationResult.Success();
+        }
+
         var containedElements = element.Children("contained").ToList();
 
         if (containedElements.Count == 0)

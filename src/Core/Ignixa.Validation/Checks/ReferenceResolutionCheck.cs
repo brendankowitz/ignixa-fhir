@@ -43,27 +43,33 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
-        var rootIsBundle = state.Scope.RootResource?.InstanceType == "Bundle"
-            || state.Scope.Resource?.InstanceType == "Bundle";
+        // Bundle and Parameters are both containers whose entries carry independent resources that
+        // reference each other by relative Type/id. Inside either, an unresolved relative reference is
+        // a genuine error (the reference validator flags it); outside a container, a bare Type/id is an
+        // external reference we must not touch.
+        var rootIsContainer = IsContainer(state.Scope.RootResource) || IsContainer(state.Scope.Resource);
 
         var issues = new List<ValidationIssue>();
-        CollectUnresolved(element, resolver, rootIsBundle, issues);
+        CollectUnresolved(element, resolver, rootIsContainer, issues);
 
         return issues.Count > 0
             ? ValidationResult.Failure(issues)
             : ValidationResult.Success();
     }
 
+    private static bool IsContainer(IElement? resource) =>
+        resource?.InstanceType is "Bundle" or "Parameters";
+
     private static void CollectUnresolved(
         IElement element,
         Func<string, IElement?> resolver,
-        bool rootIsBundle,
+        bool rootIsContainer,
         List<ValidationIssue> issues)
     {
         foreach (var child in element.Children())
         {
             if (child.Name == "reference" && child.Value is string reference
-                && IsLocalReference(reference, rootIsBundle)
+                && IsLocalReference(reference, rootIsContainer)
                 && resolver(reference) is null)
             {
                 issues.Add(ValidationIssue.InvariantFailure(
@@ -82,7 +88,7 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
                 ? BuildNestedResolver(child, resolver)
                 : resolver;
 
-            CollectUnresolved(child, childResolver, rootIsBundle, issues);
+            CollectUnresolved(child, childResolver, rootIsContainer, issues);
         }
     }
 
@@ -104,7 +110,7 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
         return reference => index.Resolve(reference) ?? outerResolver(reference);
     }
 
-    private static bool IsLocalReference(string reference, bool rootIsBundle)
+    private static bool IsLocalReference(string reference, bool rootIsContainer)
     {
         if (string.IsNullOrEmpty(reference))
         {
@@ -116,7 +122,7 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
             return reference.Length > 1;
         }
 
-        if (!rootIsBundle)
+        if (!rootIsContainer)
         {
             return false;
         }

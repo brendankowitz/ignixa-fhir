@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

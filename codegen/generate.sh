@@ -19,9 +19,13 @@ generate_version() {
     local version=$1
     echo -e "\n\033[0;32mGenerating $version provider...\033[0m"
 
-    # Run the generator tool for structure mode (generates reference metadata and providers)
-    # Default mode is "structure", so just pass the version
+    # Structure mode (default): reference metadata + structure-definition summary providers.
     dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- "$version"
+
+    # Core-schema mode: the runtime *CoreSchemaProvider.g.cs (element schemas, invariants, slicing
+    # metadata). This is a SEPARATE generator mode from "structure" — omitting it silently leaves the
+    # runtime providers stale after a CSharpCoreSchemaLanguage change (see PR #310 slicing metadata).
+    dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- coreschema "$version"
 
     if [ $? -eq 0 ]; then
         echo -e "\033[0;32m✓ Generated $version provider\033[0m"

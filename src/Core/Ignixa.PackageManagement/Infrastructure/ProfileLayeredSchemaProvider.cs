@@ -3,7 +3,9 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.PackageManagement.Infrastructure.Snapshot;
 using Ignixa.PackageManagement.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -55,13 +57,23 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
         var provider = new PackageResourceProvider(
             new LoggerAdapter<PackageResourceProvider>(log));
 
-        foreach (var res in packageResources)
+        // Materialize once: the collection is enumerated to build the base resolver index and
+        // again in the adaptation loop, so a lazy source would be walked twice.
+        var resources = packageResources as IReadOnlyList<ExtractedResource> ?? packageResources.ToList();
+        var snapshotGenerator = new SnapshotGenerator();
+        var baseResolver = new PackageSnapshotBaseResolver(
+            resources,
+            baseProvider,
+            new LoggerAdapter<PackageSnapshotBaseResolver>(log));
+
+        foreach (var res in resources)
         {
             if (res.ResourceType != "StructureDefinition")
             {
                 continue;
             }
-            var type = provider.ToTypeDefinition(res.ResourceJson, baseProvider.FullVersion);
+            var resourceJson = BackfillSnapshotIfNeeded(res, snapshotGenerator, baseResolver, log);
+            var type = provider.ToTypeDefinition(resourceJson, baseProvider.FullVersion);
             if (type != null && !string.IsNullOrEmpty(res.ResourceId))
             {
                 if (_profileTypes.ContainsKey(res.ResourceId))
@@ -87,6 +99,68 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
                     res.ResourceId,
                     res.Canonical);
             }
+        }
+    }
+
+    /// <summary>
+    /// Returns the resource JSON to hand to the adapter, generating a <c>snapshot</c> first when
+    /// the profile ships only a <c>differential</c> + <c>baseDefinition</c>. Profiles that already
+    /// carry a snapshot are passed through unchanged (parity with the reference generator: no
+    /// regeneration). A circular base chain is logged and the original JSON is returned, letting
+    /// the adapter drop the profile exactly as it did before snapshot generation existed.
+    /// </summary>
+    private static string BackfillSnapshotIfNeeded(
+        ExtractedResource res,
+        SnapshotGenerator generator,
+        ISnapshotBaseResolver resolver,
+        ILogger log)
+    {
+        JsonObject? structureDefinition;
+        try
+        {
+            structureDefinition = JsonNode.Parse(res.ResourceJson) as JsonObject;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Malformed JSON — leave it to the adapter, which logs and drops it as before.
+            return res.ResourceJson;
+        }
+
+        if (structureDefinition is null)
+        {
+            return res.ResourceJson;
+        }
+
+        if (structureDefinition["snapshot"] is JsonObject existing
+            && existing["element"] is JsonArray { Count: > 0 })
+        {
+            return res.ResourceJson;
+        }
+
+        try
+        {
+            var generated = generator.GenerateSnapshotElements(structureDefinition, resolver, out var unresolvedBase);
+            if (generated is null)
+            {
+                log.LogWarning(
+                    "Snapshot generation produced no elements for profile (id='{ProfileId}', canonical='{Canonical}', baseDefinition='{UnresolvedBase}'); it validates against the base resource definition only. The base could not be resolved or is not snapshottable.",
+                    res.ResourceId,
+                    res.Canonical,
+                    unresolvedBase ?? (structureDefinition["baseDefinition"] as JsonValue)?.ToString());
+                return res.ResourceJson;
+            }
+
+            structureDefinition["snapshot"] = new JsonObject { ["element"] = generated };
+            return structureDefinition.ToJsonString();
+        }
+        catch (SnapshotGenerationException ex)
+        {
+            log.LogWarning(
+                ex,
+                "Snapshot generation failed for profile (id='{ProfileId}', canonical='{Canonical}'); it validates against the base resource definition only.",
+                res.ResourceId,
+                res.Canonical);
+            return res.ResourceJson;
         }
     }
 
