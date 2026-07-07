@@ -171,6 +171,21 @@ public class StructureDefinitionSchemaBuilder
             });
         specChecks.AddRange(shapeChecks);
 
+        // Mode-gated semantic checks (default OFF; each no-ops unless its ValidationSettings flag is
+        // set). Wired per primitive element by declared type so they carry no cost when disabled:
+        // string -> embedded-HTML (security-checks); markdown -> embedded-HTML (noHtmlInMarkdown);
+        // url/uri/canonical -> example-domain URLs (examples/non-spec mode).
+        var primitiveElements = elements.Where(e => e.Info.IsPrimitive && !e.Info.IsChoiceElement).ToList();
+        specChecks.AddRange(primitiveElements
+            .Where(e => GetTypeName(e) == "string")
+            .Select(e => new EmbeddedHtmlStringCheck(e.Info.Name)));
+        specChecks.AddRange(primitiveElements
+            .Where(e => GetTypeName(e) == "markdown")
+            .Select(e => new MarkdownHtmlCheck(e.Info.Name)));
+        specChecks.AddRange(primitiveElements
+            .Where(e => GetTypeName(e) is "url" or "uri" or "canonical")
+            .Select(e => new ExampleUrlCheck(e.Info.Name)));
+
         // Empty-array rejection (ele-1) at resource altitude: closes the gap StructuralShapeCheck
         // leaves for complex datatypes (CodeableConcept, Coding, ...) that never get their own nested
         // schema, so an empty array nested inside one (e.g. category[0].coding: []) would otherwise

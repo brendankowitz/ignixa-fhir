@@ -46,7 +46,7 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         foreach (var (testCase, expected) in loadResult.Cases)
         {
             var inputPath = Path.Combine(validatorDir, testCase.File!);
-            var outcome = TryValidate(inputPath, out var errorCount, out var firstError);
+            var outcome = TryValidate(inputPath, testCase, out var errorCount, out var firstError);
 
             if (outcome == ValidationOutcome.Errored)
             {
@@ -93,11 +93,17 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
         Errored,
     }
 
-    private static ValidationOutcome TryValidate(string inputPath, out int errorCount, out string? firstError)
+    private static ValidationOutcome TryValidate(string inputPath, ConformanceTestCase testCase, out int errorCount, out string? firstError)
     {
         try
         {
-            var json = JsonNode.Parse(File.ReadAllText(inputPath));
+            // Honour the JSON5 allow-comments flag: only cases that opt in tolerate // comments; for
+            // every other case a comment is still a JsonException (a genuinely malformed resource).
+            var documentOptions = new JsonDocumentOptions
+            {
+                CommentHandling = testCase.AllowComments ? JsonCommentHandling.Skip : JsonCommentHandling.Disallow,
+            };
+            var json = JsonNode.Parse(File.ReadAllText(inputPath), documentOptions: documentOptions);
             if (json is null)
             {
                 errorCount = 1;
@@ -115,7 +121,21 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
                 return ValidationOutcome.Invalid;
             }
 
-            var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+            var settings = new ValidationSettings
+            {
+                Depth = ValidationDepth.Full,
+                SecurityChecks = testCase.SecurityChecks,
+                NoHtmlInMarkdown = testCase.NoHtmlInMarkdown,
+
+                // examples: only an explicit `false` turns the example-URL check ON. Absent or true
+                // (spec mode) leaves it off, so the many resources that legitimately carry example.org
+                // URLs are unaffected and never flip to over-strict.
+                CheckExampleUrls = testCase.Examples == false,
+
+                // validateContains: IGNORE skips contained-resource validation.
+                ValidateContainedResources =
+                    !string.Equals(testCase.ValidateContains, "IGNORE", StringComparison.OrdinalIgnoreCase),
+            };
 
             // Seed tree-context scope exactly as the production handler does (ValidateResourceHandler),
             // so %resource / %rootResource / resolve() engage for dom-*/bdl-* invariants and reference

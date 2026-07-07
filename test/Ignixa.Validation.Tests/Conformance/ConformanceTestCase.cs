@@ -58,4 +58,27 @@ public sealed class ConformanceTestCase
     /// </summary>
     [JsonPropertyName("java")]
     public JsonElement? Java { get; set; }
+
+    /// <summary>When true, JSON <c>//</c> comments in the input are tolerated (JSON5 module).</summary>
+    [JsonPropertyName("allow-comments")]
+    public bool AllowComments { get; set; }
+
+    /// <summary>When true, security-checks mode is enabled (embedded HTML in strings is rejected).</summary>
+    [JsonPropertyName("security-checks")]
+    public bool SecurityChecks { get; set; }
+
+    /// <summary>When true, embedded HTML in markdown is flagged.</summary>
+    [JsonPropertyName("noHtmlInMarkdown")]
+    public bool NoHtmlInMarkdown { get; set; }
+
+    /// <summary>
+    /// Spec-mode toggle for example URLs. When explicitly <c>false</c>, example.org / acme.com URLs are
+    /// rejected; when true (or absent) they are permitted. Nullable to distinguish "not set" from false.
+    /// </summary>
+    [JsonPropertyName("examples")]
+    public bool? Examples { get; set; }
+
+    /// <summary>Contained-resource validation mode: <c>IGNORE</c> skips validating contained resources.</summary>
+    [JsonPropertyName("validateContains")]
+    public string? ValidateContains { get; set; }
 }
