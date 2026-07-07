@@ -19,6 +19,7 @@ public class InMemoryTerminologyService : ITerminologyService
 {
     private readonly ConcurrentDictionary<string, ValueSetMembership> _valueSets = new(StringComparer.Ordinal);
     private readonly IValueSetProvider _valueSetProvider;
+    private readonly ICodeSystemProvider? _codeSystemProvider;
 
     /// <summary>
     /// Code systems that cannot be completely enumerated from local expansions (large external
@@ -43,9 +44,16 @@ public class InMemoryTerminologyService : ITerminologyService
     /// Initializes a new instance of the InMemoryTerminologyService using a ValueSet provider.
     /// </summary>
     /// <param name="valueSetProvider">The value set provider to use for terminology validation.</param>
-    public InMemoryTerminologyService(IValueSetProvider valueSetProvider)
+    /// <param name="codeSystemProvider">
+    /// Optional CodeSystem content surface consulted by <see cref="LookupCodeAsync"/> for
+    /// code&#8594;display resolution. Does not affect value-set binding validation.
+    /// </param>
+    public InMemoryTerminologyService(
+        IValueSetProvider valueSetProvider,
+        ICodeSystemProvider? codeSystemProvider = null)
     {
         _valueSetProvider = valueSetProvider ?? throw new ArgumentNullException(nameof(valueSetProvider));
+        _codeSystemProvider = codeSystemProvider;
     }
 
     /// <summary>
@@ -56,11 +64,19 @@ public class InMemoryTerminologyService : ITerminologyService
     /// </summary>
     /// <param name="primary">Base-spec ValueSet provider (e.g. <c>R4ValueSetProvider</c>).</param>
     /// <param name="additional">Additional sources, queried first.</param>
-    public InMemoryTerminologyService(IValueSetProvider primary, IEnumerable<IValueSetProvider> additional)
+    /// <param name="codeSystemProvider">
+    /// Optional CodeSystem content surface consulted by <see cref="LookupCodeAsync"/> for
+    /// code&#8594;display resolution. Does not affect value-set binding validation.
+    /// </param>
+    public InMemoryTerminologyService(
+        IValueSetProvider primary,
+        IEnumerable<IValueSetProvider> additional,
+        ICodeSystemProvider? codeSystemProvider = null)
     {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(additional);
         _valueSetProvider = new LayeredValueSetProvider(primary, additional);
+        _codeSystemProvider = codeSystemProvider;
     }
 
     /// <summary>
@@ -216,8 +232,9 @@ public class InMemoryTerminologyService : ITerminologyService
             Message: null));
 
     /// <summary>
-    /// $lookup operation is not supported by the in-memory implementation.
-    /// Returns not found for all lookups.
+    /// $lookup against locally-loaded CodeSystem content. When a <see cref="ICodeSystemProvider"/>
+    /// was supplied and it enumerates the (system, code), returns the concept with its display;
+    /// otherwise reports not found (the in-memory service has no external terminology server).
     /// </summary>
     public Task<LookupResult> LookupCodeAsync(
         string system,
@@ -225,6 +242,21 @@ public class InMemoryTerminologyService : ITerminologyService
         string? version,
         CancellationToken cancellationToken)
     {
+        if (_codeSystemProvider is not null
+            && !string.IsNullOrEmpty(system)
+            && !string.IsNullOrEmpty(code)
+            && _codeSystemProvider.ContainsCode(system, code) == true)
+        {
+            return Task.FromResult(new LookupResult(
+                Found: true,
+                Name: null,
+                Version: null,
+                Display: _codeSystemProvider.GetDisplay(system, code),
+                Definition: null,
+                Properties: null,
+                Designations: null));
+        }
+
         return Task.FromResult(new LookupResult(
             Found: false,
             Name: null,

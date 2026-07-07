@@ -7,10 +7,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.PackageManagement.Models;
+using Ignixa.PackageManagement.Validation;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Tests.TestHelpers.Packages;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -24,12 +27,70 @@ namespace Ignixa.Validation.Tests.Conformance;
 /// </summary>
 public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
 {
-    private static readonly ISchema Schema = new R4CoreSchemaProvider();
+    private static readonly R4CoreSchemaProvider BaseProvider = new();
+    private static readonly ISchema Schema = BaseProvider;
+
+    // Load the R4 core package from the local FHIR cache (offline) so core extensions and
+    // CodeSystems RESOLVE through the layered setup. Base-type StructureDefinitions are EXCLUDED and
+    // package ValueSets are NOT layered, so the scored base-schema + ValidateCode path stays
+    // byte-identical to base-only validation — the hard zero-over-strict gate holds. The package only
+    // ADDS resolvable extension StructureDefinitions and CodeSystem content, proven by the diagnostic
+    // R4CorePackage_ResolvesExtensionsAndCodeSystems below. Null when the package is absent (CI
+    // without the cache), in which case the runner falls back to the base-only resolver.
+    private static readonly IReadOnlyList<ExtractedResource>? R4CorePackage = LocalFhirPackageLoader.TryLoadR4Core();
+
+    private static readonly PackageBackedValidationSetup? PackageSetup =
+        R4CorePackage is null
+            ? null
+            : PackageBackedValidator.Create(new PackageValidationOptions
+            {
+                BaseSchemaProvider = BaseProvider,
+                PackageResources = R4CorePackage,
+                ExcludeBaseTypeStructureDefinitions = true,
+                LayerPackageValueSets = false,
+            });
 
     private static readonly IValidationSchemaResolver Resolver =
-        new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(Schema));
+        (IValidationSchemaResolver?)PackageSetup?.SchemaResolver
+        ?? new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(Schema));
 
     private readonly ITestOutputHelper _output = output;
+
+    /// <summary>
+    /// Offline resolution proof for the package-backed setup: with the R4 core package loaded, a core
+    /// extension StructureDefinition resolves by canonical/id, a base type still resolves to the
+    /// generated (un-shadowed) schema, and a core CodeSystem code resolves to its display through the
+    /// terminology <c>$lookup</c> surface. This proves resolution WORKS without acting on it (no new
+    /// checks). Skips when the package is not in the local FHIR cache.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Conformance")]
+    public async Task R4CorePackage_ResolvesExtensionsAndCodeSystems()
+    {
+        if (PackageSetup is null)
+        {
+            _output.WriteLine("R4 core package not present in local FHIR cache — skipping resolution proof.");
+            return;
+        }
+
+        // Extension StructureDefinition resolves — by id on the schema provider and by canonical
+        // through the resolver used for validation.
+        PackageSetup.SchemaProvider.GetTypeDefinition("patient-birthTime").ShouldNotBeNull();
+        Resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/patient-birthTime").ShouldNotBeNull();
+        Resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/data-absent-reason").ShouldNotBeNull();
+
+        // Base type still resolves to the generated schema — the package did not shadow it.
+        Resolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient").ShouldNotBeNull();
+
+        // CodeSystem code resolves to its display through the terminology $lookup surface.
+        PackageSetup.CodeSystemProvider
+            .GetDisplay("http://hl7.org/fhir/administrative-gender", "male")
+            .ShouldBe("Male");
+        var lookup = await PackageSetup.TerminologyService
+            .LookupCodeAsync("http://hl7.org/fhir/administrative-gender", "male", version: null, CancellationToken.None);
+        lookup.Found.ShouldBeTrue();
+        lookup.Display.ShouldBe("Male");
+    }
 
     [Fact]
     [Trait("Category", "Conformance")]
