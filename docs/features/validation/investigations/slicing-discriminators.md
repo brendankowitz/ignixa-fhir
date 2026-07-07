@@ -1,8 +1,51 @@
 # Investigation: Slicing & Discriminator Validation
 
 **Feature**: validation
-**Status**: In Progress
+**Status**: Implemented (value/pattern/exists/type discriminators; profile deferred)
 **Created**: 2026-06-17
+
+## Implementation Status
+
+Shipped on `feat/validation-slicing`. Delivers imperative slice assignment + FHIRPath-per-discriminator
+predicate, exactly as this investigation proposed, wired end-to-end from snapshot generation through the
+validator.
+
+- **Structured discriminators (code-gen prereq).** `SlicingMetadata.Discriminators` is now
+  `IReadOnlyList<DiscriminatorDefinition>` (`DiscriminatorDefinition(DiscriminatorType Type, string Path)`,
+  `DiscriminatorType = Value|Pattern|Exists|Type|Profile`) in `Ignixa.Abstractions`, replacing the bare
+  `string[]`. Slices are carried as `SliceDefinition(Name, Min, Max, IReadOnlyList<SliceDiscriminatorValue>)`.
+  Both code-gen languages (`CSharpCoreSchemaLanguage`, `CSharpStructureProviderLanguage`) emit the
+  structured form; a legacy `string[]` (`"Type:Path"`) constructor is retained as a compatibility bridge
+  so the already-generated core providers compile unchanged. `ITypeExtended.Slicing` exposes the metadata.
+- **Snapshot side — M2 (`ElementMerger`).** The differential→snapshot merger keys elements by
+  `ElementDefinition.id` (carrying `:sliceName`), merges a differential slicing header onto the base
+  sliced element, and inserts named slice members + their sub-element subtrees contiguously after the
+  header. It also **synthesizes the default extension slicing** (`value:url`, open) when a differential
+  lists extension slice members without restating the header — the common US Core pattern where the
+  slicing header lives only in the shipped snapshot.
+- **Adapter.** `StructureDefinitionTypeAdapter` surfaces `SlicingMetadata` onto the sliced element and
+  derives each slice's discriminator match value from the slice member's own constraints: the fixed/pattern
+  scalar at the discriminator path, the FHIR type code for `type` discriminators, or — for an extension
+  `url` discriminator with no explicit fixed url — the slice's `type.profile` canonical (an extension's
+  `url` equals its defining profile canonical).
+- **Validator — `SlicingCheck`** (Full tier, in `Ignixa.Validation.Checks`, wired by
+  `StructureDefinitionSchemaBuilder` when an element carries named slices). Imperative bucket assignment
+  (first match wins), per-slice min/max accounting, and closed / openAtEnd enforcement, with per-element
+  diagnostics that name the slice (e.g. *"Slice 'race' on 'extension' allows at most 1 occurrence(s),
+  but found 2"* at `Patient.extension[3]`). Discriminator types **value, pattern, exists, type** are
+  supported; the FHIRPath engine is used only for the per-element path navigation.
+- **Profile discriminators — deferred.** A slicing that uses a `profile` discriminator (needs
+  `conformsTo()`), or whose slices could not be resolved to determinate match values, is skipped with an
+  informational `slicing-deferred` issue rather than risk a false reject. `conformsTo()`
+  (`FhirSpecificFunctions.cs`) remains a stub; not implemented here.
+- **Over-strict guard.** A `SlicingCheck` is created only for elements with named slices, and synthesized
+  extension slicing is always `open` — so a bare open slicing header (e.g. base `Extension.extension`)
+  enforces nothing. Conformance over-strict held at **10** (unchanged baseline).
+- **Proof.** Unit tests for assignment / cardinality / closed-open / each discriminator type
+  (`SlicingCheckTests`), M2 merger tests (`ElementMergerSlicingTests`), a deterministic differential-only
+  end-to-end (`DifferentialSlicingScenarioTests`), and a real US Core `us-core-patient` end-to-end that
+  strips the shipped snapshot to force M2 regeneration and rejects a duplicate `us-core-race` extension
+  against the `0..1` race slice (`UsCorePatientSlicingScenarioTests`).
 
 ## Problem Statement
 

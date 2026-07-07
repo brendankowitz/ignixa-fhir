@@ -353,6 +353,15 @@ public class StructureDefinitionSchemaBuilder
             profileChecks.Add(new ReferenceResolutionCheck());
         }
 
+        // Slicing (Full tier): enforce per-slice cardinality and closed/openAtEnd rules for elements
+        // whose profile declares named slices. Only elements carrying named slices produce a check —
+        // a bare open slicing header (e.g. base Extension.extension, open by url with no named slices)
+        // enforces nothing, so no check is created and valid base resources are never rejected.
+        var slicingChecks = elements
+            .Where(e => e is ITypeExtended ext && ext.Slicing is { Slices.Count: > 0 })
+            .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!));
+        profileChecks.AddRange(slicingChecks);
+
         // Build the canonical URL from the type name
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
 
@@ -752,6 +761,16 @@ public class StructureDefinitionSchemaBuilder
     /// </summary>
     /// <param name="element">The element to get the type name from.</param>
     /// <returns>The FHIR type name.</returns>
+    /// <summary>
+    /// The name used to navigate the sliced array via <see cref="IElement.Children(string)"/>.
+    /// Strips a choice <c>[x]</c> suffix so navigation matches the concrete typed children, mirroring
+    /// the cardinality pass.
+    /// </summary>
+    private static string SlicedElementName(IType element)
+        => element.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+            ? element.Info.Name[..^3]
+            : element.Info.Name;
+
     private static string GetTypeName(IType element)
     {
         if (element is ITypeExtended extended)

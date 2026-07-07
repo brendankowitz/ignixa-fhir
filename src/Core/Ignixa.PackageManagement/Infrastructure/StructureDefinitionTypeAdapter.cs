@@ -182,6 +182,8 @@ public sealed class StructureDefinitionTypeAdapter
             i = AdvancePastSubtree(elements, i);
         }
 
+        var slicing = ExtractSlicing(elements, startIndex, path);
+
         return new AdaptedType(
             info: info,
             isCollection: isCollection,
@@ -197,7 +199,238 @@ public sealed class StructureDefinitionTypeAdapter
             types: typeRefs,
             defaultTypeName: fhirTypeName,
             referenceTargets: referenceTargets,
-            contentReference: ReadString(self.Element, "contentReference"));
+            contentReference: ReadString(self.Element, "contentReference"),
+            slicing: slicing);
+    }
+
+    /// <summary>
+    /// Builds <see cref="SlicingMetadata"/> for a sliced element: the structured discriminators from
+    /// <c>slicing.discriminator</c> plus one <see cref="SliceDefinition"/> per named slice member
+    /// (a sibling snapshot element sharing this path but carrying a <c>sliceName</c>). Per-slice
+    /// discriminator match values are derived from the slice member's own constraints. Returns
+    /// <c>null</c> when the element declares no <c>slicing</c>.
+    /// </summary>
+    private static SlicingMetadata? ExtractSlicing(List<ElementSnapshot> elements, int headerIndex, string headerPath)
+    {
+        var header = elements[headerIndex].Element;
+        if (!header.TryGetProperty("slicing", out var slicing) || slicing.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var discriminators = ExtractDiscriminators(slicing);
+        var rules = ReadString(slicing, "rules") ?? "open";
+        var ordered = ReadBool(slicing, "ordered") ?? false;
+        var slices = ExtractSlices(elements, headerIndex, headerPath, discriminators);
+
+        return new SlicingMetadata(discriminators, rules, ordered, slices);
+    }
+
+    private static IReadOnlyList<DiscriminatorDefinition> ExtractDiscriminators(JsonElement slicing)
+    {
+        if (!slicing.TryGetProperty("discriminator", out var arr) || arr.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<DiscriminatorDefinition>();
+        }
+
+        var list = new List<DiscriminatorDefinition>(arr.GetArrayLength());
+        foreach (var d in arr.EnumerateArray())
+        {
+            var path = ReadString(d, "path");
+            if (string.IsNullOrEmpty(path))
+            {
+                continue;
+            }
+
+            list.Add(new DiscriminatorDefinition(ParseDiscriminatorType(ReadString(d, "type")), path!));
+        }
+
+        return list;
+    }
+
+    private static DiscriminatorType ParseDiscriminatorType(string? type) => type switch
+    {
+        "pattern" => DiscriminatorType.Pattern,
+        "exists" => DiscriminatorType.Exists,
+        "type" => DiscriminatorType.Type,
+        "profile" => DiscriminatorType.Profile,
+        _ => DiscriminatorType.Value,
+    };
+
+    /// <summary>
+    /// Collects the named slice members for a sliced element: direct siblings that share the sliced
+    /// path but declare a <c>sliceName</c>. For each, per-slice cardinality and the compiled
+    /// discriminator match values are read from the slice member's own subtree.
+    /// </summary>
+    private static IReadOnlyList<SliceDefinition> ExtractSlices(
+        List<ElementSnapshot> elements,
+        int headerIndex,
+        string headerPath,
+        IReadOnlyList<DiscriminatorDefinition> discriminators)
+    {
+        var slices = new List<SliceDefinition>();
+        for (var i = headerIndex + 1; i < elements.Count; i++)
+        {
+            var element = elements[i].Element;
+            var path = elements[i].Path;
+
+            if (path == headerPath)
+            {
+                var sliceName = ReadString(element, "sliceName");
+                if (!string.IsNullOrEmpty(sliceName))
+                {
+                    var subtreeEnd = AdvancePastSubtree(elements, i);
+                    var match = BuildSliceMatch(elements, i, subtreeEnd, headerPath, element, discriminators);
+                    slices.Add(new SliceDefinition(sliceName!, ReadInt(element, "min") ?? 0, ParseMax(element), match));
+                }
+
+                continue;
+            }
+
+            if (!path.StartsWith(headerPath + ".", StringComparison.Ordinal))
+            {
+                break; // Left the sliced element's sibling group.
+            }
+        }
+
+        return slices;
+    }
+
+    private static IReadOnlyList<SliceDiscriminatorValue> BuildSliceMatch(
+        List<ElementSnapshot> elements,
+        int sliceIndex,
+        int subtreeEnd,
+        string headerPath,
+        JsonElement sliceElement,
+        IReadOnlyList<DiscriminatorDefinition> discriminators)
+    {
+        var match = new List<SliceDiscriminatorValue>(discriminators.Count);
+        foreach (var discriminator in discriminators)
+        {
+            var expected = ResolveExpectedValue(elements, sliceIndex, subtreeEnd, headerPath, sliceElement, discriminator);
+            match.Add(new SliceDiscriminatorValue(discriminator.Type, discriminator.Path, expected));
+        }
+
+        return match;
+    }
+
+    /// <summary>
+    /// Derives the expected discriminator value for a slice: the fixed/pattern scalar (or type code)
+    /// at the discriminator path within the slice's subtree. For an extension <c>url</c> discriminator
+    /// with no explicit fixed url, falls back to the slice's <c>type.profile</c> canonical (an
+    /// extension's <c>url</c> equals its defining profile canonical).
+    /// </summary>
+    private static string? ResolveExpectedValue(
+        List<ElementSnapshot> elements,
+        int sliceIndex,
+        int subtreeEnd,
+        string headerPath,
+        JsonElement sliceElement,
+        DiscriminatorDefinition discriminator)
+    {
+        var isSelf = discriminator.Path is "$this" or "";
+        var targetPath = isSelf ? headerPath : headerPath + "." + discriminator.Path;
+        JsonElement? target = isSelf ? sliceElement : FindByPath(elements, sliceIndex, subtreeEnd, targetPath);
+
+        if (discriminator.Type == DiscriminatorType.Type)
+        {
+            return target is { } t ? FirstTypeCode(t) : null;
+        }
+
+        if (discriminator.Type == DiscriminatorType.Exists)
+        {
+            return null;
+        }
+
+        if (target is { } element)
+        {
+            var value = FirstFixedOrPatternScalar(element);
+            if (value is not null)
+            {
+                return value;
+            }
+        }
+
+        // Extension convention: url discriminator matches the slice's profile canonical.
+        if (discriminator.Path == "url")
+        {
+            return FirstTypeProfile(sliceElement);
+        }
+
+        return null;
+    }
+
+    private static JsonElement? FindByPath(List<ElementSnapshot> elements, int start, int end, string path)
+    {
+        for (var i = start; i < end; i++)
+        {
+            if (elements[i].Path == path)
+            {
+                return elements[i].Element;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FirstFixedOrPatternScalar(JsonElement element)
+    {
+        foreach (var prop in element.EnumerateObject())
+        {
+            var isFixed = prop.Name.StartsWith("fixed", StringComparison.Ordinal) && prop.Name.Length > 5;
+            var isPattern = prop.Name.StartsWith("pattern", StringComparison.Ordinal) && prop.Name.Length > 7;
+            if ((isFixed || isPattern) && prop.Value.ValueKind == JsonValueKind.String)
+            {
+                return prop.Value.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FirstTypeCode(JsonElement element)
+    {
+        if (element.TryGetProperty("type", out var typeArr) && typeArr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var t in typeArr.EnumerateArray())
+            {
+                var code = ReadString(t, "code");
+                if (!string.IsNullOrEmpty(code))
+                {
+                    return code;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FirstTypeProfile(JsonElement element)
+    {
+        if (element.TryGetProperty("type", out var typeArr) && typeArr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var t in typeArr.EnumerateArray())
+            {
+                var profiles = ReadAllStringsInArray(t, "profile");
+                if (profiles.Count > 0)
+                {
+                    return profiles[0];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static int? ParseMax(JsonElement element)
+    {
+        var max = ReadString(element, "max");
+        if (string.IsNullOrEmpty(max) || max == "*")
+        {
+            return null;
+        }
+
+        return int.TryParse(max, out var parsed) ? parsed : null;
     }
 
     private static int AdvancePastSubtree(List<ElementSnapshot> elements, int startIndex)

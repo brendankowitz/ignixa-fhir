@@ -37,14 +37,18 @@ namespace Ignixa.PackageManagement.Infrastructure.Snapshot;
 /// </remarks>
 internal static class ElementMerger
 {
-    // M2 TODO (slicing + extension expansion): when a differential introduces a named slice
-    // (sliceName set) whose sliced path has base children, copy those base children into the
-    // slice tagged with the sliceName, and carry the slicing discriminator metadata. See
-    // rh-foundation ElementMerger::expand_slice_children and docs slicing-discriminators.md.
+    // M2 (slicing + extension expansion): elements are keyed by ElementDefinition.id, which carries
+    // the ":sliceName" disambiguator (e.g. "Patient.extension:race", "Patient.extension:race.url").
+    // A differential slice header matched by id merges onto the base sliced element (carrying the
+    // slicing discriminator metadata); named slice members and their sub-element subtrees are new
+    // ids and are inserted adjacent to their slice group so the sibling block stays contiguous.
+    // Mirrors rh-foundation ElementMerger slice handling; consumed by slicing-discriminators.md.
 
     private const string ConstraintProperty = "constraint";
     private const string PathProperty = "path";
     private const string SliceNameProperty = "sliceName";
+    private const string SlicingProperty = "slicing";
+    private const string IdProperty = "id";
     private const string KeyProperty = "key";
 
     /// <summary>
@@ -60,7 +64,7 @@ internal static class ElementMerger
         ArgumentNullException.ThrowIfNull(differentialElements);
 
         var working = new List<JsonObject>(baseElements.Count);
-        var index = new Dictionary<(string Path, string? Slice), int>();
+        var index = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var node in baseElements)
         {
@@ -92,6 +96,8 @@ internal static class ElementMerger
             }
         }
 
+        SynthesizeExtensionSlicing(working);
+
         var result = new JsonArray();
         foreach (var element in working)
         {
@@ -101,8 +107,24 @@ internal static class ElementMerger
         return result;
     }
 
-    private static (string Path, string? Slice) KeyOf(JsonObject element)
-        => (SnapshotJson.GetString(element, PathProperty) ?? string.Empty, SnapshotJson.GetString(element, SliceNameProperty));
+    /// <summary>
+    /// The merge key for an element: its <c>id</c> when present (which carries the
+    /// <c>:sliceName</c> disambiguator), otherwise a synthesized <c>path[:sliceName]</c>. For
+    /// non-sliced elements <c>id</c> equals <c>path</c>, so base elements projected without an
+    /// <c>id</c> and differential elements carrying one still key identically.
+    /// </summary>
+    private static string KeyOf(JsonObject element)
+    {
+        var id = SnapshotJson.GetString(element, IdProperty);
+        if (!string.IsNullOrEmpty(id))
+        {
+            return id;
+        }
+
+        var path = SnapshotJson.GetString(element, PathProperty) ?? string.Empty;
+        var slice = SnapshotJson.GetString(element, SliceNameProperty);
+        return slice is null ? path : path + ":" + slice;
+    }
 
     /// <summary>
     /// Applies every differential property onto <paramref name="target"/> in place. All fields
@@ -181,21 +203,27 @@ internal static class ElementMerger
     /// </summary>
     private static void InsertNewElement(
         List<JsonObject> working,
-        Dictionary<(string Path, string? Slice), int> index,
+        Dictionary<string, int> index,
         JsonObject diffElement)
     {
         var clone = diffElement.DeepClone().AsObject();
         var path = SnapshotJson.GetString(clone, PathProperty) ?? string.Empty;
-        var parent = SnapshotJson.ParentPath(path);
+
+        // Scope selection: a slice member (its path already exists in the working list — a same-path
+        // slice header/sibling) anchors to that sliced element's own block so slices stay adjacent
+        // to their header. Otherwise (a genuinely new path — a slice sub-element or a new element)
+        // anchor to the parent's subtree, preserving M1 positioning.
+        var sharesPathWithExisting = working.Any(w => SnapshotJson.GetString(w, PathProperty) == path);
+        var scope = sharesPathWithExisting ? path : SnapshotJson.ParentPath(path);
 
         var insertAt = working.Count;
-        if (parent.Length > 0)
+        if (scope.Length > 0)
         {
-            var subtreePrefix = parent + ".";
+            var subtreePrefix = scope + ".";
             for (var i = 0; i < working.Count; i++)
             {
                 var candidate = SnapshotJson.GetString(working[i], PathProperty);
-                if (candidate == parent || (candidate is not null && candidate.StartsWith(subtreePrefix, StringComparison.Ordinal)))
+                if (candidate == scope || (candidate is not null && candidate.StartsWith(subtreePrefix, StringComparison.Ordinal)))
                 {
                     insertAt = i + 1;
                 }
@@ -206,7 +234,70 @@ internal static class ElementMerger
         Reindex(working, index);
     }
 
-    private static void Reindex(List<JsonObject> working, Dictionary<(string Path, string? Slice), int> index)
+    /// <summary>
+    /// Ensures every sliced <c>extension</c> / <c>modifierExtension</c> element carries a slicing
+    /// header. FHIR extension slicing is implicit: an IG differential routinely lists extension
+    /// slice members (<c>extension:race</c>, …) without restating the <c>value:url</c> slicing on the
+    /// header (it appears only in the IG's shipped snapshot). This reproduces that behaviour so the
+    /// generated snapshot carries the discriminators the validator's slicing check needs. Rules are
+    /// left <c>open</c> — never synthesizing a closed slicing — so this can only enforce per-slice
+    /// cardinality, never falsely reject an unknown extension.
+    /// </summary>
+    private static void SynthesizeExtensionSlicing(List<JsonObject> working)
+    {
+        var slicedExtensionPaths = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var element in working)
+        {
+            if (SnapshotJson.GetString(element, SliceNameProperty) is null)
+            {
+                continue;
+            }
+
+            var path = SnapshotJson.GetString(element, PathProperty);
+            if (path is not null && IsExtensionPath(path))
+            {
+                slicedExtensionPaths.Add(path);
+            }
+        }
+
+        foreach (var path in slicedExtensionPaths)
+        {
+            var headerIndex = working.FindIndex(e =>
+                SnapshotJson.GetString(e, PathProperty) == path && SnapshotJson.GetString(e, SliceNameProperty) is null);
+
+            if (headerIndex >= 0)
+            {
+                if (working[headerIndex][SlicingProperty] is null)
+                {
+                    working[headerIndex][SlicingProperty] = DefaultExtensionSlicing();
+                }
+            }
+            else
+            {
+                var firstSlice = working.FindIndex(e => SnapshotJson.GetString(e, PathProperty) == path);
+                working.Insert(firstSlice, new JsonObject
+                {
+                    [PathProperty] = path,
+                    ["min"] = 0,
+                    ["max"] = "*",
+                    [SlicingProperty] = DefaultExtensionSlicing(),
+                });
+            }
+        }
+    }
+
+    private static bool IsExtensionPath(string path)
+        => path.EndsWith(".extension", StringComparison.Ordinal)
+            || path.EndsWith(".modifierExtension", StringComparison.Ordinal);
+
+    private static JsonObject DefaultExtensionSlicing() => new()
+    {
+        ["discriminator"] = new JsonArray(new JsonObject { ["type"] = "value", ["path"] = "url" }),
+        ["ordered"] = false,
+        ["rules"] = "open",
+    };
+
+    private static void Reindex(List<JsonObject> working, Dictionary<string, int> index)
     {
         index.Clear();
         for (var i = 0; i < working.Count; i++)
