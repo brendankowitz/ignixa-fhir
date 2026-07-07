@@ -32,20 +32,6 @@ public sealed class SlicingMetadata
         Slices = slices ?? Array.Empty<SliceDefinition>();
     }
 
-    /// <summary>
-    /// Compatibility bridge for the legacy <c>Type:Path</c> string form emitted by pre-M2 code-gen
-    /// (e.g. <c>"Value:url"</c>). Parses each entry into a structured <see cref="DiscriminatorDefinition"/>
-    /// so already-generated provider files continue to compile unchanged. New code-gen emits the
-    /// structured constructor above.
-    /// </summary>
-    /// <param name="discriminators">Legacy discriminator strings in <c>Type:Path</c> form.</param>
-    /// <param name="rules">Slicing rules.</param>
-    /// <param name="ordered">Whether slices must appear in order.</param>
-    public SlicingMetadata(string[] discriminators, string rules, bool ordered)
-        : this(ParseLegacy(discriminators), rules, ordered, null)
-    {
-    }
-
     /// <summary>Gets the structured discriminators (type + path).</summary>
     public IReadOnlyList<DiscriminatorDefinition> Discriminators { get; }
 
@@ -57,37 +43,4 @@ public sealed class SlicingMetadata
 
     /// <summary>Gets the named slices carried by a profile; empty for a bare slicing header.</summary>
     public IReadOnlyList<SliceDefinition> Slices { get; }
-
-    private static IReadOnlyList<DiscriminatorDefinition> ParseLegacy(string[] discriminators)
-    {
-        if (discriminators is null || discriminators.Length == 0)
-        {
-            return Array.Empty<DiscriminatorDefinition>();
-        }
-
-        var result = new List<DiscriminatorDefinition>(discriminators.Length);
-        foreach (var raw in discriminators)
-        {
-            if (string.IsNullOrEmpty(raw))
-            {
-                continue;
-            }
-
-            var separator = raw.IndexOf(':', StringComparison.Ordinal);
-            var typeToken = separator >= 0 ? raw[..separator] : "value";
-            var path = separator >= 0 ? raw[(separator + 1)..] : raw;
-            result.Add(new DiscriminatorDefinition(ParseType(typeToken), path));
-        }
-
-        return result;
-    }
-
-    private static DiscriminatorType ParseType(string token) => token.ToUpperInvariant() switch
-    {
-        "PATTERN" => DiscriminatorType.Pattern,
-        "EXISTS" => DiscriminatorType.Exists,
-        "TYPE" => DiscriminatorType.Type,
-        "PROFILE" => DiscriminatorType.Profile,
-        _ => DiscriminatorType.Value,
-    };
 }
