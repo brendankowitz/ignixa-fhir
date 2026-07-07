@@ -26,11 +26,12 @@
 for 7 R4-core dual-form constraint profiles (296 elements across 5 base types) and diffs it against
 the shipped snapshot on paths + `min`/`max`/`type`/`binding`/`fixed[x]`/`pattern[x]`: **100% match**.
 
-**M2 — not started (slicing + extension insertion).** Plugs into `ElementMerger`: see the
-`M2 TODO` marker in `ElementMerger.cs`. When a differential introduces a named slice (`sliceName`
-set) whose sliced path has base children, copy those base children into the slice tagged with the
-`sliceName`, and carry the `slicing` discriminator metadata. Mirrors rh-foundation
-`ElementMerger::expand_slice_children`. Feeds `slicing-discriminators.md`.
+**M2 — shipped (slicing + extension insertion).** `ElementMerger` now keys elements by
+`ElementDefinition.id` (carrying `:sliceName`), merges a differential slicing header onto the base
+sliced element, and inserts named slice members + their sub-element subtrees contiguously after the
+header. It also synthesizes the default extension slicing (`value:url`, open) when a differential
+lists extension slice members without restating the header (the US Core pattern). Verified by
+`ElementMergerSlicingTests` and consumed end-to-end by `slicing-discriminators.md`'s `SlicingCheck`.
 
 **M3 — not started (type expansion + edge cases).** `contentReference` expansion, complex-datatype
 child expansion when a profile constrains into it, choice-type `[x]` narrowing, re-slicing, and
