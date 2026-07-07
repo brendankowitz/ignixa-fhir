@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
 
@@ -12,10 +13,35 @@ namespace Ignixa.Validation.Checks;
 /// Validates FHIR Narrative (text) structure.
 /// Ensures text.status is present and valid.
 /// Ensures text.div is present when status is not 'empty'.
+/// Ensures div content does not embed scripting/framing elements or non-predefined XML entities.
 /// Tier 1 (Fast) validator.
 /// </summary>
 public class NarrativeCheck : IValidationCheck, ISingletonCheck
 {
+    // Matches both opening and closing tag names ("<script", "</script") so a denied element is
+    // caught regardless of which delimiter it's spotted through.
+    private static readonly Regex TagNameRegex = new(@"<\s*/?\s*([A-Za-z][A-Za-z0-9]*)", RegexOptions.Compiled);
+
+    // XML permits only these five general entities without a DTD; anything else named (e.g. the
+    // HTML-only "&reg;") is not valid XHTML.
+    private static readonly Regex NamedEntityRegex = new(@"&([A-Za-z][A-Za-z0-9]*);", RegexOptions.Compiled);
+
+    private static readonly HashSet<string> AllowedXmlEntities =
+        new(StringComparer.Ordinal) { "amp", "lt", "gt", "apos", "quot" };
+
+    // Scripting/framing/embedding elements are excluded from the narrative's basic HTML formatting
+    // subset (FHIR narrative rule: HTML 4.0 chapters 7-11 except section 4 of chapter 9, and 15).
+    // A deny-list (rather than a full allow-list) keeps the risk of over-rejecting legitimate
+    // formatting markup low while still catching the dangerous cases this rule exists to prevent.
+    private static readonly HashSet<string> DisallowedXhtmlElements =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "script", "style", "object", "embed", "iframe", "frame", "frameset", "noframes",
+            "noscript", "applet", "form", "input", "button", "select", "textarea", "link",
+            "meta", "base", "title", "head", "body", "html", "svg", "video", "audio", "canvas",
+            "math", "param", "source",
+        };
+
     /// <summary>
     /// Validates Narrative structure.
     /// </summary>
@@ -50,7 +76,8 @@ public class NarrativeCheck : IValidationCheck, ISingletonCheck
             }
 
             // Compatibility mode: status is not required, but div is.
-            if (!textNode.Children("div").Any())
+            var compatibilityDivChildren = textNode.Children("div");
+            if (compatibilityDivChildren.Count == 0)
             {
                 issues.Add(ValidationIssue.InvariantFailure(
                     "txt-1",
@@ -59,7 +86,8 @@ public class NarrativeCheck : IValidationCheck, ISingletonCheck
                 return ValidationResult.Failure(issues);
             }
 
-            return ValidationResult.Success();
+            ValidateDivContent(compatibilityDivChildren[0], issues);
+            return issues.Count > 0 ? ValidationResult.Failure(issues) : ValidationResult.Success();
         }
 
         var statusNode = statusChildren[0];
@@ -74,12 +102,17 @@ public class NarrativeCheck : IValidationCheck, ISingletonCheck
         }
 
         // Check for div field (required if status is not 'empty')
-        if (status != "empty" && !textNode.Children("div").Any())
+        var divChildren = textNode.Children("div");
+        if (status != "empty" && divChildren.Count == 0)
         {
             issues.Add(ValidationIssue.InvariantFailure(
                 "txt-1",
                 "Narrative must have a div field when status is not 'empty'",
                 $"{textNode.Location}.div"));
+        }
+        else if (divChildren.Count > 0)
+        {
+            ValidateDivContent(divChildren[0], issues);
         }
 
         if (issues.Count > 0)
@@ -88,5 +121,44 @@ public class NarrativeCheck : IValidationCheck, ISingletonCheck
         }
 
         return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// Scans narrative div content for disallowed (scripting/framing) HTML elements and for named
+    /// XML entities other than the five predefined general entities.
+    /// </summary>
+    private static void ValidateDivContent(IElement divNode, List<ValidationIssue> issues)
+    {
+        var div = divNode.Value?.ToString();
+        if (string.IsNullOrEmpty(div))
+        {
+            return;
+        }
+
+        var reportedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in TagNameRegex.Matches(div))
+        {
+            var tagName = match.Groups[1].Value;
+            if (DisallowedXhtmlElements.Contains(tagName) && reportedTags.Add(tagName))
+            {
+                issues.Add(ValidationIssue.InvariantFailure(
+                    "invalid",
+                    $"Invalid element name in the XHTML ('{tagName}')",
+                    divNode.Location));
+            }
+        }
+
+        var reportedEntities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match match in NamedEntityRegex.Matches(div))
+        {
+            var entityName = match.Groups[1].Value;
+            if (!AllowedXmlEntities.Contains(entityName) && reportedEntities.Add(entityName))
+            {
+                issues.Add(ValidationIssue.InvariantFailure(
+                    "invalid",
+                    $"Invalid entity in the XHTML ('&{entityName};')",
+                    divNode.Location));
+            }
+        }
     }
 }

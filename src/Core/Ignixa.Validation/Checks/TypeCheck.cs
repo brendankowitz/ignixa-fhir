@@ -203,7 +203,8 @@ public class TypeCheck : IValidationCheck
             "dateTime" => (settings.Depth == ValidationDepth.Full ? DateTimePatternStrict : DateTimePatternPermissive).IsMatch(text),
             "instant" => InstantPattern.IsMatch(text), // Requires timezone (Z or +/-HH:MM)
             "time" => TimePattern.IsMatch(text),
-            "uri" or "url" or "oid" or "uuid" or "code" or "markdown" or "base64Binary" => true, // Permissive for general URIs
+            "uri" or "url" or "oid" or "uuid" or "code" or "markdown" => true, // Permissive for general URIs
+            "base64Binary" => FhirPrimitiveValidator.TryDecodeBase64(text, out _),
             "canonical" => Uri.TryCreate(text, UriKind.RelativeOrAbsolute, out _),
             _ => true // Unknown types pass
         };

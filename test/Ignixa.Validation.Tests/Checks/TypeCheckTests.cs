@@ -937,4 +937,46 @@ public class TypeCheckTests
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
     }
+
+    [Fact]
+    public void GivenValidBase64BinaryData_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse(
+            "{\"resourceType\":\"Media\",\"content\":{\"contentType\":\"application/octet-stream\",\"data\":\"aGVscCBpJ20gYSBidWc=\"}}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var contentElement = element.Children("content")[0];
+        var check = new TypeCheck("data", "base64Binary");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(contentElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenInvalidBase64BinaryData_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - regression for https://github.com/hapifhir/org.hl7.fhir.core/issues/1248
+        var json = JsonNode.Parse(
+            "{\"resourceType\":\"Media\",\"content\":{\"contentType\":\"application/octet-stream\",\"data\":\"%%%2@()()\"}}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var contentElement = element.Children("content")[0];
+        var check = new TypeCheck("data", "base64Binary");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(contentElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "type-1");
+    }
 }
