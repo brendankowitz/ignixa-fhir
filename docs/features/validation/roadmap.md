@@ -92,13 +92,31 @@ a few invariants. Deferred slices: IG-package cases, `supporting`/`profile` case
 | + element-scoped invariant altitude (`23301c8`) | 61.5% | 18 | 54 | `pat-1`/`bdl-5`/`inv-1`/`vsd-1` fire at owning element |
 | + PR #286 tree-context merged & seeded (`efb7850`) | 64.7% | 19 | 47 | `resolve()`/`%resource` catch broken local refs |
 | + nested-resource fragment re-scoping (`1027232`) | 63.6% | 18 | 50 | `#payer` in `parameter.resource` resolves in its own scope |
+| + terminology error-vs-warn severity (T1) | 64.7% | **10** | 56 | SNOMED/LOINC unverifiable → warning, not false error |
+| + structural micro-rules sprint | 70.6% | 10 | 45 | base64, attachment-size, empty-array, bundle rules, xhtml |
+| + snapshot M1 (differential→snapshot) | (no clean-base delta) | 10 | 45 | unlocks differential-only profiles for validation |
+| + skip audit (empty outcomes scored) | **71.5%** (of 193) | 10 | 45 | +6 free passes; denominator 187→193, skips 13→7 |
 
 **The real scoreboard is the split, not the headline.** Over-strict (valid resources we wrongly
-reject — a validator's worst failure) fell **54 → 19 (−65%)**. Under-strict rose because removing
-spurious errors *unmasked* pre-existing terminology/semantic gaps that were coincidentally rejecting
-the right resources for the wrong reasons — those are honest Phase 2/3 work (terminology, snapshot,
-extension-versioning), not regressions. Architecture rationale recorded in
-[ADR 2607: Forward-Only Nodes with Descending Context Scopes](../../adr/adr-2607-forward-only-validation-context.md).
+reject — a validator's worst failure) fell **54 → 10 (−81%)**. Under-strict rose then fell as spurious
+errors were removed (unmasking real gaps) and then structural checks closed them. Architecture
+rationale in [ADR 2607: Forward-Only Nodes with Descending Context Scopes](../../adr/adr-2607-forward-only-validation-context.md).
+
+### Scope & exclusions (supported-scope vs total)
+
+Not every case is in scope for an offline, deterministic validator. The honest metric is the
+**supported-scope pass rate** with an explicit exclusion list, per the Well-Architected reliability
+lens (declare what you don't do):
+
+- **Out-of-scope by design:** digital-signature cryptographic verification (`dsig`), `for-publication`
+  IG-publishing mode, and cases whose expected outcome requires a live terminology server
+  (`Unknown code ... in CodeSystem SNOMED/LOINC`). The last closes with **T3 (remote TX)** when built.
+- **Vendoring gaps (not a validator defect):** 7 in-scope cases are skipped because their Java
+  reference outcome file isn't in the vendored `outcomes/java/` copy (dsig + one tx questionnaire).
+  Reported explicitly by the runner as `OutcomeFileMissing`, never silently dropped.
+- **Deferred coverage:** IG-package / `supporting` / explicit-profile cases and non-R4 versions are
+  not yet in the runner's slice — snapshot generation (M1, done) is the unlock; enabling that slice is
+  where Phase 2's payoff is measured.
 
 ## Phase 2 — Differential → snapshot generation
 
