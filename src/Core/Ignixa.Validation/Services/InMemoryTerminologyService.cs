@@ -84,7 +84,7 @@ public class InMemoryTerminologyService : ITerminologyService
             foreach (var src in _additional)
             {
                 var codes = src.GetCodes(valueSetUrl);
-                if (codes != null)
+                if (codes is not null)
                 {
                     return codes;
                 }

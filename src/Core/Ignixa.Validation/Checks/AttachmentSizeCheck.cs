@@ -13,7 +13,7 @@ namespace Ignixa.Validation.Checks;
 /// Attachment.data. Tier 1 (Fast) validator - a closed-world structural check with no terminology
 /// or profile dependency.
 /// </summary>
-public class AttachmentSizeCheck : IValidationCheck, ISingletonCheck
+public sealed class AttachmentSizeCheck : IValidationCheck, ISingletonCheck
 {
     /// <summary>
     /// Validates that a stated Attachment.size matches the decoded Attachment.data length.

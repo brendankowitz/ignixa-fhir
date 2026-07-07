@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Collections.Frozen;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
@@ -16,7 +17,7 @@ namespace Ignixa.Validation.Checks;
 /// Ensures div content does not embed scripting/framing elements or non-predefined XML entities.
 /// Tier 1 (Fast) validator.
 /// </summary>
-public class NarrativeCheck : IValidationCheck, ISingletonCheck
+public sealed class NarrativeCheck : IValidationCheck, ISingletonCheck
 {
     // Matches both opening and closing tag names ("<script", "</script") so a denied element is
     // caught regardless of which delimiter it's spotted through.
@@ -26,21 +27,20 @@ public class NarrativeCheck : IValidationCheck, ISingletonCheck
     // HTML-only "&reg;") is not valid XHTML.
     private static readonly Regex NamedEntityRegex = new(@"&([A-Za-z][A-Za-z0-9]*);", RegexOptions.Compiled);
 
-    private static readonly HashSet<string> AllowedXmlEntities =
-        new(StringComparer.Ordinal) { "amp", "lt", "gt", "apos", "quot" };
+    private static readonly FrozenSet<string> AllowedXmlEntities =
+        new[] { "amp", "lt", "gt", "apos", "quot" }.ToFrozenSet(StringComparer.Ordinal);
 
     // Scripting/framing/embedding elements are excluded from the narrative's basic HTML formatting
     // subset (FHIR narrative rule: HTML 4.0 chapters 7-11 except section 4 of chapter 9, and 15).
     // A deny-list (rather than a full allow-list) keeps the risk of over-rejecting legitimate
     // formatting markup low while still catching the dangerous cases this rule exists to prevent.
-    private static readonly HashSet<string> DisallowedXhtmlElements =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "script", "style", "object", "embed", "iframe", "frame", "frameset", "noframes",
-            "noscript", "applet", "form", "input", "button", "select", "textarea", "link",
-            "meta", "base", "title", "head", "body", "html", "svg", "video", "audio", "canvas",
-            "math", "param", "source",
-        };
+    private static readonly FrozenSet<string> DisallowedXhtmlElements = new[]
+    {
+        "script", "style", "object", "embed", "iframe", "frame", "frameset", "noframes",
+        "noscript", "applet", "form", "input", "button", "select", "textarea", "link",
+        "meta", "base", "title", "head", "body", "html", "svg", "video", "audio", "canvas",
+        "math", "param", "source",
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Validates Narrative structure.
