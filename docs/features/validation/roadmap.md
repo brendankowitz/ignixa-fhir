@@ -96,6 +96,17 @@ a few invariants. Deferred slices: IG-package cases, `supporting`/`profile` case
 | + structural micro-rules sprint | 70.6% | 10 | 45 | base64, attachment-size, empty-array, bundle rules, xhtml |
 | + snapshot M1 (differential→snapshot) | (no clean-base delta) | 10 | 45 | unlocks differential-only profiles for validation |
 | + skip audit (empty outcomes scored) | **71.5%** (of 193) | 10 | 45 | +6 free passes; denominator 187→193, skips 13→7 |
+| + WS1 deterministic sweep | 78.2% | 10 | 32 | URI/canonical checks, per-1/que-12 invariant fixes, choice-variant recursion |
+| + WS2 extension example-URL | 78.8% | 10 | 31 | example.org extension URL on primitive-shadow |
+| + WS4 modes + over-strict burndown | 84.5% | **0** | 30 | ele-1/eld-3/type-1 root-cause fixes; mode-gated checks; **over-strict → 0** |
+| + package-backed resolution (Piece 1) | 84.5% | 0 | 30 | `PackageBackedValidator`; full profile validation real (offline bp-profile e2e) |
+
+**Endpoint — oracle-compliant for supported scope.** Over-strict **54 → 0** (every one a root-caused
+fix). Raw 84.5%; **supported-scope 163/180 = 90.6%** after freezing the out-of-scope-by-design
+exclusion list (remote-TX, SNOMED-ECL, SearchParameter static analysis, dsig, for-publication). The
+remaining under-strict is 10 offline-resolution-blocked (capability exists — the benchmark doesn't
+vendor the IG/terminology packages) + 7 tracked feature gaps. Declared in
+[ADR 2607: Validation Oracle-Conformance](../../adr/adr-2607-validation-oracle-conformance.md).
 
 **The real scoreboard is the split, not the headline.** Over-strict (valid resources we wrongly
 reject — a validator's worst failure) fell **54 → 10 (−81%)**. Under-strict rose then fell as spurious
