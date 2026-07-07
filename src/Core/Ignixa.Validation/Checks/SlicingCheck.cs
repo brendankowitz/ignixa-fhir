@@ -20,7 +20,9 @@ namespace Ignixa.Validation.Checks;
 /// Supports <c>value</c>, <c>pattern</c> (scalar equivalence), <c>exists</c>, and <c>type</c>
 /// discriminators. <c>profile</c> discriminators require <c>conformsTo()</c> and are deferred: a
 /// slicing that uses one (or whose slices could not be resolved to determinate match values) is
-/// skipped with an informational issue rather than risk falsely rejecting a valid resource.
+/// skipped with an informational issue rather than risk falsely rejecting a valid resource. The same
+/// skip-with-Information deferral applies at runtime when a discriminator expression cannot be
+/// evaluated against a candidate (an INDETERMINATE result, never a non-match).
 /// </remarks>
 public sealed class SlicingCheck : IValidationCheck
 {
@@ -72,32 +74,50 @@ public sealed class SlicingCheck : IValidationCheck
 
         if (_deferred)
         {
-            return new ValidationResult(isValid: true, issues: new[]
-            {
-                new ValidationIssue(
-                    IssueSeverity.Information,
-                    "slicing-deferred",
-                    $"{location}.{_slicedName}",
-                    $"Slicing on '{_slicedName}' was not enforced: it uses a profile discriminator or a slice whose discriminator value could not be resolved (conformsTo() is not yet supported).")
-            });
+            return Deferral(
+                location,
+                $"Slicing on '{_slicedName}' was not enforced: it uses a profile discriminator or a slice whose discriminator value could not be resolved (conformsTo() is not yet supported).");
         }
 
         var candidates = element.Children(_slicedName);
         var context = BuildContext(state);
 
         var assignments = AssignSlices(candidates, context, out var issues);
-        AccountCardinality(assignments, candidates.Count, location, issues);
+        if (assignments is null)
+        {
+            // A discriminator expression could not be evaluated against this resource, so slice
+            // assignment is indeterminate. Defer the whole slicing rather than bucket the candidate
+            // as unmatched — a non-match would risk a false rejection (closed/cardinality error) on
+            // an otherwise-valid resource. Preserves the zero-over-strict invariant.
+            return Deferral(
+                location,
+                $"Slicing on '{_slicedName}' was not enforced: a discriminator expression could not be evaluated against this resource, so slice assignment is indeterminate.");
+        }
+
+        AccountCardinality(assignments, location, issues);
 
         return issues.Count == 0
             ? ValidationResult.Success()
             : new ValidationResult(isValid: !issues.Any(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal), issues: issues);
     }
 
+    private ValidationResult Deferral(string location, string message)
+        => new(isValid: true, issues: new[]
+        {
+            new ValidationIssue(
+                IssueSeverity.Information,
+                "slicing-deferred",
+                $"{location}.{_slicedName}",
+                message)
+        });
+
     /// <summary>
     /// Buckets each candidate to the first slice whose discriminators all match (first match wins),
-    /// reporting unmatched candidates according to the closed / openAtEnd rules and ordering.
+    /// reporting unmatched candidates according to the closed / openAtEnd rules and ordering. Returns
+    /// <c>null</c> when a discriminator expression could not be evaluated against a candidate
+    /// (indeterminate): the caller then defers the whole slicing instead of enforcing it.
     /// </summary>
-    private Dictionary<string, List<int>> AssignSlices(
+    private Dictionary<string, List<int>>? AssignSlices(
         IReadOnlyList<IElement> candidates,
         EvaluationContext context,
         out List<ValidationIssue> issues)
@@ -118,7 +138,13 @@ public sealed class SlicingCheck : IValidationCheck
             var matchedSlice = -1;
             for (var s = 0; s < _metadata.Slices.Count; s++)
             {
-                if (SliceMatches(candidates[i], _metadata.Slices[s], context))
+                var matches = SliceMatches(candidates[i], _metadata.Slices[s], context);
+                if (matches is null)
+                {
+                    return null;
+                }
+
+                if (matches.Value)
                 {
                     matchedSlice = s;
                     break;
@@ -179,7 +205,6 @@ public sealed class SlicingCheck : IValidationCheck
     /// <summary>Enforces per-slice min/max cardinality over the assigned buckets.</summary>
     private void AccountCardinality(
         Dictionary<string, List<int>> assignments,
-        int candidateCount,
         string location,
         List<ValidationIssue> issues)
     {
@@ -207,7 +232,11 @@ public sealed class SlicingCheck : IValidationCheck
         }
     }
 
-    private bool SliceMatches(IElement candidate, SliceDefinition slice, EvaluationContext context)
+    /// <summary>
+    /// Returns whether the candidate matches every discriminator of the slice, or <c>null</c> when a
+    /// discriminator expression could not be evaluated (indeterminate — the caller defers slicing).
+    /// </summary>
+    private static bool? SliceMatches(IElement candidate, SliceDefinition slice, EvaluationContext context)
     {
         if (slice.Match.Count == 0)
         {
@@ -216,7 +245,13 @@ public sealed class SlicingCheck : IValidationCheck
 
         foreach (var match in slice.Match)
         {
-            if (!DiscriminatorMatches(candidate, match, context))
+            var matches = DiscriminatorMatches(candidate, match, context);
+            if (matches is null)
+            {
+                return null;
+            }
+
+            if (!matches.Value)
             {
                 return false;
             }
@@ -225,9 +260,13 @@ public sealed class SlicingCheck : IValidationCheck
         return true;
     }
 
-    private static bool DiscriminatorMatches(IElement candidate, SliceDiscriminatorValue match, EvaluationContext context)
+    private static bool? DiscriminatorMatches(IElement candidate, SliceDiscriminatorValue match, EvaluationContext context)
     {
         var targets = SelectPath(candidate, match.Path, context);
+        if (targets is null)
+        {
+            return null;
+        }
 
         return match.Type switch
         {
@@ -239,7 +278,14 @@ public sealed class SlicingCheck : IValidationCheck
         };
     }
 
-    private static IReadOnlyList<IElement> SelectPath(IElement candidate, string path, EvaluationContext context)
+    /// <summary>
+    /// Evaluates the discriminator path against the candidate. Returns the matched elements, or
+    /// <c>null</c> when FHIRPath evaluation of the path threw. A throw is INDETERMINATE, not an empty
+    /// result: returning empty here would silently turn a valid resource into a non-match (and thus a
+    /// false closed/cardinality rejection). Cancellation and genuinely unexpected exceptions
+    /// propagate.
+    /// </summary>
+    private static IReadOnlyList<IElement>? SelectPath(IElement candidate, string path, EvaluationContext context)
     {
         if (string.IsNullOrEmpty(path) || path == "$this")
         {
@@ -250,9 +296,9 @@ public sealed class SlicingCheck : IValidationCheck
         {
             return candidate.Select(path, context).ToList();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NotSupportedException or FormatException or OverflowException)
         {
-            return Array.Empty<IElement>();
+            return null;
         }
     }
 

@@ -39,10 +39,19 @@ public sealed class PackageCodeSystemSourceTests
     }
     """;
 
+    private const string NoContentCodeSystem = """
+    {
+      "resourceType":"CodeSystem","id":"nocontent",
+      "url":"http://example.org/nocontent",
+      "concept":[{"code":"x","display":"X"}]
+    }
+    """;
+
     private static PackageCodeSystemSource BuildSource() => new(new[]
     {
         CodeSystem("widget-status", CompleteSystem, CompleteCodeSystem),
         CodeSystem("partial", "http://example.org/partial", FragmentCodeSystem),
+        CodeSystem("nocontent", "http://example.org/nocontent", NoContentCodeSystem),
     });
 
     [Fact]
@@ -75,7 +84,7 @@ public sealed class PackageCodeSystemSourceTests
     {
         var source = BuildSource();
 
-        source.IsKnownSystem("http://example.org/unknown").ShouldBeFalse();
+        // An unknown system is not locally enumerable: membership is undecidable (null).
         source.ContainsCode("http://example.org/unknown", "active").ShouldBeNull();
         source.GetDisplay("http://example.org/unknown", "active").ShouldBeNull();
     }
@@ -85,7 +94,8 @@ public sealed class PackageCodeSystemSourceTests
     {
         var source = BuildSource();
 
-        source.IsKnownSystem(CompleteSystem).ShouldBeTrue();
+        // A complete system enumerates its full code set: a hit is true and a miss is an
+        // authoritative false (non-null answers signal the system is locally enumerable).
         source.ContainsCode(CompleteSystem, "active").ShouldBe(true);
         source.ContainsCode(CompleteSystem, "missing").ShouldBe(false);
     }
@@ -97,9 +107,20 @@ public sealed class PackageCodeSystemSourceTests
 
         // A fragment system does not enumerate its full code set: a hit is still true, but a miss
         // is unverifiable (null) so a downstream check degrades to a warning rather than rejecting.
-        source.IsKnownSystem("http://example.org/partial").ShouldBeFalse();
         source.ContainsCode("http://example.org/partial", "a").ShouldBe(true);
         source.ContainsCode("http://example.org/partial", "missing").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenSystemWithNoContentProperty_WhenCodeMissing_ThenMembershipIsUndecidable()
+    {
+        var source = BuildSource();
+
+        // Completeness is unknown when 'content' is absent — a miss must be undecidable (null), not
+        // an authoritative false that would falsely reject a valid code on a completeness-unknown
+        // system. A present code still resolves.
+        source.ContainsCode("http://example.org/nocontent", "x").ShouldBe(true);
+        source.ContainsCode("http://example.org/nocontent", "missing").ShouldBeNull();
     }
 
     private static ExtractedResource CodeSystem(string id, string canonical, string json) => new()

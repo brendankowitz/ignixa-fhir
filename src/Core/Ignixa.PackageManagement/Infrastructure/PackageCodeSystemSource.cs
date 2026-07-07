@@ -40,10 +40,21 @@ public sealed class PackageCodeSystemSource : ICodeSystemProvider
         _codeSystems = new Dictionary<string, ExtractedResource>(StringComparer.Ordinal);
         foreach (var r in resources)
         {
-            if (r.ResourceType == "CodeSystem")
+            if (r.ResourceType != "CodeSystem")
             {
-                _codeSystems[StripVersionSuffix(r.Canonical)] = r;
+                continue;
             }
+
+            var canonical = StripVersionSuffix(r.Canonical);
+            if (_codeSystems.ContainsKey(canonical))
+            {
+                _logger.LogWarning(
+                    "Duplicate CodeSystem canonical '{Canonical}' — the later definition (id='{ResourceId}') overwrites the earlier one. Check package ordering if this is unintended.",
+                    canonical,
+                    r.ResourceId);
+            }
+
+            _codeSystems[canonical] = r;
         }
     }
 
@@ -57,9 +68,6 @@ public sealed class PackageCodeSystemSource : ICodeSystemProvider
         var parsed = Parse(system);
         return parsed is not null && parsed.Concepts.TryGetValue(code, out var display) ? display : null;
     }
-
-    public bool IsKnownSystem(string system)
-        => !string.IsNullOrEmpty(system) && Parse(system) is { IsComplete: true };
 
     public bool? ContainsCode(string system, string code)
     {
@@ -98,9 +106,12 @@ public sealed class PackageCodeSystemSource : ICodeSystemProvider
                 using var doc = JsonDocument.Parse(cs.ResourceJson);
                 var root = doc.RootElement;
 
-                var isComplete = !root.TryGetProperty("content", out var content)
-                    || content.ValueKind != JsonValueKind.String
-                    || string.Equals(content.GetString(), "complete", StringComparison.Ordinal);
+                // Complete ONLY when explicitly declared: an absent or unknown 'content' leaves
+                // completeness undecidable, so a code miss must degrade to null (undecidable), not an
+                // authoritative "not a member" that would falsely reject a valid code.
+                var isComplete = root.TryGetProperty("content", out var content)
+                    && content.ValueKind == JsonValueKind.String
+                    && string.Equals(content.GetString(), "complete", StringComparison.Ordinal);
 
                 var concepts = new Dictionary<string, string?>(StringComparer.Ordinal);
                 if (root.TryGetProperty("concept", out var conceptArr) && conceptArr.ValueKind == JsonValueKind.Array)

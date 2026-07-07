@@ -24,9 +24,15 @@ namespace Ignixa.Validation.Tests.CustomerScenarios;
 /// <c>bp</c> derives from <c>vitalsigns</c> and slices <c>Observation.component</c> by a
 /// <c>value</c> discriminator on <c>code.coding.code</c> + <c>code.coding.system</c> into required
 /// <c>SystolicBP</c> and <c>DiastolicBP</c> slices. Proves the package-backed setup resolves the
-/// profile from <c>meta.profile</c> and enforces its slice cardinality. Skips when the core package
-/// is not in the local cache.
+/// profile from <c>meta.profile</c> and enforces its slice cardinality.
+/// <para>
+/// Gated <c>RequiresNetwork</c> (the codebase convention for environment-dependent tests the CI
+/// conformance runner excludes) because it needs the R4 core package materialized in the local FHIR
+/// cache. When it does run, it fails loudly if that package is absent rather than passing without
+/// asserting anything.
+/// </para>
 /// </summary>
+[Trait("Category", "RequiresNetwork")]
 public sealed class CoreProfileOfflineScenarioTests(ITestOutputHelper output)
 {
     private const string BpProfile = "http://hl7.org/fhir/StructureDefinition/bp";
@@ -111,16 +117,13 @@ public sealed class CoreProfileOfflineScenarioTests(ITestOutputHelper output)
     [Fact]
     public void GivenConformantBloodPressure_WhenValidatedThroughPackageBackedSetupAtFullDepth_ThenProfileResolvesAndNoSlicingErrors()
     {
-        if (Setup is null)
-        {
-            _output.WriteLine("R4 core package not present in local FHIR cache — skipping offline profile e2e.");
-            return;
-        }
+        Setup.ShouldNotBeNull(
+            "R4 core package must be materialized in the local FHIR cache to run this RequiresNetwork test.");
 
         var element = ToElement(ConformantBloodPressure());
 
         // The profile resolves from meta.profile through the package-backed layered resolver.
-        var schema = Setup.SchemaResolver.ResolveForElement(element);
+        var schema = Setup!.SchemaResolver.ResolveForElement(element);
         schema.ShouldNotBeNull();
 
         var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
@@ -134,11 +137,8 @@ public sealed class CoreProfileOfflineScenarioTests(ITestOutputHelper output)
     [Fact]
     public void GivenBloodPressureMissingDiastolicComponent_WhenValidatedAtFullDepth_ThenRejectedNamingDiastolicSlice()
     {
-        if (Setup is null)
-        {
-            _output.WriteLine("R4 core package not present in local FHIR cache — skipping offline profile e2e.");
-            return;
-        }
+        Setup.ShouldNotBeNull(
+            "R4 core package must be materialized in the local FHIR cache to run this RequiresNetwork test.");
 
         var json = ConformantBloodPressure();
 
@@ -147,7 +147,7 @@ public sealed class CoreProfileOfflineScenarioTests(ITestOutputHelper output)
         components.RemoveAt(1);
 
         var element = ToElement(json);
-        var schema = Setup.SchemaResolver.ResolveForElement(element);
+        var schema = Setup!.SchemaResolver.ResolveForElement(element);
         schema.ShouldNotBeNull();
 
         var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());

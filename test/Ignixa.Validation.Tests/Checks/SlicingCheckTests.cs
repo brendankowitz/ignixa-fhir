@@ -16,9 +16,10 @@ using Xunit;
 namespace Ignixa.Validation.Tests.Checks;
 
 /// <summary>
-/// Unit tests for <see cref="SlicingCheck"/>: slice assignment by discriminator, per-slice
-/// cardinality accounting, closed / openAtEnd rule enforcement, each supported discriminator type,
-/// the Full-tier depth gate, and the profile-discriminator deferral.
+/// Unit tests for <see cref="SlicingCheck"/>: slice assignment by each supported discriminator type
+/// (value, exists, type), per-slice cardinality accounting, closed / openAtEnd rule enforcement,
+/// ordered slicing, the Full-tier depth gate, the profile-discriminator deferral, and the runtime
+/// deferral when a discriminator expression cannot be evaluated.
 /// </summary>
 public sealed class SlicingCheckTests
 {
@@ -161,6 +162,118 @@ public sealed class SlicingCheckTests
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldAllBe(i => i.Severity == IssueSeverity.Information);
+    }
+
+    [Fact]
+    public void GivenTypeDiscriminator_WhenBucketingByInstanceType_ThenAssignsEachToMatchingSlice()
+    {
+        var element = PatientWith("""
+        [
+          {"url":"http://x/a","valueString":"s"},
+          {"url":"http://x/b","valueCode":"c"}
+        ]
+        """);
+        var metadata = new SlicingMetadata(
+            new[] { new DiscriminatorDefinition(DiscriminatorType.Type, "value") },
+            "closed",
+            ordered: false,
+            new[]
+            {
+                new SliceDefinition("stringValue", 1, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Type, "value", "string") }),
+                new SliceDefinition("codeValue", 1, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Type, "value", "code") }),
+            });
+        var check = new SlicingCheck("extension", metadata);
+
+        var result = check.Validate(element, FullDepth, new ValidationState());
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenOpenAtEndSlicing_WhenUnmatchedContentTrailsMatchedSlices_ThenAccepts()
+    {
+        var element = PatientWith("""
+        [
+          {"url":"http://x/race","valueString":"A"},
+          {"url":"http://x/extra","valueString":"trailing"}
+        ]
+        """);
+        var metadata = ValueUrlSlicing("openAtEnd", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var check = new SlicingCheck("extension", metadata);
+
+        var result = check.Validate(element, FullDepth, new ValidationState());
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenOpenAtEndSlicing_WhenUnmatchedContentPrecedesMatchedSlice_ThenReportsUnmatchedError()
+    {
+        var element = PatientWith("""
+        [
+          {"url":"http://x/extra","valueString":"leading"},
+          {"url":"http://x/race","valueString":"A"}
+        ]
+        """);
+        var metadata = ValueUrlSlicing("openAtEnd", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var check = new SlicingCheck("extension", metadata);
+
+        var result = check.Validate(element, FullDepth, new ValidationState());
+
+        result.IsValid.ShouldBeFalse();
+        var issue = result.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("slicing-unmatched");
+    }
+
+    [Fact]
+    public void GivenOrderedSlicing_WhenSlicesAppearOutOfOrder_ThenReportsOutOfOrderError()
+    {
+        var element = PatientWith("""
+        [
+          {"url":"http://x/birthsex","valueCode":"F"},
+          {"url":"http://x/race","valueString":"A"}
+        ]
+        """);
+        var metadata = new SlicingMetadata(
+            new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "url") },
+            "open",
+            ordered: true,
+            new[]
+            {
+                ValueUrlSlice("race", 0, 1, "http://x/race"),
+                ValueUrlSlice("birthsex", 0, 1, "http://x/birthsex"),
+            });
+        var check = new SlicingCheck("extension", metadata);
+
+        var result = check.Validate(element, FullDepth, new ValidationState());
+
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Code == "slicing-out-of-order" && i.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void GivenDiscriminatorPathThatThrows_WhenValidating_ThenDefersWithInformationNotError()
+    {
+        var element = PatientWith("""[{"url":"http://x/race","valueString":"A"},{"url":"http://x/race","valueString":"B"}]""");
+
+        // %terminologies is a determinate value discriminator (so it is not statically deferred), but
+        // evaluating it throws at runtime. A throw is indeterminate: the check must defer with an
+        // Information issue, never raise a slicing Error (which would falsely reject a valid resource).
+        var metadata = new SlicingMetadata(
+            new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "%terminologies") },
+            "closed",
+            ordered: false,
+            new[] { new SliceDefinition("race", 0, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Value, "%terminologies", "http://x/race") }) });
+        var check = new SlicingCheck("extension", metadata);
+
+        check.IsDeferred.ShouldBeFalse();
+        var result = check.Validate(element, FullDepth, new ValidationState());
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues.ShouldAllBe(i => i.Severity == IssueSeverity.Information && i.Code == "slicing-deferred");
     }
 
     [Fact]

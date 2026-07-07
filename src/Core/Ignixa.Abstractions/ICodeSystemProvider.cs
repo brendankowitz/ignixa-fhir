@@ -1,7 +1,7 @@
-// <copyright file="ICodeSystemProvider.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
 #nullable enable
 
@@ -26,14 +26,8 @@ public interface ICodeSystemProvider
     string? GetDisplay(string system, string code);
 
     /// <summary>
-    /// Indicates whether this provider has enumerable concept content for the given code system.
-    /// </summary>
-    /// <param name="system">The code system canonical URL.</param>
-    /// <returns>True when the system's concepts are known and enumerable; otherwise false.</returns>
-    bool IsKnownSystem(string system);
-
-    /// <summary>
-    /// Reports whether a code is a member of a code system.
+    /// Reports whether a code is a member of a code system. The tri-state return also encodes
+    /// completeness: a non-null answer means the system is locally enumerable.
     /// </summary>
     /// <param name="system">The code system canonical URL.</param>
     /// <param name="code">The concept code.</param>

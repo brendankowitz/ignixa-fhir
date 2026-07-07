@@ -391,10 +391,37 @@ public class StructureDefinitionSchemaBuilder
         // NestedComplexTypeCheck against the concrete variant name — so nested rules (base64Binary on
         // Attachment.data, cardinality, shape) apply. A no-op when that variant is absent. Profile
         // tier keeps Compatibility depth unchanged.
-        foreach (var choiceElement in elements.Where(e => e.Info.IsChoiceElement))
+        //
+        // Seed the cycle guard with the current type first: the `finally` above cleared
+        // _activeTypeNames, and BuildChoiceVariantChecks re-enters BuildSchema per complex variant.
+        // Without the current type in the visited set, a cyclic choice-variant datatype graph would
+        // recurse until it overflowed. Re-establishing it here makes the visited-set guard inside
+        // BuildChoiceVariantChecks effective across that recursion.
+        var choiceVisiting = _activeTypeNames.Value ?? new HashSet<string>(StringComparer.Ordinal);
+        var ownsChoiceVisiting = _activeTypeNames.Value is null;
+        if (ownsChoiceVisiting)
         {
-            profileChecks.AddRange(BuildChoiceVariantChecks(
-                choiceElement, schema, terminologyService, _logger, _parser));
+            _activeTypeNames.Value = choiceVisiting;
+        }
+        var addedChoiceType = choiceVisiting.Add(typeDefinition.Info.Name);
+        try
+        {
+            foreach (var choiceElement in elements.Where(e => e.Info.IsChoiceElement))
+            {
+                profileChecks.AddRange(BuildChoiceVariantChecks(
+                    choiceElement, schema, terminologyService, _logger, _parser));
+            }
+        }
+        finally
+        {
+            if (addedChoiceType)
+            {
+                choiceVisiting.Remove(typeDefinition.Info.Name);
+            }
+            if (ownsChoiceVisiting)
+            {
+                _activeTypeNames.Value = null;
+            }
         }
 
         // Slicing (Full tier): enforce per-slice cardinality and closed/openAtEnd rules for elements
@@ -961,13 +988,6 @@ public class StructureDefinitionSchemaBuilder
     }
 
     /// <summary>
-    /// Gets the FHIR type name from an element definition.
-    /// For elements with ITypeExtended, returns DefaultTypeName or Types[0].Code.
-    /// Falls back to Info.Name for elements without extended metadata.
-    /// </summary>
-    /// <param name="element">The element to get the type name from.</param>
-    /// <returns>The FHIR type name.</returns>
-    /// <summary>
     /// The name used to navigate the sliced array via <see cref="IElement.Children(string)"/>.
     /// Strips a choice <c>[x]</c> suffix so navigation matches the concrete typed children, mirroring
     /// the cardinality pass.
@@ -977,6 +997,13 @@ public class StructureDefinitionSchemaBuilder
             ? element.Info.Name[..^3]
             : element.Info.Name;
 
+    /// <summary>
+    /// Gets the FHIR type name from an element definition.
+    /// For elements with ITypeExtended, returns DefaultTypeName or Types[0].Code.
+    /// Falls back to Info.Name for elements without extended metadata.
+    /// </summary>
+    /// <param name="element">The element to get the type name from.</param>
+    /// <returns>The FHIR type name.</returns>
     private static string GetTypeName(IType element)
     {
         if (element is ITypeExtended extended)

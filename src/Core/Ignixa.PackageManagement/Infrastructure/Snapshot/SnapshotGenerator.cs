@@ -40,15 +40,39 @@ public sealed class SnapshotGenerator
     /// <returns>A fresh, parentless snapshot <c>element</c> array, or <c>null</c>.</returns>
     /// <exception cref="SnapshotGenerationException">A circular <c>baseDefinition</c> chain was detected.</exception>
     public JsonArray? GenerateSnapshotElements(JsonObject structureDefinition, ISnapshotBaseResolver resolver)
+        => GenerateSnapshotElements(structureDefinition, resolver, out _);
+
+    /// <summary>
+    /// Produces the snapshot <c>element</c> array, additionally reporting the <c>baseDefinition</c>
+    /// canonical URL that could not be resolved when generation fails for that reason, so callers can
+    /// log an observable, actionable degrade instead of a silent null.
+    /// </summary>
+    /// <param name="structureDefinition">The StructureDefinition JSON to snapshot.</param>
+    /// <param name="resolver">Resolves <c>baseDefinition</c> canonical URLs to base JSON.</param>
+    /// <param name="unresolvedBaseDefinition">
+    /// On a <c>null</c> return caused by an unresolvable base, the canonical URL of the base that
+    /// could not be resolved; otherwise <c>null</c>.
+    /// </param>
+    /// <returns>A fresh, parentless snapshot <c>element</c> array, or <c>null</c>.</returns>
+    /// <exception cref="SnapshotGenerationException">A circular <c>baseDefinition</c> chain was detected.</exception>
+    public JsonArray? GenerateSnapshotElements(
+        JsonObject structureDefinition,
+        ISnapshotBaseResolver resolver,
+        out string? unresolvedBaseDefinition)
     {
         ArgumentNullException.ThrowIfNull(structureDefinition);
         ArgumentNullException.ThrowIfNull(resolver);
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
-        return Generate(structureDefinition, resolver, visited);
+        unresolvedBaseDefinition = null;
+        return Generate(structureDefinition, resolver, visited, ref unresolvedBaseDefinition);
     }
 
-    private JsonArray? Generate(JsonObject sd, ISnapshotBaseResolver resolver, HashSet<string> visited)
+    private JsonArray? Generate(
+        JsonObject sd,
+        ISnapshotBaseResolver resolver,
+        HashSet<string> visited,
+        ref string? unresolvedBaseDefinition)
     {
         var snapshot = SnapshotJson.GetObject(sd, SnapshotProperty);
         if (snapshot is not null && SnapshotJson.GetArray(snapshot, ElementProperty) is { Count: > 0 } existing)
@@ -76,10 +100,11 @@ public sealed class SnapshotGenerator
         var baseDefinition = resolver.ResolveStructureDefinition(baseUrl);
         if (baseDefinition is null)
         {
+            unresolvedBaseDefinition = baseUrl;
             return null;
         }
 
-        var baseElements = Generate(baseDefinition, resolver, visited);
+        var baseElements = Generate(baseDefinition, resolver, visited, ref unresolvedBaseDefinition);
         if (baseElements is null)
         {
             return null;

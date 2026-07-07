@@ -1,9 +1,9 @@
-using Ignixa.Abstractions;
-// <copyright file="InMemoryTerminologyServiceTests.cs" company="Microsoft Corporation">
-//     Copyright (c) Microsoft Corporation. All rights reserved.
-//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// </copyright>
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;
 using Ignixa.Validation.Services;
@@ -94,6 +94,26 @@ public class InMemoryTerminologyServiceTests
             CancellationToken.None);
 
         // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(IssueSeverity.Error, result.Severity);
+        Assert.Contains("not found in the value set", result.Message);
+    }
+
+    [Fact]
+    public async Task GivenInvalidCodeInFullyEnumeratedNonWellKnownSystem_WhenValidating_ThenReturnsError()
+    {
+        // Guards the `!EnumeratesSystem` widening: administrative-gender is a fully-enumerated, non
+        // well-known system (not SNOMED/LOINC/UCUM). A genuinely-invalid code there is an
+        // authoritative miss and must stay a hard Error, not degrade to a Warning.
+        var service = new InMemoryTerminologyService(new R4CoreSchemaProvider().ValueSetProvider);
+
+        var result = await service.ValidateCodeAsync(
+            system: "http://hl7.org/fhir/administrative-gender",
+            code: "definitely-not-a-gender",
+            display: null,
+            valueSetUrl: "http://hl7.org/fhir/ValueSet/administrative-gender",
+            CancellationToken.None);
+
         Assert.False(result.IsValid);
         Assert.Equal(IssueSeverity.Error, result.Severity);
         Assert.Contains("not found in the value set", result.Message);

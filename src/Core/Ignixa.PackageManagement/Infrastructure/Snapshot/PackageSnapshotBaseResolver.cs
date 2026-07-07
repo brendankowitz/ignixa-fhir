@@ -6,6 +6,8 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.PackageManagement.Infrastructure.Snapshot;
 
@@ -26,16 +28,26 @@ public sealed class PackageSnapshotBaseResolver : ISnapshotBaseResolver
     private readonly Dictionary<string, JsonObject> _packageByCanonical;
     private readonly Dictionary<string, JsonObject?> _coreCache = new(StringComparer.Ordinal);
     private readonly IFhirSchemaProvider _baseProvider;
+    private readonly ILogger<PackageSnapshotBaseResolver> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="PackageSnapshotBaseResolver"/> class.</summary>
     /// <param name="packageResources">Conformance resources extracted from the loaded IG packages.</param>
     /// <param name="baseProvider">Base FHIR-version schema provider used for core-type projection.</param>
-    public PackageSnapshotBaseResolver(IEnumerable<ExtractedResource> packageResources, IFhirSchemaProvider baseProvider)
+    /// <param name="logger">
+    /// Optional logger. A malformed package <c>StructureDefinition</c> is dropped from the base index
+    /// and logged so the resulting degrade (profiles deriving from it snapshot against the base only)
+    /// is observable rather than silent. Defaults to <see cref="NullLogger{T}"/>.
+    /// </param>
+    public PackageSnapshotBaseResolver(
+        IEnumerable<ExtractedResource> packageResources,
+        IFhirSchemaProvider baseProvider,
+        ILogger<PackageSnapshotBaseResolver>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(packageResources);
         ArgumentNullException.ThrowIfNull(baseProvider);
 
         _baseProvider = baseProvider;
+        _logger = logger ?? NullLogger<PackageSnapshotBaseResolver>.Instance;
         _packageByCanonical = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
 
         foreach (var resource in packageResources)
@@ -45,7 +57,7 @@ public sealed class PackageSnapshotBaseResolver : ISnapshotBaseResolver
                 continue;
             }
 
-            if (TryParse(resource.ResourceJson) is JsonObject structureDefinition)
+            if (TryParse(resource.ResourceJson, resource) is JsonObject structureDefinition)
             {
                 _packageByCanonical[StripVersion(resource.Canonical)] = structureDefinition;
             }
@@ -93,14 +105,19 @@ public sealed class PackageSnapshotBaseResolver : ISnapshotBaseResolver
         };
     }
 
-    private static JsonObject? TryParse(string json)
+    private JsonObject? TryParse(string json, ExtractedResource resource)
     {
         try
         {
             return JsonNode.Parse(json) as JsonObject;
         }
-        catch (System.Text.Json.JsonException)
+        catch (System.Text.Json.JsonException ex)
         {
+            _logger.LogWarning(
+                ex,
+                "Malformed StructureDefinition JSON (id='{ResourceId}', canonical='{Canonical}') dropped from the snapshot base index; profiles deriving from it snapshot against the base definition only.",
+                resource.ResourceId,
+                resource.Canonical);
             return null;
         }
     }

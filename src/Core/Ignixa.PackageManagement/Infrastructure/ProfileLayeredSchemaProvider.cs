@@ -61,7 +61,10 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
         // again in the adaptation loop, so a lazy source would be walked twice.
         var resources = packageResources as IReadOnlyList<ExtractedResource> ?? packageResources.ToList();
         var snapshotGenerator = new SnapshotGenerator();
-        var baseResolver = new PackageSnapshotBaseResolver(resources, baseProvider);
+        var baseResolver = new PackageSnapshotBaseResolver(
+            resources,
+            baseProvider,
+            new LoggerAdapter<PackageSnapshotBaseResolver>(log));
 
         foreach (var res in resources)
         {
@@ -136,9 +139,14 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
 
         try
         {
-            var generated = generator.GenerateSnapshotElements(structureDefinition, resolver);
+            var generated = generator.GenerateSnapshotElements(structureDefinition, resolver, out var unresolvedBase);
             if (generated is null)
             {
+                log.LogWarning(
+                    "Snapshot generation produced no elements for profile (id='{ProfileId}', canonical='{Canonical}', baseDefinition='{UnresolvedBase}'); it validates against the base resource definition only. The base could not be resolved or is not snapshottable.",
+                    res.ResourceId,
+                    res.Canonical,
+                    unresolvedBase ?? (structureDefinition["baseDefinition"] as JsonValue)?.ToString());
                 return res.ResourceJson;
             }
 
