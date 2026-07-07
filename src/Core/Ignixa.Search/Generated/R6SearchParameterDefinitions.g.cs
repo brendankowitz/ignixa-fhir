@@ -65,7 +65,7 @@ public static class R6SearchParameterDefinitions
                 expression: null,
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Resource" },
-                description: "Text search against the narrative")
+                description: "Search the narrative content of a resource.")
 ,
             new SearchParameterInfo(
                 name: "_list",
@@ -101,6 +101,116 @@ public static class R6SearchParameterDefinitions
                 description: "A resource type filter")
 ,
             new SearchParameterInfo(
+                name: "_text",
+                code: "_text",
+                searchParamType: SearchParamType.Special,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DomainResource-text"),
+                components: null,
+                expression: null,
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DomainResource" },
+                description: "Search on the narrative of the resource")
+,
+            new SearchParameterInfo(
+                name: "_id",
+                code: "_id",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"),
+                components: null,
+                expression: "Resource.id",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Logical id of this artifact")
+,
+            new SearchParameterInfo(
+                name: "_in",
+                code: "_in",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-in"),
+                components: null,
+                expression: "Resource.id",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Allows for the retrieval of resources that are active members of a CareTeam, Group, or List")
+,
+            new SearchParameterInfo(
+                name: "_language",
+                code: "_language",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-language"),
+                components: null,
+                expression: "Resource.language",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Language of the resource content")
+,
+            new SearchParameterInfo(
+                name: "_lastUpdated",
+                code: "_lastUpdated",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"),
+                components: null,
+                expression: "Resource.meta.lastUpdated",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "When the resource version last changed")
+,
+            new SearchParameterInfo(
+                name: "_profile",
+                code: "_profile",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-profile"),
+                components: null,
+                expression: "Resource.meta.profile",
+                targetResourceTypes: new[] { "StructureDefinition" },
+                baseResourceTypes: new[] { "Resource" },
+                description: "Profiles this resource claims to conform to")
+,
+            new SearchParameterInfo(
+                name: "_query",
+                code: "_query",
+                searchParamType: SearchParamType.Special,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-query"),
+                components: null,
+                expression: null,
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "A custom search profile that describes a specific defined query operation")
+,
+            new SearchParameterInfo(
+                name: "_security",
+                code: "_security",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-security"),
+                components: null,
+                expression: "Resource.meta.security",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Security Labels applied to this resource")
+,
+            new SearchParameterInfo(
+                name: "_source",
+                code: "_source",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-source"),
+                components: null,
+                expression: "Resource.meta.source",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Identifies where the resource comes from")
+,
+            new SearchParameterInfo(
+                name: "_tag",
+                code: "_tag",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-tag"),
+                components: null,
+                expression: "Resource.meta.tag",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Tags applied to this resource")
+,
+            new SearchParameterInfo(
                 name: "guarantor",
                 code: "guarantor",
                 searchParamType: SearchParamType.Reference,
@@ -110,6 +220,28 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Organization", "RelatedPerson", "Patient" },
                 baseResourceTypes: new[] { "Account" },
                 description: "The parties ultimately responsible for balancing the Account")
+,
+            new SearchParameterInfo(
+                name: "guarantor-account",
+                code: "guarantor-account",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Account-guarantor-account"),
+                components: null,
+                expression: "Account.guarantor.account",
+                targetResourceTypes: new[] { "Account" },
+                baseResourceTypes: new[] { "Account" },
+                description: "Account to use for the guarantor")
+,
+            new SearchParameterInfo(
+                name: "identifier",
+                code: "identifier",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-identifier"),
+                components: null,
+                expression: "Account.identifier | AdverseEvent.identifier | AllergyIntolerance.identifier | Appointment.identifier | AppointmentResponse.identifier | Basic.identifier | BiologicallyDerivedProduct.identifier | BodyStructure.identifier | CarePlan.identifier | CareTeam.identifier | Claim.identifier | ClaimResponse.identifier | Communication.identifier | CommunicationRequest.identifier | Composition.identifier | Condition.identifier | Consent.identifier | Contract.identifier | Coverage.identifier | CoverageEligibilityRequest.identifier | CoverageEligibilityResponse.identifier | DetectedIssue.identifier | DeviceRequest.identifier | DiagnosticReport.identifier | DocumentReference.identifier | Encounter.identifier | EnrollmentRequest.identifier | EpisodeOfCare.identifier | ExplanationOfBenefit.identifier | FamilyMemberHistory.identifier | Flag.identifier | Goal.identifier | GuidanceResponse.identifier | ImagingSelection.identifier | ImagingStudy.identifier | Immunization.identifier | Invoice.identifier | List.identifier | MeasureReport.identifier | Medication.identifier | MedicationAdministration.identifier | MedicationDispense.identifier | MedicationRequest.identifier | MedicationStatement.identifier | NutritionIntake.identifier | NutritionOrder.identifier | Observation.identifier | Person.identifier | Procedure.identifier | QuestionnaireResponse.identifier | RelatedPerson.identifier | RequestOrchestration.identifier | ResearchSubject.identifier | RiskAssessment.identifier | ServiceRequest.identifier | Specimen.identifier | Task.identifier | VisionPrescription.identifier",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Account", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "Basic", "BiologicallyDerivedProduct", "BodyStructure", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "Communication", "CommunicationRequest", "Composition", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "EnrollmentRequest", "EpisodeOfCare", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "GuidanceResponse", "ImagingSelection", "ImagingStudy", "Immunization", "Invoice", "List", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "NutritionIntake", "NutritionOrder", "Observation", "Person", "Procedure", "QuestionnaireResponse", "RelatedPerson", "RequestOrchestration", "ResearchSubject", "RiskAssessment", "ServiceRequest", "Specimen", "Task", "VisionPrescription" },
+                description: "Multiple Resources: \r\n\r\n* [Account](account.html): Account number\r\n* [AdverseEvent](adverseevent.html): Business identifier for the event\r\n* [AllergyIntolerance](allergyintolerance.html): External ids for this item\r\n* [Appointment](appointment.html): An Identifier of the Appointment\r\n* [AppointmentResponse](appointmentresponse.html): An Identifier in this appointment response\r\n* [Basic](basic.html): Business identifier\r\n* [BiologicallyDerivedProduct](biologicallyderivedproduct.html): Identifier\r\n* [BodyStructure](bodystructure.html): Bodystructure identifier\r\n* [CarePlan](careplan.html): External Ids for this plan\r\n* [CareTeam](careteam.html): External Ids for this team\r\n* [Claim](claim.html): The primary identifier of the financial resource\r\n* [ClaimResponse](claimresponse.html): The identity of the ClaimResponse\r\n* [Communication](communication.html): Unique identifier\r\n* [CommunicationRequest](communicationrequest.html): Unique identifier\r\n* [Composition](composition.html): Version-independent identifier for the Composition\r\n* [Condition](condition.html): A unique identifier of the condition record\r\n* [Consent](consent.html): Identifier for this record (external references)\r\n* [Contract](contract.html): The identity of the contract\r\n* [Coverage](coverage.html): The primary identifier of the insured and the coverage\r\n* [CoverageEligibilityRequest](coverageeligibilityrequest.html): The business identifier of the Eligibility\r\n* [CoverageEligibilityResponse](coverageeligibilityresponse.html): The business identifier\r\n* [DetectedIssue](detectedissue.html): Unique id for the detected issue\r\n* [DeviceRequest](devicerequest.html): Business identifier for request/order\r\n* [DiagnosticReport](diagnosticreport.html): An identifier for the report\r\n* [DocumentReference](documentreference.html): Identifier of the attachment binary\r\n* [Encounter](encounter.html): Identifier(s) by which this encounter is known\r\n* [EnrollmentRequest](enrollmentrequest.html): The business identifier of the Enrollment\r\n* [EpisodeOfCare](episodeofcare.html): Business Identifier(s) relevant for this EpisodeOfCare\r\n* [ExplanationOfBenefit](explanationofbenefit.html): The business identifier of the Explanation of Benefit\r\n* [FamilyMemberHistory](familymemberhistory.html): A search by a record identifier\r\n* [Flag](flag.html): Business identifier\r\n* [Goal](goal.html): External Ids for this goal\r\n* [GuidanceResponse](guidanceresponse.html): The identifier of the guidance response\r\n* [ImagingSelection](imagingselection.html): Identifiers for the imaging selection\r\n* [ImagingStudy](imagingstudy.html): Identifiers for the Study, such as DICOM Study Instance UID\r\n* [Immunization](immunization.html): Business identifier\r\n* [Invoice](invoice.html): Business Identifier for item\r\n* [List](list.html): Business identifier\r\n* [MeasureReport](measurereport.html): External identifier of the measure report to be returned\r\n* [Medication](medication.html): Returns medications with this external identifier\r\n* [MedicationAdministration](medicationadministration.html): Return administrations with this external identifier\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses with this external identifier\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions with this external identifier\r\n* [MedicationStatement](medicationstatement.html): Return statements with this external identifier\r\n* [NutritionIntake](nutritionintake.html): Return statements with this external identifier\r\n* [NutritionOrder](nutritionorder.html): Return nutrition orders with this external identifier\r\n* [Observation](observation.html): The unique id for a particular observation\r\n* [Person](person.html): A person Identifier\r\n* [Procedure](procedure.html): A unique identifier for a procedure\r\n* [QuestionnaireResponse](questionnaireresponse.html): The unique identifier for the questionnaire response\r\n* [RelatedPerson](relatedperson.html): An Identifier of the RelatedPerson\r\n* [RequestOrchestration](requestorchestration.html): External identifiers for the request orchestration\r\n* [ResearchSubject](researchsubject.html): Business Identifier for research subject in a study\r\n* [RiskAssessment](riskassessment.html): Unique identifier for the assessment\r\n* [ServiceRequest](servicerequest.html): Identifiers assigned to this order\r\n* [Specimen](specimen.html): The unique identifier associated with the specimen\r\n* [Task](task.html): Search for a task instance by its business identifier\r\n* [VisionPrescription](visionprescription.html): Return prescriptions with this external identifier\r\n")
 ,
             new SearchParameterInfo(
                 name: "name",
@@ -134,6 +266,17 @@ public static class R6SearchParameterDefinitions
                 description: "Entity managing the Account")
 ,
             new SearchParameterInfo(
+                name: "patient",
+                code: "patient",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-patient"),
+                components: null,
+                expression: "Account.subject.where(resolve() is Patient) | AdverseEvent.subject.where(resolve() is Patient) | AllergyIntolerance.patient | Appointment.participant.actor.where(resolve() is Patient) | Appointment.subject.where(resolve() is Patient) | AppointmentResponse.actor.where(resolve() is Patient) | AuditEvent.patient | Basic.subject.where(resolve() is Patient) | BiologicallyDerivedProduct.collection.sourcePatient | BodyStructure.patient | CarePlan.subject.where(resolve() is Patient) | CareTeam.subject.where(resolve() is Patient) | Claim.subject.where(resolve() is Patient) | Claim.item.subject.where(resolve() is Patient) | ClaimResponse.subject.where(resolve() is Patient) | ClaimResponse.addItem.subject.where(resolve() is Patient) | Communication.subject.where(resolve() is Patient) | CommunicationRequest.subject.where(resolve() is Patient) | Composition.subject.where(resolve() is Patient) | Condition.subject.where(resolve() is Patient) | Consent.subject.where(resolve() is Patient) | Contract.subject.where(resolve() is Patient) | Coverage.beneficiary | CoverageEligibilityRequest.patient | CoverageEligibilityResponse.patient | DetectedIssue.subject.where(resolve() is Patient) | DeviceAssociation.subject.where(resolve() is Patient) | DeviceRequest.subject.where(resolve() is Patient) | DiagnosticReport.subject.where(resolve() is Patient) | DocumentReference.subject.where(resolve() is Patient) | Encounter.subject.where(resolve() is Patient) | EnrollmentRequest.candidate.where(resolve() is Patient) | EpisodeOfCare.subject.where(resolve() is Patient) | ExplanationOfBenefit.subject.where(resolve() is Patient) | ExplanationOfBenefit.item.subject.where(resolve() is Patient) | ExplanationOfBenefit.addItem.subject.where(resolve() is Patient) | FamilyMemberHistory.patient | Flag.subject.where(resolve() is Patient) | Goal.subject.where(resolve() is Patient) | GuidanceResponse.subject.where(resolve() is Patient) | ImagingSelection.subject.where(resolve() is Patient) | ImagingStudy.subject.where(resolve() is Patient) | Immunization.patient | Invoice.subject.where(resolve() is Patient) | List.subject.where(resolve() is Patient) | MeasureReport.subject.where(resolve() is Patient) | MedicationAdministration.subject.where(resolve() is Patient) | MedicationDispense.subject.where(resolve() is Patient) | MedicationRequest.subject.where(resolve() is Patient) | MedicationStatement.subject.where(resolve() is Patient) | NutritionIntake.subject.where(resolve() is Patient) | NutritionOrder.subject.where(resolve() is Patient) | Observation.subject.where(resolve() is Patient) | Person.link.target.where(resolve() is Patient) | Procedure.subject.where(resolve() is Patient) | Provenance.patient | QuestionnaireResponse.subject.where(resolve() is Patient) | RelatedPerson.patient | RequestOrchestration.subject.where(resolve() is Patient) | ResearchSubject.subject.where(resolve() is Patient) | RiskAssessment.subject.where(resolve() is Patient) | ServiceRequest.subject.where(resolve() is Patient) | Specimen.subject.where(resolve() is Patient) | Task.for.where(resolve() is Patient) | VisionPrescription.patient",
+                targetResourceTypes: new[] { "Patient" },
+                baseResourceTypes: new[] { "Account", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "AuditEvent", "Basic", "BiologicallyDerivedProduct", "BodyStructure", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "Communication", "CommunicationRequest", "Composition", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "DeviceAssociation", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "EnrollmentRequest", "EpisodeOfCare", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "GuidanceResponse", "ImagingSelection", "ImagingStudy", "Immunization", "Invoice", "List", "MeasureReport", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "NutritionIntake", "NutritionOrder", "Observation", "Person", "Procedure", "Provenance", "QuestionnaireResponse", "RelatedPerson", "RequestOrchestration", "ResearchSubject", "RiskAssessment", "ServiceRequest", "Specimen", "Task", "VisionPrescription" },
+                description: "Multiple Resources: \r\n\r\n* [Account](account.html): The entity that caused the expenses\r\n* [AdverseEvent](adverseevent.html): Subject impacted by event\r\n* [AllergyIntolerance](allergyintolerance.html): Who the sensitivity is for\r\n* [Appointment](appointment.html): One of the individuals of the appointment is this patient\r\n* [AppointmentResponse](appointmentresponse.html): This Response is for this Patient\r\n* [AuditEvent](auditevent.html): Where the activity involved patient data\r\n* [Basic](basic.html): Identifies the focus of this resource\r\n* [BiologicallyDerivedProduct](biologicallyderivedproduct.html): The patient who underwent the procedure to collect the product\r\n* [BodyStructure](bodystructure.html): Who this is about\r\n* [CarePlan](careplan.html): Who the care plan is for\r\n* [CareTeam](careteam.html): Who care team is for\r\n* [Claim](claim.html): Patient receiving the products or services\r\n* [ClaimResponse](claimresponse.html): The subject of care\r\n* [Communication](communication.html): Focus of message\r\n* [CommunicationRequest](communicationrequest.html): Focus of message\r\n* [Composition](composition.html): Who and/or what the composition is about\r\n* [Condition](condition.html): Who has the condition?\r\n* [Consent](consent.html): Who the consent applies to\r\n* [Contract](contract.html): The identity of the subject of the contract (if a patient)\r\n* [Coverage](coverage.html): Retrieve coverages for a patient\r\n* [CoverageEligibilityRequest](coverageeligibilityrequest.html): The reference to the patient\r\n* [CoverageEligibilityResponse](coverageeligibilityresponse.html): The reference to the patient\r\n* [DetectedIssue](detectedissue.html): Associated patient\r\n* [DeviceAssociation](deviceassociation.html): The patient associated with the device\r\n* [DeviceRequest](devicerequest.html): Individual the service is ordered for\r\n* [DiagnosticReport](diagnosticreport.html): The subject of the report if a patient\r\n* [DocumentReference](documentreference.html): Who/what is the subject of the document\r\n* [Encounter](encounter.html): The patient present at the encounter\r\n* [EnrollmentRequest](enrollmentrequest.html): The party to be enrolled\r\n* [EpisodeOfCare](episodeofcare.html): The patient who is the focus of this episode of care\r\n* [ExplanationOfBenefit](explanationofbenefit.html): The reference to the patient\r\n* [FamilyMemberHistory](familymemberhistory.html): The identity of a subject to list family member history items for\r\n* [Flag](flag.html): The identity of a subject to list flags for\r\n* [Goal](goal.html): Who this goal is intended for\r\n* [GuidanceResponse](guidanceresponse.html): The identity of a patient to search for guidance response results\r\n* [ImagingSelection](imagingselection.html): Who the study is about\r\n* [ImagingStudy](imagingstudy.html): Who the study is about\r\n* [Immunization](immunization.html): The patient for the vaccination record\r\n* [Invoice](invoice.html): Recipient(s) of goods and services\r\n* [List](list.html): If all resources have the same subject\r\n* [MeasureReport](measurereport.html): The identity of a patient to search for individual measure report results for\r\n* [MedicationAdministration](medicationadministration.html): The identity of a patient to list administrations  for\r\n* [MedicationDispense](medicationdispense.html): The identity of a patient to list dispenses  for\r\n* [MedicationRequest](medicationrequest.html): Returns prescriptions for a specific patient\r\n* [MedicationStatement](medicationstatement.html): Returns statements for a specific patient.\r\n* [NutritionIntake](nutritionintake.html): Returns statements for a specific patient.\r\n* [NutritionOrder](nutritionorder.html): The identity of the individual or set of individuals who requires the diet, formula or nutritional supplement\r\n* [Observation](observation.html): The subject that the observation is about (if patient)\r\n* [Person](person.html): The Person links to this Patient\r\n* [Procedure](procedure.html): Search by subject - a patient\r\n* [Provenance](provenance.html): Where the activity involved patient data\r\n* [QuestionnaireResponse](questionnaireresponse.html): The patient that is the subject of the questionnaire response\r\n* [RelatedPerson](relatedperson.html): The patient this related person is related to\r\n* [RequestOrchestration](requestorchestration.html): The identity of a patient to search for request orchestrations\r\n* [ResearchSubject](researchsubject.html): Who or what is part of study\r\n* [RiskAssessment](riskassessment.html): Who/what does assessment apply to?\r\n* [ServiceRequest](servicerequest.html): Search by subject - a patient\r\n* [Specimen](specimen.html): The patient the specimen comes from\r\n* [Task](task.html): Search by patient\r\n* [VisionPrescription](visionprescription.html): The identity of a patient to list dispenses for\r\n")
+,
+            new SearchParameterInfo(
                 name: "period",
                 code: "period",
                 searchParamType: SearchParamType.Date,
@@ -143,17 +286,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Account" },
                 description: "Transaction window")
-,
-            new SearchParameterInfo(
-                name: "relatedaccount",
-                code: "relatedaccount",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Account-relatedaccount"),
-                components: null,
-                expression: "Account.relatedAccount.account",
-                targetResourceTypes: new[] { "Account" },
-                baseResourceTypes: new[] { "Account" },
-                description: "Parent and other related accounts")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -178,6 +310,149 @@ public static class R6SearchParameterDefinitions
                 description: "The entity that caused the expenses")
 ,
             new SearchParameterInfo(
+                name: "type",
+                code: "type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-type"),
+                components: null,
+                expression: "Account.type | AllergyIntolerance.type | Composition.type | Coverage.type | DocumentReference.type | Encounter.type | EpisodeOfCare.type | Invoice.type | MedicationDispense.type | Specimen.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Account", "AllergyIntolerance", "Composition", "Coverage", "DocumentReference", "Encounter", "EpisodeOfCare", "Invoice", "MedicationDispense", "Specimen" },
+                description: "Multiple Resources: \r\n\r\n* [Account](account.html): E.g. patient, expense, depreciation\r\n* [AllergyIntolerance](allergyintolerance.html): allergy | intolerance - Underlying mechanism (if known)\r\n* [Composition](composition.html): Kind of composition (LOINC if possible)\r\n* [Coverage](coverage.html): The kind of coverage (health plan, auto, Workers Compensation)\r\n* [DocumentReference](documentreference.html): Kind of document (LOINC if possible)\r\n* [Encounter](encounter.html): Specific type of encounter\r\n* [EpisodeOfCare](episodeofcare.html): Type/class  - e.g. specialist referral, disease management\r\n* [Invoice](invoice.html): Type of Invoice\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses of a specific type\r\n* [Specimen](specimen.html): The specimen type\r\n")
+,
+            new SearchParameterInfo(
+                name: "composed-of",
+                code: "composed-of",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-composed-of"),
+                components: null,
+                expression: "ActivityDefinition.relatedArtifact.where(type='composed-of').resource | EventDefinition.relatedArtifact.where(type='composed-of').resource | Library.relatedArtifact.where(type='composed-of').resource | Measure.relatedArtifact.where(type='composed-of').resource | PlanDefinition.relatedArtifact.where(type='composed-of').resource",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "ActivityDefinition", "EventDefinition", "Library", "Measure", "PlanDefinition" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n")
+,
+            new SearchParameterInfo(
+                name: "context",
+                code: "context",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context"),
+                components: null,
+                expression: "(ActivityDefinition.useContext.value.ofType(CodeableConcept)) | (ActorDefinition.useContext.value.ofType(CodeableConcept)) | (CapabilityStatement.useContext.value.ofType(CodeableConcept)) | (CodeSystem.useContext.value.ofType(CodeableConcept)) | (CompartmentDefinition.useContext.value.ofType(CodeableConcept)) | (ConceptMap.useContext.value.ofType(CodeableConcept)) | (EventDefinition.useContext.value.ofType(CodeableConcept)) | (Evidence.useContext.value.ofType(CodeableConcept)) | (EvidenceVariable.useContext.value.ofType(CodeableConcept)) | (ExampleScenario.useContext.value.ofType(CodeableConcept)) | (ImplementationGuide.useContext.value.ofType(CodeableConcept)) | (Library.useContext.value.ofType(CodeableConcept)) | (Measure.useContext.value.ofType(CodeableConcept)) | (MessageDefinition.useContext.value.ofType(CodeableConcept)) | (NamingSystem.useContext.value.ofType(CodeableConcept)) | (OperationDefinition.useContext.value.ofType(CodeableConcept)) | (PlanDefinition.useContext.value.ofType(CodeableConcept)) | (Questionnaire.useContext.value.ofType(CodeableConcept)) | (Requirements.useContext.value.ofType(CodeableConcept)) | (SearchParameter.useContext.value.ofType(CodeableConcept)) | (StructureDefinition.useContext.value.ofType(CodeableConcept)) | (StructureMap.useContext.value.ofType(CodeableConcept)) | (TerminologyCapabilities.useContext.value.ofType(CodeableConcept)) | (ValueSet.useContext.value.ofType(CodeableConcept))",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A use context assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A use context assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A use context assigned to the capability statement\r\n* [CodeSystem](codesystem.html): A use context assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A use context assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A use context assigned to the concept map\r\n* [EventDefinition](eventdefinition.html): A use context assigned to the event definition\r\n* [Evidence](evidence.html): A use context assigned to the evidence\r\n* [EvidenceVariable](evidencevariable.html): A use context assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A use context assigned to the example scenario\r\n* [ImplementationGuide](implementationguide.html): A use context assigned to the implementation guide\r\n* [Library](library.html): A use context assigned to the library\r\n* [Measure](measure.html): A use context assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A use context assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A use context assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A use context assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A use context assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A use context assigned to the questionnaire\r\n* [Requirements](requirements.html): A use context assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A use context assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A use context assigned to the structure definition\r\n* [StructureMap](structuremap.html): A use context assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A use context assigned to the terminology capabilities\r\n* [ValueSet](valueset.html): A use context assigned to the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "context-quantity",
+                code: "context-quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-quantity"),
+                components: null,
+                expression: "(ActivityDefinition.useContext.value.ofType(Quantity)) | (ActivityDefinition.useContext.value.ofType(Range)) | (ActorDefinition.useContext.value.ofType(Quantity)) | (ActorDefinition.useContext.value.ofType(Range)) | (CapabilityStatement.useContext.value.ofType(Quantity)) | (CapabilityStatement.useContext.value.ofType(Range)) | (CodeSystem.useContext.value.ofType(Quantity)) | (CodeSystem.useContext.value.ofType(Range)) | (CompartmentDefinition.useContext.value.ofType(Quantity)) | (CompartmentDefinition.useContext.value.ofType(Range)) | (ConceptMap.useContext.value.ofType(Quantity)) | (ConceptMap.useContext.value.ofType(Range)) | (EventDefinition.useContext.value.ofType(Quantity)) | (EventDefinition.useContext.value.ofType(Range)) | (Evidence.useContext.value.ofType(Quantity)) | (Evidence.useContext.value.ofType(Range)) | (EvidenceVariable.useContext.value.ofType(Quantity)) | (EvidenceVariable.useContext.value.ofType(Range)) | (ExampleScenario.useContext.value.ofType(Quantity)) | (ExampleScenario.useContext.value.ofType(Range)) | (ImplementationGuide.useContext.value.ofType(Quantity)) | (ImplementationGuide.useContext.value.ofType(Range)) | (Library.useContext.value.ofType(Quantity)) | (Library.useContext.value.ofType(Range)) | (Measure.useContext.value.ofType(Quantity)) | (Measure.useContext.value.ofType(Range)) | (MessageDefinition.useContext.value.ofType(Quantity)) | (MessageDefinition.useContext.value.ofType(Range)) | (NamingSystem.useContext.value.ofType(Quantity)) | (NamingSystem.useContext.value.ofType(Range)) | (OperationDefinition.useContext.value.ofType(Quantity)) | (OperationDefinition.useContext.value.ofType(Range)) | (PlanDefinition.useContext.value.ofType(Quantity)) | (PlanDefinition.useContext.value.ofType(Range)) | (Questionnaire.useContext.value.ofType(Quantity)) | (Questionnaire.useContext.value.ofType(Range)) | (Requirements.useContext.value.ofType(Quantity)) | (Requirements.useContext.value.ofType(Range)) | (SearchParameter.useContext.value.ofType(Quantity)) | (SearchParameter.useContext.value.ofType(Range)) | (StructureDefinition.useContext.value.ofType(Quantity)) | (StructureDefinition.useContext.value.ofType(Range)) | (StructureMap.useContext.value.ofType(Quantity)) | (StructureMap.useContext.value.ofType(Range)) | (TerminologyCapabilities.useContext.value.ofType(Quantity)) | (TerminologyCapabilities.useContext.value.ofType(Range)) | (ValueSet.useContext.value.ofType(Quantity)) | (ValueSet.useContext.value.ofType(Range))",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A quantity- or range-valued use context assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A quantity- or range-valued use context assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A quantity- or range-valued use context assigned to the capability statement\r\n* [CodeSystem](codesystem.html): A quantity- or range-valued use context assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A quantity- or range-valued use context assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A quantity- or range-valued use context assigned to the concept map\r\n* [EventDefinition](eventdefinition.html): A quantity- or range-valued use context assigned to the event definition\r\n* [Evidence](evidence.html): A quantity- or range-valued use context assigned to the evidence\r\n* [EvidenceVariable](evidencevariable.html): A quantity- or range-valued use context assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A quantity- or range-valued use context assigned to the example scenario\r\n* [ImplementationGuide](implementationguide.html): A quantity- or range-valued use context assigned to the implementation guide\r\n* [Library](library.html): A quantity- or range-valued use context assigned to the library\r\n* [Measure](measure.html): A quantity- or range-valued use context assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A quantity- or range-valued use context assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A quantity- or range-valued use context assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A quantity- or range-valued use context assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A quantity- or range-valued use context assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A quantity- or range-valued use context assigned to the questionnaire\r\n* [Requirements](requirements.html): A quantity- or range-valued use context assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A quantity- or range-valued use context assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A quantity- or range-valued use context assigned to the structure definition\r\n* [StructureMap](structuremap.html): A quantity- or range-valued use context assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A quantity- or range-valued use context assigned to the terminology capabilities\r\n* [ValueSet](valueset.html): A quantity- or range-valued use context assigned to the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "context-type",
+                code: "context-type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type"),
+                components: null,
+                expression: "ActivityDefinition.useContext.code | ActorDefinition.useContext.code | CapabilityStatement.useContext.code | CodeSystem.useContext.code | CompartmentDefinition.useContext.code | ConceptMap.useContext.code | EventDefinition.useContext.code | Evidence.useContext.code | EvidenceVariable.useContext.code | ExampleScenario.useContext.code | ImplementationGuide.useContext.code | Library.useContext.code | Measure.useContext.code | MessageDefinition.useContext.code | NamingSystem.useContext.code | OperationDefinition.useContext.code | PlanDefinition.useContext.code | Questionnaire.useContext.code | Requirements.useContext.code | SearchParameter.useContext.code | StructureDefinition.useContext.code | StructureMap.useContext.code | TerminologyCapabilities.useContext.code | ValueSet.useContext.code",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A type of use context assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A type of use context assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A type of use context assigned to the capability statement\r\n* [CodeSystem](codesystem.html): A type of use context assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A type of use context assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A type of use context assigned to the concept map\r\n* [EventDefinition](eventdefinition.html): A type of use context assigned to the event definition\r\n* [Evidence](evidence.html): A type of use context assigned to the evidence\r\n* [EvidenceVariable](evidencevariable.html): A type of use context assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A type of use context assigned to the example scenario\r\n* [ImplementationGuide](implementationguide.html): A type of use context assigned to the implementation guide\r\n* [Library](library.html): A type of use context assigned to the library\r\n* [Measure](measure.html): A type of use context assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A type of use context assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A type of use context assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A type of use context assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A type of use context assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A type of use context assigned to the questionnaire\r\n* [Requirements](requirements.html): A type of use context assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A type of use context assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A type of use context assigned to the structure definition\r\n* [StructureMap](structuremap.html): A type of use context assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A type of use context assigned to the terminology capabilities\r\n* [ValueSet](valueset.html): A type of use context assigned to the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "date",
+                code: "date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-date"),
+                components: null,
+                expression: "ActivityDefinition.date | ActorDefinition.date | CapabilityStatement.date | CodeSystem.date | CompartmentDefinition.date | ConceptMap.date | EventDefinition.date | Evidence.date | EvidenceVariable.date | ExampleScenario.date | ImplementationGuide.date | Library.date | Measure.date | MessageDefinition.date | NamingSystem.date | OperationDefinition.date | PlanDefinition.date | Questionnaire.date | Requirements.date | SearchParameter.date | StructureDefinition.date | StructureMap.date | SubscriptionTopic.date | TerminologyCapabilities.date | ValueSet.date",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The activity definition publication date\r\n* [ActorDefinition](actordefinition.html): The Actor Definition publication date\r\n* [CapabilityStatement](capabilitystatement.html): The capability statement publication date\r\n* [CodeSystem](codesystem.html): The code system publication date\r\n* [CompartmentDefinition](compartmentdefinition.html): The compartment definition publication date\r\n* [ConceptMap](conceptmap.html): The concept map publication date\r\n* [EventDefinition](eventdefinition.html): The event definition publication date\r\n* [Evidence](evidence.html): The evidence publication date\r\n* [EvidenceVariable](evidencevariable.html): The evidence variable publication date\r\n* [ExampleScenario](examplescenario.html): The example scenario publication date\r\n* [ImplementationGuide](implementationguide.html): The implementation guide publication date\r\n* [Library](library.html): The library publication date\r\n* [Measure](measure.html): The measure publication date\r\n* [MessageDefinition](messagedefinition.html): The message definition publication date\r\n* [NamingSystem](namingsystem.html): The naming system publication date\r\n* [OperationDefinition](operationdefinition.html): The operation definition publication date\r\n* [PlanDefinition](plandefinition.html): The plan definition publication date\r\n* [Questionnaire](questionnaire.html): The questionnaire publication date\r\n* [Requirements](requirements.html): The requirements publication date\r\n* [SearchParameter](searchparameter.html): The search parameter publication date\r\n* [StructureDefinition](structuredefinition.html): The structure definition publication date\r\n* [StructureMap](structuremap.html): The structure map publication date\r\n* [SubscriptionTopic](subscriptiontopic.html): Date status first applied\r\n* [TerminologyCapabilities](terminologycapabilities.html): The terminology capabilities publication date\r\n* [ValueSet](valueset.html): The value set publication date\r\n")
+,
+            new SearchParameterInfo(
+                name: "depends-on",
+                code: "depends-on",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-depends-on"),
+                components: null,
+                expression: "ActivityDefinition.relatedArtifact.where(type='depends-on').resource | ActivityDefinition.library | EventDefinition.relatedArtifact.where(type='depends-on').resource | Library.relatedArtifact.where(type='depends-on').resource | Measure.relatedArtifact.where(type='depends-on').resource | Measure.library | PlanDefinition.relatedArtifact.where(type='depends-on').resource | PlanDefinition.library",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "ActivityDefinition", "EventDefinition", "Library", "Measure", "PlanDefinition" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n")
+,
+            new SearchParameterInfo(
+                name: "derived-from",
+                code: "derived-from",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-derived-from"),
+                components: null,
+                expression: "ActivityDefinition.relatedArtifact.where(type='derived-from').resource | CodeSystem.relatedArtifact.where(type='derived-from').resource | ConceptMap.relatedArtifact.where(type='derived-from').resource | EventDefinition.relatedArtifact.where(type='derived-from').resource | Library.relatedArtifact.where(type='derived-from').resource | Measure.relatedArtifact.where(type='derived-from').resource | NamingSystem.relatedArtifact.where(type='derived-from').resource | PlanDefinition.relatedArtifact.where(type='derived-from').resource | ValueSet.relatedArtifact.where(type='derived-from').resource",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "Library", "Measure", "NamingSystem", "PlanDefinition", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [CodeSystem](codesystem.html): A resource that the CodeSystem is derived from\r\n* [ConceptMap](conceptmap.html): A resource that the ConceptMap is derived from\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [NamingSystem](namingsystem.html): A resource that the NamingSystem is derived from\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n* [ValueSet](valueset.html): A resource that the ValueSet is derived from\r\n")
+,
+            new SearchParameterInfo(
+                name: "description",
+                code: "description",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-description"),
+                components: null,
+                expression: "ActivityDefinition.description | ActorDefinition.description | CapabilityStatement.description | CodeSystem.description | CompartmentDefinition.description | ConceptMap.description | EventDefinition.description | Evidence.description | EvidenceVariable.description | ImplementationGuide.description | Library.description | Measure.description | MessageDefinition.description | NamingSystem.description | OperationDefinition.description | PlanDefinition.description | Questionnaire.description | Requirements.description | SearchParameter.description | StructureDefinition.description | StructureMap.description | TerminologyCapabilities.description | ValueSet.description",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The description of the activity definition\r\n* [ActorDefinition](actordefinition.html): The description of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The description of the capability statement\r\n* [CodeSystem](codesystem.html): The description of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The description of the compartment definition\r\n* [ConceptMap](conceptmap.html): The description of the concept map\r\n* [EventDefinition](eventdefinition.html): The description of the event definition\r\n* [Evidence](evidence.html): The description of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The description of the evidence variable\r\n* [ImplementationGuide](implementationguide.html): The description of the implementation guide\r\n* [Library](library.html): The description of the library\r\n* [Measure](measure.html): The description of the measure\r\n* [MessageDefinition](messagedefinition.html): The description of the message definition\r\n* [NamingSystem](namingsystem.html): The description of the naming system\r\n* [OperationDefinition](operationdefinition.html): The description of the operation definition\r\n* [PlanDefinition](plandefinition.html): The description of the plan definition\r\n* [Questionnaire](questionnaire.html): The description of the questionnaire\r\n* [Requirements](requirements.html): The description of the requirements\r\n* [SearchParameter](searchparameter.html): The description of the search parameter\r\n* [StructureDefinition](structuredefinition.html): The description of the structure definition\r\n* [StructureMap](structuremap.html): The description of the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): The description of the terminology capabilities\r\n* [ValueSet](valueset.html): The description of the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "effective",
+                code: "effective",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-effective"),
+                components: null,
+                expression: "ActivityDefinition.effectivePeriod | CodeSystem.effectivePeriod | ConceptMap.effectivePeriod | EventDefinition.effectivePeriod | Library.effectivePeriod | Measure.effectivePeriod | NamingSystem.effectivePeriod | PlanDefinition.effectivePeriod | Questionnaire.effectivePeriod | ValueSet.effectivePeriod",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "Library", "Measure", "NamingSystem", "PlanDefinition", "Questionnaire", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The time during which the activity definition is intended to be in use\r\n* [CodeSystem](codesystem.html): The time during which the CodeSystem is intended to be in use\r\n* [ConceptMap](conceptmap.html): The time during which the ConceptMap is intended to be in use\r\n* [EventDefinition](eventdefinition.html): The time during which the event definition is intended to be in use\r\n* [Library](library.html): The time during which the library is intended to be in use\r\n* [Measure](measure.html): The time during which the measure is intended to be in use\r\n* [NamingSystem](namingsystem.html): The time during which the NamingSystem is intended to be in use\r\n* [PlanDefinition](plandefinition.html): The time during which the plan definition is intended to be in use\r\n* [Questionnaire](questionnaire.html): The time during which the questionnaire is intended to be in use\r\n* [ValueSet](valueset.html): The time during which the ValueSet is intended to be in use\r\n")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ActivityDefinition-experimental"),
+                components: null,
+                expression: "ActivityDefinition.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition" },
+                description: "Whether the ActivityDefinition is experimental")
+,
+            new SearchParameterInfo(
+                name: "identifier",
+                code: "identifier",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-identifier"),
+                components: null,
+                expression: "ActivityDefinition.identifier | ActorDefinition.identifier | CapabilityStatement.identifier | CodeSystem.identifier | ConceptMap.identifier | DeviceDefinition.identifier | DeviceDefinition.udiDeviceIdentifier | EventDefinition.identifier | Evidence.identifier | EvidenceVariable.identifier | ExampleScenario.identifier | Group.identifier | ImplementationGuide.identifier | Library.identifier | Measure.identifier | MessageDefinition.identifier | NamingSystem.identifier | ObservationDefinition.identifier | OperationDefinition.identifier | PlanDefinition.identifier | Questionnaire.identifier | Requirements.identifier | SearchParameter.identifier | SpecimenDefinition.identifier | StructureDefinition.identifier | StructureMap.identifier | SubscriptionTopic.identifier | TerminologyCapabilities.identifier | ValueSet.identifier",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "ConceptMap", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): External identifier for the activity definition\r\n* [ActorDefinition](actordefinition.html): External identifier for the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): External identifier for the capability statement\r\n* [CodeSystem](codesystem.html): External identifier for the code system\r\n* [ConceptMap](conceptmap.html): External identifier for the concept map\r\n* [DeviceDefinition](devicedefinition.html): The identifier of the component\r\n* [EventDefinition](eventdefinition.html): External identifier for the event definition\r\n* [Evidence](evidence.html): External identifier for the evidence\r\n* [EvidenceVariable](evidencevariable.html): External identifier for the evidence variable\r\n* [ExampleScenario](examplescenario.html): External identifier for the example scenario\r\n* [Group](group.html): Unique id\r\n* [ImplementationGuide](implementationguide.html): External identifier for the implementation guide\r\n* [Library](library.html): External identifier for the library\r\n* [Measure](measure.html): External identifier for the measure\r\n* [MessageDefinition](messagedefinition.html): External identifier for the message definition\r\n* [NamingSystem](namingsystem.html): External identifier for the naming system\r\n* [ObservationDefinition](observationdefinition.html): The unique identifier associated with the specimen definition\r\n* [OperationDefinition](operationdefinition.html): External identifier for the search parameter\r\n* [PlanDefinition](plandefinition.html): External identifier for the plan definition\r\n* [Questionnaire](questionnaire.html): External identifier for the questionnaire\r\n* [Requirements](requirements.html): External identifier for the requirements\r\n* [SearchParameter](searchparameter.html): External identifier for the search parameter\r\n* [SpecimenDefinition](specimendefinition.html): The unique identifier associated with the SpecimenDefinition\r\n* [StructureDefinition](structuredefinition.html): External identifier for the structure definition\r\n* [StructureMap](structuremap.html): External identifier for the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Business Identifier for SubscriptionTopic\r\n* [TerminologyCapabilities](terminologycapabilities.html): External identifier for the terminology capabilities\r\n* [ValueSet](valueset.html): External identifier for the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "jurisdiction",
+                code: "jurisdiction",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-jurisdiction"),
+                components: null,
+                expression: "ActivityDefinition.jurisdiction | ActorDefinition.jurisdiction | CapabilityStatement.jurisdiction | CodeSystem.jurisdiction | ConceptMap.jurisdiction | EventDefinition.jurisdiction | ExampleScenario.jurisdiction | ImplementationGuide.jurisdiction | Library.jurisdiction | Measure.jurisdiction | MessageDefinition.jurisdiction | NamingSystem.jurisdiction | OperationDefinition.jurisdiction | PlanDefinition.jurisdiction | Questionnaire.jurisdiction | Requirements.jurisdiction | SearchParameter.jurisdiction | StructureDefinition.jurisdiction | StructureMap.jurisdiction | TerminologyCapabilities.jurisdiction | ValueSet.jurisdiction",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "ConceptMap", "EventDefinition", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Jurisdiction of the authority that maintains the the activity definition\r\n* [ActorDefinition](actordefinition.html): Jurisdiction of the authority that maintains the the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): Jurisdiction of the authority that maintains the the capability statement\r\n* [CodeSystem](codesystem.html): Jurisdiction of the authority that maintains the the code system\r\n* [ConceptMap](conceptmap.html): Jurisdiction of the authority that maintains the the concept map\r\n* [EventDefinition](eventdefinition.html): Jurisdiction of the authority that maintains the the event definition\r\n* [ExampleScenario](examplescenario.html): Jurisdiction of the authority that maintains the the example scenario\r\n* [ImplementationGuide](implementationguide.html): Jurisdiction of the authority that maintains the the implementation guide\r\n* [Library](library.html): Jurisdiction of the authority that maintains the the library\r\n* [Measure](measure.html): Jurisdiction of the authority that maintains the the measure\r\n* [MessageDefinition](messagedefinition.html): Jurisdiction of the authority that maintains the the message definition\r\n* [NamingSystem](namingsystem.html): Jurisdiction of the authority that maintains the the naming system\r\n* [OperationDefinition](operationdefinition.html): Jurisdiction of the authority that maintains the the operation definition\r\n* [PlanDefinition](plandefinition.html): Jurisdiction of the authority that maintains the the plan definition\r\n* [Questionnaire](questionnaire.html): Jurisdiction of the authority that maintains the the questionnaire\r\n* [Requirements](requirements.html): Jurisdiction of the authority that maintains the the requirements\r\n* [SearchParameter](searchparameter.html): Jurisdiction of the authority that maintains the the search parameter\r\n* [StructureDefinition](structuredefinition.html): Jurisdiction of the authority that maintains the the structure definition\r\n* [StructureMap](structuremap.html): Jurisdiction of the authority that maintains the the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): Jurisdiction of the authority that maintains the the terminology capabilities\r\n* [ValueSet](valueset.html): Jurisdiction of the authority that maintains the the value set\r\n")
+,
+            new SearchParameterInfo(
                 name: "kind",
                 code: "kind",
                 searchParamType: SearchParamType.Token,
@@ -187,6 +462,171 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ActivityDefinition" },
                 description: "The kind of activity definition")
+,
+            new SearchParameterInfo(
+                name: "name",
+                code: "name",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-name"),
+                components: null,
+                expression: "ActivityDefinition.name | CapabilityStatement.name | CodeSystem.name | CompartmentDefinition.name | ConceptMap.name | EventDefinition.name | EvidenceVariable.name | ExampleScenario.name | Group.name | ImplementationGuide.name | Library.name | Measure.name | MessageDefinition.name | NamingSystem.name | OperationDefinition.name | PlanDefinition.name | Questionnaire.name | Requirements.name | SearchParameter.name | StructureDefinition.name | StructureMap.name | TerminologyCapabilities.name | ValueSet.name",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "EvidenceVariable", "ExampleScenario", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Computationally friendly name of the activity definition\r\n* [CapabilityStatement](capabilitystatement.html): Computationally friendly name of the capability statement\r\n* [CodeSystem](codesystem.html): Computationally friendly name of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): Computationally friendly name of the compartment definition\r\n* [ConceptMap](conceptmap.html): Computationally friendly name of the concept map\r\n* [EventDefinition](eventdefinition.html): Computationally friendly name of the event definition\r\n* [EvidenceVariable](evidencevariable.html): Computationally friendly name of the evidence variable\r\n* [ExampleScenario](examplescenario.html): Computationally friendly name of the example scenario\r\n* [Group](group.html): A portion of the Group's name\r\n* [ImplementationGuide](implementationguide.html): Computationally friendly name of the implementation guide\r\n* [Library](library.html): Computationally friendly name of the library\r\n* [Measure](measure.html): Computationally friendly name of the measure\r\n* [MessageDefinition](messagedefinition.html): Computationally friendly name of the message definition\r\n* [NamingSystem](namingsystem.html): Computationally friendly name of the naming system\r\n* [OperationDefinition](operationdefinition.html): Computationally friendly name of the operation definition\r\n* [PlanDefinition](plandefinition.html): Computationally friendly name of the plan definition\r\n* [Questionnaire](questionnaire.html): Computationally friendly name of the questionnaire\r\n* [Requirements](requirements.html): Computationally friendly name of the requirements\r\n* [SearchParameter](searchparameter.html): Computationally friendly name of the search parameter\r\n* [StructureDefinition](structuredefinition.html): Computationally friendly name of the structure definition\r\n* [StructureMap](structuremap.html): Computationally friendly name of the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): Computationally friendly name of the terminology capabilities\r\n* [ValueSet](valueset.html): Computationally friendly name of the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "predecessor",
+                code: "predecessor",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-predecessor"),
+                components: null,
+                expression: "ActivityDefinition.relatedArtifact.where(type='predecessor').resource | CodeSystem.relatedArtifact.where(type='predecessor').resource | ConceptMap.relatedArtifact.where(type='predecessor').resource | EventDefinition.relatedArtifact.where(type='predecessor').resource | Library.relatedArtifact.where(type='predecessor').resource | Measure.relatedArtifact.where(type='predecessor').resource | NamingSystem.relatedArtifact.where(type='predecessor').resource | PlanDefinition.relatedArtifact.where(type='predecessor').resource | ValueSet.relatedArtifact.where(type='predecessor').resource",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "Library", "Measure", "NamingSystem", "PlanDefinition", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [CodeSystem](codesystem.html): The predecessor of the CodeSystem\r\n* [ConceptMap](conceptmap.html): The predecessor of the ConceptMap\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [NamingSystem](namingsystem.html): The predecessor of the NamingSystem\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n* [ValueSet](valueset.html): The predecessor of the ValueSet\r\n")
+,
+            new SearchParameterInfo(
+                name: "publisher",
+                code: "publisher",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-publisher"),
+                components: null,
+                expression: "ActivityDefinition.publisher | ActorDefinition.publisher | CapabilityStatement.publisher | CodeSystem.publisher | CompartmentDefinition.publisher | ConceptMap.publisher | DeviceDefinition.contact.name | DeviceDefinition.publisher | EventDefinition.publisher | Evidence.publisher | EvidenceVariable.publisher | ExampleScenario.publisher | ImplementationGuide.publisher | Library.publisher | Measure.publisher | MessageDefinition.publisher | NamingSystem.publisher | OperationDefinition.publisher | PlanDefinition.publisher | Questionnaire.publisher | Requirements.publisher | SearchParameter.publisher | StructureDefinition.publisher | StructureMap.publisher | TerminologyCapabilities.publisher | ValueSet.publisher",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Name of the publisher of the activity definition\r\n* [ActorDefinition](actordefinition.html): Name of the publisher of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): Name of the publisher of the capability statement\r\n* [CodeSystem](codesystem.html): Name of the publisher of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): Name of the publisher of the compartment definition\r\n* [ConceptMap](conceptmap.html): Name of the publisher of the concept map\r\n* [DeviceDefinition](devicedefinition.html): The contact for the publisher of the device definition\r\n* [EventDefinition](eventdefinition.html): Name of the publisher of the event definition\r\n* [Evidence](evidence.html): Name of the publisher of the evidence\r\n* [EvidenceVariable](evidencevariable.html): Name of the publisher of the evidence variable\r\n* [ExampleScenario](examplescenario.html): Name of the publisher of the example scenario\r\n* [ImplementationGuide](implementationguide.html): Name of the publisher of the implementation guide\r\n* [Library](library.html): Name of the publisher of the library\r\n* [Measure](measure.html): Name of the publisher of the measure\r\n* [MessageDefinition](messagedefinition.html): Name of the publisher of the message definition\r\n* [NamingSystem](namingsystem.html): Name of the publisher of the naming system\r\n* [OperationDefinition](operationdefinition.html): Name of the publisher of the operation definition\r\n* [PlanDefinition](plandefinition.html): Name of the publisher of the plan definition\r\n* [Questionnaire](questionnaire.html): Name of the publisher of the questionnaire\r\n* [Requirements](requirements.html): Name of the publisher of the requirements\r\n* [SearchParameter](searchparameter.html): Name of the publisher of the search parameter\r\n* [StructureDefinition](structuredefinition.html): Name of the publisher of the structure definition\r\n* [StructureMap](structuremap.html): Name of the publisher of the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): Name of the publisher of the terminology capabilities\r\n* [ValueSet](valueset.html): Name of the publisher of the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "status",
+                code: "status",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-status"),
+                components: null,
+                expression: "ActivityDefinition.status | ActorDefinition.status | CapabilityStatement.status | CodeSystem.status | CompartmentDefinition.status | ConceptMap.status | EventDefinition.status | Evidence.status | EvidenceVariable.status | ExampleScenario.status | Group.status | ImplementationGuide.status | Library.status | Measure.status | MessageDefinition.status | NamingSystem.status | ObservationDefinition.status | OperationDefinition.status | PlanDefinition.status | Questionnaire.status | Requirements.status | SearchParameter.status | SpecimenDefinition.status | StructureDefinition.status | StructureMap.status | SubscriptionTopic.status | TerminologyCapabilities.status | ValueSet.status",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The current status of the activity definition\r\n* [ActorDefinition](actordefinition.html): The current status of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The current status of the capability statement\r\n* [CodeSystem](codesystem.html): The current status of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The current status of the compartment definition\r\n* [ConceptMap](conceptmap.html): The current status of the concept map\r\n* [EventDefinition](eventdefinition.html): The current status of the event definition\r\n* [Evidence](evidence.html): The current status of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The current status of the evidence variable\r\n* [ExampleScenario](examplescenario.html): The current status of the example scenario\r\n* [Group](group.html): The current status of the Group\r\n* [ImplementationGuide](implementationguide.html): The current status of the implementation guide\r\n* [Library](library.html): The current status of the library\r\n* [Measure](measure.html): The current status of the measure\r\n* [MessageDefinition](messagedefinition.html): The current status of the message definition\r\n* [NamingSystem](namingsystem.html): The current status of the naming system\r\n* [ObservationDefinition](observationdefinition.html): Publication status of the ObservationDefinition: draft, active, retired, unknown\r\n* [OperationDefinition](operationdefinition.html): The current status of the operation definition\r\n* [PlanDefinition](plandefinition.html): The current status of the plan definition\r\n* [Questionnaire](questionnaire.html): The current status of the questionnaire\r\n* [Requirements](requirements.html): The current status of the requirements\r\n* [SearchParameter](searchparameter.html): The current status of the search parameter\r\n* [SpecimenDefinition](specimendefinition.html): Publication status of the SpecimenDefinition: draft, active, retired, unknown\r\n* [StructureDefinition](structuredefinition.html): The current status of the structure definition\r\n* [StructureMap](structuremap.html): The current status of the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): draft | active | retired | unknown\r\n* [TerminologyCapabilities](terminologycapabilities.html): The current status of the terminology capabilities\r\n* [ValueSet](valueset.html): The current status of the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "subject-canonical",
+                code: "subject-canonical",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ActivityDefinition-subject-canonical"),
+                components: null,
+                expression: "ActivityDefinition.subject as canonical",
+                targetResourceTypes: new[] { "MedicinalProductDefinition", "AdministrableProductDefinition", "Group", "PackagedProductDefinition", "EvidenceVariable", "SubstanceDefinition", "ManufacturedItemDefinition" },
+                baseResourceTypes: new[] { "ActivityDefinition" },
+                description: "The subject of the ActivityDefinition when expressed as a canonical")
+,
+            new SearchParameterInfo(
+                name: "subject-code",
+                code: "subject-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ActivityDefinition-subject-code"),
+                components: null,
+                expression: "ActivityDefinition.subject as CodeableConcept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition" },
+                description: "The subject of the ActivityDefinition when expressed as a code")
+,
+            new SearchParameterInfo(
+                name: "subject-reference",
+                code: "subject-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ActivityDefinition-subject-reference"),
+                components: null,
+                expression: "ActivityDefinition.subject as Reference",
+                targetResourceTypes: new[] { "MedicinalProductDefinition", "AdministrableProductDefinition", "Group", "PackagedProductDefinition", "EvidenceVariable", "SubstanceDefinition", "ManufacturedItemDefinition" },
+                baseResourceTypes: new[] { "ActivityDefinition" },
+                description: "The subject of the ActivityDefinition when expressed as a reference")
+,
+            new SearchParameterInfo(
+                name: "successor",
+                code: "successor",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-successor"),
+                components: null,
+                expression: "ActivityDefinition.relatedArtifact.where(type='successor').resource | EventDefinition.relatedArtifact.where(type='successor').resource | Library.relatedArtifact.where(type='successor').resource | Measure.relatedArtifact.where(type='successor').resource | PlanDefinition.relatedArtifact.where(type='successor').resource",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "ActivityDefinition", "EventDefinition", "Library", "Measure", "PlanDefinition" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n")
+,
+            new SearchParameterInfo(
+                name: "title",
+                code: "title",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-title"),
+                components: null,
+                expression: "ActivityDefinition.title | ActorDefinition.title | CapabilityStatement.title | CodeSystem.title | ConceptMap.title | EventDefinition.title | Evidence.title | EvidenceVariable.title | ImplementationGuide.title | Library.title | Measure.title | MessageDefinition.title | ObservationDefinition.title | OperationDefinition.title | PlanDefinition.title | Questionnaire.title | Requirements.title | SpecimenDefinition.title | StructureDefinition.title | StructureMap.title | SubscriptionTopic.title | TerminologyCapabilities.title | ValueSet.title",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The human-friendly name of the activity definition\r\n* [ActorDefinition](actordefinition.html): The human-friendly name of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The human-friendly name of the capability statement\r\n* [CodeSystem](codesystem.html): The human-friendly name of the code system\r\n* [ConceptMap](conceptmap.html): The human-friendly name of the concept map\r\n* [EventDefinition](eventdefinition.html): The human-friendly name of the event definition\r\n* [Evidence](evidence.html): The human-friendly name of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The human-friendly name of the evidence variable\r\n* [ImplementationGuide](implementationguide.html): The human-friendly name of the implementation guide\r\n* [Library](library.html): The human-friendly name of the library\r\n* [Measure](measure.html): The human-friendly name of the measure\r\n* [MessageDefinition](messagedefinition.html): The human-friendly name of the message definition\r\n* [ObservationDefinition](observationdefinition.html): Human-friendly name of the ObservationDefinition\r\n* [OperationDefinition](operationdefinition.html): The human-friendly name of the operation definition\r\n* [PlanDefinition](plandefinition.html): The human-friendly name of the plan definition\r\n* [Questionnaire](questionnaire.html): The human-friendly name of the questionnaire\r\n* [Requirements](requirements.html): The human-friendly name of the requirements\r\n* [SpecimenDefinition](specimendefinition.html): Human-friendly name of the SpecimenDefinition\r\n* [StructureDefinition](structuredefinition.html): The human-friendly name of the structure definition\r\n* [StructureMap](structuremap.html): The human-friendly name of the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Name for this SubscriptionTopic (Human friendly)\r\n* [TerminologyCapabilities](terminologycapabilities.html): The human-friendly name of the terminology capabilities\r\n* [ValueSet](valueset.html): The human-friendly name of the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "topic",
+                code: "topic",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-topic"),
+                components: null,
+                expression: "ActivityDefinition.topic | CodeSystem.topic | ConceptMap.topic | EventDefinition.topic | Library.topic | Measure.topic | NamingSystem.topic | PlanDefinition.topic | ValueSet.topic",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "EvidenceVariable", "Library", "Measure", "NamingSystem", "PlanDefinition", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Topics associated with the module\r\n* [CodeSystem](codesystem.html): Topics associated with the CodeSystem\r\n* [ConceptMap](conceptmap.html): Topics associated with the ConceptMap\r\n* [EventDefinition](eventdefinition.html): Topics associated with the module\r\n* [EvidenceVariable](evidencevariable.html): Topics associated with the EvidenceVariable\r\n* [Library](library.html): Topics associated with the module\r\n* [Measure](measure.html): Topics associated with the measure\r\n* [NamingSystem](namingsystem.html): Topics associated with the NamingSystem\r\n* [PlanDefinition](plandefinition.html): Topics associated with the module\r\n* [ValueSet](valueset.html): Topics associated with the ValueSet\r\n")
+,
+            new SearchParameterInfo(
+                name: "url",
+                code: "url",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-url"),
+                components: null,
+                expression: "ActivityDefinition.url | ActorDefinition.url | CapabilityStatement.url | CodeSystem.url | CompartmentDefinition.url | ConceptMap.url | DeviceDefinition.url | EventDefinition.url | Evidence.url | EvidenceVariable.url | ExampleScenario.url | Group.url | ImplementationGuide.url | Library.url | Measure.url | MessageDefinition.url | NamingSystem.url | ObservationDefinition.url | OperationDefinition.url | PlanDefinition.url | Questionnaire.url | Requirements.url | SearchParameter.url | SpecimenDefinition.url | StructureDefinition.url | StructureMap.url | SubscriptionTopic.url | TerminologyCapabilities.url | ValueSet.url",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The uri that identifies the activity definition\r\n* [ActorDefinition](actordefinition.html): The uri that identifies the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The uri that identifies the capability statement\r\n* [CodeSystem](codesystem.html): The uri that identifies the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The uri that identifies the compartment definition\r\n* [ConceptMap](conceptmap.html): The URI that identifies the concept map\r\n* [DeviceDefinition](devicedefinition.html): The uri that identifies the code system\r\n* [EventDefinition](eventdefinition.html): The uri that identifies the event definition\r\n* [Evidence](evidence.html): The uri that identifies the evidence\r\n* [EvidenceVariable](evidencevariable.html): The uri that identifies the evidence variable\r\n* [ExampleScenario](examplescenario.html): The uri that identifies the example scenario\r\n* [Group](group.html): The uri that identifies the Group\r\n* [ImplementationGuide](implementationguide.html): The uri that identifies the implementation guide\r\n* [Library](library.html): The uri that identifies the library\r\n* [Measure](measure.html): The uri that identifies the measure\r\n* [MessageDefinition](messagedefinition.html): The uri that identifies the message definition\r\n* [NamingSystem](namingsystem.html): The uri that identifies the naming system\r\n* [ObservationDefinition](observationdefinition.html): The uri that identifies the observation definition\r\n* [OperationDefinition](operationdefinition.html): The uri that identifies the operation definition\r\n* [PlanDefinition](plandefinition.html): The uri that identifies the plan definition\r\n* [Questionnaire](questionnaire.html): The uri that identifies the questionnaire\r\n* [Requirements](requirements.html): The uri that identifies the requirements\r\n* [SearchParameter](searchparameter.html): The uri that identifies the search parameter\r\n* [SpecimenDefinition](specimendefinition.html): The uri that identifies the specimen definition\r\n* [StructureDefinition](structuredefinition.html): The uri that identifies the structure definition\r\n* [StructureMap](structuremap.html): The uri that identifies the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Logical canonical URL to reference this SubscriptionTopic (globally unique)\r\n* [TerminologyCapabilities](terminologycapabilities.html): The uri that identifies the terminology capabilities\r\n* [ValueSet](valueset.html): The uri that identifies the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "version",
+                code: "version",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-version"),
+                components: null,
+                expression: "ActivityDefinition.version | ActorDefinition.version | CapabilityStatement.version | CodeSystem.version | CompartmentDefinition.version | ConceptMap.version | DeviceDefinition.deviceVersion.value | EventDefinition.version | Evidence.version | EvidenceVariable.version | ExampleScenario.version | ImplementationGuide.version | Library.version | Measure.version | MessageDefinition.version | NamingSystem.version | OperationDefinition.version | PlanDefinition.version | Questionnaire.version | Requirements.version | SearchParameter.version | StructureDefinition.version | StructureMap.version | SubscriptionTopic.version | TerminologyCapabilities.version | ValueSet.version",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The business version of the activity definition\r\n* [ActorDefinition](actordefinition.html): The business version of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The business version of the capability statement\r\n* [CodeSystem](codesystem.html): The business version of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The business version of the compartment definition\r\n* [ConceptMap](conceptmap.html): The business version of the concept map\r\n* [DeviceDefinition](devicedefinition.html): The specific version of the device\r\n* [EventDefinition](eventdefinition.html): The business version of the event definition\r\n* [Evidence](evidence.html): The business version of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The business version of the evidence variable\r\n* [ExampleScenario](examplescenario.html): The business version of the example scenario\r\n* [ImplementationGuide](implementationguide.html): The business version of the implementation guide\r\n* [Library](library.html): The business version of the library\r\n* [Measure](measure.html): The business version of the measure\r\n* [MessageDefinition](messagedefinition.html): The business version of the message definition\r\n* [NamingSystem](namingsystem.html): The business version of the naming system\r\n* [OperationDefinition](operationdefinition.html): The business version of the operation definition\r\n* [PlanDefinition](plandefinition.html): The business version of the plan definition\r\n* [Questionnaire](questionnaire.html): The business version of the questionnaire\r\n* [Requirements](requirements.html): The business version of the requirements\r\n* [SearchParameter](searchparameter.html): The business version of the search parameter\r\n* [StructureDefinition](structuredefinition.html): The business version of the structure definition\r\n* [StructureMap](structuremap.html): The business version of the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Business version of the SubscriptionTopic\r\n* [TerminologyCapabilities](terminologycapabilities.html): The business version of the terminology capabilities\r\n* [ValueSet](valueset.html): The business version of the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "context-type-quantity",
+                code: "context-type-quantity",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type-quantity"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-quantity"), "value.ofType(Quantity) | value.ofType(Range)") },
+                expression: "ActivityDefinition.useContext | ActorDefinition.useContext | CapabilityStatement.useContext | CodeSystem.useContext | CompartmentDefinition.useContext | ConceptMap.useContext | EventDefinition.useContext | Evidence.useContext | EvidenceVariable.useContext | ExampleScenario.useContext | ImplementationGuide.useContext | Library.useContext | Measure.useContext | MessageDefinition.useContext | NamingSystem.useContext | OperationDefinition.useContext | PlanDefinition.useContext | Questionnaire.useContext | Requirements.useContext | SearchParameter.useContext | StructureDefinition.useContext | StructureMap.useContext | TerminologyCapabilities.useContext | ValueSet.useContext",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A use context type and quantity- or range-based value assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A use context type and quantity- or range-based value assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A use context type and quantity- or range-based value assigned to the capability statement\r\n* [CodeSystem](codesystem.html): A use context type and quantity- or range-based value assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A use context type and quantity- or range-based value assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A use context type and quantity- or range-based value assigned to the concept map\r\n* [EventDefinition](eventdefinition.html): A use context type and quantity- or range-based value assigned to the event definition\r\n* [Evidence](evidence.html): A use context type and quantity- or range-based value assigned to the evidence\r\n* [EvidenceVariable](evidencevariable.html): A use context type and quantity- or range-based value assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A use context type and quantity- or range-based value assigned to the example scenario\r\n* [ImplementationGuide](implementationguide.html): A use context type and quantity- or range-based value assigned to the implementation guide\r\n* [Library](library.html): A use context type and quantity- or range-based value assigned to the library\r\n* [Measure](measure.html): A use context type and quantity- or range-based value assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A use context type and quantity- or range-based value assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A use context type and quantity- or range-based value assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A use context type and quantity- or range-based value assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A use context type and quantity- or range-based value assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A use context type and quantity- or range-based value assigned to the questionnaire\r\n* [Requirements](requirements.html): A use context type and quantity- or range-based value assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A use context type and quantity- or range-based value assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A use context type and quantity- or range-based value assigned to the structure definition\r\n* [StructureMap](structuremap.html): A use context type and quantity- or range-based value assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A use context type and quantity- or range-based value assigned to the terminology capabilities\r\n* [ValueSet](valueset.html): A use context type and quantity- or range-based value assigned to the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "context-type-value",
+                code: "context-type-value",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type-value"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context"), "value.ofType(CodeableConcept)") },
+                expression: "ActivityDefinition.useContext | ActorDefinition.useContext | CapabilityStatement.useContext | CodeSystem.useContext | CompartmentDefinition.useContext | ConceptMap.useContext | EventDefinition.useContext | Evidence.useContext | EvidenceVariable.useContext | ExampleScenario.useContext | ImplementationGuide.useContext | Library.useContext | Measure.useContext | MessageDefinition.useContext | NamingSystem.useContext | OperationDefinition.useContext | PlanDefinition.useContext | Questionnaire.useContext | Requirements.useContext | SearchParameter.useContext | StructureDefinition.useContext | StructureMap.useContext | TerminologyCapabilities.useContext | ValueSet.useContext",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "ConceptMap", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "ValueSet" },
+                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A use context type and value assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A use context type and value assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A use context type and value assigned to the capability statement\r\n* [CodeSystem](codesystem.html): A use context type and value assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A use context type and value assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A use context type and value assigned to the concept map\r\n* [EventDefinition](eventdefinition.html): A use context type and value assigned to the event definition\r\n* [Evidence](evidence.html): A use context type and value assigned to the evidence\r\n* [EvidenceVariable](evidencevariable.html): A use context type and value assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A use context type and value assigned to the example scenario\r\n* [ImplementationGuide](implementationguide.html): A use context type and value assigned to the implementation guide\r\n* [Library](library.html): A use context type and value assigned to the library\r\n* [Measure](measure.html): A use context type and value assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A use context type and value assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A use context type and value assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A use context type and value assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A use context type and value assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A use context type and value assigned to the questionnaire\r\n* [Requirements](requirements.html): A use context type and value assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A use context type and value assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A use context type and value assigned to the structure definition\r\n* [StructureMap](structuremap.html): A use context type and value assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A use context type and value assigned to the terminology capabilities\r\n* [ValueSet](valueset.html): A use context type and value assigned to the value set\r\n")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ActorDefinition-experimental"),
+                components: null,
+                expression: "ActorDefinition.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ActorDefinition" },
+                description: "Whether the ActorDefinition is experimental")
 ,
             new SearchParameterInfo(
                 name: "type",
@@ -321,15 +761,15 @@ public static class R6SearchParameterDefinitions
                 description: "wrong-patient | procedure-mishap | medication-mishap | device | unsafe-physical-environment | hospital-aquired-infection | wrong-body-site")
 ,
             new SearchParameterInfo(
-                name: "cause",
-                code: "cause",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/AdverseEvent-cause"),
+                name: "code",
+                code: "code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"),
                 components: null,
-                expression: "AdverseEvent.cause.ofType(dateTime) | AdverseEvent.cause.ofType(Period)",
+                expression: "AdverseEvent.code | AllergyIntolerance.code | AllergyIntolerance.reaction.substance | Basic.code | Condition.code | DetectedIssue.code | DiagnosticReport.code | FamilyMemberHistory.condition.code | ImagingSelection.code | List.code | Medication.code | MedicationAdministration.medication.concept | MedicationDispense.medication.concept | MedicationRequest.medication.concept | MedicationStatement.medication.concept | NutritionIntake.code | Observation.code | Procedure.code | RequestOrchestration.code | Task.code",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "AdverseEvent" },
-                description: "When the cause of the event occurred")
+                baseResourceTypes: new[] { "AdverseEvent", "AllergyIntolerance", "Basic", "Condition", "DetectedIssue", "DiagnosticReport", "FamilyMemberHistory", "ImagingSelection", "List", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "NutritionIntake", "Observation", "Procedure", "RequestOrchestration", "Task" },
+                description: "Multiple Resources: \r\n\r\n* [AdverseEvent](adverseevent.html): Event or incident that occurred or was averted\r\n* [AllergyIntolerance](allergyintolerance.html): Code that identifies the allergy or intolerance\r\n* [Basic](basic.html): Kind of Resource\r\n* [Condition](condition.html): Code for the condition\r\n* [DetectedIssue](detectedissue.html): Issue Type, e.g. drug-drug, duplicate therapy, etc.\r\n* [DiagnosticReport](diagnosticreport.html): The code for the report, as opposed to codes for the atomic results, which are the names on the observation resource referred to from the result\r\n* [FamilyMemberHistory](familymemberhistory.html): A search by a condition code\r\n* [ImagingSelection](imagingselection.html): The imaging selection description text or code\r\n* [List](list.html): What the purpose of this list is\r\n* [Medication](medication.html): Returns medications for a specific code\r\n* [MedicationAdministration](medicationadministration.html): Return administrations of this medication code\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses of this medicine code\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions of this medication code\r\n* [MedicationStatement](medicationstatement.html): Return statements of this medication code\r\n* [NutritionIntake](nutritionintake.html): Returns statements of this code of NutritionIntake\r\n* [Observation](observation.html): The code of the observation type\r\n* [Procedure](procedure.html): A code to identify a  procedure\r\n* [RequestOrchestration](requestorchestration.html): The code of the request orchestration\r\n* [Task](task.html): Search by task code\r\n")
 ,
             new SearchParameterInfo(
                 name: "effect",
@@ -354,6 +794,17 @@ public static class R6SearchParameterDefinitions
                 description: "Location where adverse event occurred")
 ,
             new SearchParameterInfo(
+                name: "occurrence",
+                code: "occurrence",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/AdverseEvent-occurrence"),
+                components: null,
+                expression: "AdverseEvent.suspectEntity.occurrence.ofType(dateTime) | AdverseEvent.suspectEntity.occurrence.ofType(Period)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "AdverseEvent" },
+                description: "When the suspect entity occurred")
+,
+            new SearchParameterInfo(
                 name: "recorder",
                 code: "recorder",
                 searchParamType: SearchParamType.Reference,
@@ -365,12 +816,23 @@ public static class R6SearchParameterDefinitions
                 description: "Who recorded the adverse event")
 ,
             new SearchParameterInfo(
-                name: "resultingeffect",
-                code: "resultingeffect",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/AdverseEvent-resultingeffect"),
+                name: "resultingeffect-code",
+                code: "resultingeffect-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/AdverseEvent-resultingeffect-code"),
                 components: null,
-                expression: "AdverseEvent.resultingEffect",
+                expression: "AdverseEvent.resultingEffect.concept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "AdverseEvent" },
+                description: "Effect on the subject due to this event")
+,
+            new SearchParameterInfo(
+                name: "resultingeffect-reference",
+                code: "resultingeffect-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/AdverseEvent-resultingeffect-reference"),
+                components: null,
+                expression: "AdverseEvent.resultingEffect.reference",
                 targetResourceTypes: new[] { "Observation", "Condition" },
                 baseResourceTypes: new[] { "AdverseEvent" },
                 description: "Effect on the subject due to this event")
@@ -426,7 +888,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/AdverseEvent-substance"),
                 components: null,
                 expression: "AdverseEvent.suspectEntity.instance.reference",
-                targetResourceTypes: new[] { "Device", "Procedure", "MedicationStatement", "ResearchStudy", "MedicationAdministration", "BiologicallyDerivedProduct", "Immunization", "Substance", "Medication" },
+                targetResourceTypes: new[] { "Device", "Procedure", "MedicationStatement", "ResearchStudy", "MedicationAdministration", "BiologicallyDerivedProduct", "Immunization", "Substance", "SubstanceDefinition", "Medication" },
                 baseResourceTypes: new[] { "AdverseEvent" },
                 description: "Refers to the specific entity that caused the adverse event")
 ,
@@ -473,6 +935,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "AllergyIntolerance" },
                 description: "low | high | unable-to-assess")
+,
+            new SearchParameterInfo(
+                name: "date",
+                code: "date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-date"),
+                components: null,
+                expression: "AllergyIntolerance.recordedDate | (start | requestedPeriod.start).first() | AuditEvent.recorded | CarePlan.period | Composition.date | Consent.date | DiagnosticReport.effective.ofType(dateTime) | DiagnosticReport.effective.ofType(Period) | DocumentReference.date | Encounter.actualPeriod | EpisodeOfCare.period | FamilyMemberHistory.date | Flag.period | (Immunization.occurrence.ofType(dateTime)) | Invoice.creation | List.date | MeasureReport.date | NutritionIntake.occurrence.ofType(dateTime) | NutritionIntake.occurrence.ofType(Period) | Observation.effective.ofType(dateTime) | Observation.effective.ofType(Period) | Observation.effective.ofType(Timing) | Observation.effective.ofType(instant) | Procedure.occurrence.ofType(dateTime) | Procedure.occurrence.ofType(Period) | Procedure.occurrence.ofType(Timing) | ResearchSubject.period | (RiskAssessment.occurrence.ofType(dateTime))",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "AllergyIntolerance", "Appointment", "AuditEvent", "CarePlan", "CareTeam", "Composition", "Consent", "DiagnosticReport", "DocumentReference", "Encounter", "EpisodeOfCare", "FamilyMemberHistory", "Flag", "Immunization", "Invoice", "List", "MeasureReport", "NutritionIntake", "Observation", "Procedure", "ResearchSubject", "RiskAssessment" },
+                description: "Multiple Resources: \r\n\r\n* [AllergyIntolerance](allergyintolerance.html): Date first version of the resource instance was recorded\r\n* [Appointment](appointment.html): Appointment date/time.\r\n* [AuditEvent](auditevent.html): Time when the event was recorded\r\n* [CarePlan](careplan.html): Time period plan covers\r\n* [CareTeam](careteam.html): A date within the coverage time period.\r\n* [Composition](composition.html): Composition editing time\r\n* [Consent](consent.html): When consent was agreed to\r\n* [DiagnosticReport](diagnosticreport.html): The clinically relevant time of the report\r\n* [DocumentReference](documentreference.html): When this document reference was created\r\n* [Encounter](encounter.html): A date within the actualPeriod the Encounter lasted\r\n* [EpisodeOfCare](episodeofcare.html): The provided date search value falls within the episode of care's period\r\n* [FamilyMemberHistory](familymemberhistory.html): When history was recorded or last updated\r\n* [Flag](flag.html): Time period when flag is active\r\n* [Immunization](immunization.html): Vaccination  (non)-Administration Date\r\n* [Invoice](invoice.html): Invoice date / posting date\r\n* [List](list.html): When the list was prepared\r\n* [MeasureReport](measurereport.html): The date of the measure report\r\n* [NutritionIntake](nutritionintake.html): Date when patient was taking (or not taking) the medication\r\n* [Observation](observation.html): Clinically relevant time/time-period for observation\r\n* [Procedure](procedure.html): When the procedure occurred or is occurring\r\n* [ResearchSubject](researchsubject.html): Start and end of participation\r\n* [RiskAssessment](riskassessment.html): When was assessment made?\r\n")
 ,
             new SearchParameterInfo(
                 name: "last-reaction-date",
@@ -569,7 +1042,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-based-on"),
                 components: null,
                 expression: "Appointment.basedOn",
-                targetResourceTypes: new[] { "RequestOrchestration", "DeviceRequest", "ServiceRequest", "CarePlan", "MedicationRequest", "ImmunizationRecommendation", "NutritionOrder", "VisionPrescription" },
+                targetResourceTypes: new[] { "RequestOrchestration", "DeviceRequest", "ServiceRequest", "CarePlan", "MedicationRequest", "NutritionOrder", "VisionPrescription" },
                 baseResourceTypes: new[] { "Appointment" },
                 description: "The service request this appointment is allocated to assess")
 ,
@@ -585,6 +1058,28 @@ public static class R6SearchParameterDefinitions
                 description: "One of the individuals of the appointment is this patient")
 ,
             new SearchParameterInfo(
+                name: "has-recurrence-template",
+                code: "has-recurrence-template",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-has-recurrence-template"),
+                components: null,
+                expression: "Appointment.recurrenceTemplate.exists()",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Appointment" },
+                description: "This Appointment contains a recurrence template")
+,
+            new SearchParameterInfo(
+                name: "is-recurring",
+                code: "is-recurring",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-is-recurring"),
+                components: null,
+                expression: "Appointment.recurrenceTemplate.exists() | Appointment.originatingAppointment.exists()",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Appointment" },
+                description: "This Appointment is a part of a recurring series of appointments (has a template or an originating appointment)")
+,
+            new SearchParameterInfo(
                 name: "location",
                 code: "location",
                 searchParamType: SearchParamType.Reference,
@@ -594,6 +1089,28 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Location" },
                 baseResourceTypes: new[] { "Appointment" },
                 description: "This location is listed in the participants of the appointment")
+,
+            new SearchParameterInfo(
+                name: "occurrence-changed",
+                code: "occurrence-changed",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-occurrence-changed"),
+                components: null,
+                expression: "Appointment.occurrenceChanged",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Appointment" },
+                description: "This Appointment has been changed from the recurrence template")
+,
+            new SearchParameterInfo(
+                name: "originating-appointment",
+                code: "originating-appointment",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-originating-appointment"),
+                components: null,
+                expression: "Appointment.originatingAppointment",
+                targetResourceTypes: new[] { "Appointment" },
+                baseResourceTypes: new[] { "Appointment" },
+                description: "Reference to the Appointment that contains the recurrence template")
 ,
             new SearchParameterInfo(
                 name: "part-status",
@@ -618,6 +1135,17 @@ public static class R6SearchParameterDefinitions
                 description: "One of the individuals of the appointment is this practitioner")
 ,
             new SearchParameterInfo(
+                name: "previous-appointment",
+                code: "previous-appointment",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-previous-appointment"),
+                components: null,
+                expression: "Appointment.previousAppointment",
+                targetResourceTypes: new[] { "Appointment" },
+                baseResourceTypes: new[] { "Appointment" },
+                description: "Reference to the Appointment that preceded this appointment in a series")
+,
+            new SearchParameterInfo(
                 name: "reason-code",
                 code: "reason-code",
                 searchParamType: SearchParamType.Token,
@@ -635,7 +1163,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-reason-reference"),
                 components: null,
                 expression: "Appointment.reason.reference",
-                targetResourceTypes: new[] { "Procedure", "Observation", "ImmunizationRecommendation", "Condition" },
+                targetResourceTypes: new[] { "Procedure", "Observation", "DiagnosticReport", "Condition" },
                 baseResourceTypes: new[] { "Appointment" },
                 description: "Reference to a resource (by instance)")
 ,
@@ -662,17 +1190,6 @@ public static class R6SearchParameterDefinitions
                 description: "A broad categorization of the service that is to be performed during this appointment")
 ,
             new SearchParameterInfo(
-                name: "service-type-reference",
-                code: "service-type-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-service-type-reference"),
-                components: null,
-                expression: "Appointment.serviceType.reference",
-                targetResourceTypes: new[] { "HealthcareService" },
-                baseResourceTypes: new[] { "Appointment" },
-                description: "The specific service (by HealthcareService) that is to be performed during this appointment")
-,
-            new SearchParameterInfo(
                 name: "service-type",
                 code: "service-type",
                 searchParamType: SearchParamType.Token,
@@ -682,6 +1199,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Appointment" },
                 description: "The specific service (by coding) that is to be performed during this appointment")
+,
+            new SearchParameterInfo(
+                name: "service-type-reference",
+                code: "service-type-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-service-type-reference"),
+                components: null,
+                expression: "Appointment.serviceType.reference",
+                targetResourceTypes: new[] { "HealthcareService" },
+                baseResourceTypes: new[] { "Appointment" },
+                description: "The specific service (by HealthcareService) that is to be performed during this appointment")
 ,
             new SearchParameterInfo(
                 name: "slot",
@@ -734,7 +1262,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Appointment-supporting-info"),
                 components: null,
                 expression: "Appointment.supportingInformation",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Appointment" },
                 description: "Additional information to support the appointment")
 ,
@@ -838,6 +1366,17 @@ public static class R6SearchParameterDefinitions
                 description: "Type of action performed during the event")
 ,
             new SearchParameterInfo(
+                name: "agent",
+                code: "agent",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/AuditEvent-agent"),
+                components: null,
+                expression: "AuditEvent.agent.who",
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "DeviceDefinition", "Practitioner", "Group", "Patient" },
+                baseResourceTypes: new[] { "AuditEvent" },
+                description: "Identifier of who")
+,
+            new SearchParameterInfo(
                 name: "agent-role",
                 code: "agent-role",
                 searchParamType: SearchParamType.Token,
@@ -849,26 +1388,48 @@ public static class R6SearchParameterDefinitions
                 description: "Agent role in the event")
 ,
             new SearchParameterInfo(
-                name: "agent",
-                code: "agent",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/AuditEvent-agent"),
-                components: null,
-                expression: "AuditEvent.agent.who",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "AuditEvent" },
-                description: "Identifier of who")
-,
-            new SearchParameterInfo(
                 name: "based-on",
                 code: "based-on",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/AuditEvent-based-on"),
                 components: null,
                 expression: "AuditEvent.basedOn",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "AuditEvent" },
                 description: "Reference to the service request.")
+,
+            new SearchParameterInfo(
+                name: "encounter",
+                code: "encounter",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-encounter"),
+                components: null,
+                expression: "AuditEvent.encounter | CarePlan.encounter | Claim.item.encounter | Communication.encounter | CommunicationRequest.encounter | Composition.encounter | Condition.encounter | DeviceRequest.encounter | DiagnosticReport.encounter | ExplanationOfBenefit.item.encounter | Flag.encounter | ImagingStudy.encounter | List.encounter | MedicationDispense.encounter | MedicationStatement.encounter | NutritionIntake.encounter | NutritionOrder.encounter | Observation.encounter | Procedure.encounter | Provenance.encounter | QuestionnaireResponse.encounter | RequestOrchestration.encounter | RiskAssessment.encounter | ServiceRequest.encounter | Task.encounter | VisionPrescription.encounter",
+                targetResourceTypes: new[] { "Encounter" },
+                baseResourceTypes: new[] { "AuditEvent", "CarePlan", "Claim", "Communication", "CommunicationRequest", "Composition", "Condition", "DeviceRequest", "DiagnosticReport", "ExplanationOfBenefit", "Flag", "ImagingStudy", "List", "MedicationDispense", "MedicationStatement", "NutritionIntake", "NutritionOrder", "Observation", "Procedure", "Provenance", "QuestionnaireResponse", "RequestOrchestration", "RiskAssessment", "ServiceRequest", "Task", "VisionPrescription" },
+                description: "Multiple Resources: \r\n\r\n* [AuditEvent](auditevent.html): Encounter related to the activity recorded in the AuditEvent\r\n* [CarePlan](careplan.html): The Encounter during which this CarePlan was created\r\n* [Claim](claim.html): Encounters associated with a billed line item\r\n* [Communication](communication.html): The Encounter during which this Communication was created\r\n* [CommunicationRequest](communicationrequest.html): The Encounter during which this CommunicationRequest was created\r\n* [Composition](composition.html): Context of the Composition\r\n* [Condition](condition.html): The Encounter during which this Condition was created\r\n* [DeviceRequest](devicerequest.html): Encounter during which request was created\r\n* [DiagnosticReport](diagnosticreport.html): The Encounter when the order was made\r\n* [ExplanationOfBenefit](explanationofbenefit.html): Encounters associated with a billed line item\r\n* [Flag](flag.html): Alert relevant during encounter\r\n* [ImagingStudy](imagingstudy.html): The context of the study\r\n* [List](list.html): Context in which list created\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses with a specific encounter\r\n* [MedicationStatement](medicationstatement.html): Returns statements for a specific encounter\r\n* [NutritionIntake](nutritionintake.html): Returns statements for a specific encounter\r\n* [NutritionOrder](nutritionorder.html): Return nutrition orders with this encounter identifier\r\n* [Observation](observation.html): Encounter related to the observation\r\n* [Procedure](procedure.html): The Encounter during which this Procedure was created\r\n* [Provenance](provenance.html): Encounter related to the Provenance\r\n* [QuestionnaireResponse](questionnaireresponse.html): Encounter associated with the questionnaire response\r\n* [RequestOrchestration](requestorchestration.html): The encounter the request orchestration applies to\r\n* [RiskAssessment](riskassessment.html): Where was assessment performed?\r\n* [ServiceRequest](servicerequest.html): An encounter in which this request is made\r\n* [Task](task.html): Search by encounter\r\n* [VisionPrescription](visionprescription.html): Return prescriptions with this encounter identifier\r\n")
+,
+            new SearchParameterInfo(
+                name: "entity",
+                code: "entity",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/AuditEvent-entity"),
+                components: null,
+                expression: "AuditEvent.entity.what",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "AuditEvent" },
+                description: "Specific instance of resource")
+,
+            new SearchParameterInfo(
+                name: "entity-desc",
+                code: "entity-desc",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/AuditEvent-entity-desc"),
+                components: null,
+                expression: "AuditEvent.entity.description",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "AuditEvent" },
+                description: "Description of an entity")
 ,
             new SearchParameterInfo(
                 name: "entity-role",
@@ -880,17 +1441,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "AuditEvent" },
                 description: "What role the entity played")
-,
-            new SearchParameterInfo(
-                name: "entity",
-                code: "entity",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/AuditEvent-entity"),
-                components: null,
-                expression: "AuditEvent.entity.what",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "AuditEvent" },
-                description: "Specific instance of resource")
 ,
             new SearchParameterInfo(
                 name: "outcome",
@@ -987,7 +1537,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Basic-subject"),
                 components: null,
                 expression: "Basic.subject",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Basic" },
                 description: "Identifies the focus of this resource")
 ,
@@ -1011,7 +1561,7 @@ public static class R6SearchParameterDefinitions
                 expression: "BiologicallyDerivedProduct.productCode",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                description: "A code that identifies the kind of this biologically derived product (SNOMED CT code).")
+                description: "A code that identifies the kind of this biologically derived product")
 ,
             new SearchParameterInfo(
                 name: "collector",
@@ -1022,18 +1572,18 @@ public static class R6SearchParameterDefinitions
                 expression: "BiologicallyDerivedProduct.collection.collector",
                 targetResourceTypes: new[] { "PractitionerRole", "Practitioner" },
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                description: "Procedure request to obtain this biologically derived product.")
+                description: "Individual performing the collection")
 ,
             new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProduct-identifier"),
+                name: "parent",
+                code: "parent",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProduct-parent"),
                 components: null,
-                expression: "BiologicallyDerivedProduct.identifier",
-                targetResourceTypes: null,
+                expression: "BiologicallyDerivedProduct.parent",
+                targetResourceTypes: new[] { "BiologicallyDerivedProduct" },
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                description: "Identifier")
+                description: "The parent biologically derived product")
 ,
             new SearchParameterInfo(
                 name: "product-category",
@@ -1044,7 +1594,7 @@ public static class R6SearchParameterDefinitions
                 expression: "BiologicallyDerivedProduct.productCategory",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                description: "Broad category of this product.")
+                description: "Broad category of this product")
 ,
             new SearchParameterInfo(
                 name: "product-status",
@@ -1055,7 +1605,7 @@ public static class R6SearchParameterDefinitions
                 expression: "BiologicallyDerivedProduct.productStatus",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                description: "Whether the product is currently available.")
+                description: "Whether the product is currently available")
 ,
             new SearchParameterInfo(
                 name: "request",
@@ -1066,7 +1616,7 @@ public static class R6SearchParameterDefinitions
                 expression: "BiologicallyDerivedProduct.request",
                 targetResourceTypes: new[] { "ServiceRequest" },
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                description: "Procedure request to obtain this biologically derived product.")
+                description: "Request associated with the biologically derived product")
 ,
             new SearchParameterInfo(
                 name: "serial-number",
@@ -1078,61 +1628,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "BiologicallyDerivedProduct" },
                 description: "Identifier")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProductDispense-identifier"),
-                components: null,
-                expression: "BiologicallyDerivedProductDispense.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "BiologicallyDerivedProductDispense" },
-                description: "The identifier of the dispense")
-,
-            new SearchParameterInfo(
-                name: "patient",
-                code: "patient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProductDispense-patient"),
-                components: null,
-                expression: "BiologicallyDerivedProductDispense.patient",
-                targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "BiologicallyDerivedProductDispense" },
-                description: "The identity of a patient for whom to list dispenses")
-,
-            new SearchParameterInfo(
-                name: "performer",
-                code: "performer",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProductDispense-performer"),
-                components: null,
-                expression: "BiologicallyDerivedProductDispense.performer.actor",
-                targetResourceTypes: new[] { "Practitioner" },
-                baseResourceTypes: new[] { "BiologicallyDerivedProductDispense" },
-                description: "The identity of a patient for whom to list dispenses")
-,
-            new SearchParameterInfo(
-                name: "product",
-                code: "product",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProductDispense-product"),
-                components: null,
-                expression: "BiologicallyDerivedProductDispense.product",
-                targetResourceTypes: new[] { "BiologicallyDerivedProduct" },
-                baseResourceTypes: new[] { "BiologicallyDerivedProductDispense" },
-                description: "Search for products that match this code")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/BiologicallyDerivedProductDispense-status"),
-                components: null,
-                expression: "BiologicallyDerivedProductDispense.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "BiologicallyDerivedProductDispense" },
-                description: "The status of the dispense")
 ,
             new SearchParameterInfo(
                 name: "excluded_structure",
@@ -1162,7 +1657,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/BodyStructure-morphology"),
                 components: null,
-                expression: "BodyStructure.morphology",
+                expression: "BodyStructure.includedStructure.morphology",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "BodyStructure" },
                 description: "Kind of Structure")
@@ -1170,11 +1665,11 @@ public static class R6SearchParameterDefinitions
             new SearchParameterInfo(
                 name: "composition",
                 code: "composition",
-                searchParamType: SearchParamType.Reference,
+                searchParamType: SearchParamType.Resource,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Bundle-composition"),
                 components: null,
                 expression: "Bundle.entry[0].resource as Composition",
-                targetResourceTypes: new[] { "Composition" },
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "Bundle" },
                 description: "The first resource in the bundle, if the bundle type is \"document\" - this is a composition, and this parameter provides access to search its contents")
 ,
@@ -1192,11 +1687,11 @@ public static class R6SearchParameterDefinitions
             new SearchParameterInfo(
                 name: "message",
                 code: "message",
-                searchParamType: SearchParamType.Reference,
+                searchParamType: SearchParamType.Resource,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Bundle-message"),
                 components: null,
                 expression: "Bundle.entry[0].resource as MessageHeader",
-                targetResourceTypes: new[] { "MessageHeader" },
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "Bundle" },
                 description: "The first resource in the bundle, if the bundle type is \"message\" - this is a message header, and this parameter provides access to search its contents")
 ,
@@ -1223,169 +1718,15 @@ public static class R6SearchParameterDefinitions
                 description: "document | message | transaction | transaction-response | batch | batch-response | history | searchset | collection | subscription-notification")
 ,
             new SearchParameterInfo(
-                name: "context-quantity",
-                code: "context-quantity",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-quantity"),
-                components: null,
-                expression: "(ActivityDefinition.useContext.value.ofType(Quantity)) | (ActivityDefinition.useContext.value.ofType(Range)) | (ActorDefinition.useContext.value.ofType(Quantity)) | (ActorDefinition.useContext.value.ofType(Range)) | (CapabilityStatement.useContext.value.ofType(Quantity)) | (CapabilityStatement.useContext.value.ofType(Range)) | (ChargeItemDefinition.useContext.value.ofType(Quantity)) | (ChargeItemDefinition.useContext.value.ofType(Range)) | (Citation.useContext.value.ofType(Quantity)) | (Citation.useContext.value.ofType(Range)) | (CodeSystem.useContext.value.ofType(Quantity)) | (CodeSystem.useContext.value.ofType(Range)) | (CompartmentDefinition.useContext.value.ofType(Quantity)) | (CompartmentDefinition.useContext.value.ofType(Range)) | (ConceptMap.useContext.value.ofType(Quantity)) | (ConceptMap.useContext.value.ofType(Range)) | (ConditionDefinition.useContext.value.ofType(Quantity)) | (ConditionDefinition.useContext.value.ofType(Range)) | (EventDefinition.useContext.value.ofType(Quantity)) | (EventDefinition.useContext.value.ofType(Range)) | (Evidence.useContext.value.ofType(Quantity)) | (Evidence.useContext.value.ofType(Range)) | (EvidenceReport.useContext.value.ofType(Quantity)) | (EvidenceReport.useContext.value.ofType(Range)) | (EvidenceVariable.useContext.value.ofType(Quantity)) | (EvidenceVariable.useContext.value.ofType(Range)) | (ExampleScenario.useContext.value.ofType(Quantity)) | (ExampleScenario.useContext.value.ofType(Range)) | (GraphDefinition.useContext.value.ofType(Quantity)) | (GraphDefinition.useContext.value.ofType(Range)) | (ImplementationGuide.useContext.value.ofType(Quantity)) | (ImplementationGuide.useContext.value.ofType(Range)) | (Library.useContext.value.ofType(Quantity)) | (Library.useContext.value.ofType(Range)) | (Measure.useContext.value.ofType(Quantity)) | (Measure.useContext.value.ofType(Range)) | (MessageDefinition.useContext.value.ofType(Quantity)) | (MessageDefinition.useContext.value.ofType(Range)) | (NamingSystem.useContext.value.ofType(Quantity)) | (NamingSystem.useContext.value.ofType(Range)) | (OperationDefinition.useContext.value.ofType(Quantity)) | (OperationDefinition.useContext.value.ofType(Range)) | (PlanDefinition.useContext.value.ofType(Quantity)) | (PlanDefinition.useContext.value.ofType(Range)) | (Questionnaire.useContext.value.ofType(Quantity)) | (Questionnaire.useContext.value.ofType(Range)) | (Requirements.useContext.value.ofType(Quantity)) | (Requirements.useContext.value.ofType(Range)) | (SearchParameter.useContext.value.ofType(Quantity)) | (SearchParameter.useContext.value.ofType(Range)) | (StructureDefinition.useContext.value.ofType(Quantity)) | (StructureDefinition.useContext.value.ofType(Range)) | (StructureMap.useContext.value.ofType(Quantity)) | (StructureMap.useContext.value.ofType(Range)) | (TerminologyCapabilities.useContext.value.ofType(Quantity)) | (TerminologyCapabilities.useContext.value.ofType(Range)) | (TestScript.useContext.value.ofType(Quantity)) | (TestScript.useContext.value.ofType(Range)) | (ValueSet.useContext.value.ofType(Quantity)) | (ValueSet.useContext.value.ofType(Range))",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A quantity- or range-valued use context assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A quantity- or range-valued use context assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A quantity- or range-valued use context assigned to the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): A quantity- or range-valued use context assigned to the charge item definition\r\n* [Citation](citation.html): A quantity- or range-valued use context assigned to the citation\r\n* [CodeSystem](codesystem.html): A quantity- or range-valued use context assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A quantity- or range-valued use context assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A quantity- or range-valued use context assigned to the concept map\r\n* [ConditionDefinition](conditiondefinition.html): A quantity- or range-valued use context assigned to the condition definition\r\n* [EventDefinition](eventdefinition.html): A quantity- or range-valued use context assigned to the event definition\r\n* [Evidence](evidence.html): A quantity- or range-valued use context assigned to the evidence\r\n* [EvidenceReport](evidencereport.html): A quantity- or range-valued use context assigned to the evidence report\r\n* [EvidenceVariable](evidencevariable.html): A quantity- or range-valued use context assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A quantity- or range-valued use context assigned to the example scenario\r\n* [GraphDefinition](graphdefinition.html): A quantity- or range-valued use context assigned to the graph definition\r\n* [ImplementationGuide](implementationguide.html): A quantity- or range-valued use context assigned to the implementation guide\r\n* [Library](library.html): A quantity- or range-valued use context assigned to the library\r\n* [Measure](measure.html): A quantity- or range-valued use context assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A quantity- or range-valued use context assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A quantity- or range-valued use context assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A quantity- or range-valued use context assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A quantity- or range-valued use context assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A quantity- or range-valued use context assigned to the questionnaire\r\n* [Requirements](requirements.html): A quantity- or range-valued use context assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A quantity- or range-valued use context assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A quantity- or range-valued use context assigned to the structure definition\r\n* [StructureMap](structuremap.html): A quantity- or range-valued use context assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A quantity- or range-valued use context assigned to the terminology capabilities\r\n* [TestScript](testscript.html): A quantity- or range-valued use context assigned to the test script\r\n* [ValueSet](valueset.html): A quantity- or range-valued use context assigned to the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "context-type-quantity",
-                code: "context-type-quantity",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type-quantity"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-quantity"), "value.ofType(Quantity) | value.ofType(Range)") },
-                expression: "ActivityDefinition.useContext | ActorDefinition.useContext | CapabilityStatement.useContext | ChargeItemDefinition.useContext | Citation.useContext | CodeSystem.useContext | CompartmentDefinition.useContext | ConceptMap.useContext | ConditionDefinition.useContext | EventDefinition.useContext | Evidence.useContext | EvidenceReport.useContext | EvidenceVariable.useContext | ExampleScenario.useContext | GraphDefinition.useContext | ImplementationGuide.useContext | Library.useContext | Measure.useContext | MessageDefinition.useContext | NamingSystem.useContext | OperationDefinition.useContext | PlanDefinition.useContext | Questionnaire.useContext | Requirements.useContext | SearchParameter.useContext | StructureDefinition.useContext | StructureMap.useContext | TerminologyCapabilities.useContext | TestScript.useContext | ValueSet.useContext",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A use context type and quantity- or range-based value assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A use context type and quantity- or range-based value assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A use context type and quantity- or range-based value assigned to the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): A use context type and quantity- or range-based value assigned to the charge item definition\r\n* [Citation](citation.html): A use context type and quantity- or range-based value assigned to the citation\r\n* [CodeSystem](codesystem.html): A use context type and quantity- or range-based value assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A use context type and quantity- or range-based value assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A use context type and quantity- or range-based value assigned to the concept map\r\n* [ConditionDefinition](conditiondefinition.html): A use context type and quantity- or range-based value assigned to the condition definition\r\n* [EventDefinition](eventdefinition.html): A use context type and quantity- or range-based value assigned to the event definition\r\n* [Evidence](evidence.html): A use context type and quantity- or range-based value assigned to the evidence\r\n* [EvidenceReport](evidencereport.html): A use context type and quantity- or range-based value assigned to the evidence report\r\n* [EvidenceVariable](evidencevariable.html): A use context type and quantity- or range-based value assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A use context type and quantity- or range-based value assigned to the example scenario\r\n* [GraphDefinition](graphdefinition.html): A use context type and quantity- or range-based value assigned to the graph definition\r\n* [ImplementationGuide](implementationguide.html): A use context type and quantity- or range-based value assigned to the implementation guide\r\n* [Library](library.html): A use context type and quantity- or range-based value assigned to the library\r\n* [Measure](measure.html): A use context type and quantity- or range-based value assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A use context type and quantity- or range-based value assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A use context type and quantity- or range-based value assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A use context type and quantity- or range-based value assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A use context type and quantity- or range-based value assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A use context type and quantity- or range-based value assigned to the questionnaire\r\n* [Requirements](requirements.html): A use context type and quantity- or range-based value assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A use context type and quantity- or range-based value assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A use context type and quantity- or range-based value assigned to the structure definition\r\n* [StructureMap](structuremap.html): A use context type and quantity- or range-based value assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A use context type and quantity- or range-based value assigned to the terminology capabilities\r\n* [TestScript](testscript.html): A use context type and quantity- or range-based value assigned to the test script\r\n* [ValueSet](valueset.html): A use context type and quantity- or range-based value assigned to the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "context-type-value",
-                code: "context-type-value",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type-value"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context"), "value.ofType(CodeableConcept)") },
-                expression: "ActivityDefinition.useContext | ActorDefinition.useContext | CapabilityStatement.useContext | ChargeItemDefinition.useContext | Citation.useContext | CodeSystem.useContext | CompartmentDefinition.useContext | ConceptMap.useContext | ConditionDefinition.useContext | EventDefinition.useContext | Evidence.useContext | EvidenceReport.useContext | EvidenceVariable.useContext | ExampleScenario.useContext | GraphDefinition.useContext | ImplementationGuide.useContext | Library.useContext | Measure.useContext | MessageDefinition.useContext | NamingSystem.useContext | OperationDefinition.useContext | PlanDefinition.useContext | Questionnaire.useContext | Requirements.useContext | SearchParameter.useContext | StructureDefinition.useContext | StructureMap.useContext | TerminologyCapabilities.useContext | TestScript.useContext | ValueSet.useContext",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A use context type and value assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A use context type and value assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A use context type and value assigned to the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): A use context type and value assigned to the charge item definition\r\n* [Citation](citation.html): A use context type and value assigned to the citation\r\n* [CodeSystem](codesystem.html): A use context type and value assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A use context type and value assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A use context type and value assigned to the concept map\r\n* [ConditionDefinition](conditiondefinition.html): A use context type and value assigned to the condition definition\r\n* [EventDefinition](eventdefinition.html): A use context type and value assigned to the event definition\r\n* [Evidence](evidence.html): A use context type and value assigned to the evidence\r\n* [EvidenceReport](evidencereport.html): A use context type and value assigned to the evidence report\r\n* [EvidenceVariable](evidencevariable.html): A use context type and value assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A use context type and value assigned to the example scenario\r\n* [GraphDefinition](graphdefinition.html): A use context type and value assigned to the graph definition\r\n* [ImplementationGuide](implementationguide.html): A use context type and value assigned to the implementation guide\r\n* [Library](library.html): A use context type and value assigned to the library\r\n* [Measure](measure.html): A use context type and value assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A use context type and value assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A use context type and value assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A use context type and value assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A use context type and value assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A use context type and value assigned to the questionnaire\r\n* [Requirements](requirements.html): A use context type and value assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A use context type and value assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A use context type and value assigned to the structure definition\r\n* [StructureMap](structuremap.html): A use context type and value assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A use context type and value assigned to the terminology capabilities\r\n* [TestScript](testscript.html): A use context type and value assigned to the test script\r\n* [ValueSet](valueset.html): A use context type and value assigned to the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "context-type",
-                code: "context-type",
+                name: "experimental",
+                code: "experimental",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context-type"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CapabilityStatement-experimental"),
                 components: null,
-                expression: "ActivityDefinition.useContext.code | ActorDefinition.useContext.code | CapabilityStatement.useContext.code | ChargeItemDefinition.useContext.code | Citation.useContext.code | CodeSystem.useContext.code | CompartmentDefinition.useContext.code | ConceptMap.useContext.code | ConditionDefinition.useContext.code | EventDefinition.useContext.code | Evidence.useContext.code | EvidenceReport.useContext.code | EvidenceVariable.useContext.code | ExampleScenario.useContext.code | GraphDefinition.useContext.code | ImplementationGuide.useContext.code | Library.useContext.code | Measure.useContext.code | MessageDefinition.useContext.code | NamingSystem.useContext.code | OperationDefinition.useContext.code | PlanDefinition.useContext.code | Questionnaire.useContext.code | Requirements.useContext.code | SearchParameter.useContext.code | StructureDefinition.useContext.code | StructureMap.useContext.code | TerminologyCapabilities.useContext.code | TestScript.useContext.code | ValueSet.useContext.code",
+                expression: "CapabilityStatement.experimental",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A type of use context assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A type of use context assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A type of use context assigned to the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): A type of use context assigned to the charge item definition\r\n* [Citation](citation.html): A type of use context assigned to the citation\r\n* [CodeSystem](codesystem.html): A type of use context assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A type of use context assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A type of use context assigned to the concept map\r\n* [ConditionDefinition](conditiondefinition.html): A type of use context assigned to the condition definition\r\n* [EventDefinition](eventdefinition.html): A type of use context assigned to the event definition\r\n* [Evidence](evidence.html): A type of use context assigned to the evidence\r\n* [EvidenceReport](evidencereport.html): A type of use context assigned to the evidence report\r\n* [EvidenceVariable](evidencevariable.html): A type of use context assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A type of use context assigned to the example scenario\r\n* [GraphDefinition](graphdefinition.html): A type of use context assigned to the graph definition\r\n* [ImplementationGuide](implementationguide.html): A type of use context assigned to the implementation guide\r\n* [Library](library.html): A type of use context assigned to the library\r\n* [Measure](measure.html): A type of use context assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A type of use context assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A type of use context assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A type of use context assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A type of use context assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A type of use context assigned to the questionnaire\r\n* [Requirements](requirements.html): A type of use context assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A type of use context assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A type of use context assigned to the structure definition\r\n* [StructureMap](structuremap.html): A type of use context assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A type of use context assigned to the terminology capabilities\r\n* [TestScript](testscript.html): A type of use context assigned to the test script\r\n* [ValueSet](valueset.html): A type of use context assigned to the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "context",
-                code: "context",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-context"),
-                components: null,
-                expression: "(ActivityDefinition.useContext.value.ofType(CodeableConcept)) | (ActorDefinition.useContext.value.ofType(CodeableConcept)) | (CapabilityStatement.useContext.value.ofType(CodeableConcept)) | (ChargeItemDefinition.useContext.value.ofType(CodeableConcept)) | (Citation.useContext.value.ofType(CodeableConcept)) | (CodeSystem.useContext.value.ofType(CodeableConcept)) | (CompartmentDefinition.useContext.value.ofType(CodeableConcept)) | (ConceptMap.useContext.value.ofType(CodeableConcept)) | (ConditionDefinition.useContext.value.ofType(CodeableConcept)) | (EventDefinition.useContext.value.ofType(CodeableConcept)) | (Evidence.useContext.value.ofType(CodeableConcept)) | (EvidenceReport.useContext.value.ofType(CodeableConcept)) | (EvidenceVariable.useContext.value.ofType(CodeableConcept)) | (ExampleScenario.useContext.value.ofType(CodeableConcept)) | (GraphDefinition.useContext.value.ofType(CodeableConcept)) | (ImplementationGuide.useContext.value.ofType(CodeableConcept)) | (Library.useContext.value.ofType(CodeableConcept)) | (Measure.useContext.value.ofType(CodeableConcept)) | (MessageDefinition.useContext.value.ofType(CodeableConcept)) | (NamingSystem.useContext.value.ofType(CodeableConcept)) | (OperationDefinition.useContext.value.ofType(CodeableConcept)) | (PlanDefinition.useContext.value.ofType(CodeableConcept)) | (Questionnaire.useContext.value.ofType(CodeableConcept)) | (Requirements.useContext.value.ofType(CodeableConcept)) | (SearchParameter.useContext.value.ofType(CodeableConcept)) | (StructureDefinition.useContext.value.ofType(CodeableConcept)) | (StructureMap.useContext.value.ofType(CodeableConcept)) | (TerminologyCapabilities.useContext.value.ofType(CodeableConcept)) | (TestScript.useContext.value.ofType(CodeableConcept)) | (ValueSet.useContext.value.ofType(CodeableConcept))",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): A use context assigned to the activity definition\r\n* [ActorDefinition](actordefinition.html): A use context assigned to the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): A use context assigned to the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): A use context assigned to the charge item definition\r\n* [Citation](citation.html): A use context assigned to the citation\r\n* [CodeSystem](codesystem.html): A use context assigned to the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): A use context assigned to the compartment definition\r\n* [ConceptMap](conceptmap.html): A use context assigned to the concept map\r\n* [ConditionDefinition](conditiondefinition.html): A use context assigned to the condition definition\r\n* [EventDefinition](eventdefinition.html): A use context assigned to the event definition\r\n* [Evidence](evidence.html): A use context assigned to the evidence\r\n* [EvidenceReport](evidencereport.html): A use context assigned to the evidence report\r\n* [EvidenceVariable](evidencevariable.html): A use context assigned to the evidence variable\r\n* [ExampleScenario](examplescenario.html): A use context assigned to the example scenario\r\n* [GraphDefinition](graphdefinition.html): A use context assigned to the graph definition\r\n* [ImplementationGuide](implementationguide.html): A use context assigned to the implementation guide\r\n* [Library](library.html): A use context assigned to the library\r\n* [Measure](measure.html): A use context assigned to the measure\r\n* [MessageDefinition](messagedefinition.html): A use context assigned to the message definition\r\n* [NamingSystem](namingsystem.html): A use context assigned to the naming system\r\n* [OperationDefinition](operationdefinition.html): A use context assigned to the operation definition\r\n* [PlanDefinition](plandefinition.html): A use context assigned to the plan definition\r\n* [Questionnaire](questionnaire.html): A use context assigned to the questionnaire\r\n* [Requirements](requirements.html): A use context assigned to the requirements\r\n* [SearchParameter](searchparameter.html): A use context assigned to the search parameter\r\n* [StructureDefinition](structuredefinition.html): A use context assigned to the structure definition\r\n* [StructureMap](structuremap.html): A use context assigned to the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): A use context assigned to the terminology capabilities\r\n* [TestScript](testscript.html): A use context assigned to the test script\r\n* [ValueSet](valueset.html): A use context assigned to the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "date",
-                code: "date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-date"),
-                components: null,
-                expression: "ActivityDefinition.date | ActorDefinition.date | CapabilityStatement.date | ChargeItemDefinition.date | Citation.date | CodeSystem.date | CompartmentDefinition.date | ConceptMap.date | ConditionDefinition.date | EventDefinition.date | Evidence.date | EvidenceVariable.date | ExampleScenario.date | GraphDefinition.date | ImplementationGuide.date | Library.date | Measure.date | MessageDefinition.date | NamingSystem.date | OperationDefinition.date | PlanDefinition.date | Questionnaire.date | Requirements.date | SearchParameter.date | StructureDefinition.date | StructureMap.date | SubscriptionTopic.date | TerminologyCapabilities.date | TestScript.date | ValueSet.date",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The activity definition publication date\r\n* [ActorDefinition](actordefinition.html): The Actor Definition publication date\r\n* [CapabilityStatement](capabilitystatement.html): The capability statement publication date\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The charge item definition publication date\r\n* [Citation](citation.html): The citation publication date\r\n* [CodeSystem](codesystem.html): The code system publication date\r\n* [CompartmentDefinition](compartmentdefinition.html): The compartment definition publication date\r\n* [ConceptMap](conceptmap.html): The concept map publication date\r\n* [ConditionDefinition](conditiondefinition.html): The condition definition publication date\r\n* [EventDefinition](eventdefinition.html): The event definition publication date\r\n* [Evidence](evidence.html): The evidence publication date\r\n* [EvidenceVariable](evidencevariable.html): The evidence variable publication date\r\n* [ExampleScenario](examplescenario.html): The example scenario publication date\r\n* [GraphDefinition](graphdefinition.html): The graph definition publication date\r\n* [ImplementationGuide](implementationguide.html): The implementation guide publication date\r\n* [Library](library.html): The library publication date\r\n* [Measure](measure.html): The measure publication date\r\n* [MessageDefinition](messagedefinition.html): The message definition publication date\r\n* [NamingSystem](namingsystem.html): The naming system publication date\r\n* [OperationDefinition](operationdefinition.html): The operation definition publication date\r\n* [PlanDefinition](plandefinition.html): The plan definition publication date\r\n* [Questionnaire](questionnaire.html): The questionnaire publication date\r\n* [Requirements](requirements.html): The requirements publication date\r\n* [SearchParameter](searchparameter.html): The search parameter publication date\r\n* [StructureDefinition](structuredefinition.html): The structure definition publication date\r\n* [StructureMap](structuremap.html): The structure map publication date\r\n* [SubscriptionTopic](subscriptiontopic.html): Date status first applied\r\n* [TerminologyCapabilities](terminologycapabilities.html): The terminology capabilities publication date\r\n* [TestScript](testscript.html): The test script publication date\r\n* [ValueSet](valueset.html): The value set publication date\r\n")
-,
-            new SearchParameterInfo(
-                name: "description",
-                code: "description",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-description"),
-                components: null,
-                expression: "ActivityDefinition.description | ActorDefinition.description | CapabilityStatement.description | ChargeItemDefinition.description | Citation.description | CodeSystem.description | CompartmentDefinition.description | ConceptMap.description | ConditionDefinition.description | EventDefinition.description | Evidence.description | EvidenceVariable.description | GraphDefinition.description | ImplementationGuide.description | Library.description | Measure.description | MessageDefinition.description | NamingSystem.description | OperationDefinition.description | PlanDefinition.description | Questionnaire.description | Requirements.description | SearchParameter.description | StructureDefinition.description | StructureMap.description | TerminologyCapabilities.description | TestScript.description | ValueSet.description",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The description of the activity definition\r\n* [ActorDefinition](actordefinition.html): The description of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The description of the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The description of the charge item definition\r\n* [Citation](citation.html): The description of the citation\r\n* [CodeSystem](codesystem.html): The description of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The description of the compartment definition\r\n* [ConceptMap](conceptmap.html): The description of the concept map\r\n* [ConditionDefinition](conditiondefinition.html): The description of the condition definition\r\n* [EventDefinition](eventdefinition.html): The description of the event definition\r\n* [Evidence](evidence.html): The description of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The description of the evidence variable\r\n* [GraphDefinition](graphdefinition.html): The description of the graph definition\r\n* [ImplementationGuide](implementationguide.html): The description of the implementation guide\r\n* [Library](library.html): The description of the library\r\n* [Measure](measure.html): The description of the measure\r\n* [MessageDefinition](messagedefinition.html): The description of the message definition\r\n* [NamingSystem](namingsystem.html): The description of the naming system\r\n* [OperationDefinition](operationdefinition.html): The description of the operation definition\r\n* [PlanDefinition](plandefinition.html): The description of the plan definition\r\n* [Questionnaire](questionnaire.html): The description of the questionnaire\r\n* [Requirements](requirements.html): The description of the requirements\r\n* [SearchParameter](searchparameter.html): The description of the search parameter\r\n* [StructureDefinition](structuredefinition.html): The description of the structure definition\r\n* [StructureMap](structuremap.html): The description of the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): The description of the terminology capabilities\r\n* [TestScript](testscript.html): The description of the test script\r\n* [ValueSet](valueset.html): The description of the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-identifier"),
-                components: null,
-                expression: "ActivityDefinition.identifier | ActorDefinition.identifier | CapabilityStatement.identifier | ChargeItemDefinition.identifier | Citation.identifier | CodeSystem.identifier | ConceptMap.identifier | ConditionDefinition.identifier | DeviceDefinition.identifier | DeviceDefinition.udiDeviceIdentifier | EventDefinition.identifier | Evidence.identifier | EvidenceReport.identifier | EvidenceVariable.identifier | ExampleScenario.identifier | GraphDefinition.identifier | Group.identifier | ImplementationGuide.identifier | Library.identifier | Measure.identifier | MedicationKnowledge.identifier | MessageDefinition.identifier | NamingSystem.identifier | ObservationDefinition.identifier | OperationDefinition.identifier | PlanDefinition.identifier | Questionnaire.identifier | Requirements.identifier | SearchParameter.identifier | SpecimenDefinition.identifier | StructureDefinition.identifier | StructureMap.identifier | SubscriptionTopic.identifier | TerminologyCapabilities.identifier | TestPlan.identifier | TestScript.identifier | ValueSet.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "ConceptMap", "ConditionDefinition", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "Group", "ImplementationGuide", "Library", "Measure", "MedicationKnowledge", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestPlan", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): External identifier for the activity definition\r\n* [ActorDefinition](actordefinition.html): External identifier for the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): External identifier for the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): External identifier for the charge item definition\r\n* [Citation](citation.html): External identifier for the citation\r\n* [CodeSystem](codesystem.html): External identifier for the code system\r\n* [ConceptMap](conceptmap.html): External identifier for the concept map\r\n* [ConditionDefinition](conditiondefinition.html): External identifier for the condition definition\r\n* [DeviceDefinition](devicedefinition.html): The identifier of the component\r\n* [EventDefinition](eventdefinition.html): External identifier for the event definition\r\n* [Evidence](evidence.html): External identifier for the evidence\r\n* [EvidenceReport](evidencereport.html): External identifier for the evidence report\r\n* [EvidenceVariable](evidencevariable.html): External identifier for the evidence variable\r\n* [ExampleScenario](examplescenario.html): External identifier for the example scenario\r\n* [GraphDefinition](graphdefinition.html): External identifier for the graph definition\r\n* [Group](group.html): Unique id\r\n* [ImplementationGuide](implementationguide.html): External identifier for the implementation guide\r\n* [Library](library.html): External identifier for the library\r\n* [Measure](measure.html): External identifier for the measure\r\n* [MedicationKnowledge](medicationknowledge.html): Business identifier for this medication\r\n* [MessageDefinition](messagedefinition.html): External identifier for the message definition\r\n* [NamingSystem](namingsystem.html): External identifier for the naming system\r\n* [ObservationDefinition](observationdefinition.html): The unique identifier associated with the specimen definition\r\n* [OperationDefinition](operationdefinition.html): External identifier for the search parameter\r\n* [PlanDefinition](plandefinition.html): External identifier for the plan definition\r\n* [Questionnaire](questionnaire.html): External identifier for the questionnaire\r\n* [Requirements](requirements.html): External identifier for the requirements\r\n* [SearchParameter](searchparameter.html): External identifier for the search parameter\r\n* [SpecimenDefinition](specimendefinition.html): The unique identifier associated with the SpecimenDefinition\r\n* [StructureDefinition](structuredefinition.html): External identifier for the structure definition\r\n* [StructureMap](structuremap.html): External identifier for the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Business Identifier for SubscriptionTopic\r\n* [TerminologyCapabilities](terminologycapabilities.html): External identifier for the terminology capabilities\r\n* [TestPlan](testplan.html): An identifier for the test plan\r\n* [TestScript](testscript.html): External identifier for the test script\r\n* [ValueSet](valueset.html): External identifier for the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "jurisdiction",
-                code: "jurisdiction",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-jurisdiction"),
-                components: null,
-                expression: "ActivityDefinition.jurisdiction | ActorDefinition.jurisdiction | CapabilityStatement.jurisdiction | ChargeItemDefinition.jurisdiction | Citation.jurisdiction | CodeSystem.jurisdiction | ConceptMap.jurisdiction | ConditionDefinition.jurisdiction | EventDefinition.jurisdiction | ExampleScenario.jurisdiction | GraphDefinition.jurisdiction | ImplementationGuide.jurisdiction | Library.jurisdiction | Measure.jurisdiction | MessageDefinition.jurisdiction | NamingSystem.jurisdiction | OperationDefinition.jurisdiction | PlanDefinition.jurisdiction | Questionnaire.jurisdiction | Requirements.jurisdiction | SearchParameter.jurisdiction | StructureDefinition.jurisdiction | StructureMap.jurisdiction | TerminologyCapabilities.jurisdiction | TestScript.jurisdiction | ValueSet.jurisdiction",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "ConceptMap", "ConditionDefinition", "EventDefinition", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Intended jurisdiction for the activity definition\r\n* [ActorDefinition](actordefinition.html): Intended jurisdiction for the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): Intended jurisdiction for the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): Intended jurisdiction for the charge item definition\r\n* [Citation](citation.html): Intended jurisdiction for the citation\r\n* [CodeSystem](codesystem.html): Intended jurisdiction for the code system\r\n* [ConceptMap](conceptmap.html): Intended jurisdiction for the concept map\r\n* [ConditionDefinition](conditiondefinition.html): Intended jurisdiction for the condition definition\r\n* [EventDefinition](eventdefinition.html): Intended jurisdiction for the event definition\r\n* [ExampleScenario](examplescenario.html): Intended jurisdiction for the example scenario\r\n* [GraphDefinition](graphdefinition.html): Intended jurisdiction for the graph definition\r\n* [ImplementationGuide](implementationguide.html): Intended jurisdiction for the implementation guide\r\n* [Library](library.html): Intended jurisdiction for the library\r\n* [Measure](measure.html): Intended jurisdiction for the measure\r\n* [MessageDefinition](messagedefinition.html): Intended jurisdiction for the message definition\r\n* [NamingSystem](namingsystem.html): Intended jurisdiction for the naming system\r\n* [OperationDefinition](operationdefinition.html): Intended jurisdiction for the operation definition\r\n* [PlanDefinition](plandefinition.html): Intended jurisdiction for the plan definition\r\n* [Questionnaire](questionnaire.html): Intended jurisdiction for the questionnaire\r\n* [Requirements](requirements.html): Intended jurisdiction for the requirements\r\n* [SearchParameter](searchparameter.html): Intended jurisdiction for the search parameter\r\n* [StructureDefinition](structuredefinition.html): Intended jurisdiction for the structure definition\r\n* [StructureMap](structuremap.html): Intended jurisdiction for the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): Intended jurisdiction for the terminology capabilities\r\n* [TestScript](testscript.html): Intended jurisdiction for the test script\r\n* [ValueSet](valueset.html): Intended jurisdiction for the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "name",
-                code: "name",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-name"),
-                components: null,
-                expression: "ActivityDefinition.name | CapabilityStatement.name | Citation.name | CodeSystem.name | CompartmentDefinition.name | ConceptMap.name | ConditionDefinition.name | EventDefinition.name | EvidenceVariable.name | ExampleScenario.name | GraphDefinition.name | Group.name | ImplementationGuide.name | Library.name | Measure.name | MessageDefinition.name | NamingSystem.name | OperationDefinition.name | PlanDefinition.name | Questionnaire.name | Requirements.name | SearchParameter.name | StructureDefinition.name | StructureMap.name | TerminologyCapabilities.name | TestScript.name | ValueSet.name",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "CapabilityStatement", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Computationally friendly name of the activity definition\r\n* [CapabilityStatement](capabilitystatement.html): Computationally friendly name of the capability statement\r\n* [Citation](citation.html): Computationally friendly name of the citation\r\n* [CodeSystem](codesystem.html): Computationally friendly name of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): Computationally friendly name of the compartment definition\r\n* [ConceptMap](conceptmap.html): Computationally friendly name of the concept map\r\n* [ConditionDefinition](conditiondefinition.html): Computationally friendly name of the condition definition\r\n* [EventDefinition](eventdefinition.html): Computationally friendly name of the event definition\r\n* [EvidenceVariable](evidencevariable.html): Computationally friendly name of the evidence variable\r\n* [ExampleScenario](examplescenario.html): Computationally friendly name of the example scenario\r\n* [GraphDefinition](graphdefinition.html): Computationally friendly name of the graph definition\r\n* [Group](group.html): A portion of the Group's name\r\n* [ImplementationGuide](implementationguide.html): Computationally friendly name of the implementation guide\r\n* [Library](library.html): Computationally friendly name of the library\r\n* [Measure](measure.html): Computationally friendly name of the measure\r\n* [MessageDefinition](messagedefinition.html): Computationally friendly name of the message definition\r\n* [NamingSystem](namingsystem.html): Computationally friendly name of the naming system\r\n* [OperationDefinition](operationdefinition.html): Computationally friendly name of the operation definition\r\n* [PlanDefinition](plandefinition.html): Computationally friendly name of the plan definition\r\n* [Questionnaire](questionnaire.html): Computationally friendly name of the questionnaire\r\n* [Requirements](requirements.html): Computationally friendly name of the requirements\r\n* [SearchParameter](searchparameter.html): Computationally friendly name of the search parameter\r\n* [StructureDefinition](structuredefinition.html): Computationally friendly name of the structure definition\r\n* [StructureMap](structuremap.html): Computationally friendly name of the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): Computationally friendly name of the terminology capabilities\r\n* [TestScript](testscript.html): Computationally friendly name of the test script\r\n* [ValueSet](valueset.html): Computationally friendly name of the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "publisher",
-                code: "publisher",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-publisher"),
-                components: null,
-                expression: "ActivityDefinition.publisher | ActorDefinition.publisher | CapabilityStatement.publisher | ChargeItemDefinition.publisher | Citation.publisher | CodeSystem.publisher | CompartmentDefinition.publisher | ConceptMap.publisher | ConditionDefinition.publisher | EventDefinition.publisher | Evidence.publisher | EvidenceReport.publisher | EvidenceVariable.publisher | ExampleScenario.publisher | GraphDefinition.publisher | ImplementationGuide.publisher | Library.publisher | Measure.publisher | MessageDefinition.publisher | NamingSystem.publisher | OperationDefinition.publisher | PlanDefinition.publisher | Questionnaire.publisher | Requirements.publisher | SearchParameter.publisher | StructureDefinition.publisher | StructureMap.publisher | TerminologyCapabilities.publisher | TestScript.publisher | ValueSet.publisher",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Name of the publisher of the activity definition\r\n* [ActorDefinition](actordefinition.html): Name of the publisher of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): Name of the publisher of the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): Name of the publisher of the charge item definition\r\n* [Citation](citation.html): Name of the publisher of the citation\r\n* [CodeSystem](codesystem.html): Name of the publisher of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): Name of the publisher of the compartment definition\r\n* [ConceptMap](conceptmap.html): Name of the publisher of the concept map\r\n* [ConditionDefinition](conditiondefinition.html): Name of the publisher of the condition definition\r\n* [EventDefinition](eventdefinition.html): Name of the publisher of the event definition\r\n* [Evidence](evidence.html): Name of the publisher of the evidence\r\n* [EvidenceReport](evidencereport.html): Name of the publisher of the evidence report\r\n* [EvidenceVariable](evidencevariable.html): Name of the publisher of the evidence variable\r\n* [ExampleScenario](examplescenario.html): Name of the publisher of the example scenario\r\n* [GraphDefinition](graphdefinition.html): Name of the publisher of the graph definition\r\n* [ImplementationGuide](implementationguide.html): Name of the publisher of the implementation guide\r\n* [Library](library.html): Name of the publisher of the library\r\n* [Measure](measure.html): Name of the publisher of the measure\r\n* [MessageDefinition](messagedefinition.html): Name of the publisher of the message definition\r\n* [NamingSystem](namingsystem.html): Name of the publisher of the naming system\r\n* [OperationDefinition](operationdefinition.html): Name of the publisher of the operation definition\r\n* [PlanDefinition](plandefinition.html): Name of the publisher of the plan definition\r\n* [Questionnaire](questionnaire.html): Name of the publisher of the questionnaire\r\n* [Requirements](requirements.html): Name of the publisher of the requirements\r\n* [SearchParameter](searchparameter.html): Name of the publisher of the search parameter\r\n* [StructureDefinition](structuredefinition.html): Name of the publisher of the structure definition\r\n* [StructureMap](structuremap.html): Name of the publisher of the structure map\r\n* [TerminologyCapabilities](terminologycapabilities.html): Name of the publisher of the terminology capabilities\r\n* [TestScript](testscript.html): Name of the publisher of the test script\r\n* [ValueSet](valueset.html): Name of the publisher of the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-status"),
-                components: null,
-                expression: "ActivityDefinition.status | ActorDefinition.status | CapabilityStatement.status | ChargeItemDefinition.status | Citation.status | CodeSystem.status | CompartmentDefinition.status | ConceptMap.status | ConditionDefinition.status | EventDefinition.status | Evidence.status | EvidenceReport.status | EvidenceVariable.status | ExampleScenario.status | GraphDefinition.status | Group.status | ImplementationGuide.status | Library.status | Measure.status | MedicationKnowledge.status | MessageDefinition.status | NamingSystem.status | ObservationDefinition.status | OperationDefinition.status | PlanDefinition.status | Questionnaire.status | Requirements.status | SearchParameter.status | SpecimenDefinition.status | StructureDefinition.status | StructureMap.status | SubscriptionTopic.status | TerminologyCapabilities.status | TestPlan.status | TestScript.status | ValueSet.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "Group", "ImplementationGuide", "Library", "Measure", "MedicationKnowledge", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestPlan", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The current status of the activity definition\r\n* [ActorDefinition](actordefinition.html): The current status of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The current status of the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The current status of the charge item definition\r\n* [Citation](citation.html): The current status of the citation\r\n* [CodeSystem](codesystem.html): The current status of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The current status of the compartment definition\r\n* [ConceptMap](conceptmap.html): The current status of the concept map\r\n* [ConditionDefinition](conditiondefinition.html): The current status of the condition definition\r\n* [EventDefinition](eventdefinition.html): The current status of the event definition\r\n* [Evidence](evidence.html): The current status of the evidence\r\n* [EvidenceReport](evidencereport.html): The current status of the evidence report\r\n* [EvidenceVariable](evidencevariable.html): The current status of the evidence variable\r\n* [ExampleScenario](examplescenario.html): The current status of the example scenario\r\n* [GraphDefinition](graphdefinition.html): The current status of the graph definition\r\n* [Group](group.html): The current status of the Group\r\n* [ImplementationGuide](implementationguide.html): The current status of the implementation guide\r\n* [Library](library.html): The current status of the library\r\n* [Measure](measure.html): The current status of the measure\r\n* [MedicationKnowledge](medicationknowledge.html): active | inactive | entered-in-error\r\n* [MessageDefinition](messagedefinition.html): The current status of the message definition\r\n* [NamingSystem](namingsystem.html): The current status of the naming system\r\n* [ObservationDefinition](observationdefinition.html): Publication status of the ObservationDefinition: draft, active, retired, unknown\r\n* [OperationDefinition](operationdefinition.html): The current status of the operation definition\r\n* [PlanDefinition](plandefinition.html): The current status of the plan definition\r\n* [Questionnaire](questionnaire.html): The current status of the questionnaire\r\n* [Requirements](requirements.html): The current status of the requirements\r\n* [SearchParameter](searchparameter.html): The current status of the search parameter\r\n* [SpecimenDefinition](specimendefinition.html): Publication status of the SpecimenDefinition: draft, active, retired, unknown\r\n* [StructureDefinition](structuredefinition.html): The current status of the structure definition\r\n* [StructureMap](structuremap.html): The current status of the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): draft | active | retired | unknown\r\n* [TerminologyCapabilities](terminologycapabilities.html): The current status of the terminology capabilities\r\n* [TestPlan](testplan.html): The current status of the test plan\r\n* [TestScript](testscript.html): The current status of the test script\r\n* [ValueSet](valueset.html): The current status of the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "title",
-                code: "title",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-title"),
-                components: null,
-                expression: "ActivityDefinition.title | ActorDefinition.title | CapabilityStatement.title | ChargeItemDefinition.title | Citation.title | CodeSystem.title | ConceptMap.title | ConditionDefinition.title | EventDefinition.title | Evidence.title | EvidenceVariable.title | ImplementationGuide.title | Library.title | Measure.title | MessageDefinition.title | ObservationDefinition.title | OperationDefinition.title | PlanDefinition.title | Questionnaire.title | Requirements.title | SpecimenDefinition.title | StructureDefinition.title | StructureMap.title | SubscriptionTopic.title | TerminologyCapabilities.title | TestScript.title | ValueSet.title",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The human-friendly name of the activity definition\r\n* [ActorDefinition](actordefinition.html): The human-friendly name of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The human-friendly name of the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The human-friendly name of the charge item definition\r\n* [Citation](citation.html): The human-friendly name of the citation\r\n* [CodeSystem](codesystem.html): The human-friendly name of the code system\r\n* [ConceptMap](conceptmap.html): The human-friendly name of the concept map\r\n* [ConditionDefinition](conditiondefinition.html): The human-friendly name of the condition definition\r\n* [EventDefinition](eventdefinition.html): The human-friendly name of the event definition\r\n* [Evidence](evidence.html): The human-friendly name of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The human-friendly name of the evidence variable\r\n* [ImplementationGuide](implementationguide.html): The human-friendly name of the implementation guide\r\n* [Library](library.html): The human-friendly name of the library\r\n* [Measure](measure.html): The human-friendly name of the measure\r\n* [MessageDefinition](messagedefinition.html): The human-friendly name of the message definition\r\n* [ObservationDefinition](observationdefinition.html): Human-friendly name of the ObservationDefinition\r\n* [OperationDefinition](operationdefinition.html): The human-friendly name of the operation definition\r\n* [PlanDefinition](plandefinition.html): The human-friendly name of the plan definition\r\n* [Questionnaire](questionnaire.html): The human-friendly name of the questionnaire\r\n* [Requirements](requirements.html): The human-friendly name of the requirements\r\n* [SpecimenDefinition](specimendefinition.html): Human-friendly name of the SpecimenDefinition\r\n* [StructureDefinition](structuredefinition.html): The human-friendly name of the structure definition\r\n* [StructureMap](structuremap.html): The human-friendly name of the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Name for this SubscriptionTopic (Human friendly)\r\n* [TerminologyCapabilities](terminologycapabilities.html): The human-friendly name of the terminology capabilities\r\n* [TestScript](testscript.html): The human-friendly name of the test script\r\n* [ValueSet](valueset.html): The human-friendly name of the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "url",
-                code: "url",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-url"),
-                components: null,
-                expression: "ActivityDefinition.url | ActorDefinition.url | CapabilityStatement.url | ChargeItemDefinition.url | Citation.url | CodeSystem.url | CompartmentDefinition.url | ConceptMap.url | ConditionDefinition.url | EventDefinition.url | Evidence.url | EvidenceReport.url | EvidenceVariable.url | ExampleScenario.url | GraphDefinition.url | Group.url | ImplementationGuide.url | Library.url | Measure.url | MessageDefinition.url | NamingSystem.url | ObservationDefinition.url | OperationDefinition.url | PlanDefinition.url | Questionnaire.url | Requirements.url | SearchParameter.url | SpecimenDefinition.url | StructureDefinition.url | StructureMap.url | SubscriptionTopic.url | TerminologyCapabilities.url | TestPlan.url | TestScript.url | ValueSet.url",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestPlan", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The uri that identifies the activity definition\r\n* [ActorDefinition](actordefinition.html): The uri that identifies the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The uri that identifies the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The uri that identifies the charge item definition\r\n* [Citation](citation.html): The uri that identifies the citation\r\n* [CodeSystem](codesystem.html): The uri that identifies the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The uri that identifies the compartment definition\r\n* [ConceptMap](conceptmap.html): The URI that identifies the concept map\r\n* [ConditionDefinition](conditiondefinition.html): The uri that identifies the condition definition\r\n* [EventDefinition](eventdefinition.html): The uri that identifies the event definition\r\n* [Evidence](evidence.html): The uri that identifies the evidence\r\n* [EvidenceReport](evidencereport.html): The uri that identifies the evidence report\r\n* [EvidenceVariable](evidencevariable.html): The uri that identifies the evidence variable\r\n* [ExampleScenario](examplescenario.html): The uri that identifies the example scenario\r\n* [GraphDefinition](graphdefinition.html): The uri that identifies the graph definition\r\n* [Group](group.html): The uri that identifies the Group\r\n* [ImplementationGuide](implementationguide.html): The uri that identifies the implementation guide\r\n* [Library](library.html): The uri that identifies the library\r\n* [Measure](measure.html): The uri that identifies the measure\r\n* [MessageDefinition](messagedefinition.html): The uri that identifies the message definition\r\n* [NamingSystem](namingsystem.html): The uri that identifies the naming system\r\n* [ObservationDefinition](observationdefinition.html): The uri that identifies the observation definition\r\n* [OperationDefinition](operationdefinition.html): The uri that identifies the operation definition\r\n* [PlanDefinition](plandefinition.html): The uri that identifies the plan definition\r\n* [Questionnaire](questionnaire.html): The uri that identifies the questionnaire\r\n* [Requirements](requirements.html): The uri that identifies the requirements\r\n* [SearchParameter](searchparameter.html): The uri that identifies the search parameter\r\n* [SpecimenDefinition](specimendefinition.html): The uri that identifies the specimen definition\r\n* [StructureDefinition](structuredefinition.html): The uri that identifies the structure definition\r\n* [StructureMap](structuremap.html): The uri that identifies the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Logical canonical URL to reference this SubscriptionTopic (globally unique)\r\n* [TerminologyCapabilities](terminologycapabilities.html): The uri that identifies the terminology capabilities\r\n* [TestPlan](testplan.html): The uri that identifies the test plan\r\n* [TestScript](testscript.html): The uri that identifies the test script\r\n* [ValueSet](valueset.html): The uri that identifies the value set\r\n")
-,
-            new SearchParameterInfo(
-                name: "version",
-                code: "version",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-version"),
-                components: null,
-                expression: "ActivityDefinition.version | ActorDefinition.version | CapabilityStatement.version | ChargeItemDefinition.version | Citation.version | CodeSystem.version | CompartmentDefinition.version | ConceptMap.version | ConditionDefinition.version | DeviceDefinition.deviceVersion.value | EventDefinition.version | Evidence.version | EvidenceVariable.version | ExampleScenario.version | GraphDefinition.version | ImplementationGuide.version | Library.version | Measure.version | MessageDefinition.version | NamingSystem.version | OperationDefinition.version | PlanDefinition.version | Questionnaire.version | Requirements.version | SearchParameter.version | StructureDefinition.version | StructureMap.version | SubscriptionTopic.version | TerminologyCapabilities.version | TestScript.version | ValueSet.version",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "SearchParameter", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestScript", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The business version of the activity definition\r\n* [ActorDefinition](actordefinition.html): The business version of the Actor Definition\r\n* [CapabilityStatement](capabilitystatement.html): The business version of the capability statement\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The business version of the charge item definition\r\n* [Citation](citation.html): The business version of the citation\r\n* [CodeSystem](codesystem.html): The business version of the code system\r\n* [CompartmentDefinition](compartmentdefinition.html): The business version of the compartment definition\r\n* [ConceptMap](conceptmap.html): The business version of the concept map\r\n* [ConditionDefinition](conditiondefinition.html): The business version of the condition definition\r\n* [DeviceDefinition](devicedefinition.html): The specific version of the device\r\n* [EventDefinition](eventdefinition.html): The business version of the event definition\r\n* [Evidence](evidence.html): The business version of the evidence\r\n* [EvidenceVariable](evidencevariable.html): The business version of the evidence variable\r\n* [ExampleScenario](examplescenario.html): The business version of the example scenario\r\n* [GraphDefinition](graphdefinition.html): The business version of the graph definition\r\n* [ImplementationGuide](implementationguide.html): The business version of the implementation guide\r\n* [Library](library.html): The business version of the library\r\n* [Measure](measure.html): The business version of the measure\r\n* [MessageDefinition](messagedefinition.html): The business version of the message definition\r\n* [NamingSystem](namingsystem.html): The business version of the naming system\r\n* [OperationDefinition](operationdefinition.html): The business version of the operation definition\r\n* [PlanDefinition](plandefinition.html): The business version of the plan definition\r\n* [Questionnaire](questionnaire.html): The business version of the questionnaire\r\n* [Requirements](requirements.html): The business version of the requirements\r\n* [SearchParameter](searchparameter.html): The business version of the search parameter\r\n* [StructureDefinition](structuredefinition.html): The business version of the structure definition\r\n* [StructureMap](structuremap.html): The business version of the structure map\r\n* [SubscriptionTopic](subscriptiontopic.html): Business version of the SubscriptionTopic\r\n* [TerminologyCapabilities](terminologycapabilities.html): The business version of the terminology capabilities\r\n* [TestScript](testscript.html): The business version of the test script\r\n* [ValueSet](valueset.html): The business version of the value set\r\n")
+                baseResourceTypes: new[] { "CapabilityStatement" },
+                description: "Whether the CapabilityStatement is experimental")
 ,
             new SearchParameterInfo(
                 name: "fhirversion",
@@ -1432,6 +1773,17 @@ public static class R6SearchParameterDefinitions
                 description: "Mode - restful (server/client) or messaging (sender/receiver)")
 ,
             new SearchParameterInfo(
+                name: "resource",
+                code: "resource",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CapabilityStatement-resource"),
+                components: null,
+                expression: "CapabilityStatement.rest.resource.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "CapabilityStatement" },
+                description: "Name of a resource mentioned in a capability statement")
+,
+            new SearchParameterInfo(
                 name: "resource-profile",
                 code: "resource-profile",
                 searchParamType: SearchParamType.Reference,
@@ -1441,17 +1793,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "StructureDefinition" },
                 baseResourceTypes: new[] { "CapabilityStatement" },
                 description: "A profile id invoked in a capability statement")
-,
-            new SearchParameterInfo(
-                name: "resource",
-                code: "resource",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CapabilityStatement-resource"),
-                components: null,
-                expression: "CapabilityStatement.rest.resource.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "CapabilityStatement" },
-                description: "Name of a resource mentioned in a capability statement")
 ,
             new SearchParameterInfo(
                 name: "security-service",
@@ -1493,7 +1834,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CarePlan-activity-reference"),
                 components: null,
                 expression: "CarePlan.activity.plannedActivityReference",
-                targetResourceTypes: new[] { "Appointment", "RequestOrchestration", "DeviceRequest", "ServiceRequest", "CommunicationRequest", "Task", "MedicationRequest", "SupplyRequest", "ImmunizationRecommendation", "NutritionOrder", "VisionPrescription" },
+                targetResourceTypes: new[] { "Appointment", "RequestOrchestration", "DeviceRequest", "ServiceRequest", "CommunicationRequest", "Task", "MedicationRequest", "NutritionOrder", "VisionPrescription" },
                 baseResourceTypes: new[] { "CarePlan" },
                 description: "Activity that is intended to be part of the care plan")
 ,
@@ -1562,28 +1903,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Goal" },
                 baseResourceTypes: new[] { "CarePlan" },
                 description: "Desired outcome of plan")
-,
-            new SearchParameterInfo(
-                name: "instantiates-canonical",
-                code: "instantiates-canonical",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CarePlan-instantiates-canonical"),
-                components: null,
-                expression: "CarePlan.instantiatesCanonical",
-                targetResourceTypes: new[] { "Measure", "OperationDefinition", "ActivityDefinition", "PlanDefinition", "Questionnaire" },
-                baseResourceTypes: new[] { "CarePlan" },
-                description: "Instantiates FHIR protocol or definition")
-,
-            new SearchParameterInfo(
-                name: "instantiates-uri",
-                code: "instantiates-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/CarePlan-instantiates-uri"),
-                components: null,
-                expression: "CarePlan.instantiatesUri",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "CarePlan" },
-                description: "Instantiates external protocol or definition")
 ,
             new SearchParameterInfo(
                 name: "intent",
@@ -1669,7 +1988,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CareTeam-participant"),
                 components: null,
                 expression: "CareTeam.participant.member",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "CareTeam" },
                 description: "Who is involved")
 ,
@@ -1694,204 +2013,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Group", "Patient" },
                 baseResourceTypes: new[] { "CareTeam" },
                 description: "Who care team is for")
-,
-            new SearchParameterInfo(
-                name: "account",
-                code: "account",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-account"),
-                components: null,
-                expression: "ChargeItem.account",
-                targetResourceTypes: new[] { "Account" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Account to place this charge")
-,
-            new SearchParameterInfo(
-                name: "entered-date",
-                code: "entered-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-entered-date"),
-                components: null,
-                expression: "ChargeItem.enteredDate",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Date the charge item was entered")
-,
-            new SearchParameterInfo(
-                name: "enterer",
-                code: "enterer",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-enterer"),
-                components: null,
-                expression: "ChargeItem.enterer",
-                targetResourceTypes: new[] { "Organization", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Individual who was entering")
-,
-            new SearchParameterInfo(
-                name: "factor-override",
-                code: "factor-override",
-                searchParamType: SearchParamType.Number,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-factor-override"),
-                components: null,
-                expression: "ChargeItem.totalPriceComponent.factor",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Factor overriding the associated rules")
-,
-            new SearchParameterInfo(
-                name: "occurrence",
-                code: "occurrence",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-occurrence"),
-                components: null,
-                expression: "ChargeItem.occurrence.ofType(dateTime) | ChargeItem.occurrence.ofType(Period) | ChargeItem.occurrence.ofType(Timing)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "When the charged service was applied")
-,
-            new SearchParameterInfo(
-                name: "performer-actor",
-                code: "performer-actor",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-performer-actor"),
-                components: null,
-                expression: "ChargeItem.performer.actor",
-                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Individual who was performing")
-,
-            new SearchParameterInfo(
-                name: "performer-function",
-                code: "performer-function",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-performer-function"),
-                components: null,
-                expression: "ChargeItem.performer.function",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "What type of performance was done")
-,
-            new SearchParameterInfo(
-                name: "performing-organization",
-                code: "performing-organization",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-performing-organization"),
-                components: null,
-                expression: "ChargeItem.performingOrganization",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Organization providing the charged service")
-,
-            new SearchParameterInfo(
-                name: "price-override",
-                code: "price-override",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-price-override"),
-                components: null,
-                expression: "ChargeItem.totalPriceComponent.amount",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Price overriding the associated rules")
-,
-            new SearchParameterInfo(
-                name: "quantity",
-                code: "quantity",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-quantity"),
-                components: null,
-                expression: "ChargeItem.quantity",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Quantity of which the charge item has been serviced")
-,
-            new SearchParameterInfo(
-                name: "requesting-organization",
-                code: "requesting-organization",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-requesting-organization"),
-                components: null,
-                expression: "ChargeItem.requestingOrganization",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Organization requesting the charged service")
-,
-            new SearchParameterInfo(
-                name: "service",
-                code: "service",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-service"),
-                components: null,
-                expression: "ChargeItem.service.reference",
-                targetResourceTypes: new[] { "SupplyDelivery", "ImagingStudy", "Procedure", "Observation", "ServiceRequest", "MedicationAdministration", "DiagnosticReport", "Immunization", "MedicationRequest", "MedicationDispense" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Which rendered service is being charged?")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-status"),
-                components: null,
-                expression: "ChargeItem.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Is this charge item active")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItem-subject"),
-                components: null,
-                expression: "ChargeItem.subject",
-                targetResourceTypes: new[] { "Group", "Patient" },
-                baseResourceTypes: new[] { "ChargeItem" },
-                description: "Individual service was done for/to")
-,
-            new SearchParameterInfo(
-                name: "account",
-                code: "account",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ChargeItemDefinition-account"),
-                components: null,
-                expression: "ChargeItemDefinition.account",
-                targetResourceTypes: new[] { "Account" },
-                baseResourceTypes: new[] { "ChargeItemDefinition" },
-                description: "Candidate account for charge items")
-,
-            new SearchParameterInfo(
-                name: "classification-type",
-                code: "classification-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Citation-classification-type"),
-                components: null,
-                expression: "(Citation.classification.type)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Citation" },
-                description: "A type of classification assigned to the citation")
-,
-            new SearchParameterInfo(
-                name: "classification",
-                code: "classification",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Citation-classification"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Citation-classification-type"), "type"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Citation-classifier"), "classifier") },
-                expression: "Citation.classification",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Citation" },
-                description: "A classification type and value assigned to the citation")
-,
-            new SearchParameterInfo(
-                name: "classifier",
-                code: "classifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Citation-classifier"),
-                components: null,
-                expression: "(Citation.classification.classifier)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Citation" },
-                description: "A classifier assigned to the citation")
 ,
             new SearchParameterInfo(
                 name: "care-team",
@@ -1949,6 +2070,17 @@ public static class R6SearchParameterDefinitions
                 description: "Facility where the products or services have been or will be provided")
 ,
             new SearchParameterInfo(
+                name: "group",
+                code: "group",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Claim-group"),
+                components: null,
+                expression: "Claim.subject.where(resolve() is Group) | Claim.item.subject.where(resolve() is Group)",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "Claim" },
+                description: "Group receiving the products or services")
+,
+            new SearchParameterInfo(
                 name: "insurer",
                 code: "insurer",
                 searchParamType: SearchParamType.Reference,
@@ -1957,7 +2089,7 @@ public static class R6SearchParameterDefinitions
                 expression: "Claim.insurer",
                 targetResourceTypes: new[] { "Organization" },
                 baseResourceTypes: new[] { "Claim" },
-                description: "The target payor/insurer for the Claim")
+                description: "The target payer/insurer for the Claim")
 ,
             new SearchParameterInfo(
                 name: "item-udi",
@@ -2037,6 +2169,17 @@ public static class R6SearchParameterDefinitions
                 description: "UDI associated with a line item, detail, subdetail product or service")
 ,
             new SearchParameterInfo(
+                name: "subject",
+                code: "subject",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Claim-subject"),
+                components: null,
+                expression: "Claim.subject | Claim.item.subject",
+                targetResourceTypes: new[] { "Group", "Patient" },
+                baseResourceTypes: new[] { "Claim" },
+                description: "Subject receiving the products or services")
+,
+            new SearchParameterInfo(
                 name: "use",
                 code: "use",
                 searchParamType: SearchParamType.Token,
@@ -2068,6 +2211,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ClaimResponse" },
                 description: "The contents of the disposition message")
+,
+            new SearchParameterInfo(
+                name: "group",
+                code: "group",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ClaimResponse-group"),
+                components: null,
+                expression: "ClaimResponse.subject.where(resolve() is Group) | ClaimResponse.addItem.subject.where(resolve() is Group)",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "ClaimResponse" },
+                description: "The subject of care")
 ,
             new SearchParameterInfo(
                 name: "insurer",
@@ -2136,6 +2290,17 @@ public static class R6SearchParameterDefinitions
                 description: "The status of the ClaimResponse")
 ,
             new SearchParameterInfo(
+                name: "subject",
+                code: "subject",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ClaimResponse-subject"),
+                components: null,
+                expression: "ClaimResponse.subject | ClaimResponse.addItem.subject",
+                targetResourceTypes: new[] { "Group", "Patient" },
+                baseResourceTypes: new[] { "ClaimResponse" },
+                description: "Subject receiving the products or services")
+,
+            new SearchParameterInfo(
                 name: "use",
                 code: "use",
                 searchParamType: SearchParamType.Token,
@@ -2145,171 +2310,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ClaimResponse" },
                 description: "The type of claim")
-,
-            new SearchParameterInfo(
-                name: "code",
-                code: "code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"),
-                components: null,
-                expression: "AdverseEvent.code | AllergyIntolerance.code | AllergyIntolerance.reaction.substance | Basic.code | ChargeItem.code | Condition.code | DetectedIssue.code | DeviceRequest.code.concept | DiagnosticReport.code | FamilyMemberHistory.condition.code | ImagingSelection.code | List.code | Medication.code | MedicationAdministration.medication.concept | MedicationDispense.medication.concept | MedicationRequest.medication.concept | MedicationStatement.medication.concept | NutritionIntake.code | Observation.code | Procedure.code | RequestOrchestration.code | Task.code",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "AdverseEvent", "AllergyIntolerance", "Basic", "ChargeItem", "Condition", "DetectedIssue", "DeviceRequest", "DiagnosticReport", "FamilyMemberHistory", "ImagingSelection", "List", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "NutritionIntake", "Observation", "Procedure", "RequestOrchestration", "Task" },
-                description: "Multiple Resources: \r\n\r\n* [AdverseEvent](adverseevent.html): Event or incident that occurred or was averted\r\n* [AllergyIntolerance](allergyintolerance.html): Code that identifies the allergy or intolerance\r\n* [Basic](basic.html): Kind of Resource\r\n* [ChargeItem](chargeitem.html): A code that identifies the charge, like a billing code\r\n* [Condition](condition.html): Code for the condition\r\n* [DetectedIssue](detectedissue.html): Issue Type, e.g. drug-drug, duplicate therapy, etc.\r\n* [DeviceRequest](devicerequest.html): Code for what is being requested/ordered\r\n* [DiagnosticReport](diagnosticreport.html): The code for the report, as opposed to codes for the atomic results, which are the names on the observation resource referred to from the result\r\n* [FamilyMemberHistory](familymemberhistory.html): A search by a condition code\r\n* [ImagingSelection](imagingselection.html): The imaging selection description text or code\r\n* [List](list.html): What the purpose of this list is\r\n* [Medication](medication.html): Returns medications for a specific code\r\n* [MedicationAdministration](medicationadministration.html): Return administrations of this medication code\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses of this medicine code\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions of this medication code\r\n* [MedicationStatement](medicationstatement.html): Return statements of this medication code\r\n* [NutritionIntake](nutritionintake.html): Returns statements of this code of NutritionIntake\r\n* [Observation](observation.html): The code of the observation type\r\n* [Procedure](procedure.html): A code to identify a  procedure\r\n* [RequestOrchestration](requestorchestration.html): The code of the request orchestration\r\n* [Task](task.html): Search by task code\r\n")
-,
-            new SearchParameterInfo(
-                name: "date",
-                code: "date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-date"),
-                components: null,
-                expression: "AllergyIntolerance.recordedDate | (start | requestedPeriod.start).first() | AuditEvent.recorded | CarePlan.period | ClinicalImpression.date | Composition.date | Consent.date | DiagnosticReport.effective.ofType(dateTime) | DiagnosticReport.effective.ofType(Period) | DocumentReference.date | Encounter.actualPeriod | EpisodeOfCare.period | FamilyMemberHistory.date | Flag.period | (Immunization.occurrence.ofType(dateTime)) | ImmunizationEvaluation.date | ImmunizationRecommendation.date | Invoice.date | List.date | MeasureReport.date | NutritionIntake.occurrence.ofType(dateTime) | NutritionIntake.occurrence.ofType(Period) | Observation.effective.ofType(dateTime) | Observation.effective.ofType(Period) | Observation.effective.ofType(Timing) | Observation.effective.ofType(instant) | Procedure.occurrence.ofType(dateTime) | Procedure.occurrence.ofType(Period) | Procedure.occurrence.ofType(Timing) | ResearchSubject.period | (RiskAssessment.occurrence.ofType(dateTime)) | SupplyRequest.authoredOn",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "AllergyIntolerance", "Appointment", "AuditEvent", "CarePlan", "CareTeam", "ClinicalImpression", "Composition", "Consent", "DiagnosticReport", "DocumentReference", "Encounter", "EpisodeOfCare", "FamilyMemberHistory", "Flag", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "Invoice", "List", "MeasureReport", "NutritionIntake", "Observation", "Procedure", "ResearchSubject", "RiskAssessment", "SupplyRequest" },
-                description: "Multiple Resources: \r\n\r\n* [AllergyIntolerance](allergyintolerance.html): Date first version of the resource instance was recorded\r\n* [Appointment](appointment.html): Appointment date/time.\r\n* [AuditEvent](auditevent.html): Time when the event was recorded\r\n* [CarePlan](careplan.html): Time period plan covers\r\n* [CareTeam](careteam.html): A date within the coverage time period.\r\n* [ClinicalImpression](clinicalimpression.html): When the assessment was documented\r\n* [Composition](composition.html): Composition editing time\r\n* [Consent](consent.html): When consent was agreed to\r\n* [DiagnosticReport](diagnosticreport.html): The clinically relevant time of the report\r\n* [DocumentReference](documentreference.html): When this document reference was created\r\n* [Encounter](encounter.html): A date within the actualPeriod the Encounter lasted\r\n* [EpisodeOfCare](episodeofcare.html): The provided date search value falls within the episode of care's period\r\n* [FamilyMemberHistory](familymemberhistory.html): When history was recorded or last updated\r\n* [Flag](flag.html): Time period when flag is active\r\n* [Immunization](immunization.html): Vaccination  (non)-Administration Date\r\n* [ImmunizationEvaluation](immunizationevaluation.html): Date the evaluation was generated\r\n* [ImmunizationRecommendation](immunizationrecommendation.html): Date recommendation(s) created\r\n* [Invoice](invoice.html): Invoice date / posting date\r\n* [List](list.html): When the list was prepared\r\n* [MeasureReport](measurereport.html): The date of the measure report\r\n* [NutritionIntake](nutritionintake.html): Date when patient was taking (or not taking) the medication\r\n* [Observation](observation.html): Clinically relevant time/time-period for observation\r\n* [Procedure](procedure.html): When the procedure occurred or is occurring\r\n* [ResearchSubject](researchsubject.html): Start and end of participation\r\n* [RiskAssessment](riskassessment.html): When was assessment made?\r\n* [SupplyRequest](supplyrequest.html): When the request was made\r\n")
-,
-            new SearchParameterInfo(
-                name: "encounter",
-                code: "encounter",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-encounter"),
-                components: null,
-                expression: "AuditEvent.encounter | CarePlan.encounter | ChargeItem.encounter | Claim.item.encounter | ClinicalImpression.encounter | Communication.encounter | CommunicationRequest.encounter | Composition.encounter | Condition.encounter | DeviceRequest.encounter | DiagnosticReport.encounter | EncounterHistory.encounter | ExplanationOfBenefit.item.encounter | Flag.encounter | ImagingStudy.encounter | List.encounter | MedicationDispense.encounter | MedicationStatement.encounter | NutritionIntake.encounter | NutritionOrder.encounter | Observation.encounter | Procedure.encounter | Provenance.encounter | QuestionnaireResponse.encounter | RequestOrchestration.encounter | RiskAssessment.encounter | ServiceRequest.encounter | Task.encounter | VisionPrescription.encounter",
-                targetResourceTypes: new[] { "Encounter" },
-                baseResourceTypes: new[] { "AuditEvent", "CarePlan", "ChargeItem", "Claim", "ClinicalImpression", "Communication", "CommunicationRequest", "Composition", "Condition", "DeviceRequest", "DiagnosticReport", "EncounterHistory", "ExplanationOfBenefit", "Flag", "ImagingStudy", "List", "MedicationDispense", "MedicationStatement", "NutritionIntake", "NutritionOrder", "Observation", "Procedure", "Provenance", "QuestionnaireResponse", "RequestOrchestration", "RiskAssessment", "ServiceRequest", "Task", "VisionPrescription" },
-                description: "Multiple Resources: \r\n\r\n* [AuditEvent](auditevent.html): Encounter related to the activity recorded in the AuditEvent\r\n* [CarePlan](careplan.html): The Encounter during which this CarePlan was created\r\n* [ChargeItem](chargeitem.html): Encounter associated with event\r\n* [Claim](claim.html): Encounters associated with a billed line item\r\n* [ClinicalImpression](clinicalimpression.html): The Encounter during which this ClinicalImpression was created\r\n* [Communication](communication.html): The Encounter during which this Communication was created\r\n* [CommunicationRequest](communicationrequest.html): The Encounter during which this CommunicationRequest was created\r\n* [Composition](composition.html): Context of the Composition\r\n* [Condition](condition.html): The Encounter during which this Condition was created\r\n* [DeviceRequest](devicerequest.html): Encounter during which request was created\r\n* [DiagnosticReport](diagnosticreport.html): The Encounter when the order was made\r\n* [EncounterHistory](encounterhistory.html): The Encounter associated with this set of history values\r\n* [ExplanationOfBenefit](explanationofbenefit.html): Encounters associated with a billed line item\r\n* [Flag](flag.html): Alert relevant during encounter\r\n* [ImagingStudy](imagingstudy.html): The context of the study\r\n* [List](list.html): Context in which list created\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses with a specific encounter\r\n* [MedicationStatement](medicationstatement.html): Returns statements for a specific encounter\r\n* [NutritionIntake](nutritionintake.html): Returns statements for a specific encounter\r\n* [NutritionOrder](nutritionorder.html): Return nutrition orders with this encounter identifier\r\n* [Observation](observation.html): Encounter related to the observation\r\n* [Procedure](procedure.html): The Encounter during which this Procedure was created\r\n* [Provenance](provenance.html): Encounter related to the Provenance\r\n* [QuestionnaireResponse](questionnaireresponse.html): Encounter associated with the questionnaire response\r\n* [RequestOrchestration](requestorchestration.html): The encounter the request orchestration applies to\r\n* [RiskAssessment](riskassessment.html): Where was assessment performed?\r\n* [ServiceRequest](servicerequest.html): An encounter in which this request is made\r\n* [Task](task.html): Search by encounter\r\n* [VisionPrescription](visionprescription.html): Return prescriptions with this encounter identifier\r\n")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-identifier"),
-                components: null,
-                expression: "Account.identifier | AdverseEvent.identifier | AllergyIntolerance.identifier | Appointment.identifier | AppointmentResponse.identifier | Basic.identifier | BodyStructure.identifier | CarePlan.identifier | CareTeam.identifier | ChargeItem.identifier | Claim.identifier | ClaimResponse.identifier | ClinicalImpression.identifier | Communication.identifier | CommunicationRequest.identifier | Composition.identifier | Condition.identifier | Consent.identifier | Contract.identifier | Coverage.identifier | CoverageEligibilityRequest.identifier | CoverageEligibilityResponse.identifier | DetectedIssue.identifier | DeviceRequest.identifier | DeviceUsage.identifier | DiagnosticReport.identifier | DocumentReference.identifier | Encounter.identifier | EnrollmentRequest.identifier | EpisodeOfCare.identifier | ExplanationOfBenefit.identifier | FamilyMemberHistory.identifier | Flag.identifier | Goal.identifier | GuidanceResponse.identifier | ImagingSelection.identifier | ImagingStudy.identifier | Immunization.identifier | ImmunizationEvaluation.identifier | ImmunizationRecommendation.identifier | Invoice.identifier | List.identifier | MeasureReport.identifier | Medication.identifier | MedicationAdministration.identifier | MedicationDispense.identifier | MedicationRequest.identifier | MedicationStatement.identifier | MolecularSequence.identifier | NutritionIntake.identifier | NutritionOrder.identifier | Observation.identifier | Person.identifier | Procedure.identifier | QuestionnaireResponse.identifier | RelatedPerson.identifier | RequestOrchestration.identifier | ResearchSubject.identifier | RiskAssessment.identifier | ServiceRequest.identifier | Specimen.identifier | SupplyDelivery.identifier | SupplyRequest.identifier | Task.identifier | VisionPrescription.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Account", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "Basic", "BodyStructure", "CarePlan", "CareTeam", "ChargeItem", "Claim", "ClaimResponse", "ClinicalImpression", "Communication", "CommunicationRequest", "Composition", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EnrollmentRequest", "EpisodeOfCare", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "GuidanceResponse", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "Invoice", "List", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MolecularSequence", "NutritionIntake", "NutritionOrder", "Observation", "Person", "Procedure", "QuestionnaireResponse", "RelatedPerson", "RequestOrchestration", "ResearchSubject", "RiskAssessment", "ServiceRequest", "Specimen", "SupplyDelivery", "SupplyRequest", "Task", "VisionPrescription" },
-                description: "Multiple Resources: \r\n\r\n* [Account](account.html): Account number\r\n* [AdverseEvent](adverseevent.html): Business identifier for the event\r\n* [AllergyIntolerance](allergyintolerance.html): External ids for this item\r\n* [Appointment](appointment.html): An Identifier of the Appointment\r\n* [AppointmentResponse](appointmentresponse.html): An Identifier in this appointment response\r\n* [Basic](basic.html): Business identifier\r\n* [BodyStructure](bodystructure.html): Bodystructure identifier\r\n* [CarePlan](careplan.html): External Ids for this plan\r\n* [CareTeam](careteam.html): External Ids for this team\r\n* [ChargeItem](chargeitem.html): Business Identifier for item\r\n* [Claim](claim.html): The primary identifier of the financial resource\r\n* [ClaimResponse](claimresponse.html): The identity of the ClaimResponse\r\n* [ClinicalImpression](clinicalimpression.html): Business identifier\r\n* [Communication](communication.html): Unique identifier\r\n* [CommunicationRequest](communicationrequest.html): Unique identifier\r\n* [Composition](composition.html): Version-independent identifier for the Composition\r\n* [Condition](condition.html): A unique identifier of the condition record\r\n* [Consent](consent.html): Identifier for this record (external references)\r\n* [Contract](contract.html): The identity of the contract\r\n* [Coverage](coverage.html): The primary identifier of the insured and the coverage\r\n* [CoverageEligibilityRequest](coverageeligibilityrequest.html): The business identifier of the Eligibility\r\n* [CoverageEligibilityResponse](coverageeligibilityresponse.html): The business identifier\r\n* [DetectedIssue](detectedissue.html): Unique id for the detected issue\r\n* [DeviceRequest](devicerequest.html): Business identifier for request/order\r\n* [DeviceUsage](deviceusage.html): Search by identifier\r\n* [DiagnosticReport](diagnosticreport.html): An identifier for the report\r\n* [DocumentReference](documentreference.html): Identifier of the attachment binary\r\n* [Encounter](encounter.html): Identifier(s) by which this encounter is known\r\n* [EnrollmentRequest](enrollmentrequest.html): The business identifier of the Enrollment\r\n* [EpisodeOfCare](episodeofcare.html): Business Identifier(s) relevant for this EpisodeOfCare\r\n* [ExplanationOfBenefit](explanationofbenefit.html): The business identifier of the Explanation of Benefit\r\n* [FamilyMemberHistory](familymemberhistory.html): A search by a record identifier\r\n* [Flag](flag.html): Business identifier\r\n* [Goal](goal.html): External Ids for this goal\r\n* [GuidanceResponse](guidanceresponse.html): The identifier of the guidance response\r\n* [ImagingSelection](imagingselection.html): Identifiers for the imaging selection\r\n* [ImagingStudy](imagingstudy.html): Identifiers for the Study, such as DICOM Study Instance UID\r\n* [Immunization](immunization.html): Business identifier\r\n* [ImmunizationEvaluation](immunizationevaluation.html): ID of the evaluation\r\n* [ImmunizationRecommendation](immunizationrecommendation.html): Business identifier\r\n* [Invoice](invoice.html): Business Identifier for item\r\n* [List](list.html): Business identifier\r\n* [MeasureReport](measurereport.html): External identifier of the measure report to be returned\r\n* [Medication](medication.html): Returns medications with this external identifier\r\n* [MedicationAdministration](medicationadministration.html): Return administrations with this external identifier\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses with this external identifier\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions with this external identifier\r\n* [MedicationStatement](medicationstatement.html): Return statements with this external identifier\r\n* [MolecularSequence](molecularsequence.html): The unique identity for a particular sequence\r\n* [NutritionIntake](nutritionintake.html): Return statements with this external identifier\r\n* [NutritionOrder](nutritionorder.html): Return nutrition orders with this external identifier\r\n* [Observation](observation.html): The unique id for a particular observation\r\n* [Person](person.html): A person Identifier\r\n* [Procedure](procedure.html): A unique identifier for a procedure\r\n* [QuestionnaireResponse](questionnaireresponse.html): The unique identifier for the questionnaire response\r\n* [RelatedPerson](relatedperson.html): An Identifier of the RelatedPerson\r\n* [RequestOrchestration](requestorchestration.html): External identifiers for the request orchestration\r\n* [ResearchSubject](researchsubject.html): Business Identifier for research subject in a study\r\n* [RiskAssessment](riskassessment.html): Unique identifier for the assessment\r\n* [ServiceRequest](servicerequest.html): Identifiers assigned to this order\r\n* [Specimen](specimen.html): The unique identifier associated with the specimen\r\n* [SupplyDelivery](supplydelivery.html): External identifier\r\n* [SupplyRequest](supplyrequest.html): Business Identifier for SupplyRequest\r\n* [Task](task.html): Search for a task instance by its business identifier\r\n* [VisionPrescription](visionprescription.html): Return prescriptions with this external identifier\r\n")
-,
-            new SearchParameterInfo(
-                name: "patient",
-                code: "patient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-patient"),
-                components: null,
-                expression: "Account.subject.where(resolve() is Patient) | AdverseEvent.subject.where(resolve() is Patient) | AllergyIntolerance.patient | Appointment.participant.actor.where(resolve() is Patient) | Appointment.subject.where(resolve() is Patient) | AppointmentResponse.actor.where(resolve() is Patient) | AuditEvent.patient | Basic.subject.where(resolve() is Patient) | BodyStructure.patient | CarePlan.subject.where(resolve() is Patient) | CareTeam.subject.where(resolve() is Patient) | ChargeItem.subject.where(resolve() is Patient) | Claim.patient | ClaimResponse.patient | ClinicalImpression.subject.where(resolve() is Patient) | Communication.subject.where(resolve() is Patient) | CommunicationRequest.subject.where(resolve() is Patient) | Composition.subject.where(resolve() is Patient) | Condition.subject.where(resolve() is Patient) | Consent.subject.where(resolve() is Patient) | Contract.subject.where(resolve() is Patient) | Coverage.beneficiary | CoverageEligibilityRequest.patient | CoverageEligibilityResponse.patient | DetectedIssue.subject.where(resolve() is Patient) | DeviceRequest.subject.where(resolve() is Patient) | DeviceUsage.patient | DiagnosticReport.subject.where(resolve() is Patient) | DocumentReference.subject.where(resolve() is Patient) | Encounter.subject.where(resolve() is Patient) | EnrollmentRequest.candidate | EpisodeOfCare.subject.where(resolve() is Patient) | ExplanationOfBenefit.patient | FamilyMemberHistory.patient | Flag.subject.where(resolve() is Patient) | Goal.subject.where(resolve() is Patient) | GuidanceResponse.subject.where(resolve() is Patient) | ImagingSelection.subject.where(resolve() is Patient) | ImagingStudy.subject.where(resolve() is Patient) | Immunization.patient | ImmunizationEvaluation.patient | ImmunizationRecommendation.patient | Invoice.subject.where(resolve() is Patient) | List.subject.where(resolve() is Patient) | MeasureReport.subject.where(resolve() is Patient) | MedicationAdministration.subject.where(resolve() is Patient) | MedicationDispense.subject.where(resolve() is Patient) | MedicationRequest.subject.where(resolve() is Patient) | MedicationStatement.subject.where(resolve() is Patient) | NutritionIntake.subject.where(resolve() is Patient) | NutritionOrder.subject.where(resolve() is Patient) | Observation.subject.where(resolve() is Patient) | Person.link.target.where(resolve() is Patient) | Procedure.subject.where(resolve() is Patient) | Provenance.patient | QuestionnaireResponse.subject.where(resolve() is Patient) | RelatedPerson.patient | RequestOrchestration.subject.where(resolve() is Patient) | ResearchSubject.subject.where(resolve() is Patient) | RiskAssessment.subject.where(resolve() is Patient) | ServiceRequest.subject.where(resolve() is Patient) | Specimen.subject.where(resolve() is Patient) | SupplyDelivery.patient | SupplyRequest.deliverFor | Task.for.where(resolve() is Patient) | VisionPrescription.patient",
-                targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "Account", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "AuditEvent", "Basic", "BodyStructure", "CarePlan", "CareTeam", "ChargeItem", "Claim", "ClaimResponse", "ClinicalImpression", "Communication", "CommunicationRequest", "Composition", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EnrollmentRequest", "EpisodeOfCare", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "GuidanceResponse", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "Invoice", "List", "MeasureReport", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "NutritionIntake", "NutritionOrder", "Observation", "Person", "Procedure", "Provenance", "QuestionnaireResponse", "RelatedPerson", "RequestOrchestration", "ResearchSubject", "RiskAssessment", "ServiceRequest", "Specimen", "SupplyDelivery", "SupplyRequest", "Task", "VisionPrescription" },
-                description: "Multiple Resources: \r\n\r\n* [Account](account.html): The entity that caused the expenses\r\n* [AdverseEvent](adverseevent.html): Subject impacted by event\r\n* [AllergyIntolerance](allergyintolerance.html): Who the sensitivity is for\r\n* [Appointment](appointment.html): One of the individuals of the appointment is this patient\r\n* [AppointmentResponse](appointmentresponse.html): This Response is for this Patient\r\n* [AuditEvent](auditevent.html): Where the activity involved patient data\r\n* [Basic](basic.html): Identifies the focus of this resource\r\n* [BodyStructure](bodystructure.html): Who this is about\r\n* [CarePlan](careplan.html): Who the care plan is for\r\n* [CareTeam](careteam.html): Who care team is for\r\n* [ChargeItem](chargeitem.html): Individual service was done for/to\r\n* [Claim](claim.html): Patient receiving the products or services\r\n* [ClaimResponse](claimresponse.html): The subject of care\r\n* [ClinicalImpression](clinicalimpression.html): Patient assessed\r\n* [Communication](communication.html): Focus of message\r\n* [CommunicationRequest](communicationrequest.html): Focus of message\r\n* [Composition](composition.html): Who and/or what the composition is about\r\n* [Condition](condition.html): Who has the condition?\r\n* [Consent](consent.html): Who the consent applies to\r\n* [Contract](contract.html): The identity of the subject of the contract (if a patient)\r\n* [Coverage](coverage.html): Retrieve coverages for a patient\r\n* [CoverageEligibilityRequest](coverageeligibilityrequest.html): The reference to the patient\r\n* [CoverageEligibilityResponse](coverageeligibilityresponse.html): The reference to the patient\r\n* [DetectedIssue](detectedissue.html): Associated patient\r\n* [DeviceRequest](devicerequest.html): Individual the service is ordered for\r\n* [DeviceUsage](deviceusage.html): Search by patient who used / uses the device\r\n* [DiagnosticReport](diagnosticreport.html): The subject of the report if a patient\r\n* [DocumentReference](documentreference.html): Who/what is the subject of the document\r\n* [Encounter](encounter.html): The patient present at the encounter\r\n* [EnrollmentRequest](enrollmentrequest.html): The party to be enrolled\r\n* [EpisodeOfCare](episodeofcare.html): The patient who is the focus of this episode of care\r\n* [ExplanationOfBenefit](explanationofbenefit.html): The reference to the patient\r\n* [FamilyMemberHistory](familymemberhistory.html): The identity of a subject to list family member history items for\r\n* [Flag](flag.html): The identity of a subject to list flags for\r\n* [Goal](goal.html): Who this goal is intended for\r\n* [GuidanceResponse](guidanceresponse.html): The identity of a patient to search for guidance response results\r\n* [ImagingSelection](imagingselection.html): Who the study is about\r\n* [ImagingStudy](imagingstudy.html): Who the study is about\r\n* [Immunization](immunization.html): The patient for the vaccination record\r\n* [ImmunizationEvaluation](immunizationevaluation.html): The patient being evaluated\r\n* [ImmunizationRecommendation](immunizationrecommendation.html): Who this profile is for\r\n* [Invoice](invoice.html): Recipient(s) of goods and services\r\n* [List](list.html): If all resources have the same subject\r\n* [MeasureReport](measurereport.html): The identity of a patient to search for individual measure report results for\r\n* [MedicationAdministration](medicationadministration.html): The identity of a patient to list administrations  for\r\n* [MedicationDispense](medicationdispense.html): The identity of a patient to list dispenses  for\r\n* [MedicationRequest](medicationrequest.html): Returns prescriptions for a specific patient\r\n* [MedicationStatement](medicationstatement.html): Returns statements for a specific patient.\r\n* [NutritionIntake](nutritionintake.html): Returns statements for a specific patient.\r\n* [NutritionOrder](nutritionorder.html): The identity of the individual or set of individuals who requires the diet, formula or nutritional supplement\r\n* [Observation](observation.html): The subject that the observation is about (if patient)\r\n* [Person](person.html): The Person links to this Patient\r\n* [Procedure](procedure.html): Search by subject - a patient\r\n* [Provenance](provenance.html): Where the activity involved patient data\r\n* [QuestionnaireResponse](questionnaireresponse.html): The patient that is the subject of the questionnaire response\r\n* [RelatedPerson](relatedperson.html): The patient this related person is related to\r\n* [RequestOrchestration](requestorchestration.html): The identity of a patient to search for request orchestrations\r\n* [ResearchSubject](researchsubject.html): Who or what is part of study\r\n* [RiskAssessment](riskassessment.html): Who/what does assessment apply to?\r\n* [ServiceRequest](servicerequest.html): Search by subject - a patient\r\n* [Specimen](specimen.html): The patient the specimen comes from\r\n* [SupplyDelivery](supplydelivery.html): Patient for whom the item is supplied\r\n* [SupplyRequest](supplyrequest.html): The patient or subject for whom the supply is destined\r\n* [Task](task.html): Search by patient\r\n* [VisionPrescription](visionprescription.html): The identity of a patient to list dispenses for\r\n")
-,
-            new SearchParameterInfo(
-                name: "type",
-                code: "type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/clinical-type"),
-                components: null,
-                expression: "Account.type | AllergyIntolerance.type | Composition.type | Coverage.type | DocumentReference.type | Encounter.type | EpisodeOfCare.type | Invoice.type | MedicationDispense.type | MolecularSequence.type | Specimen.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Account", "AllergyIntolerance", "Composition", "Coverage", "DocumentReference", "Encounter", "EpisodeOfCare", "Invoice", "MedicationDispense", "MolecularSequence", "Specimen" },
-                description: "Multiple Resources: \r\n\r\n* [Account](account.html): E.g. patient, expense, depreciation\r\n* [AllergyIntolerance](allergyintolerance.html): allergy | intolerance - Underlying mechanism (if known)\r\n* [Composition](composition.html): Kind of composition (LOINC if possible)\r\n* [Coverage](coverage.html): The kind of coverage (health plan, auto, Workers Compensation)\r\n* [DocumentReference](documentreference.html): Kind of document (LOINC if possible)\r\n* [Encounter](encounter.html): Specific type of encounter\r\n* [EpisodeOfCare](episodeofcare.html): Type/class  - e.g. specialist referral, disease management\r\n* [Invoice](invoice.html): Type of Invoice\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses of a specific type\r\n* [MolecularSequence](molecularsequence.html): Amino Acid Sequence/ DNA Sequence / RNA Sequence\r\n* [Specimen](specimen.html): The specimen type\r\n")
-,
-            new SearchParameterInfo(
-                name: "finding-code",
-                code: "finding-code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-finding-code"),
-                components: null,
-                expression: "ClinicalImpression.finding.item.concept",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "Reference to a concept (by class)")
-,
-            new SearchParameterInfo(
-                name: "finding-ref",
-                code: "finding-ref",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-finding-ref"),
-                components: null,
-                expression: "ClinicalImpression.finding.item.reference",
-                targetResourceTypes: new[] { "DocumentReference", "Observation", "Condition" },
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "Reference to a resource (by instance)")
-,
-            new SearchParameterInfo(
-                name: "performer",
-                code: "performer",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-performer"),
-                components: null,
-                expression: "ClinicalImpression.performer",
-                targetResourceTypes: new[] { "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "The clinician performing the assessment")
-,
-            new SearchParameterInfo(
-                name: "previous",
-                code: "previous",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-previous"),
-                components: null,
-                expression: "ClinicalImpression.previous",
-                targetResourceTypes: new[] { "ClinicalImpression" },
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "Reference to last assessment")
-,
-            new SearchParameterInfo(
-                name: "problem",
-                code: "problem",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-problem"),
-                components: null,
-                expression: "ClinicalImpression.problem",
-                targetResourceTypes: new[] { "AllergyIntolerance", "Condition" },
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "Relevant impressions of patient state")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-status"),
-                components: null,
-                expression: "ClinicalImpression.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "preparation | in-progress | not-done | on-hold | stopped | completed | entered-in-error | unknown")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-subject"),
-                components: null,
-                expression: "ClinicalImpression.subject",
-                targetResourceTypes: new[] { "Group", "Patient" },
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "Patient or group assessed")
-,
-            new SearchParameterInfo(
-                name: "supporting-info",
-                code: "supporting-info",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-supporting-info"),
-                components: null,
-                expression: "ClinicalImpression.supportingInfo",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ClinicalImpression" },
-                description: "Information supporting the clinical impression")
-,
-            new SearchParameterInfo(
-                name: "contraindication-reference",
-                code: "contraindication-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-contraindication-reference"),
-                components: null,
-                expression: "ClinicalUseDefinition.contraindication.diseaseSymptomProcedure.reference",
-                targetResourceTypes: new[] { "ObservationDefinition" },
-                baseResourceTypes: new[] { "ClinicalUseDefinition" },
-                description: "The situation that is being documented as contraindicating against this item, as a reference")
 ,
             new SearchParameterInfo(
                 name: "contraindication",
@@ -2323,15 +2323,15 @@ public static class R6SearchParameterDefinitions
                 description: "The situation that is being documented as contraindicating against this item, as a code")
 ,
             new SearchParameterInfo(
-                name: "effect-reference",
-                code: "effect-reference",
+                name: "contraindication-reference",
+                code: "contraindication-reference",
                 searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-effect-reference"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-contraindication-reference"),
                 components: null,
-                expression: "ClinicalUseDefinition.undesirableEffect.symptomConditionEffect.reference",
+                expression: "ClinicalUseDefinition.contraindication.diseaseSymptomProcedure.reference",
                 targetResourceTypes: new[] { "ObservationDefinition" },
                 baseResourceTypes: new[] { "ClinicalUseDefinition" },
-                description: "The situation in which the undesirable effect may manifest, as a reference")
+                description: "The situation that is being documented as contraindicating against this item, as a reference")
 ,
             new SearchParameterInfo(
                 name: "effect",
@@ -2345,6 +2345,17 @@ public static class R6SearchParameterDefinitions
                 description: "The situation in which the undesirable effect may manifest, as a code")
 ,
             new SearchParameterInfo(
+                name: "effect-reference",
+                code: "effect-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-effect-reference"),
+                components: null,
+                expression: "ClinicalUseDefinition.undesirableEffect.symptomConditionEffect.reference",
+                targetResourceTypes: new[] { "ObservationDefinition" },
+                baseResourceTypes: new[] { "ClinicalUseDefinition" },
+                description: "The situation in which the undesirable effect may manifest, as a reference")
+,
+            new SearchParameterInfo(
                 name: "identifier",
                 code: "identifier",
                 searchParamType: SearchParamType.Token,
@@ -2356,17 +2367,6 @@ public static class R6SearchParameterDefinitions
                 description: "Business identifier for this issue")
 ,
             new SearchParameterInfo(
-                name: "indication-reference",
-                code: "indication-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-indication-reference"),
-                components: null,
-                expression: "ClinicalUseDefinition.indication.diseaseSymptomProcedure.reference",
-                targetResourceTypes: new[] { "ObservationDefinition" },
-                baseResourceTypes: new[] { "ClinicalUseDefinition" },
-                description: "The situation that is being documented as an indicaton for this item, as a reference")
-,
-            new SearchParameterInfo(
                 name: "indication",
                 code: "indication",
                 searchParamType: SearchParamType.Token,
@@ -2376,6 +2376,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ClinicalUseDefinition" },
                 description: "The situation that is being documented as an indicaton for this item, as a code")
+,
+            new SearchParameterInfo(
+                name: "indication-reference",
+                code: "indication-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-indication-reference"),
+                components: null,
+                expression: "ClinicalUseDefinition.indication.diseaseSymptomProcedure.reference",
+                targetResourceTypes: new[] { "ObservationDefinition" },
+                baseResourceTypes: new[] { "ClinicalUseDefinition" },
+                description: "The situation that is being documented as an indicaton for this item, as a reference")
 ,
             new SearchParameterInfo(
                 name: "interaction",
@@ -2394,7 +2405,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-product"),
                 components: null,
-                expression: "ClinicalUseDefinition.subject.where(resolve() is MedicinalProductDefinition)",
+                expression: "ClinicalUseDefinition.subject.reference.where(resolve() is MedicinalProductDefinition)",
                 targetResourceTypes: new[] { "MedicinalProductDefinition" },
                 baseResourceTypes: new[] { "ClinicalUseDefinition" },
                 description: "The medicinal product for which this is a clinical usage issue")
@@ -2416,10 +2427,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-subject"),
                 components: null,
-                expression: "ClinicalUseDefinition.subject",
-                targetResourceTypes: new[] { "MedicinalProductDefinition", "Device", "DeviceDefinition", "NutritionProduct", "ActivityDefinition", "PlanDefinition", "BiologicallyDerivedProduct", "Substance", "Medication" },
+                expression: "ClinicalUseDefinition.subject.reference",
+                targetResourceTypes: new[] { "MedicinalProductDefinition", "Device", "DeviceDefinition", "NutritionProduct", "ActivityDefinition", "PlanDefinition", "BiologicallyDerivedProduct", "SubstanceDefinition", "Medication" },
                 baseResourceTypes: new[] { "ClinicalUseDefinition" },
                 description: "The resource for which this is a clinical usage issue")
+,
+            new SearchParameterInfo(
+                name: "subject-code",
+                code: "subject-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ClinicalUseDefinition-subject-code"),
+                components: null,
+                expression: "ClinicalUseDefinition.subject.concept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ClinicalUseDefinition" },
+                description: "The coded item for which this is a clinical usage issue")
 ,
             new SearchParameterInfo(
                 name: "type",
@@ -2438,7 +2460,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CodeSystem-code"),
                 components: null,
-                expression: "CodeSystem.concept.code",
+                expression: "CodeSystem.repeat(concept).code",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "CodeSystem" },
                 description: "A code defined in the code system")
@@ -2455,12 +2477,23 @@ public static class R6SearchParameterDefinitions
                 description: "not-present | example | fragment | complete | supplement")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/CodeSystem-experimental"),
+                components: null,
+                expression: "CodeSystem.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "CodeSystem" },
+                description: "Whether the CodeSystem is experimental")
+,
+            new SearchParameterInfo(
                 name: "language",
                 code: "language",
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CodeSystem-language"),
                 components: null,
-                expression: "CodeSystem.concept.designation.language",
+                expression: "CodeSystem.repeat(concept).designation.language",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "CodeSystem" },
                 description: "A language in which a designation is provided")
@@ -2494,7 +2527,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Communication-based-on"),
                 components: null,
                 expression: "Communication.basedOn",
-                targetResourceTypes: new[] { "DeviceRequest", "ServiceRequest", "CarePlan", "CommunicationRequest", "Task", "MedicationRequest", "ImmunizationRecommendation", "NutritionOrder", "VisionPrescription" },
+                targetResourceTypes: new[] { "DeviceRequest", "ServiceRequest", "CarePlan", "CommunicationRequest", "Task", "MedicationRequest", "NutritionOrder", "VisionPrescription" },
                 baseResourceTypes: new[] { "Communication" },
                 description: "Request fulfilled by this communication")
 ,
@@ -2521,28 +2554,6 @@ public static class R6SearchParameterDefinitions
                 description: "Reply to")
 ,
             new SearchParameterInfo(
-                name: "instantiates-canonical",
-                code: "instantiates-canonical",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Communication-instantiates-canonical"),
-                components: null,
-                expression: "Communication.instantiatesCanonical",
-                targetResourceTypes: new[] { "Measure", "OperationDefinition", "ActivityDefinition", "PlanDefinition", "Questionnaire" },
-                baseResourceTypes: new[] { "Communication" },
-                description: "Instantiates FHIR protocol or definition")
-,
-            new SearchParameterInfo(
-                name: "instantiates-uri",
-                code: "instantiates-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Communication-instantiates-uri"),
-                components: null,
-                expression: "Communication.instantiatesUri",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Communication" },
-                description: "Instantiates external protocol or definition")
-,
-            new SearchParameterInfo(
                 name: "medium",
                 code: "medium",
                 searchParamType: SearchParamType.Token,
@@ -2560,7 +2571,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Communication-part-of"),
                 components: null,
                 expression: "Communication.partOf",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Communication" },
                 description: "Part of referenced event (e.g. Communication, Procedure)")
 ,
@@ -2582,7 +2593,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Communication-reason-reference"),
                 components: null,
                 expression: "Communication.reason.reference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Communication" },
                 description: "Indication for the message")
 ,
@@ -2670,7 +2681,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CommunicationRequest-about"),
                 components: null,
                 expression: "CommunicationRequest.about",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "CommunicationRequest" },
                 description: "Resources that pertain to this communication request")
 ,
@@ -2692,7 +2703,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CommunicationRequest-based-on"),
                 components: null,
                 expression: "CommunicationRequest.basedOn",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "CommunicationRequest" },
                 description: "Fulfills plan or proposal")
 ,
@@ -2725,7 +2736,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CommunicationRequest-information-provider"),
                 components: null,
                 expression: "CommunicationRequest.informationProvider",
-                targetResourceTypes: new[] { "HealthcareService", "Device", "Organization", "Endpoint", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "HealthcareService", "Device", "Organization", "Endpoint", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "CommunicationRequest" },
                 description: "Who should share the information")
 ,
@@ -2791,7 +2802,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/CommunicationRequest-requester"),
                 components: null,
                 expression: "CommunicationRequest.requester",
-                targetResourceTypes: new[] { "Organization", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "CommunicationRequest" },
                 description: "Who asks for the information to be shared")
 ,
@@ -2846,7 +2857,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-attester"),
                 components: null,
                 expression: "Composition.attester.party",
-                targetResourceTypes: new[] { "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "Composition" },
                 description: "Who attested the composition")
 ,
@@ -2857,7 +2868,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-author"),
                 components: null,
                 expression: "Composition.author",
-                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "CareTeam", "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Composition" },
                 description: "Who and/or what authored the composition")
 ,
@@ -2878,8 +2889,8 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-entry"),
                 components: null,
-                expression: "Composition.section.entry",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                expression: "Composition.repeat(section).entry",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Composition" },
                 description: "A reference to data that supports this section")
 ,
@@ -2901,7 +2912,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-event-reference"),
                 components: null,
                 expression: "Composition.event.detail.reference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Composition" },
                 description: "Main clinical acts documented as references")
 ,
@@ -2917,26 +2928,15 @@ public static class R6SearchParameterDefinitions
                 description: "The period covered by the documentation")
 ,
             new SearchParameterInfo(
-                name: "related",
-                code: "related",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-related"),
+                name: "section",
+                code: "section",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-section"),
                 components: null,
-                expression: "Composition.relatesTo.resourceReference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "Composition" },
-                description: "Target of the relationship")
-,
-            new SearchParameterInfo(
-                name: "section-code-text",
-                code: "section-code-text",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-section-code-text"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Composition-section"), "section.code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Composition-section-text"), "section.text") },
-                expression: "Composition.section",
+                expression: "Composition.repeat(section).code",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Composition" },
-                description: "Search on the section narrative of the resource")
+                description: "Classification of section (recommended)")
 ,
             new SearchParameterInfo(
                 name: "section-text",
@@ -2944,21 +2944,10 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Special,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-section-text"),
                 components: null,
-                expression: "Composition.section.text | Composition.section.section.text",
+                expression: "Composition.repeat(section).text",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Composition" },
                 description: "Search on the section narrative of the resource")
-,
-            new SearchParameterInfo(
-                name: "section",
-                code: "section",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-section"),
-                components: null,
-                expression: "Composition.section.code",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Composition" },
-                description: "Classification of section (recommended)")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -2978,7 +2967,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-subject"),
                 components: null,
                 expression: "Composition.subject",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Composition" },
                 description: "Who and/or what the composition is about")
 ,
@@ -3014,6 +3003,28 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Composition" },
                 description: "The business version of the activity definition")
+,
+            new SearchParameterInfo(
+                name: "section-code-text",
+                code: "section-code-text",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Composition-section-code-text"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Composition-section"), "section.code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Composition-section-text"), "section.text") },
+                expression: "Composition.repeat(section)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Composition" },
+                description: "Search on the section narrative of the resource")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ConceptMap-experimental"),
+                components: null,
+                expression: "ConceptMap.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ConceptMap" },
+                description: "Whether the ConceptMap is experimental")
 ,
             new SearchParameterInfo(
                 name: "mapping-property",
@@ -3060,17 +3071,6 @@ public static class R6SearchParameterDefinitions
                 description: "Source system where concepts to be mapped are defined")
 ,
             new SearchParameterInfo(
-                name: "source-scope-uri",
-                code: "source-scope-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ConceptMap-source-scope-uri"),
-                components: null,
-                expression: "(ConceptMap.sourceScope as uri)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ConceptMap" },
-                description: "The URI for the source value set that contains the concepts being mapped")
-,
-            new SearchParameterInfo(
                 name: "source-scope",
                 code: "source-scope",
                 searchParamType: SearchParamType.Reference,
@@ -3080,6 +3080,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "ValueSet" },
                 baseResourceTypes: new[] { "ConceptMap" },
                 description: "The source value set that contains the concepts that are being mapped")
+,
+            new SearchParameterInfo(
+                name: "source-scope-uri",
+                code: "source-scope-uri",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ConceptMap-source-scope-uri"),
+                components: null,
+                expression: "(ConceptMap.sourceScope as uri)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ConceptMap" },
+                description: "The URI for the source value set that contains the concepts being mapped")
 ,
             new SearchParameterInfo(
                 name: "target-code",
@@ -3104,17 +3115,6 @@ public static class R6SearchParameterDefinitions
                 description: "Target system that the concepts are to be mapped to")
 ,
             new SearchParameterInfo(
-                name: "target-scope-uri",
-                code: "target-scope-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ConceptMap-target-scope-uri"),
-                components: null,
-                expression: "(ConceptMap.targetScope as uri)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ConceptMap" },
-                description: "The URI for the target value set that contains the concepts being mapped.")
-,
-            new SearchParameterInfo(
                 name: "target-scope",
                 code: "target-scope",
                 searchParamType: SearchParamType.Reference,
@@ -3124,6 +3124,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "ValueSet" },
                 baseResourceTypes: new[] { "ConceptMap" },
                 description: "The target value set which provides context for the mappings")
+,
+            new SearchParameterInfo(
+                name: "target-scope-uri",
+                code: "target-scope-uri",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ConceptMap-target-scope-uri"),
+                components: null,
+                expression: "(ConceptMap.targetScope as uri)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ConceptMap" },
+                description: "The URI for the target value set that contains the concepts being mapped.")
 ,
             new SearchParameterInfo(
                 name: "abatement-age",
@@ -3165,7 +3176,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Condition-asserter"),
                 components: null,
                 expression: "Condition.asserter",
-                targetResourceTypes: new[] { "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "Condition" },
                 description: "Person or device that asserts this condition")
 ,
@@ -3203,17 +3214,6 @@ public static class R6SearchParameterDefinitions
                 description: "The clinical status of the condition")
 ,
             new SearchParameterInfo(
-                name: "evidence-detail",
-                code: "evidence-detail",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Condition-evidence-detail"),
-                components: null,
-                expression: "Condition.evidence.reference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "Condition" },
-                description: "Supporting information found elsewhere")
-,
-            new SearchParameterInfo(
                 name: "evidence",
                 code: "evidence",
                 searchParamType: SearchParamType.Token,
@@ -3223,6 +3223,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Condition" },
                 description: "Manifestation/symptom")
+,
+            new SearchParameterInfo(
+                name: "evidence-detail",
+                code: "evidence-detail",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Condition-evidence-detail"),
+                components: null,
+                expression: "Condition.evidence.reference",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "Condition" },
+                description: "Supporting information found elsewhere")
 ,
             new SearchParameterInfo(
                 name: "onset-age",
@@ -3318,10 +3329,10 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-action"),
                 components: null,
-                expression: "Consent.provision.action",
+                expression: "Consent.repeat(provision).code",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Consent" },
-                description: "Actions controlled by this rule")
+                description: "LOINC or SNOMED CT code, etc. in the content")
 ,
             new SearchParameterInfo(
                 name: "actor",
@@ -3329,7 +3340,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-actor"),
                 components: null,
-                expression: "Consent.provision.actor.reference",
+                expression: "Consent.repeat(provision).actor.reference",
                 targetResourceTypes: new[] { "Device", "CareTeam", "Organization", "RelatedPerson", "PractitionerRole", "Group", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Consent" },
                 description: "Resource for the actor (or group, by role)")
@@ -3362,8 +3373,8 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-data"),
                 components: null,
-                expression: "Consent.provision.data.reference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                expression: "Consent.repeat(provision).data.reference",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Consent" },
                 description: "The actual data reference")
 ,
@@ -3374,7 +3385,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-grantee"),
                 components: null,
                 expression: "Consent.grantee",
-                targetResourceTypes: new[] { "HealthcareService", "CareTeam", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "HealthcareService", "CareTeam", "Organization", "RelatedPerson", "PractitionerRole", "Group", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Consent" },
                 description: "Who is agreeing to the policy and rules")
 ,
@@ -3395,7 +3406,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Date,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-period"),
                 components: null,
-                expression: "Consent.provision.period",
+                expression: "Consent.repeat(provision).period",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Consent" },
                 description: "Timeframe for this rule")
@@ -3406,7 +3417,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-purpose"),
                 components: null,
-                expression: "Consent.provision.purpose",
+                expression: "Consent.repeat(provision).purpose",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Consent" },
                 description: "Context of activities covered by this rule")
@@ -3417,7 +3428,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-security-label"),
                 components: null,
-                expression: "Consent.provision.securityLabel",
+                expression: "Consent.repeat(provision).securityLabel",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Consent" },
                 description: "Security Labels that define affected resources")
@@ -3451,20 +3462,9 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-subject"),
                 components: null,
                 expression: "Consent.subject",
-                targetResourceTypes: new[] { "Practitioner", "Group", "Patient" },
+                targetResourceTypes: new[] { "ResearchSubject", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "Consent" },
                 description: "Who the consent applies to")
-,
-            new SearchParameterInfo(
-                name: "verified-date",
-                code: "verified-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-verified-date"),
-                components: null,
-                expression: "Consent.verification.verificationDate",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Consent" },
-                description: "When consent verified")
 ,
             new SearchParameterInfo(
                 name: "verified",
@@ -3476,6 +3476,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Consent" },
                 description: "Has been verified")
+,
+            new SearchParameterInfo(
+                name: "verified-date",
+                code: "verified-date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Consent-verified-date"),
+                components: null,
+                expression: "Consent.verification.date",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Consent" },
+                description: "When consent verified")
 ,
             new SearchParameterInfo(
                 name: "authority",
@@ -3550,7 +3561,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Contract-subject"),
                 components: null,
                 expression: "Contract.subject",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Contract" },
                 description: "The identity of the subject of the contract")
 ,
@@ -3630,6 +3641,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Organization", "RelatedPerson", "Patient" },
                 baseResourceTypes: new[] { "Coverage" },
                 description: "Parties who will pay for services")
+,
+            new SearchParameterInfo(
+                name: "period",
+                code: "period",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Coverage-period"),
+                components: null,
+                expression: "Coverage.period",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Coverage" },
+                description: "Dates that the Coverage is active")
 ,
             new SearchParameterInfo(
                 name: "policy-holder",
@@ -3847,7 +3869,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DetectedIssue-implicated"),
                 components: null,
                 expression: "DetectedIssue.implicated",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "DetectedIssue" },
                 description: "Problem resource")
 ,
@@ -3885,23 +3907,12 @@ public static class R6SearchParameterDefinitions
                 description: "The biological source for the device")
 ,
             new SearchParameterInfo(
-                name: "code-value-concept",
-                code: "code-value-concept",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-code-value-concept"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-specification"), "specification.ofType(CodeableConcept)"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-version"), "version.ofType(string)") },
-                expression: "Device",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Device" },
-                description: "Code and value parameter pair")
-,
-            new SearchParameterInfo(
                 name: "code",
                 code: "code",
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Device-code"),
                 components: null,
-                expression: "Device.definition.concept",
+                expression: "Device.type |  Device.definition.resolve().classification.type ",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Device" },
                 description: "The definition / type of the device (code)")
@@ -3912,7 +3923,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Device-definition"),
                 components: null,
-                expression: "Device.definition.reference",
+                expression: "Device.definition",
                 targetResourceTypes: new[] { "DeviceDefinition" },
                 baseResourceTypes: new[] { "Device" },
                 description: "The definition / type of the device")
@@ -4006,17 +4017,6 @@ public static class R6SearchParameterDefinitions
                 description: "The model of the device")
 ,
             new SearchParameterInfo(
-                name: "organization",
-                code: "organization",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-organization"),
-                components: null,
-                expression: "Device.owner",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "Device" },
-                description: "The organization responsible for the device")
-,
-            new SearchParameterInfo(
                 name: "parent",
                 code: "parent",
                 searchParamType: SearchParamType.Reference,
@@ -4037,17 +4037,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Device" },
                 description: "The serial number of the device")
-,
-            new SearchParameterInfo(
-                name: "specification-version",
-                code: "specification-version",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-specification-version"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-specification"), "specification"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-version"), "version") },
-                expression: "Device.conformsTo",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Device" },
-                description: "A composite of both specification and version")
 ,
             new SearchParameterInfo(
                 name: "specification",
@@ -4105,15 +4094,37 @@ public static class R6SearchParameterDefinitions
                 description: "The udi Device Identifier (DI)")
 ,
             new SearchParameterInfo(
-                name: "url",
-                code: "url",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-url"),
+                name: "version",
+                code: "version",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-version"),
                 components: null,
-                expression: "Device.url",
+                expression: "Device.deviceVersion.value",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Device" },
-                description: "Network address to contact device")
+                description: "The specific version of the device")
+,
+            new SearchParameterInfo(
+                name: "code-value-concept",
+                code: "code-value-concept",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-code-value-concept"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-specification"), "specification.ofType(CodeableConcept)"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-version"), "version.ofType(string)") },
+                expression: "Device",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Device" },
+                description: "Code and value parameter pair")
+,
+            new SearchParameterInfo(
+                name: "specification-version",
+                code: "specification-version",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-specification-version"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-specification"), "specification"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Device-version"), "version") },
+                expression: "Device.conformsTo",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Device" },
+                description: "A composite of both specification and version")
 ,
             new SearchParameterInfo(
                 name: "version-type",
@@ -4127,15 +4138,26 @@ public static class R6SearchParameterDefinitions
                 description: "Value and type of version")
 ,
             new SearchParameterInfo(
-                name: "version",
-                code: "version",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Device-version"),
+                name: "acknowledged",
+                code: "acknowledged",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-acknowledged"),
                 components: null,
-                expression: "Device.deviceVersion.value",
+                expression: "DeviceAlert.acknowledged",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Device" },
-                description: "The specific version of the device")
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Whether the alert condition has been acknowledged")
+,
+            new SearchParameterInfo(
+                name: "acknowledged-by",
+                code: "acknowledged-by",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-acknowledged-by"),
+                components: null,
+                expression: "DeviceAlert.acknowledgedBy",
+                targetResourceTypes: new[] { "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Who acknowledged the alert")
 ,
             new SearchParameterInfo(
                 name: "annunciator-concept",
@@ -4145,7 +4167,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.signal.annunciator.concept",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "The whether the signalling device annunciating the condition is local or remote to the detecting device")
 ,
             new SearchParameterInfo(
@@ -4156,8 +4178,19 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.signal.annunciator.reference",
                 targetResourceTypes: new[] { "Device" },
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "The signalling device annunciating the condition")
+,
+            new SearchParameterInfo(
+                name: "category",
+                code: "category",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-category"),
+                components: null,
+                expression: "DeviceAlert.category",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Alert category")
 ,
             new SearchParameterInfo(
                 name: "code",
@@ -4165,9 +4198,9 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-code"),
                 components: null,
-                expression: "DeviceAlert.condition.code",
+                expression: "DeviceAlert.code",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "Alert condition code")
 ,
             new SearchParameterInfo(
@@ -4176,10 +4209,32 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-derived-from"),
                 components: null,
-                expression: "DeviceAlert.derivedFrom",
+                expression: "DeviceAlert.derivedFrom.observation",
                 targetResourceTypes: new[] { "Observation" },
-                baseResourceTypes: new[] { "Resource" },
-                description: "Whether the alert is currently occuring")
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Whether the alert is currently occurring")
+,
+            new SearchParameterInfo(
+                name: "device",
+                code: "device",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-device"),
+                components: null,
+                expression: "DeviceAlert.device",
+                targetResourceTypes: new[] { "Device", "DeviceMetric" },
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "The device detecting the condition")
+,
+            new SearchParameterInfo(
+                name: "encounter",
+                code: "encounter",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-encounter"),
+                components: null,
+                expression: "DeviceAlert.encounter",
+                targetResourceTypes: new[] { "Encounter" },
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Encounter during which the alert occurred")
 ,
             new SearchParameterInfo(
                 name: "identifier",
@@ -4189,7 +4244,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.identifier",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "The identifier of the alert")
 ,
             new SearchParameterInfo(
@@ -4200,8 +4255,19 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.signal.indication",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "When the signal was being annunciated")
+,
+            new SearchParameterInfo(
+                name: "location",
+                code: "location",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-location"),
+                components: null,
+                expression: "DeviceAlert.location",
+                targetResourceTypes: new[] { "Location" },
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Location of the subject at time of alert")
 ,
             new SearchParameterInfo(
                 name: "manifestation",
@@ -4211,8 +4277,19 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.signal.manifestation",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "How the alert signal is manifested")
+,
+            new SearchParameterInfo(
+                name: "occurrence",
+                code: "occurrence",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-occurrence"),
+                components: null,
+                expression: "DeviceAlert.occurrence.ofType(Period) | occurrence.ofType(dateTime)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "When the alert condition occurred")
 ,
             new SearchParameterInfo(
                 name: "patient",
@@ -4222,7 +4299,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.subject.where(resolve() is Patient)",
                 targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "The patient subject of the alert")
 ,
             new SearchParameterInfo(
@@ -4231,10 +4308,10 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-presence"),
                 components: null,
-                expression: "DeviceAlert.condition.presence",
+                expression: "DeviceAlert.presence",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Whether the alert condition is currently occuring")
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Whether the alert condition is currently occurring")
 ,
             new SearchParameterInfo(
                 name: "priority",
@@ -4244,8 +4321,19 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.priority",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "Priority of the alert condition")
+,
+            new SearchParameterInfo(
+                name: "procedure",
+                code: "procedure",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-procedure"),
+                components: null,
+                expression: "DeviceAlert.procedure",
+                targetResourceTypes: new[] { "Procedure" },
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Procedure during which the alert occurred")
 ,
             new SearchParameterInfo(
                 name: "signal-presence",
@@ -4255,19 +4343,8 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.signal.presence",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Whether the alert is currently occuring")
-,
-            new SearchParameterInfo(
-                name: "source",
-                code: "source",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-source"),
-                components: null,
-                expression: "DeviceAlert.source",
-                targetResourceTypes: new[] { "Device", "DeviceMetric" },
-                baseResourceTypes: new[] { "Resource" },
-                description: "The device detecting the condition")
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Whether the alert is currently occurring")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -4277,7 +4354,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.status",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "Status of the alert")
 ,
             new SearchParameterInfo(
@@ -4287,20 +4364,9 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-subject"),
                 components: null,
                 expression: "DeviceAlert.subject",
-                targetResourceTypes: new[] { "Device", "Patient" },
-                baseResourceTypes: new[] { "Resource" },
-                description: "Subject (patient or device) of the alert")
-,
-            new SearchParameterInfo(
-                name: "timing",
-                code: "timing",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAlert-timing"),
-                components: null,
-                expression: "DeviceAlert.condition.timing",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "When the alert condition occured")
+                targetResourceTypes: new[] { "Device", "NutritionProduct", "BiologicallyDerivedProduct", "Group", "Specimen", "Location", "Patient", "Medication" },
+                baseResourceTypes: new[] { "DeviceAlert" },
+                description: "Subject of the alert")
 ,
             new SearchParameterInfo(
                 name: "type",
@@ -4310,8 +4376,19 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceAlert.type",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "DeviceAlert" },
                 description: "Whether the alert is physiological or technical")
+,
+            new SearchParameterInfo(
+                name: "date",
+                code: "date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAssociation-date"),
+                components: null,
+                expression: "DeviceAssociation.period",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceAssociation" },
+                description: "Search for associations at or within specific times")
 ,
             new SearchParameterInfo(
                 name: "device",
@@ -4325,6 +4402,17 @@ public static class R6SearchParameterDefinitions
                 description: "Search for products that match this code")
 ,
             new SearchParameterInfo(
+                name: "focus",
+                code: "focus",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAssociation-focus"),
+                components: null,
+                expression: "DeviceAssociation.focus",
+                targetResourceTypes: new[] { "CareTeam", "Device", "Organization", "RelatedPerson", "BiologicallyDerivedProduct", "Group", "Practitioner", "Specimen", "Substance", "Location", "NutritionProduct", "PractitionerRole", "Medication", "Patient" },
+                baseResourceTypes: new[] { "DeviceAssociation" },
+                description: "The focus of an association.")
+,
+            new SearchParameterInfo(
                 name: "identifier",
                 code: "identifier",
                 searchParamType: SearchParamType.Token,
@@ -4336,26 +4424,15 @@ public static class R6SearchParameterDefinitions
                 description: "The identifier of the device association")
 ,
             new SearchParameterInfo(
-                name: "operator",
-                code: "operator",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAssociation-operator"),
+                name: "relationship",
+                code: "relationship",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAssociation-relationship"),
                 components: null,
-                expression: "DeviceAssociation.operation.operator",
-                targetResourceTypes: new[] { "RelatedPerson", "Practitioner", "Patient" },
+                expression: "DeviceAssociation.relationship",
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceAssociation" },
-                description: "The identity of a operator for whom to list associations")
-,
-            new SearchParameterInfo(
-                name: "patient",
-                code: "patient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAssociation-patient"),
-                components: null,
-                expression: "DeviceAssociation.subject.where(resolve() is Patient)",
-                targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "DeviceAssociation" },
-                description: "The identity of a patient for whom to list associations")
+                description: "Search for specific device association relationships")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -4374,10 +4451,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceAssociation-subject"),
                 components: null,
-                expression: "DeviceAssociation.subject.where(resolve() is Patient)",
-                targetResourceTypes: new[] { "Patient" },
+                expression: "DeviceAssociation.subject",
+                targetResourceTypes: new[] { "CareTeam", "Device", "Organization", "RelatedPerson", "BiologicallyDerivedProduct", "Group", "Practitioner", "Specimen", "Substance", "Location", "NutritionProduct", "PractitionerRole", "Medication", "Patient" },
                 baseResourceTypes: new[] { "DeviceAssociation" },
-                description: "The identity of a patient for whom to list associations")
+                description: "The identity of the individual(s) or entity for whom to list associations")
+,
+            new SearchParameterInfo(
+                name: "conforms-to-category",
+                code: "conforms-to-category",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-conforms-to-category"),
+                components: null,
+                expression: "DeviceDefinition.conformsTo.category",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceDefinition" },
+                description: "The category of the conformance")
 ,
             new SearchParameterInfo(
                 name: "device-name",
@@ -4391,15 +4479,37 @@ public static class R6SearchParameterDefinitions
                 description: "A server defined search that may match any of the string fields in DeviceDefinition.name or DeviceDefinition.classification.type - the latter to search for 'generic' devices.")
 ,
             new SearchParameterInfo(
-                name: "has-part",
-                code: "has-part",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-has-part"),
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-experimental"),
                 components: null,
-                expression: "DeviceDefinition.hasPart.reference",
+                expression: "DeviceDefinition.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceDefinition" },
+                description: "Whether the DeviceDefinition is experimental")
+,
+            new SearchParameterInfo(
+                name: "has-part-canonical",
+                code: "has-part-canonical",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-has-part-canonical"),
+                components: null,
+                expression: "DeviceDefinition.hasPart.definition.ofType(canonical)",
                 targetResourceTypes: new[] { "DeviceDefinition" },
                 baseResourceTypes: new[] { "DeviceDefinition" },
-                description: "The manufacturer of the device")
+                description: "The component part device definition")
+,
+            new SearchParameterInfo(
+                name: "has-part-code",
+                code: "has-part-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-has-part-code"),
+                components: null,
+                expression: "DeviceDefinition.hasPart.definition.ofType(CodeableConcept)",
+                targetResourceTypes: new[] { "DeviceDefinition" },
+                baseResourceTypes: new[] { "DeviceDefinition" },
+                description: "The component part device type")
 ,
             new SearchParameterInfo(
                 name: "manufacturer",
@@ -4413,26 +4523,15 @@ public static class R6SearchParameterDefinitions
                 description: "The manufacturer of the device")
 ,
             new SearchParameterInfo(
-                name: "model",
-                code: "model",
+                name: "model-number",
+                code: "model-number",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-model"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-model-number"),
                 components: null,
                 expression: "DeviceDefinition.modelNumber",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceDefinition" },
                 description: "The model of the device")
-,
-            new SearchParameterInfo(
-                name: "organization",
-                code: "organization",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-organization"),
-                components: null,
-                expression: "DeviceDefinition.owner",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "DeviceDefinition" },
-                description: "The organization responsible for the device")
 ,
             new SearchParameterInfo(
                 name: "part-number",
@@ -4444,17 +4543,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceDefinition" },
                 description: "The part number or catalog number of the device.")
-,
-            new SearchParameterInfo(
-                name: "specification-version",
-                code: "specification-version",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-specification-version"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-specification"), "specification"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-version"), "version") },
-                expression: "DeviceDefinition.conformsTo",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceDefinition" },
-                description: "A composite of both specification and version")
 ,
             new SearchParameterInfo(
                 name: "specification",
@@ -4473,10 +4561,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-type"),
                 components: null,
-                expression: "DeviceDefinition.conformsTo.category",
+                expression: "DeviceDefinition.classification.type",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceDefinition" },
                 description: "The device type")
+,
+            new SearchParameterInfo(
+                name: "specification-version",
+                code: "specification-version",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-specification-version"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/DeviceDefinition-specification"), "specification"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/CanonicalResource-version"), "version") },
+                expression: "DeviceDefinition.conformsTo",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceDefinition" },
+                description: "A composite of both specification and version")
 ,
             new SearchParameterInfo(
                 name: "version-type",
@@ -4488,61 +4587,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceDefinition" },
                 description: "Value and type of version")
-,
-            new SearchParameterInfo(
-                name: "code",
-                code: "code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDispense-code"),
-                components: null,
-                expression: "DeviceDispense.device.concept",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceDispense" },
-                description: "Search for devices that match this code")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDispense-identifier"),
-                components: null,
-                expression: "DeviceDispense.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceDispense" },
-                description: "The identifier of the dispense")
-,
-            new SearchParameterInfo(
-                name: "patient",
-                code: "patient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDispense-patient"),
-                components: null,
-                expression: "DeviceDispense.subject.where(resolve() is Patient)",
-                targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "DeviceDispense" },
-                description: "Returns device dispenses for a specific patient")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDispense-status"),
-                components: null,
-                expression: "DeviceDispense.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceDispense" },
-                description: "The status of the dispense")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceDispense-subject"),
-                components: null,
-                expression: "DeviceDispense.subject",
-                targetResourceTypes: new[] { "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "DeviceDispense" },
-                description: "The identity of a patient for whom to list dispenses")
 ,
             new SearchParameterInfo(
                 name: "category",
@@ -4578,6 +4622,17 @@ public static class R6SearchParameterDefinitions
                 description: "The identifier of the metric")
 ,
             new SearchParameterInfo(
+                name: "status",
+                code: "status",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceMetric-status"),
+                components: null,
+                expression: "DeviceMetric.status",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceMetric" },
+                description: "The status of the metric record")
+,
+            new SearchParameterInfo(
                 name: "type",
                 code: "type",
                 searchParamType: SearchParamType.Token,
@@ -4606,7 +4661,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-based-on"),
                 components: null,
                 expression: "DeviceRequest.basedOn",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "DeviceRequest" },
                 description: "Plan/proposal/order fulfilled by this request")
 ,
@@ -4616,7 +4671,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-device"),
                 components: null,
-                expression: "DeviceRequest.code.reference",
+                expression: "DeviceRequest.product.ofType(Reference)",
                 targetResourceTypes: new[] { "Device", "DeviceDefinition" },
                 baseResourceTypes: new[] { "DeviceRequest" },
                 description: "Reference to resource that is being requested/ordered")
@@ -4644,28 +4699,6 @@ public static class R6SearchParameterDefinitions
                 description: "Composite request this is part of")
 ,
             new SearchParameterInfo(
-                name: "instantiates-canonical",
-                code: "instantiates-canonical",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-instantiates-canonical"),
-                components: null,
-                expression: "DeviceRequest.instantiatesCanonical",
-                targetResourceTypes: new[] { "ActivityDefinition", "PlanDefinition" },
-                baseResourceTypes: new[] { "DeviceRequest" },
-                description: "Instantiates FHIR protocol or definition")
-,
-            new SearchParameterInfo(
-                name: "instantiates-uri",
-                code: "instantiates-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-instantiates-uri"),
-                components: null,
-                expression: "DeviceRequest.instantiatesUri",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceRequest" },
-                description: "Instantiates external protocol or definition")
-,
-            new SearchParameterInfo(
                 name: "insurance",
                 code: "insurance",
                 searchParamType: SearchParamType.Reference,
@@ -4688,15 +4721,15 @@ public static class R6SearchParameterDefinitions
                 description: "proposal | plan | original-order |reflex-order")
 ,
             new SearchParameterInfo(
-                name: "performer-code",
-                code: "performer-code",
+                name: "location-code",
+                code: "location-code",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-performer-code"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-location-code"),
                 components: null,
-                expression: "DeviceRequest.performer.concept",
+                expression: "DeviceRequest.location.concept",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceRequest" },
-                description: "Desired performer for service")
+                description: "The preferred location specified in the DeviceRequest (coded)")
 ,
             new SearchParameterInfo(
                 name: "performer",
@@ -4706,6 +4739,17 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "DeviceRequest.performer.reference",
                 targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                baseResourceTypes: new[] { "DeviceRequest" },
+                description: "Desired performer for service")
+,
+            new SearchParameterInfo(
+                name: "performer-code",
+                code: "performer-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-performer-code"),
+                components: null,
+                expression: "DeviceRequest.performer.concept",
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "DeviceRequest" },
                 description: "Desired performer for service")
 ,
@@ -4721,13 +4765,24 @@ public static class R6SearchParameterDefinitions
                 description: "Request takes the place of referenced completed or terminated requests")
 ,
             new SearchParameterInfo(
+                name: "product",
+                code: "product",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-product"),
+                components: null,
+                expression: "DeviceRequest.product.ofType(CodeableConcept)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "DeviceRequest" },
+                description: "Code for what is being requested/ordered")
+,
+            new SearchParameterInfo(
                 name: "requester",
                 code: "requester",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceRequest-requester"),
                 components: null,
                 expression: "DeviceRequest.requester",
-                targetResourceTypes: new[] { "Device", "Organization", "PractitionerRole", "Practitioner" },
+                targetResourceTypes: new[] { "Device", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "DeviceRequest" },
                 description: "Who/what is requesting service")
 ,
@@ -4754,35 +4809,13 @@ public static class R6SearchParameterDefinitions
                 description: "Individual the service is ordered for")
 ,
             new SearchParameterInfo(
-                name: "device",
-                code: "device",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceUsage-device"),
-                components: null,
-                expression: "DeviceUsage.device.concept",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceUsage" },
-                description: "Search by device")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DeviceUsage-status"),
-                components: null,
-                expression: "DeviceUsage.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DeviceUsage" },
-                description: "The status of the device usage")
-,
-            new SearchParameterInfo(
                 name: "based-on",
                 code: "based-on",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-based-on"),
                 components: null,
                 expression: "DiagnosticReport.basedOn",
-                targetResourceTypes: new[] { "ServiceRequest", "CarePlan", "MedicationRequest", "ImmunizationRecommendation", "NutritionOrder" },
+                targetResourceTypes: new[] { "ServiceRequest", "CarePlan", "MedicationRequest", "NutritionOrder" },
                 baseResourceTypes: new[] { "DiagnosticReport" },
                 description: "Reference to the service request.")
 ,
@@ -4798,15 +4831,26 @@ public static class R6SearchParameterDefinitions
                 description: "Which diagnostic discipline/department created the report")
 ,
             new SearchParameterInfo(
-                name: "conclusion",
-                code: "conclusion",
+                name: "conclusioncode-code",
+                code: "conclusioncode-code",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-conclusion"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-conclusioncode-code"),
                 components: null,
-                expression: "DiagnosticReport.conclusionCode",
+                expression: "DiagnosticReport.conclusionCode.concept",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DiagnosticReport" },
                 description: "A coded conclusion (interpretation/impression) on the report")
+,
+            new SearchParameterInfo(
+                name: "conclusioncode-reference",
+                code: "conclusioncode-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-conclusioncode-reference"),
+                components: null,
+                expression: "DiagnosticReport.conclusionCode.reference",
+                targetResourceTypes: new[] { "Observation", "Condition" },
+                baseResourceTypes: new[] { "DiagnosticReport" },
+                description: "A reference for the conclusion (interpretation/impression) on the report")
 ,
             new SearchParameterInfo(
                 name: "issued",
@@ -4837,9 +4881,20 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-performer"),
                 components: null,
                 expression: "DiagnosticReport.performer",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "PractitionerRole", "Practitioner" },
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "DiagnosticReport" },
                 description: "Who is responsible for the report")
+,
+            new SearchParameterInfo(
+                name: "procedure",
+                code: "procedure",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-procedure"),
+                components: null,
+                expression: "DiagnosticReport.procedure",
+                targetResourceTypes: new[] { "Procedure" },
+                baseResourceTypes: new[] { "DiagnosticReport" },
+                description: "The procedure(s) from which the report was produced.")
 ,
             new SearchParameterInfo(
                 name: "result",
@@ -4859,7 +4914,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-results-interpreter"),
                 components: null,
                 expression: "DiagnosticReport.resultsInterpreter",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "PractitionerRole", "Practitioner" },
+                targetResourceTypes: new[] { "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "DiagnosticReport" },
                 description: "Who was the source of the report")
 ,
@@ -4892,7 +4947,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DiagnosticReport-study"),
                 components: null,
                 expression: "DiagnosticReport.study",
-                targetResourceTypes: new[] { "ImagingStudy", "GenomicStudy" },
+                targetResourceTypes: new[] { "ImagingStudy" },
                 baseResourceTypes: new[] { "DiagnosticReport" },
                 description: "Studies associated with the diagnostic report")
 ,
@@ -4914,7 +4969,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-attester"),
                 components: null,
                 expression: "DocumentReference.attester.party",
-                targetResourceTypes: new[] { "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "Who attested the document")
 ,
@@ -4925,7 +4980,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-author"),
                 components: null,
                 expression: "DocumentReference.author",
-                targetResourceTypes: new[] { "Organization", "Device", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "Device", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "Who and/or what authored the document")
 ,
@@ -4936,31 +4991,31 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-based-on"),
                 components: null,
                 expression: "DocumentReference.basedOn",
-                targetResourceTypes: new[] { "Claim", "RequestOrchestration", "DeviceRequest", "ServiceRequest", "EnrollmentRequest", "CarePlan", "Contract", "MedicationRequest", "ImmunizationRecommendation", "CoverageEligibilityRequest", "VisionPrescription", "Appointment", "CommunicationRequest", "AppointmentResponse", "SupplyRequest", "NutritionOrder" },
+                targetResourceTypes: new[] { "Claim", "RequestOrchestration", "DeviceRequest", "ServiceRequest", "EnrollmentRequest", "CarePlan", "Contract", "MedicationRequest", "CoverageEligibilityRequest", "VisionPrescription", "Appointment", "CommunicationRequest", "AppointmentResponse", "NutritionOrder" },
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "Procedure that caused this media to be created")
 ,
             new SearchParameterInfo(
-                name: "bodysite-reference",
-                code: "bodysite-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-bodysite-reference"),
-                components: null,
-                expression: "DocumentReference.bodySite.reference",
-                targetResourceTypes: new[] { "BodyStructure" },
-                baseResourceTypes: new[] { "DocumentReference" },
-                description: "The body site studied")
-,
-            new SearchParameterInfo(
-                name: "bodysite",
-                code: "bodysite",
+                name: "body-structure",
+                code: "body-structure",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-bodysite"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-body-structure"),
                 components: null,
-                expression: "DocumentReference.bodySite.concept",
+                expression: "DocumentReference.bodyStructure.concept",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DocumentReference" },
-                description: "The body site studied")
+                description: "The body structure studied")
+,
+            new SearchParameterInfo(
+                name: "body-structure-reference",
+                code: "body-structure-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-body-structure-reference"),
+                components: null,
+                expression: "DocumentReference.bodyStructure.reference",
+                targetResourceTypes: new[] { "BodyStructure" },
+                baseResourceTypes: new[] { "DocumentReference" },
+                description: "The body structure studied")
 ,
             new SearchParameterInfo(
                 name: "category",
@@ -5057,7 +5112,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-event-reference"),
                 components: null,
                 expression: "DocumentReference.event.reference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "Main clinical acts documented")
 ,
@@ -5156,7 +5211,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-related"),
                 components: null,
                 expression: "DocumentReference.related",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "Related identifiers or resources")
 ,
@@ -5181,17 +5236,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "replaces | transforms | signs | appends")
-,
-            new SearchParameterInfo(
-                name: "relationship",
-                code: "relationship",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-relationship"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-relatesto"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-relation"), "target") },
-                expression: "DocumentReference.relatesTo",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "DocumentReference" },
-                description: "Combination of relation and relatesTo")
 ,
             new SearchParameterInfo(
                 name: "security-label",
@@ -5233,7 +5277,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-subject"),
                 components: null,
                 expression: "DocumentReference.subject",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "DocumentReference" },
                 description: "Who/what is the subject of the document")
 ,
@@ -5249,15 +5293,15 @@ public static class R6SearchParameterDefinitions
                 description: "The business version identifier")
 ,
             new SearchParameterInfo(
-                name: "_text",
-                code: "_text",
-                searchParamType: SearchParamType.Special,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/DomainResource-text"),
-                components: null,
-                expression: null,
+                name: "relationship",
+                code: "relationship",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-relationship"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-relatesto"), "target"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/DocumentReference-relation"), "code") },
+                expression: "DocumentReference.relatesTo",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "DomainResource" },
-                description: "Search on the narrative of the resource")
+                baseResourceTypes: new[] { "DocumentReference" },
+                description: "Combination of relation and relatesTo")
 ,
             new SearchParameterInfo(
                 name: "account",
@@ -5288,9 +5332,20 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-based-on"),
                 components: null,
                 expression: "Encounter.basedOn",
-                targetResourceTypes: new[] { "RequestOrchestration", "DeviceRequest", "ServiceRequest", "CarePlan", "MedicationRequest", "ImmunizationRecommendation", "NutritionOrder", "VisionPrescription" },
+                targetResourceTypes: new[] { "RequestOrchestration", "DeviceRequest", "ServiceRequest", "CarePlan", "MedicationRequest", "NutritionOrder", "VisionPrescription" },
                 baseResourceTypes: new[] { "Encounter" },
                 description: "The ServiceRequest that initiated this encounter")
+,
+            new SearchParameterInfo(
+                name: "business-status",
+                code: "business-status",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-business-status"),
+                components: null,
+                expression: "Encounter.businessStatus.code",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Encounter" },
+                description: "The current business status of the Encounter")
 ,
             new SearchParameterInfo(
                 name: "careteam",
@@ -5381,28 +5436,6 @@ public static class R6SearchParameterDefinitions
                 description: "Length of encounter in days")
 ,
             new SearchParameterInfo(
-                name: "location-period",
-                code: "location-period",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location-period"),
-                components: null,
-                expression: "Encounter.location.period",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Encounter" },
-                description: "Time period during which the patient was present at a location (generally used via composite location-period)")
-,
-            new SearchParameterInfo(
-                name: "location-value-period",
-                code: "location-value-period",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location-value-period"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location"), "location"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location-period"), "period") },
-                expression: "Encounter.location",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Encounter" },
-                description: "Time period during which the patient was present at the location")
-,
-            new SearchParameterInfo(
                 name: "location",
                 code: "location",
                 searchParamType: SearchParamType.Reference,
@@ -5412,6 +5445,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Location" },
                 baseResourceTypes: new[] { "Encounter" },
                 description: "Location the encounter takes place")
+,
+            new SearchParameterInfo(
+                name: "location-period",
+                code: "location-period",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location-period"),
+                components: null,
+                expression: "Encounter.location.period",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Encounter" },
+                description: "Time period during which the patient was present at a location (generally used via composite location-period)")
 ,
             new SearchParameterInfo(
                 name: "part-of",
@@ -5425,17 +5469,6 @@ public static class R6SearchParameterDefinitions
                 description: "Another Encounter this encounter is part of")
 ,
             new SearchParameterInfo(
-                name: "participant-type",
-                code: "participant-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-participant-type"),
-                components: null,
-                expression: "Encounter.participant.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Encounter" },
-                description: "Role of participant in encounter")
-,
-            new SearchParameterInfo(
                 name: "participant",
                 code: "participant",
                 searchParamType: SearchParamType.Reference,
@@ -5445,6 +5478,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "HealthcareService", "Device", "RelatedPerson", "PractitionerRole", "Group", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Encounter" },
                 description: "Persons involved in the encounter other than the patient")
+,
+            new SearchParameterInfo(
+                name: "participant-type",
+                code: "participant-type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-participant-type"),
+                components: null,
+                expression: "Encounter.participant.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Encounter" },
+                description: "Role of participant in encounter")
 ,
             new SearchParameterInfo(
                 name: "practitioner",
@@ -5475,7 +5519,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-reason-reference"),
                 components: null,
                 expression: "Encounter.reason.value.reference",
-                targetResourceTypes: new[] { "Procedure", "Observation", "DiagnosticReport", "ImmunizationRecommendation", "Condition" },
+                targetResourceTypes: new[] { "Procedure", "Observation", "DiagnosticReport", "Condition" },
                 baseResourceTypes: new[] { "Encounter" },
                 description: "Reference to a resource (resource reference)")
 ,
@@ -5513,17 +5557,6 @@ public static class R6SearchParameterDefinitions
                 description: "planned | in-progress | on-hold | completed | cancelled | entered-in-error | unknown")
 ,
             new SearchParameterInfo(
-                name: "subject-status",
-                code: "subject-status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-subject-status"),
-                components: null,
-                expression: "Encounter.subjectStatus",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Encounter" },
-                description: "The current status of the subject in relation to the Encounter")
-,
-            new SearchParameterInfo(
                 name: "subject",
                 code: "subject",
                 searchParamType: SearchParamType.Reference,
@@ -5535,48 +5568,26 @@ public static class R6SearchParameterDefinitions
                 description: "The patient or group present at the encounter")
 ,
             new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
+                name: "subject-status",
+                code: "subject-status",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/EncounterHistory-identifier"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-subject-status"),
                 components: null,
-                expression: "EncounterHistory.identifier",
+                expression: "Encounter.subjectStatus",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "EncounterHistory" },
-                description: "Identifier(s) by which this encounter is known")
+                baseResourceTypes: new[] { "Encounter" },
+                description: "The current status of the subject in relation to the Encounter")
 ,
             new SearchParameterInfo(
-                name: "patient",
-                code: "patient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/EncounterHistory-patient"),
-                components: null,
-                expression: "EncounterHistory.subject.where(resolve() is Patient)",
-                targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "EncounterHistory" },
-                description: "The patient present at the encounter")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/EncounterHistory-status"),
-                components: null,
-                expression: "EncounterHistory.status",
+                name: "location-value-period",
+                code: "location-value-period",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location-value-period"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location"), "location"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Encounter-location-period"), "period") },
+                expression: "Encounter.location",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "EncounterHistory" },
-                description: "Status of the Encounter history entry")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/EncounterHistory-subject"),
-                components: null,
-                expression: "EncounterHistory.subject",
-                targetResourceTypes: new[] { "Group", "Patient" },
-                baseResourceTypes: new[] { "EncounterHistory" },
-                description: "The patient or group present at the encounter")
+                baseResourceTypes: new[] { "Encounter" },
+                description: "Time period during which the patient was present at the location")
 ,
             new SearchParameterInfo(
                 name: "connection-type",
@@ -5623,6 +5634,17 @@ public static class R6SearchParameterDefinitions
                 description: "The organization that is managing the endpoint")
 ,
             new SearchParameterInfo(
+                name: "payload-profile",
+                code: "payload-profile",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Endpoint-payload-profile"),
+                components: null,
+                expression: "Endpoint.payload.profileCanonical | Endpoint.payload.profileUri",
+                targetResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "Composition", "ConceptMap", "Contract", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "ResearchStudy", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
+                baseResourceTypes: new[] { "Endpoint" },
+                description: "The profiles (FHIR or non-FHIR) that might be used at this endpoint")
+,
+            new SearchParameterInfo(
                 name: "payload-type",
                 code: "payload-type",
                 searchParamType: SearchParamType.Token,
@@ -5645,6 +5667,17 @@ public static class R6SearchParameterDefinitions
                 description: "The current status of the Endpoint (usually expected to be active)")
 ,
             new SearchParameterInfo(
+                name: "group",
+                code: "group",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/EnrollmentRequest-group"),
+                components: null,
+                expression: "EnrollmentRequest.candidate.where(resolve() is Group)",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "EnrollmentRequest" },
+                description: "The parties to be enrolled")
+,
+            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
@@ -5662,9 +5695,20 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/EnrollmentRequest-subject"),
                 components: null,
                 expression: "EnrollmentRequest.candidate",
-                targetResourceTypes: new[] { "Patient" },
+                targetResourceTypes: new[] { "Group", "Patient" },
                 baseResourceTypes: new[] { "EnrollmentRequest" },
                 description: "The party to be enrolled")
+,
+            new SearchParameterInfo(
+                name: "group",
+                code: "group",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/EnrollmentResponse-group"),
+                components: null,
+                expression: "EnrollmentResponse.candidate.where(resolve() is Group)",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "EnrollmentResponse" },
+                description: "The parties to be enrolled")
 ,
             new SearchParameterInfo(
                 name: "identifier",
@@ -5676,6 +5720,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "EnrollmentResponse" },
                 description: "The business identifier of the EnrollmentResponse")
+,
+            new SearchParameterInfo(
+                name: "patient",
+                code: "patient",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/EnrollmentResponse-patient"),
+                components: null,
+                expression: "EnrollmentResponse.candidate.where(resolve() is Patient)",
+                targetResourceTypes: new[] { "Patient" },
+                baseResourceTypes: new[] { "EnrollmentResponse" },
+                description: "The party to be enrolled")
 ,
             new SearchParameterInfo(
                 name: "request",
@@ -5772,7 +5827,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/EpisodeOfCare-reason-reference"),
                 components: null,
                 expression: "EpisodeOfCare.reason.value.reference",
-                targetResourceTypes: new[] { "HealthcareService", "Procedure", "Observation", "Condition" },
+                targetResourceTypes: new[] { "HealthcareService", "Procedure", "Observation", "DiagnosticReport", "Condition" },
                 baseResourceTypes: new[] { "EpisodeOfCare" },
                 description: "Reference to a resource (resource reference)")
 ,
@@ -5799,48 +5854,48 @@ public static class R6SearchParameterDefinitions
                 description: "The patient/group who is the focus of this episode of care")
 ,
             new SearchParameterInfo(
-                name: "Exampleconstraint",
-                code: "example-constraint",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-constraint"),
-                components: null,
-                expression: "Bundle.entry[0].resource",
-                targetResourceTypes: new[] { "Composition" },
-                baseResourceTypes: new[] { "Bundle" },
-                description: "Search Composition Bundle")
-,
-            new SearchParameterInfo(
-                name: "ExampleSearchParameterOnAnExtension",
-                code: "part-agree",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-extension"),
-                components: null,
-                expression: "Patient.extension('http://example.org/fhir/StructureDefinition/participation-agreement').value",
-                targetResourceTypes: new[] { "DocumentReference" },
-                baseResourceTypes: new[] { "Patient" },
-                description: "Search by url for a participation agreement, which is stored as an extension referencing a DocumentReference")
-,
-            new SearchParameterInfo(
-                name: "ExampleSearchParameter",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-reference"),
-                components: null,
-                expression: "Condition.subject",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "Condition" },
-                description: "Search by condition subject")
-,
-            new SearchParameterInfo(
-                name: "IDSEARCHPARAMETER",
-                code: "_id",
+                name: "experimental",
+                code: "experimental",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/EventDefinition-experimental"),
                 components: null,
-                expression: "id",
+                expression: "EventDefinition.experimental",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Search by resource identifier - e.g. same as the read interaction, but can return included resources")
+                baseResourceTypes: new[] { "EventDefinition" },
+                description: "Whether the EventDefinition is experimental")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Evidence-experimental"),
+                components: null,
+                expression: "Evidence.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Evidence" },
+                description: "Whether the Evidence is experimental")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/EvidenceVariable-experimental"),
+                components: null,
+                expression: "EvidenceVariable.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "EvidenceVariable" },
+                description: "Whether the EvidenceVariable is experimental")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ExampleScenario-experimental"),
+                components: null,
+                expression: "ExampleScenario.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ExampleScenario" },
+                description: "Whether the ExampleScenario is experimental")
 ,
             new SearchParameterInfo(
                 name: "care-team",
@@ -5931,6 +5986,17 @@ public static class R6SearchParameterDefinitions
                 description: "Facility responsible for the goods and services")
 ,
             new SearchParameterInfo(
+                name: "group",
+                code: "group",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ExplanationOfBenefit-group"),
+                components: null,
+                expression: "ExplanationOfBenefit.subject.where(resolve() is Group) | ExplanationOfBenefit.item.subject.where(resolve() is Group) | ExplanationOfBenefit.addItem.subject.where(resolve() is Group)",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "ExplanationOfBenefit" },
+                description: "The reference to the group")
+,
+            new SearchParameterInfo(
                 name: "item-udi",
                 code: "item-udi",
                 searchParamType: SearchParamType.Reference,
@@ -5997,26 +6063,15 @@ public static class R6SearchParameterDefinitions
                 description: "UDI associated with a line item detail subdetail product or service")
 ,
             new SearchParameterInfo(
-                name: "instantiates-canonical",
-                code: "instantiates-canonical",
+                name: "subject",
+                code: "subject",
                 searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/FamilyMemberHistory-instantiates-canonical"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ExplanationOfBenefit-subject"),
                 components: null,
-                expression: "FamilyMemberHistory.instantiatesCanonical",
-                targetResourceTypes: new[] { "Measure", "OperationDefinition", "ActivityDefinition", "PlanDefinition", "Questionnaire" },
-                baseResourceTypes: new[] { "FamilyMemberHistory" },
-                description: "Instantiates FHIR protocol or definition")
-,
-            new SearchParameterInfo(
-                name: "instantiates-uri",
-                code: "instantiates-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/FamilyMemberHistory-instantiates-uri"),
-                components: null,
-                expression: "FamilyMemberHistory.instantiatesUri",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "FamilyMemberHistory" },
-                description: "Instantiates external protocol or definition")
+                expression: "ExplanationOfBenefit.subject | ExplanationOfBenefit.item.subject | ExplanationOfBenefit.addItem.subject",
+                targetResourceTypes: new[] { "Group", "Patient" },
+                baseResourceTypes: new[] { "ExplanationOfBenefit" },
+                description: "Subject receiving the products or services")
 ,
             new SearchParameterInfo(
                 name: "relationship",
@@ -6050,17 +6105,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "FamilyMemberHistory" },
                 description: "partial | completed | entered-in-error | health-unknown")
-,
-            new SearchParameterInfo(
-                name: "FilterSearchParameter",
-                code: "_filter",
-                searchParamType: SearchParamType.Special,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/filter"),
-                components: null,
-                expression: null,
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "This is the formal declaration for the _filter parameter, documented at [http://hl7.org/fhir/search_filter.html](http://hl7.org/fhir/search_filter.html)")
 ,
             new SearchParameterInfo(
                 name: "author",
@@ -6105,83 +6149,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Organization", "RelatedPerson", "PractitionerRole", "Procedure", "PlanDefinition", "Group", "Practitioner", "Location", "Patient", "Medication" },
                 baseResourceTypes: new[] { "Flag" },
                 description: "The identity of a subject to list flags for")
-,
-            new SearchParameterInfo(
-                name: "code",
-                code: "code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/FormularyItem-code"),
-                components: null,
-                expression: "FormularyItem.code",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "FormularyItem" },
-                description: "Returns formulary items for a specific code")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/FormularyItem-identifier"),
-                components: null,
-                expression: "FormularyItem.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "FormularyItem" },
-                description: "Returns formulary items with this external identifier")
-,
-            new SearchParameterInfo(
-                name: "focus",
-                code: "focus",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/GenomicStudy-focus"),
-                components: null,
-                expression: "GenomicStudy.analysis.focus",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "GenomicStudy" },
-                description: "What the genomic study analysis is about, when it is not about the subject of record")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/GenomicStudy-identifier"),
-                components: null,
-                expression: "GenomicStudy.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "GenomicStudy" },
-                description: "Identifiers for the Study")
-,
-            new SearchParameterInfo(
-                name: "patient",
-                code: "patient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/GenomicStudy-patient"),
-                components: null,
-                expression: "GenomicStudy.subject.where(resolve() is Patient)",
-                targetResourceTypes: new[] { "Patient" },
-                baseResourceTypes: new[] { "GenomicStudy" },
-                description: "Who the study is about")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/GenomicStudy-status"),
-                components: null,
-                expression: "GenomicStudy.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "GenomicStudy" },
-                description: "The status of the study")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/GenomicStudy-subject"),
-                components: null,
-                expression: "GenomicStudy.subject",
-                targetResourceTypes: new[] { "NutritionProduct", "Group", "BiologicallyDerivedProduct", "Substance", "Patient" },
-                baseResourceTypes: new[] { "GenomicStudy" },
-                description: "Who the study is about")
 ,
             new SearchParameterInfo(
                 name: "achievement-status",
@@ -6283,39 +6250,6 @@ public static class R6SearchParameterDefinitions
                 description: "The parameter whose value is being tracked")
 ,
             new SearchParameterInfo(
-                name: "start",
-                code: "start",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/GraphDefinition-start"),
-                components: null,
-                expression: "GraphDefinition.start",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "GraphDefinition" },
-                description: "Type of resource at which the graph starts")
-,
-            new SearchParameterInfo(
-                name: "characteristic-reference",
-                code: "characteristic-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic-reference"),
-                components: null,
-                expression: "(Group.characteristic.value.ofType(Reference))",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "Group" },
-                description: "An entity referenced in a characteristic")
-,
-            new SearchParameterInfo(
-                name: "characteristic-value",
-                code: "characteristic-value",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic-value"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-value"), "(value.ofType(CodeableConcept)) | (value.ofType(boolean))") },
-                expression: "Group.characteristic",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Group" },
-                description: "A composite of both characteristic and value")
-,
-            new SearchParameterInfo(
                 name: "characteristic",
                 code: "characteristic",
                 searchParamType: SearchParamType.Token,
@@ -6349,6 +6283,17 @@ public static class R6SearchParameterDefinitions
                 description: "Group includes or excludes")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-experimental"),
+                components: null,
+                expression: "Group.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Group" },
+                description: "Whether the Group is experimental")
+,
+            new SearchParameterInfo(
                 name: "managing-entity",
                 code: "managing-entity",
                 searchParamType: SearchParamType.Reference,
@@ -6366,7 +6311,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Group-member"),
                 components: null,
                 expression: "Group.member.entity",
-                targetResourceTypes: new[] { "HealthcareService", "CareTeam", "Device", "Organization", "RelatedPerson", "PractitionerRole", "Group", "Practitioner", "Specimen", "Location", "Patient" },
+                targetResourceTypes: new[] { "CareTeam", "Device", "Organization", "RelatedPerson", "Group", "Practitioner", "BiologicallyDerivedProduct", "Specimen", "Substance", "SubstanceDefinition", "Location", "MedicinalProductDefinition", "HealthcareService", "PractitionerRole", "NutritionProduct", "Patient", "Medication" },
                 baseResourceTypes: new[] { "Group" },
                 description: "Reference to the group member")
 ,
@@ -6380,6 +6325,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Group" },
                 description: "Definitional or enumerated group")
+,
+            new SearchParameterInfo(
+                name: "quantity",
+                code: "quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-quantity"),
+                components: null,
+                expression: "(Group.characteristic.value.ofType(Quantity)) | (Group.characteristic.value.ofType(Range))",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Group" },
+                description: "Quantity Value held by characteristic")
 ,
             new SearchParameterInfo(
                 name: "type",
@@ -6402,6 +6358,39 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Group" },
                 description: "Value held by characteristic")
+,
+            new SearchParameterInfo(
+                name: "characteristic-quantity",
+                code: "characteristic-quantity",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic-quantity"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-quantity"), "(value.ofType(Quantity)) | (value.ofType(Range))") },
+                expression: "Group.characteristic",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Group" },
+                description: "A composite of both characteristic and quantity values")
+,
+            new SearchParameterInfo(
+                name: "characteristic-reference",
+                code: "characteristic-reference",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic-reference"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-reference"), "value.ofType(Reference))") },
+                expression: "Group.characteristic",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Group" },
+                description: "A composite of both characteristic and reference values")
+,
+            new SearchParameterInfo(
+                name: "characteristic-value",
+                code: "characteristic-value",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic-value"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-characteristic"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Group-value"), "(value.ofType(CodeableConcept)) | (value.ofType(boolean))") },
+                expression: "Group.characteristic",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Group" },
+                description: "A composite of both characteristic and value")
 ,
             new SearchParameterInfo(
                 name: "request",
@@ -6608,7 +6597,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ImagingSelection-based-on"),
                 components: null,
                 expression: "ImagingSelection.basedOn",
-                targetResourceTypes: new[] { "Appointment", "ServiceRequest", "CarePlan", "Task", "AppointmentResponse" },
+                targetResourceTypes: new[] { "Appointment", "ServiceRequest", "CarePlan", "Task" },
                 baseResourceTypes: new[] { "ImagingSelection" },
                 description: "The request associated with an imaging selection")
 ,
@@ -6668,6 +6657,17 @@ public static class R6SearchParameterDefinitions
                 description: "The date / time the imaging selection was created")
 ,
             new SearchParameterInfo(
+                name: "modality",
+                code: "modality",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ImagingSelection-modality"),
+                components: null,
+                expression: "ImagingSelection.modality",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ImagingSelection" },
+                description: "The modality of the selection")
+,
+            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
@@ -6707,9 +6707,9 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ImagingStudy-based-on"),
                 components: null,
                 expression: "ImagingStudy.basedOn",
-                targetResourceTypes: new[] { "Appointment", "ServiceRequest", "CarePlan", "Task", "AppointmentResponse" },
+                targetResourceTypes: new[] { "Appointment", "ServiceRequest", "CarePlan", "Task" },
                 baseResourceTypes: new[] { "ImagingStudy" },
-                description: "The order for the image, such as Accession Number associated with a ServiceRequest")
+                description: "The order for the image such as Accession Number")
 ,
             new SearchParameterInfo(
                 name: "body-site",
@@ -6789,6 +6789,17 @@ public static class R6SearchParameterDefinitions
                 description: "The person who performed the study")
 ,
             new SearchParameterInfo(
+                name: "procedure",
+                code: "procedure",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ImagingStudy-procedure"),
+                components: null,
+                expression: "ImagingStudy.procedure",
+                targetResourceTypes: new[] { "Procedure" },
+                baseResourceTypes: new[] { "ImagingStudy" },
+                description: "The performed procedure for the study")
+,
+            new SearchParameterInfo(
                 name: "reason-concept",
                 code: "reason-concept",
                 searchParamType: SearchParamType.Token,
@@ -6866,6 +6877,17 @@ public static class R6SearchParameterDefinitions
                 description: "Who the study is about")
 ,
             new SearchParameterInfo(
+                name: "encounter",
+                code: "encounter",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Immunization-encounter"),
+                components: null,
+                expression: "Immunization.encounter",
+                targetResourceTypes: new[] { "Encounter" },
+                baseResourceTypes: new[] { "Immunization" },
+                description: "The Encounter this Immunization was part of")
+,
+            new SearchParameterInfo(
                 name: "location",
                 code: "location",
                 searchParamType: SearchParamType.Reference,
@@ -6910,17 +6932,6 @@ public static class R6SearchParameterDefinitions
                 description: "The practitioner, individual or organization who played a role in the vaccination")
 ,
             new SearchParameterInfo(
-                name: "reaction-date",
-                code: "reaction-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Immunization-reaction-date"),
-                components: null,
-                expression: "Immunization.reaction.date",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Immunization" },
-                description: "When reaction started")
-,
-            new SearchParameterInfo(
                 name: "reaction",
                 code: "reaction",
                 searchParamType: SearchParamType.Reference,
@@ -6930,6 +6941,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Observation" },
                 baseResourceTypes: new[] { "Immunization" },
                 description: "Additional information on reaction")
+,
+            new SearchParameterInfo(
+                name: "reaction-date",
+                code: "reaction-date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Immunization-reaction-date"),
+                components: null,
+                expression: "Immunization.reaction.date",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Immunization" },
+                description: "When reaction started")
 ,
             new SearchParameterInfo(
                 name: "reason-code",
@@ -6965,17 +6987,6 @@ public static class R6SearchParameterDefinitions
                 description: "The series being followed by the provider")
 ,
             new SearchParameterInfo(
-                name: "status-reason",
-                code: "status-reason",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Immunization-status-reason"),
-                components: null,
-                expression: "Immunization.statusReason",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Immunization" },
-                description: "Reason why the vaccine was not administered")
-,
-            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
@@ -6985,6 +6996,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Immunization" },
                 description: "Immunization event status")
+,
+            new SearchParameterInfo(
+                name: "status-reason",
+                code: "status-reason",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Immunization-status-reason"),
+                components: null,
+                expression: "Immunization.statusReason",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Immunization" },
+                description: "Reason why the vaccine was not administered")
 ,
             new SearchParameterInfo(
                 name: "target-disease",
@@ -7009,105 +7031,6 @@ public static class R6SearchParameterDefinitions
                 description: "Vaccine Product Administered")
 ,
             new SearchParameterInfo(
-                name: "dose-status",
-                code: "dose-status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationEvaluation-dose-status"),
-                components: null,
-                expression: "ImmunizationEvaluation.doseStatus",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ImmunizationEvaluation" },
-                description: "The status of the dose relative to published recommendations")
-,
-            new SearchParameterInfo(
-                name: "immunization-event",
-                code: "immunization-event",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationEvaluation-immunization-event"),
-                components: null,
-                expression: "ImmunizationEvaluation.immunizationEvent",
-                targetResourceTypes: new[] { "Immunization" },
-                baseResourceTypes: new[] { "ImmunizationEvaluation" },
-                description: "The vaccine administration event being evaluated")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationEvaluation-status"),
-                components: null,
-                expression: "ImmunizationEvaluation.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ImmunizationEvaluation" },
-                description: "Immunization evaluation status")
-,
-            new SearchParameterInfo(
-                name: "target-disease",
-                code: "target-disease",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationEvaluation-target-disease"),
-                components: null,
-                expression: "ImmunizationEvaluation.targetDisease",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ImmunizationEvaluation" },
-                description: "The vaccine preventable disease being evaluated against")
-,
-            new SearchParameterInfo(
-                name: "information",
-                code: "information",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationRecommendation-information"),
-                components: null,
-                expression: "ImmunizationRecommendation.recommendation.supportingPatientInformation",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ImmunizationRecommendation" },
-                description: "Patient observations supporting recommendation")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationRecommendation-status"),
-                components: null,
-                expression: "ImmunizationRecommendation.recommendation.forecastStatus",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ImmunizationRecommendation" },
-                description: "Vaccine recommendation status")
-,
-            new SearchParameterInfo(
-                name: "support",
-                code: "support",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationRecommendation-support"),
-                components: null,
-                expression: "ImmunizationRecommendation.recommendation.supportingImmunization",
-                targetResourceTypes: new[] { "ImmunizationEvaluation", "Immunization" },
-                baseResourceTypes: new[] { "ImmunizationRecommendation" },
-                description: "Past immunizations supporting recommendation")
-,
-            new SearchParameterInfo(
-                name: "target-disease",
-                code: "target-disease",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationRecommendation-target-disease"),
-                components: null,
-                expression: "ImmunizationRecommendation.recommendation.targetDisease",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ImmunizationRecommendation" },
-                description: "Disease to be immunized against")
-,
-            new SearchParameterInfo(
-                name: "vaccine-type",
-                code: "vaccine-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ImmunizationRecommendation-vaccine-type"),
-                components: null,
-                expression: "ImmunizationRecommendation.recommendation.vaccineCode",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ImmunizationRecommendation" },
-                description: "Vaccine  or vaccine group recommendation applies to")
-,
-            new SearchParameterInfo(
                 name: "depends-on",
                 code: "depends-on",
                 searchParamType: SearchParamType.Reference,
@@ -7127,7 +7050,7 @@ public static class R6SearchParameterDefinitions
                 expression: "ImplementationGuide.experimental",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ImplementationGuide" },
-                description: "For testing purposes, not real usage")
+                description: "For testing only - never for real usage")
 ,
             new SearchParameterInfo(
                 name: "global",
@@ -7147,163 +7070,9 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ImplementationGuide-resource"),
                 components: null,
                 expression: "ImplementationGuide.definition.resource.reference",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "ImplementationGuide" },
                 description: "Location of the resource")
-,
-            new SearchParameterInfo(
-                name: "address-city",
-                code: "address-city",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-city"),
-                components: null,
-                expression: "Patient.address.city | Person.address.city | Practitioner.address.city | RelatedPerson.address.city",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A city specified in an address\r\n* [Person](person.html): A city specified in an address\r\n* [Practitioner](practitioner.html): A city specified in an address\r\n* [RelatedPerson](relatedperson.html): A city specified in an address\r\n")
-,
-            new SearchParameterInfo(
-                name: "address-country",
-                code: "address-country",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-country"),
-                components: null,
-                expression: "Patient.address.country | Person.address.country | Practitioner.address.country | RelatedPerson.address.country",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A country specified in an address\r\n* [Person](person.html): A country specified in an address\r\n* [Practitioner](practitioner.html): A country specified in an address\r\n* [RelatedPerson](relatedperson.html): A country specified in an address\r\n")
-,
-            new SearchParameterInfo(
-                name: "address-postalcode",
-                code: "address-postalcode",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-postalcode"),
-                components: null,
-                expression: "Patient.address.postalCode | Person.address.postalCode | Practitioner.address.postalCode | RelatedPerson.address.postalCode",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A postalCode specified in an address\r\n* [Person](person.html): A postal code specified in an address\r\n* [Practitioner](practitioner.html): A postalCode specified in an address\r\n* [RelatedPerson](relatedperson.html): A postal code specified in an address\r\n")
-,
-            new SearchParameterInfo(
-                name: "address-state",
-                code: "address-state",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-state"),
-                components: null,
-                expression: "Patient.address.state | Person.address.state | Practitioner.address.state | RelatedPerson.address.state",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A state specified in an address\r\n* [Person](person.html): A state specified in an address\r\n* [Practitioner](practitioner.html): A state specified in an address\r\n* [RelatedPerson](relatedperson.html): A state specified in an address\r\n")
-,
-            new SearchParameterInfo(
-                name: "address-use",
-                code: "address-use",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-use"),
-                components: null,
-                expression: "Patient.address.use | Person.address.use | Practitioner.address.use | RelatedPerson.address.use",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A use code specified in an address\r\n* [Person](person.html): A use code specified in an address\r\n* [Practitioner](practitioner.html): A use code specified in an address\r\n* [RelatedPerson](relatedperson.html): A use code specified in an address\r\n")
-,
-            new SearchParameterInfo(
-                name: "address",
-                code: "address",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address"),
-                components: null,
-                expression: "Patient.address | Person.address | Practitioner.address | RelatedPerson.address",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n* [Person](person.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n* [Practitioner](practitioner.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n* [RelatedPerson](relatedperson.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n")
-,
-            new SearchParameterInfo(
-                name: "birthdate",
-                code: "birthdate",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-birthdate"),
-                components: null,
-                expression: "Patient.birthDate | Person.birthDate | RelatedPerson.birthDate",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): The patient's date of birth\r\n* [Person](person.html): The person's date of birth\r\n* [RelatedPerson](relatedperson.html): The Related Person's date of birth\r\n")
-,
-            new SearchParameterInfo(
-                name: "email",
-                code: "email",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-email"),
-                components: null,
-                expression: "Patient.telecom.where(system='email') | Person.telecom.where(system='email') | Practitioner.telecom.where(system='email') | PractitionerRole.contact.telecom.where(system='email') | RelatedPerson.telecom.where(system='email')",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "PractitionerRole", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A value in an email contact\r\n* [Person](person.html): A value in an email contact\r\n* [Practitioner](practitioner.html): A value in an email contact\r\n* [PractitionerRole](practitionerrole.html): A value in an email contact\r\n* [RelatedPerson](relatedperson.html): A value in an email contact\r\n")
-,
-            new SearchParameterInfo(
-                name: "family",
-                code: "family",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-family"),
-                components: null,
-                expression: "Patient.name.family | Practitioner.name.family",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Practitioner" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A portion of the family name of the patient\r\n* [Practitioner](practitioner.html): A portion of the family name\r\n")
-,
-            new SearchParameterInfo(
-                name: "gender",
-                code: "gender",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-gender"),
-                components: null,
-                expression: "Patient.gender | Person.gender | Practitioner.gender | RelatedPerson.gender",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): Gender of the patient\r\n* [Person](person.html): The gender of the person\r\n* [Practitioner](practitioner.html): Gender of the practitioner\r\n* [RelatedPerson](relatedperson.html): Gender of the related person\r\n")
-,
-            new SearchParameterInfo(
-                name: "given",
-                code: "given",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-given"),
-                components: null,
-                expression: "Patient.name.given | Practitioner.name.given",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Practitioner" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A portion of the given name of the patient\r\n* [Practitioner](practitioner.html): A portion of the given name\r\n")
-,
-            new SearchParameterInfo(
-                name: "phone",
-                code: "phone",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-phone"),
-                components: null,
-                expression: "Patient.telecom.where(system='phone') | Person.telecom.where(system='phone') | Practitioner.telecom.where(system='phone') | PractitionerRole.contact.telecom.where(system='phone') | RelatedPerson.telecom.where(system='phone')",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "PractitionerRole", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A value in a phone contact\r\n* [Person](person.html): A value in a phone contact\r\n* [Practitioner](practitioner.html): A value in a phone contact\r\n* [PractitionerRole](practitionerrole.html): A value in a phone contact\r\n* [RelatedPerson](relatedperson.html): A value in a phone contact\r\n")
-,
-            new SearchParameterInfo(
-                name: "phonetic",
-                code: "phonetic",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-phonetic"),
-                components: null,
-                expression: "Patient.name | Person.name | Practitioner.name | RelatedPerson.name",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A portion of either family or given name using some kind of phonetic matching algorithm\r\n* [Person](person.html): A portion of name using some kind of phonetic matching algorithm\r\n* [Practitioner](practitioner.html): A portion of either family or given name using some kind of phonetic matching algorithm\r\n* [RelatedPerson](relatedperson.html): A portion of name using some kind of phonetic matching algorithm\r\n")
-,
-            new SearchParameterInfo(
-                name: "telecom",
-                code: "telecom",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-telecom"),
-                components: null,
-                expression: "Patient.telecom | Person.telecom | Practitioner.telecom | PractitionerRole.contact.telecom | RelatedPerson.telecom",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "PractitionerRole", "RelatedPerson" },
-                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): The value in any kind of telecom details of the patient\r\n* [Person](person.html): The value in any kind of contact\r\n* [Practitioner](practitioner.html): The value in any kind of contact\r\n* [PractitionerRole](practitionerrole.html): The value in any kind of contact\r\n* [RelatedPerson](relatedperson.html): The value in any kind of contact\r\n")
 ,
             new SearchParameterInfo(
                 name: "for",
@@ -7405,17 +7174,6 @@ public static class R6SearchParameterDefinitions
                 description: "Ingredient concentration strength as quantity")
 ,
             new SearchParameterInfo(
-                name: "strength-concentration-ratio",
-                code: "strength-concentration-ratio",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-strength-concentration-ratio"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-numerator"), "strength-concentration-numerator"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-denominator"), "strength-concentration-denominator") },
-                expression: "Ingredient.substance.strength.concentration.ofType(Ratio)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Ingredient" },
-                description: "Ingredient concentration strength as ratio, numerator and denominator parameter pair")
-,
-            new SearchParameterInfo(
                 name: "strength-presentation-denominator",
                 code: "strength-presentation-denominator",
                 searchParamType: SearchParamType.Quantity,
@@ -7449,15 +7207,15 @@ public static class R6SearchParameterDefinitions
                 description: "Ingredient presentation strength as quantity")
 ,
             new SearchParameterInfo(
-                name: "strength-presentation-ratio",
-                code: "strength-presentation-ratio",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-strength-presentation-ratio"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-numerator"), "strength-presentation-numerator"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-denominator"), "strength-presentation-denominator") },
-                expression: "Ingredient.substance.strength.presentation.ofType(Ratio)",
-                targetResourceTypes: null,
+                name: "substance",
+                code: "substance",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-substance"),
+                components: null,
+                expression: "Ingredient.substance.code.reference",
+                targetResourceTypes: new[] { "SubstanceDefinition" },
                 baseResourceTypes: new[] { "Ingredient" },
-                description: "Ingredient presentation strength as ratio, numerator and denominator parameter pair")
+                description: "Reference to a resource (by instance)")
 ,
             new SearchParameterInfo(
                 name: "substance-code",
@@ -7482,15 +7240,26 @@ public static class R6SearchParameterDefinitions
                 description: "Reference to a resource (by instance)")
 ,
             new SearchParameterInfo(
-                name: "substance",
-                code: "substance",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-substance"),
-                components: null,
-                expression: "Ingredient.substance.code.reference",
-                targetResourceTypes: new[] { "SubstanceDefinition" },
+                name: "strength-concentration-ratio",
+                code: "strength-concentration-ratio",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-strength-concentration-ratio"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-numerator"), "strength-concentration-numerator"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-denominator"), "strength-concentration-denominator") },
+                expression: "Ingredient.substance.strength.concentration.ofType(Ratio)",
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "Ingredient" },
-                description: "Reference to a resource (by instance)")
+                description: "Ingredient concentration strength as ratio, numerator and denominator parameter pair")
+,
+            new SearchParameterInfo(
+                name: "strength-presentation-ratio",
+                code: "strength-presentation-ratio",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-strength-presentation-ratio"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-numerator"), "strength-presentation-numerator"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Ingredient-denominator"), "strength-presentation-denominator") },
+                expression: "Ingredient.substance.strength.presentation.ofType(Ratio)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Ingredient" },
+                description: "Ingredient presentation strength as ratio, numerator and denominator parameter pair")
 ,
             new SearchParameterInfo(
                 name: "coverage-area",
@@ -7532,7 +7301,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/InsurancePlan-product"),
                 components: null,
                 expression: "InsurancePlan.product",
-                targetResourceTypes: null,
+                targetResourceTypes: new[] { "InsuranceProduct" },
                 baseResourceTypes: new[] { "InsurancePlan" },
                 description: "The product this plan is available to")
 ,
@@ -7555,8 +7324,19 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.administeredBy",
                 targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "Product administrator")
+,
+            new SearchParameterInfo(
+                name: "contact-address",
+                code: "contact-address",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/InsuranceProduct-contact-address"),
+                components: null,
+                expression: "InsuranceProduct.contact.address",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "InsuranceProduct" },
+                description: "A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text")
 ,
             new SearchParameterInfo(
                 name: "contact-address-city",
@@ -7566,7 +7346,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.contact.address.city",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A city specified in an address")
 ,
             new SearchParameterInfo(
@@ -7577,7 +7357,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.contact.address.country",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A country specified in an address")
 ,
             new SearchParameterInfo(
@@ -7588,7 +7368,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.contact.address.postalCode",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A postal code specified in an address")
 ,
             new SearchParameterInfo(
@@ -7599,7 +7379,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.contact.address.state",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A state specified in an address")
 ,
             new SearchParameterInfo(
@@ -7610,19 +7390,8 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.contact.address.use",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A use code specified in an address")
-,
-            new SearchParameterInfo(
-                name: "contact-address",
-                code: "contact-address",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InsuranceProduct-contact-address"),
-                components: null,
-                expression: "InsuranceProduct.contact.address",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text")
 ,
             new SearchParameterInfo(
                 name: "endpoint",
@@ -7632,7 +7401,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.endpoint",
                 targetResourceTypes: new[] { "Endpoint" },
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "The endpoint(s) applicable to this product")
 ,
             new SearchParameterInfo(
@@ -7643,7 +7412,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.identifier",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "Any identifier for the product (not the accreditation issuer's identifier)")
 ,
             new SearchParameterInfo(
@@ -7654,7 +7423,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.name | InsuranceProduct.alias",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A portion of the insurance product's name or alias")
 ,
             new SearchParameterInfo(
@@ -7665,7 +7434,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.ownedBy",
                 targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "The issuer of the insurance product")
 ,
             new SearchParameterInfo(
@@ -7676,7 +7445,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.name",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A portion of the product's name using some kind of phonetic matching algorithm")
 ,
             new SearchParameterInfo(
@@ -7687,7 +7456,7 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.status",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "Is the Product record active")
 ,
             new SearchParameterInfo(
@@ -7698,96 +7467,8 @@ public static class R6SearchParameterDefinitions
                 components: null,
                 expression: "InsuranceProduct.type",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
+                baseResourceTypes: new[] { "InsuranceProduct" },
                 description: "A code for the type of insurance product")
-,
-            new SearchParameterInfo(
-                name: "code",
-                code: "code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryItem-code"),
-                components: null,
-                expression: "InventoryItem.code",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "InventoryItem" },
-                description: "Search for products that match this code")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryItem-identifier"),
-                components: null,
-                expression: "InventoryItem.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "InventoryItem" },
-                description: "The identifier of the item")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryItem-status"),
-                components: null,
-                expression: "InventoryItem.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "InventoryItem" },
-                description: "The status of the item")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryItem-subject"),
-                components: null,
-                expression: "InventoryItem.instance.subject",
-                targetResourceTypes: new[] { "Organization", "Patient" },
-                baseResourceTypes: new[] { "InventoryItem" },
-                description: "The identity of a patient for whom to list associations")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryReport-identifier"),
-                components: null,
-                expression: "InventoryReport.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "InventoryReport" },
-                description: "Search by identifier")
-,
-            new SearchParameterInfo(
-                name: "item-reference",
-                code: "item-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryReport-item-reference"),
-                components: null,
-                expression: "InventoryReport.inventoryListing.item.item.reference",
-                targetResourceTypes: new[] { "Device", "InventoryItem", "NutritionProduct", "BiologicallyDerivedProduct", "Medication" },
-                baseResourceTypes: new[] { "InventoryReport" },
-                description: "Search by items in inventory report")
-,
-            new SearchParameterInfo(
-                name: "item",
-                code: "item",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryReport-item"),
-                components: null,
-                expression: "InventoryReport.inventoryListing.item.item.concept",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "InventoryReport" },
-                description: "Search by items in inventory report")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/InventoryReport-status"),
-                components: null,
-                expression: "InventoryReport.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "InventoryReport" },
-                description: "Search by status")
 ,
             new SearchParameterInfo(
                 name: "account",
@@ -7807,20 +7488,9 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Invoice-issuer"),
                 components: null,
                 expression: "Invoice.issuer",
-                targetResourceTypes: new[] { "Organization" },
+                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
                 baseResourceTypes: new[] { "Invoice" },
                 description: "Issuing Organization of Invoice")
-,
-            new SearchParameterInfo(
-                name: "participant-role",
-                code: "participant-role",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Invoice-participant-role"),
-                components: null,
-                expression: "Invoice.participant.role",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Invoice" },
-                description: "Type of involvement in creation of this Invoice")
 ,
             new SearchParameterInfo(
                 name: "participant",
@@ -7832,6 +7502,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Organization", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Invoice" },
                 description: "Individual who was involved")
+,
+            new SearchParameterInfo(
+                name: "participant-role",
+                code: "participant-role",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Invoice-participant-role"),
+                components: null,
+                expression: "Invoice.participant.role",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Invoice" },
+                description: "Type of involvement in creation of this Invoice")
 ,
             new SearchParameterInfo(
                 name: "recipient",
@@ -7900,6 +7581,50 @@ public static class R6SearchParameterDefinitions
                 description: "The type of content in the library (e.g. text/cql)")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Library-experimental"),
+                components: null,
+                expression: "Library.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Library" },
+                description: "Whether the Library is experimental")
+,
+            new SearchParameterInfo(
+                name: "subject-canonical",
+                code: "subject-canonical",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Library-subject-canonical"),
+                components: null,
+                expression: "Library.subject as canonical",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "Library" },
+                description: "The subject of the Library when expressed as a canonical")
+,
+            new SearchParameterInfo(
+                name: "subject-code",
+                code: "subject-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Library-subject-code"),
+                components: null,
+                expression: "Library.subject as CodeableConcept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Library" },
+                description: "The subject of the Library when expressed as a code")
+,
+            new SearchParameterInfo(
+                name: "subject-reference",
+                code: "subject-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Library-subject-reference"),
+                components: null,
+                expression: "Library.subject as Reference",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "Library" },
+                description: "The subject of the Library when expressed as a reference")
+,
+            new SearchParameterInfo(
                 name: "type",
                 code: "type",
                 searchParamType: SearchParamType.Token,
@@ -7909,39 +7634,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Library" },
                 description: "The type of the library (e.g. logic-library, model-definition, asset-collection, module-definition)")
-,
-            new SearchParameterInfo(
-                name: "author",
-                code: "author",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Linkage-author"),
-                components: null,
-                expression: "Linkage.author",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "Linkage" },
-                description: "Author of the Linkage")
-,
-            new SearchParameterInfo(
-                name: "item",
-                code: "item",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Linkage-item"),
-                components: null,
-                expression: "Linkage.item.resource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "Linkage" },
-                description: "Matches on any item in the Linkage")
-,
-            new SearchParameterInfo(
-                name: "source",
-                code: "source",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Linkage-source"),
-                components: null,
-                expression: "Linkage.item.resource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "Linkage" },
-                description: "Matches on any item in the Linkage with a type of 'source'")
 ,
             new SearchParameterInfo(
                 name: "empty-reason",
@@ -7961,7 +7653,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/List-item"),
                 components: null,
                 expression: "List.entry.item",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "List" },
                 description: "Actual entry")
 ,
@@ -7983,7 +7675,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/List-source"),
                 components: null,
                 expression: "List.source",
-                targetResourceTypes: new[] { "Device", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Device", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "List" },
                 description: "Who and/or what defined the list contents (aka Author)")
 ,
@@ -8005,7 +7697,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/List-subject"),
                 components: null,
                 expression: "List.subject",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "List" },
                 description: "If all resources have the same subject")
 ,
@@ -8019,6 +7711,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "List" },
                 description: "Descriptive name for the list")
+,
+            new SearchParameterInfo(
+                name: "address",
+                code: "address",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Location-address"),
+                components: null,
+                expression: "Location.address",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Location" },
+                description: "A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text")
 ,
             new SearchParameterInfo(
                 name: "address-city",
@@ -8076,17 +7779,6 @@ public static class R6SearchParameterDefinitions
                 description: "A use code specified in an address")
 ,
             new SearchParameterInfo(
-                name: "address",
-                code: "address",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Location-address"),
-                components: null,
-                expression: "Location.address",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Location" },
-                description: "A (part of the) address of the location")
-,
-            new SearchParameterInfo(
                 name: "characteristic",
                 code: "characteristic",
                 searchParamType: SearchParamType.Token,
@@ -8096,6 +7788,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Location" },
                 description: "Physical form of the location (e.g. bed/ward/site/virtual)")
+,
+            new SearchParameterInfo(
+                name: "code",
+                code: "code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Location-code"),
+                components: null,
+                expression: "Location.code",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Location" },
+                description: "The code of the location")
 ,
             new SearchParameterInfo(
                 name: "contains",
@@ -8274,13 +7977,57 @@ public static class R6SearchParameterDefinitions
                 description: "The status of this item. Enables tracking the life-cycle of the content.")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Measure-experimental"),
+                components: null,
+                expression: "Measure.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Measure" },
+                description: "Whether the Measure is experimental")
+,
+            new SearchParameterInfo(
+                name: "subject-canonical",
+                code: "subject-canonical",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Measure-subject-canonical"),
+                components: null,
+                expression: "Measure.subject as canonical",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "Measure" },
+                description: "The subject of the Measure when expressed as a canonical")
+,
+            new SearchParameterInfo(
+                name: "subject-code",
+                code: "subject-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Measure-subject-code"),
+                components: null,
+                expression: "Measure.subject as CodeableConcept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Measure" },
+                description: "The subject of the Measure when expressed as a code")
+,
+            new SearchParameterInfo(
+                name: "subject-reference",
+                code: "subject-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Measure-subject-reference"),
+                components: null,
+                expression: "Measure.subject as Reference",
+                targetResourceTypes: new[] { "Group" },
+                baseResourceTypes: new[] { "Measure" },
+                description: "The subject of the Measure when expressed as a reference")
+,
+            new SearchParameterInfo(
                 name: "evaluated-resource",
                 code: "evaluated-resource",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MeasureReport-evaluated-resource"),
                 components: null,
                 expression: "MeasureReport.evaluatedResource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "MeasureReport" },
                 description: "An evaluated resource referenced by the measure report")
 ,
@@ -8324,7 +8071,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MeasureReport-reporter"),
                 components: null,
                 expression: "MeasureReport.reporter",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner", "Group" },
+                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
                 baseResourceTypes: new[] { "MeasureReport" },
                 description: "The reporter to return measure report results for")
 ,
@@ -8356,7 +8103,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Date,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Medication-expiration-date"),
                 components: null,
-                expression: "Medication.batch.expirationDate",
+                expression: "Medication.instance.expirationDate",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Medication" },
                 description: "Returns medications in a batch with this expiration date")
@@ -8367,10 +8114,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Medication-form"),
                 components: null,
-                expression: null,
+                expression: "Medication.doseForm",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Medication" },
                 description: "Returns medications for a specific dose form")
+,
+            new SearchParameterInfo(
+                name: "ingredient",
+                code: "ingredient",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Medication-ingredient"),
+                components: null,
+                expression: "Medication.ingredient.item.reference",
+                targetResourceTypes: new[] { "Substance", "SubstanceDefinition", "Medication" },
+                baseResourceTypes: new[] { "Medication" },
+                description: "Returns medications for this ingredient reference")
 ,
             new SearchParameterInfo(
                 name: "ingredient-code",
@@ -8384,23 +8142,12 @@ public static class R6SearchParameterDefinitions
                 description: "Returns medications for this ingredient code")
 ,
             new SearchParameterInfo(
-                name: "ingredient",
-                code: "ingredient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Medication-ingredient"),
-                components: null,
-                expression: "Medication.ingredient.item.reference",
-                targetResourceTypes: new[] { "Substance", "Medication" },
-                baseResourceTypes: new[] { "Medication" },
-                description: "Returns medications for this ingredient reference")
-,
-            new SearchParameterInfo(
                 name: "lot-number",
                 code: "lot-number",
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Medication-lot-number"),
                 components: null,
-                expression: "Medication.batch.lotNumber",
+                expression: "Medication.instance.lotNumber",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Medication" },
                 description: "Returns medications in a batch with this lot number")
@@ -8425,7 +8172,7 @@ public static class R6SearchParameterDefinitions
                 expression: "Medication.identifier",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Medication" },
-                description: "Returns medications in a batch with this lot number")
+                description: "Returns medications in a instance with this lot number")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -8439,6 +8186,17 @@ public static class R6SearchParameterDefinitions
                 description: "Returns medications for this status")
 ,
             new SearchParameterInfo(
+                name: "date",
+                code: "date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-date"),
+                components: null,
+                expression: "MedicationAdministration.occurrence.ofType(dateTime) | MedicationAdministration.occurrence.ofType(Period)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicationAdministration" },
+                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): Date administration happened (or did not happen)\r\n")
+,
+            new SearchParameterInfo(
                 name: "device",
                 code: "device",
                 searchParamType: SearchParamType.Reference,
@@ -8448,6 +8206,39 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Device" },
                 baseResourceTypes: new[] { "MedicationAdministration" },
                 description: "Return administrations with this administration device identity")
+,
+            new SearchParameterInfo(
+                name: "encounter",
+                code: "encounter",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-encounter"),
+                components: null,
+                expression: "MedicationAdministration.encounter | MedicationRequest.encounter",
+                targetResourceTypes: new[] { "Encounter" },
+                baseResourceTypes: new[] { "MedicationAdministration", "MedicationRequest" },
+                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): Return administrations that share this encounter\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions with this encounter identifier\r\n")
+,
+            new SearchParameterInfo(
+                name: "medication",
+                code: "medication",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-medication"),
+                components: null,
+                expression: "MedicationAdministration.medication.reference | MedicationDispense.medication.reference | MedicationRequest.medication.reference | MedicationStatement.medication.reference",
+                targetResourceTypes: new[] { "Medication" },
+                baseResourceTypes: new[] { "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement" },
+                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): Return administrations of this medication reference\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses of this medicine resource\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions for this medication reference\r\n* [MedicationStatement](medicationstatement.html): Return statements of this medication reference\r\n")
+,
+            new SearchParameterInfo(
+                name: "performer",
+                code: "performer",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationAdministration-performer"),
+                components: null,
+                expression: "MedicationAdministration.performer.actor.reference",
+                targetResourceTypes: new[] { "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
+                baseResourceTypes: new[] { "MedicationAdministration" },
+                description: "The identity of the individual who administered the medication")
 ,
             new SearchParameterInfo(
                 name: "performer-device-code",
@@ -8461,15 +8252,15 @@ public static class R6SearchParameterDefinitions
                 description: "The identity of the individual who administered the medication")
 ,
             new SearchParameterInfo(
-                name: "performer",
-                code: "performer",
+                name: "reason-given",
+                code: "reason-given",
                 searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationAdministration-performer"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationAdministration-reason-given"),
                 components: null,
-                expression: "MedicationAdministration.performer.actor.reference",
-                targetResourceTypes: new[] { "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                expression: "MedicationAdministration.reason.reference",
+                targetResourceTypes: new[] { "Procedure", "Observation", "DiagnosticReport", "Condition" },
                 baseResourceTypes: new[] { "MedicationAdministration" },
-                description: "The identity of the individual who administered the medication")
+                description: "Reference to a resource (by instance)")
 ,
             new SearchParameterInfo(
                 name: "reason-given-code",
@@ -8481,17 +8272,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "MedicationAdministration" },
                 description: "Reasons for administering the medication")
-,
-            new SearchParameterInfo(
-                name: "reason-given",
-                code: "reason-given",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationAdministration-reason-given"),
-                components: null,
-                expression: "MedicationAdministration.reason.reference",
-                targetResourceTypes: new[] { "Procedure", "Observation", "DiagnosticReport", "Condition" },
-                baseResourceTypes: new[] { "MedicationAdministration" },
-                description: "Reference to a resource (by instance)")
 ,
             new SearchParameterInfo(
                 name: "reason-not-given",
@@ -8514,6 +8294,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "MedicationRequest" },
                 baseResourceTypes: new[] { "MedicationAdministration" },
                 description: "The identity of a request to list administrations from")
+,
+            new SearchParameterInfo(
+                name: "status",
+                code: "status",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-status"),
+                components: null,
+                expression: "MedicationAdministration.status | MedicationDispense.status | MedicationRequest.status | MedicationStatement.status",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement" },
+                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): MedicationAdministration event status (for example one of active/paused/completed/nullified)\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses with a specified dispense status\r\n* [MedicationRequest](medicationrequest.html): Status of the prescription\r\n* [MedicationStatement](medicationstatement.html): Return statements that match the given status\r\n")
 ,
             new SearchParameterInfo(
                 name: "subject",
@@ -8555,9 +8346,20 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationDispense-performer"),
                 components: null,
                 expression: "MedicationDispense.performer.actor",
-                targetResourceTypes: new[] { "Organization", "Device", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "Device", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "MedicationDispense" },
                 description: "Returns dispenses performed by a specific individual")
+,
+            new SearchParameterInfo(
+                name: "prescription",
+                code: "prescription",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-prescription"),
+                components: null,
+                expression: "MedicationDispense.authorizingPrescription",
+                targetResourceTypes: new[] { "MedicationRequest" },
+                baseResourceTypes: new[] { "MedicationDispense" },
+                description: "Multiple Resources: \r\n\r\n* [MedicationDispense](medicationdispense.html): The identity of a prescription to list dispenses from\r\n")
 ,
             new SearchParameterInfo(
                 name: "receiver",
@@ -8566,7 +8368,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationDispense-receiver"),
                 components: null,
                 expression: "MedicationDispense.receiver",
-                targetResourceTypes: new[] { "RelatedPerson", "PractitionerRole", "Practitioner", "Location", "Patient" },
+                targetResourceTypes: new[] { "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Location", "Patient" },
                 baseResourceTypes: new[] { "MedicationDispense" },
                 description: "The identity of a receiver to list dispenses for")
 ,
@@ -8626,160 +8428,6 @@ public static class R6SearchParameterDefinitions
                 description: "Returns dispenses prepared on this date")
 ,
             new SearchParameterInfo(
-                name: "classification-type",
-                code: "classification-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-classification-type"),
-                components: null,
-                expression: "MedicationKnowledge.medicineClassification.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "The type of category for the medication (for example, therapeutic classification, therapeutic sub-classification)")
-,
-            new SearchParameterInfo(
-                name: "classification",
-                code: "classification",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-classification"),
-                components: null,
-                expression: "MedicationKnowledge.medicineClassification.classification",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Specific category assigned to the medication")
-,
-            new SearchParameterInfo(
-                name: "code",
-                code: "code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-code"),
-                components: null,
-                expression: "MedicationKnowledge.code",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Code that identifies this medication")
-,
-            new SearchParameterInfo(
-                name: "doseform",
-                code: "doseform",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-doseform"),
-                components: null,
-                expression: "MedicationKnowledge.definitional.doseForm",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "powder | tablets | capsule +")
-,
-            new SearchParameterInfo(
-                name: "ingredient-code",
-                code: "ingredient-code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-ingredient-code"),
-                components: null,
-                expression: "MedicationKnowledge.definitional.ingredient.item.concept",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Reference to a concept (by class)")
-,
-            new SearchParameterInfo(
-                name: "ingredient",
-                code: "ingredient",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-ingredient"),
-                components: null,
-                expression: "MedicationKnowledge.definitional.ingredient.item.reference",
-                targetResourceTypes: new[] { "Substance" },
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Reference to a resource (by instance)")
-,
-            new SearchParameterInfo(
-                name: "monitoring-program-name",
-                code: "monitoring-program-name",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-monitoring-program-name"),
-                components: null,
-                expression: "MedicationKnowledge.monitoringProgram.name",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Name of the reviewing program")
-,
-            new SearchParameterInfo(
-                name: "monitoring-program-type",
-                code: "monitoring-program-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-monitoring-program-type"),
-                components: null,
-                expression: "MedicationKnowledge.monitoringProgram.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Type of program under which the medication is monitored")
-,
-            new SearchParameterInfo(
-                name: "monograph-type",
-                code: "monograph-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-monograph-type"),
-                components: null,
-                expression: "MedicationKnowledge.monograph.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "The category of medication document")
-,
-            new SearchParameterInfo(
-                name: "monograph",
-                code: "monograph",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-monograph"),
-                components: null,
-                expression: "MedicationKnowledge.monograph.source",
-                targetResourceTypes: new[] { "DocumentReference" },
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Associated documentation about the medication")
-,
-            new SearchParameterInfo(
-                name: "packaging-cost-concept",
-                code: "packaging-cost-concept",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-packaging-cost-concept"),
-                components: null,
-                expression: null,
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "The cost of the packaged medication, if the cost is a CodeableConcept")
-,
-            new SearchParameterInfo(
-                name: "packaging-cost",
-                code: "packaging-cost",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-packaging-cost"),
-                components: null,
-                expression: null,
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "The cost of the packaged medication, if the cost is Money")
-,
-            new SearchParameterInfo(
-                name: "product-type",
-                code: "product-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-product-type"),
-                components: null,
-                expression: "MedicationKnowledge.productType",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "Category of the medication or product")
-,
-            new SearchParameterInfo(
-                name: "source-cost",
-                code: "source-cost",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-source-cost"),
-                components: null,
-                expression: "MedicationKnowledge.cost.source",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationKnowledge" },
-                description: "The source or owner for the price information")
-,
-            new SearchParameterInfo(
                 name: "authoredon",
                 code: "authoredon",
                 searchParamType: SearchParamType.Date,
@@ -8802,17 +8450,6 @@ public static class R6SearchParameterDefinitions
                 description: "Returns prescriptions with different categories")
 ,
             new SearchParameterInfo(
-                name: "combo-date",
-                code: "combo-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationRequest-combo-date"),
-                components: null,
-                expression: "MedicationRequest.dosageInstruction.timing.event | (MedicationRequest.dosageInstruction.timing.repeat.bounds.ofType(Period))",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationRequest" },
-                description: "Returns medication request to be administered on a specific date or within a date range")
-,
-            new SearchParameterInfo(
                 name: "group-identifier",
                 code: "group-identifier",
                 searchParamType: SearchParamType.Token,
@@ -8822,6 +8459,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "MedicationRequest" },
                 description: "Composite request this is part of")
+,
+            new SearchParameterInfo(
+                name: "group-or-identifier",
+                code: "group-or-identifier",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationRequest-group-or-identifier"),
+                components: null,
+                expression: "MedicationRequest.groupIdentifier | MedicationRequest.identifier",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicationRequest" },
+                description: "Group ID or other identifier")
 ,
             new SearchParameterInfo(
                 name: "intended-dispenser",
@@ -8841,7 +8489,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationRequest-intended-performer"),
                 components: null,
                 expression: "MedicationRequest.performer",
-                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "DeviceDefinition", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "DeviceDefinition", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "MedicationRequest" },
                 description: "Returns the intended performer of the administration of the medication request")
 ,
@@ -8901,61 +8549,6 @@ public static class R6SearchParameterDefinitions
                 description: "The identity of a patient to list orders  for")
 ,
             new SearchParameterInfo(
-                name: "date",
-                code: "date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-date"),
-                components: null,
-                expression: "MedicationAdministration.occurrence.ofType(dateTime) | MedicationAdministration.occurrence.ofType(Period)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationAdministration" },
-                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): Date administration happened (or did not happen)\r\n")
-,
-            new SearchParameterInfo(
-                name: "encounter",
-                code: "encounter",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-encounter"),
-                components: null,
-                expression: "MedicationAdministration.encounter | MedicationRequest.encounter",
-                targetResourceTypes: new[] { "Encounter" },
-                baseResourceTypes: new[] { "MedicationAdministration", "MedicationRequest" },
-                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): Return administrations that share this encounter\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions with this encounter identifier\r\n")
-,
-            new SearchParameterInfo(
-                name: "medication",
-                code: "medication",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-medication"),
-                components: null,
-                expression: "MedicationAdministration.medication.reference | MedicationDispense.medication.reference | MedicationRequest.medication.reference | MedicationStatement.medication.reference",
-                targetResourceTypes: new[] { "Medication" },
-                baseResourceTypes: new[] { "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement" },
-                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): Return administrations of this medication reference\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses of this medicine resource\r\n* [MedicationRequest](medicationrequest.html): Return prescriptions for this medication reference\r\n* [MedicationStatement](medicationstatement.html): Return statements of this medication reference\r\n")
-,
-            new SearchParameterInfo(
-                name: "prescription",
-                code: "prescription",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-prescription"),
-                components: null,
-                expression: "MedicationDispense.authorizingPrescription",
-                targetResourceTypes: new[] { "MedicationRequest" },
-                baseResourceTypes: new[] { "MedicationDispense" },
-                description: "Multiple Resources: \r\n\r\n* [MedicationDispense](medicationdispense.html): The identity of a prescription to list dispenses from\r\n")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/medications-status"),
-                components: null,
-                expression: "MedicationAdministration.status | MedicationDispense.status | MedicationRequest.status | MedicationStatement.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement" },
-                description: "Multiple Resources: \r\n\r\n* [MedicationAdministration](medicationadministration.html): MedicationAdministration event status (for example one of active/paused/completed/nullified)\r\n* [MedicationDispense](medicationdispense.html): Returns dispenses with a specified dispense status\r\n* [MedicationRequest](medicationrequest.html): Status of the prescription\r\n* [MedicationStatement](medicationstatement.html): Return statements that match the given status\r\n")
-,
-            new SearchParameterInfo(
                 name: "adherence",
                 code: "adherence",
                 searchParamType: SearchParamType.Token,
@@ -8995,7 +8588,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MedicationStatement-source"),
                 components: null,
                 expression: "MedicationStatement.informationSource",
-                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "MedicationStatement" },
                 description: "Who or where the information in the statement came from")
 ,
@@ -9011,17 +8604,6 @@ public static class R6SearchParameterDefinitions
                 description: "The identity of a patient, animal or group to list statements for")
 ,
             new SearchParameterInfo(
-                name: "characteristic-type",
-                code: "characteristic-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-characteristic-type"),
-                components: null,
-                expression: "MedicinalProductDefinition.characteristic.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "MedicinalProductDefinition" },
-                description: "A category for the characteristic")
-,
-            new SearchParameterInfo(
                 name: "characteristic",
                 code: "characteristic",
                 searchParamType: SearchParamType.Token,
@@ -9031,6 +8613,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "MedicinalProductDefinition" },
                 description: "Allows the key product features to be recorded, such as \"sugar free\", \"modified release\", \"parallel import\"")
+,
+            new SearchParameterInfo(
+                name: "characteristic-type",
+                code: "characteristic-type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-characteristic-type"),
+                components: null,
+                expression: "MedicinalProductDefinition.characteristic.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "A category for the characteristic")
 ,
             new SearchParameterInfo(
                 name: "contact",
@@ -9088,6 +8681,28 @@ public static class R6SearchParameterDefinitions
                 description: "A master file for to the medicinal product (e.g. Pharmacovigilance System Master File)")
 ,
             new SearchParameterInfo(
+                name: "name",
+                code: "name",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-name"),
+                components: null,
+                expression: "MedicinalProductDefinition.name.productName",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "The full product name")
+,
+            new SearchParameterInfo(
+                name: "name-country",
+                code: "name-country",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-name-country"),
+                components: null,
+                expression: "MedicinalProductDefinition.name.usage.country",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "A country applicable to this product, as expressed by its name properties")
+,
+            new SearchParameterInfo(
                 name: "name-language",
                 code: "name-language",
                 searchParamType: SearchParamType.Token,
@@ -9099,15 +8714,37 @@ public static class R6SearchParameterDefinitions
                 description: "Language code for this name")
 ,
             new SearchParameterInfo(
-                name: "name",
-                code: "name",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-name"),
+                name: "operation-organization",
+                code: "operation-organization",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-organization"),
                 components: null,
-                expression: "MedicinalProductDefinition.name.productName",
+                expression: "MedicinalProductDefinition.operation.organization",
+                targetResourceTypes: new[] { "Organization" },
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "The organization or establishment responsible for (or associated with) the particular process or step")
+,
+            new SearchParameterInfo(
+                name: "operation-type",
+                code: "operation-type",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-type"),
+                components: null,
+                expression: "MedicinalProductDefinition.operation.type.reference",
+                targetResourceTypes: new[] { "ActivityDefinition", "PlanDefinition" },
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "The type of manufacturing operation, as a reference to a plan or activity")
+,
+            new SearchParameterInfo(
+                name: "operation-type-code",
+                code: "operation-type-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-type-code"),
+                components: null,
+                expression: "MedicinalProductDefinition.operation.type.concept",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "MedicinalProductDefinition" },
-                description: "The full product name")
+                description: "The type of manufacturing operation, as a coded value")
 ,
             new SearchParameterInfo(
                 name: "product-classification",
@@ -9143,6 +8780,28 @@ public static class R6SearchParameterDefinitions
                 description: "Regulatory type, e.g. Investigational or Authorized")
 ,
             new SearchParameterInfo(
+                name: "operation-organization-type",
+                code: "operation-organization-type",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-organization-type"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-organization"), "operation-organization"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-type"), "operation-type") },
+                expression: "MedicinalProductDefinition",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "Operaton organization and type, as a reference")
+,
+            new SearchParameterInfo(
+                name: "operation-organization-type-code",
+                code: "operation-organization-type-code",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-organization-type-code"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-operation-organization"), "operation-organization"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-type-code"), "operation-type-code") },
+                expression: "MedicinalProductDefinition",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MedicinalProductDefinition" },
+                description: "Operaton organization and type, as a code")
+,
+            new SearchParameterInfo(
                 name: "category",
                 code: "category",
                 searchParamType: SearchParamType.Token,
@@ -9163,6 +8822,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "MessageDefinition" },
                 description: "The event that triggers the message or link to the event definition.")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/MessageDefinition-experimental"),
+                components: null,
+                expression: "MessageDefinition.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "MessageDefinition" },
+                description: "Whether the MessageDefinition is experimental")
 ,
             new SearchParameterInfo(
                 name: "focus",
@@ -9215,7 +8885,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/MessageHeader-focus"),
                 components: null,
                 expression: "MessageHeader.focus",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "MessageHeader" },
                 description: "The actual content of the message")
 ,
@@ -9264,105 +8934,6 @@ public static class R6SearchParameterDefinitions
                 description: "Name of system")
 ,
             new SearchParameterInfo(
-                name: "composed-of",
-                code: "composed-of",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-composed-of"),
-                components: null,
-                expression: "ActivityDefinition.relatedArtifact.where(type='composed-of').resource | EventDefinition.relatedArtifact.where(type='composed-of').resource | EvidenceVariable.relatedArtifact.where(type='composed-of').resource | Library.relatedArtifact.where(type='composed-of').resource | Measure.relatedArtifact.where(type='composed-of').resource | PlanDefinition.relatedArtifact.where(type='composed-of').resource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ActivityDefinition", "EventDefinition", "EvidenceVariable", "Library", "Measure", "PlanDefinition" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [EvidenceVariable](evidencevariable.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n")
-,
-            new SearchParameterInfo(
-                name: "depends-on",
-                code: "depends-on",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-depends-on"),
-                components: null,
-                expression: "ActivityDefinition.relatedArtifact.where(type='depends-on').resource | ActivityDefinition.library | EventDefinition.relatedArtifact.where(type='depends-on').resource | EvidenceVariable.relatedArtifact.where(type='depends-on').resource | Library.relatedArtifact.where(type='depends-on').resource | Measure.relatedArtifact.where(type='depends-on').resource | Measure.library | PlanDefinition.relatedArtifact.where(type='depends-on').resource | PlanDefinition.library",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ActivityDefinition", "EventDefinition", "EvidenceVariable", "Library", "Measure", "PlanDefinition" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [EvidenceVariable](evidencevariable.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n")
-,
-            new SearchParameterInfo(
-                name: "derived-from",
-                code: "derived-from",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-derived-from"),
-                components: null,
-                expression: "ActivityDefinition.relatedArtifact.where(type='derived-from').resource | CodeSystem.relatedArtifact.where(type='derived-from').resource | ConceptMap.relatedArtifact.where(type='derived-from').resource | EventDefinition.relatedArtifact.where(type='derived-from').resource | EvidenceVariable.relatedArtifact.where(type='derived-from').resource | Library.relatedArtifact.where(type='derived-from').resource | Measure.relatedArtifact.where(type='derived-from').resource | NamingSystem.relatedArtifact.where(type='derived-from').resource | PlanDefinition.relatedArtifact.where(type='derived-from').resource | ValueSet.relatedArtifact.where(type='derived-from').resource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "EvidenceVariable", "Library", "Measure", "NamingSystem", "PlanDefinition", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [CodeSystem](codesystem.html): A resource that the CodeSystem is derived from\r\n* [ConceptMap](conceptmap.html): A resource that the ConceptMap is derived from\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [EvidenceVariable](evidencevariable.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [NamingSystem](namingsystem.html): A resource that the NamingSystem is derived from\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n* [ValueSet](valueset.html): A resource that the ValueSet is derived from\r\n")
-,
-            new SearchParameterInfo(
-                name: "effective",
-                code: "effective",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-effective"),
-                components: null,
-                expression: "ActivityDefinition.effectivePeriod | ChargeItemDefinition.applicability.effectivePeriod | Citation.effectivePeriod | CodeSystem.effectivePeriod | ConceptMap.effectivePeriod | EventDefinition.effectivePeriod | Library.effectivePeriod | Measure.effectivePeriod | NamingSystem.effectivePeriod | PlanDefinition.effectivePeriod | Questionnaire.effectivePeriod | ValueSet.effectivePeriod",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "ChargeItemDefinition", "Citation", "CodeSystem", "ConceptMap", "EventDefinition", "Library", "Measure", "NamingSystem", "PlanDefinition", "Questionnaire", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): The time during which the activity definition is intended to be in use\r\n* [ChargeItemDefinition](chargeitemdefinition.html): The time during which the charge item definition is intended to be in use\r\n* [Citation](citation.html): The time during which the citation is intended to be in use\r\n* [CodeSystem](codesystem.html): The time during which the CodeSystem is intended to be in use\r\n* [ConceptMap](conceptmap.html): The time during which the ConceptMap is intended to be in use\r\n* [EventDefinition](eventdefinition.html): The time during which the event definition is intended to be in use\r\n* [Library](library.html): The time during which the library is intended to be in use\r\n* [Measure](measure.html): The time during which the measure is intended to be in use\r\n* [NamingSystem](namingsystem.html): The time during which the NamingSystem is intended to be in use\r\n* [PlanDefinition](plandefinition.html): The time during which the plan definition is intended to be in use\r\n* [Questionnaire](questionnaire.html): The time during which the questionnaire is intended to be in use\r\n* [ValueSet](valueset.html): The time during which the ValueSet is intended to be in use\r\n")
-,
-            new SearchParameterInfo(
-                name: "predecessor",
-                code: "predecessor",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-predecessor"),
-                components: null,
-                expression: "ActivityDefinition.relatedArtifact.where(type='predecessor').resource | CodeSystem.relatedArtifact.where(type='predecessor').resource | ConceptMap.relatedArtifact.where(type='predecessor').resource | EventDefinition.relatedArtifact.where(type='predecessor').resource | EvidenceVariable.relatedArtifact.where(type='predecessor').resource | Library.relatedArtifact.where(type='predecessor').resource | Measure.relatedArtifact.where(type='predecessor').resource | NamingSystem.relatedArtifact.where(type='predecessor').resource | PlanDefinition.relatedArtifact.where(type='predecessor').resource | ValueSet.relatedArtifact.where(type='predecessor').resource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "EvidenceVariable", "Library", "Measure", "NamingSystem", "PlanDefinition", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [CodeSystem](codesystem.html): The predecessor of the CodeSystem\r\n* [ConceptMap](conceptmap.html): The predecessor of the ConceptMap\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [EvidenceVariable](evidencevariable.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [NamingSystem](namingsystem.html): The predecessor of the NamingSystem\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n* [ValueSet](valueset.html): The predecessor of the ValueSet\r\n")
-,
-            new SearchParameterInfo(
-                name: "successor",
-                code: "successor",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-successor"),
-                components: null,
-                expression: "ActivityDefinition.relatedArtifact.where(type='successor').resource | EventDefinition.relatedArtifact.where(type='successor').resource | EvidenceVariable.relatedArtifact.where(type='successor').resource | Library.relatedArtifact.where(type='successor').resource | Measure.relatedArtifact.where(type='successor').resource | PlanDefinition.relatedArtifact.where(type='successor').resource",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "ActivityDefinition", "EventDefinition", "EvidenceVariable", "Library", "Measure", "PlanDefinition" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): What resource is being referenced\r\n* [EventDefinition](eventdefinition.html): What resource is being referenced\r\n* [EvidenceVariable](evidencevariable.html): What resource is being referenced\r\n* [Library](library.html): What resource is being referenced\r\n* [Measure](measure.html): What resource is being referenced\r\n* [PlanDefinition](plandefinition.html): What resource is being referenced\r\n")
-,
-            new SearchParameterInfo(
-                name: "topic",
-                code: "topic",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MetadataResource-topic"),
-                components: null,
-                expression: "ActivityDefinition.topic | CodeSystem.topic | ConceptMap.topic | EventDefinition.topic | Library.topic | Measure.topic | NamingSystem.topic | PlanDefinition.topic | ValueSet.topic",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "ActivityDefinition", "CodeSystem", "ConceptMap", "EventDefinition", "EvidenceVariable", "Library", "Measure", "NamingSystem", "PlanDefinition", "ValueSet" },
-                description: "Multiple Resources: \r\n\r\n* [ActivityDefinition](activitydefinition.html): Topics associated with the module\r\n* [CodeSystem](codesystem.html): Topics associated with the CodeSystem\r\n* [ConceptMap](conceptmap.html): Topics associated with the ConceptMap\r\n* [EventDefinition](eventdefinition.html): Topics associated with the module\r\n* [EvidenceVariable](evidencevariable.html): Topics associated with the EvidenceVariable\r\n* [Library](library.html): Topics associated with the module\r\n* [Measure](measure.html): Topics associated with the measure\r\n* [NamingSystem](namingsystem.html): Topics associated with the NamingSystem\r\n* [PlanDefinition](plandefinition.html): Topics associated with the module\r\n* [ValueSet](valueset.html): Topics associated with the ValueSet\r\n")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MolecularDefinition-identifier"),
-                components: null,
-                expression: "MolecularDefinition.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "The unique identity for a particular sequence")
-,
-            new SearchParameterInfo(
-                name: "type",
-                code: "type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/MolecularDefinition-type"),
-                components: null,
-                expression: "MolecularDefinition.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Amino Acid Sequence/ DNA Sequence / RNA Sequence")
-,
-            new SearchParameterInfo(
                 name: "contact",
                 code: "contact",
                 searchParamType: SearchParamType.String,
@@ -9372,6 +8943,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "NamingSystem" },
                 description: "Name of an individual to contact")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/NamingSystem-experimental"),
+                components: null,
+                expression: "NamingSystem.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "NamingSystem" },
+                description: "Whether the NamingSystem is experimental")
 ,
             new SearchParameterInfo(
                 name: "id-type",
@@ -9550,12 +9132,12 @@ public static class R6SearchParameterDefinitions
                 description: "Type of diet that can be consumed orally (i.e., take via the mouth).")
 ,
             new SearchParameterInfo(
-                name: "provider",
-                code: "provider",
+                name: "requester",
+                code: "requester",
                 searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/NutritionOrder-provider"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/NutritionOrder-requester"),
                 components: null,
-                expression: "NutritionOrder.orderer",
+                expression: "NutritionOrder.requester",
                 targetResourceTypes: new[] { "PractitionerRole", "Practitioner" },
                 baseResourceTypes: new[] { "NutritionOrder" },
                 description: "The identity of the provider who placed the nutrition order")
@@ -9605,6 +9187,17 @@ public static class R6SearchParameterDefinitions
                 description: "The code identifying a specific nutrition product")
 ,
             new SearchParameterInfo(
+                name: "expiration-date",
+                code: "expiration-date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/NutritionProduct-expiration-date"),
+                components: null,
+                expression: "NutritionProduct.instance.expiry",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "NutritionProduct" },
+                description: "When the product expired (or is expected to expire)")
+,
+            new SearchParameterInfo(
                 name: "identifier",
                 code: "identifier",
                 searchParamType: SearchParamType.Token,
@@ -9614,6 +9207,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "NutritionProduct" },
                 description: "The identifier for the physical instance, typically a serial number")
+,
+            new SearchParameterInfo(
+                name: "ingredient-item",
+                code: "ingredient-item",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/NutritionProduct-ingredient-item"),
+                components: null,
+                expression: "NutritionProduct.ingredient.item.concept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "NutritionProduct" },
+                description: "The specific ingredient")
 ,
             new SearchParameterInfo(
                 name: "lot-number",
@@ -9655,9 +9259,31 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-based-on"),
                 components: null,
                 expression: "Observation.basedOn",
-                targetResourceTypes: new[] { "DeviceRequest", "ServiceRequest", "CarePlan", "MedicationRequest", "ImmunizationRecommendation", "NutritionOrder" },
+                targetResourceTypes: new[] { "DeviceRequest", "ServiceRequest", "CarePlan", "MedicationRequest", "NutritionOrder" },
                 baseResourceTypes: new[] { "Observation" },
                 description: "Reference to the service request.")
+,
+            new SearchParameterInfo(
+                name: "body-site",
+                code: "body-site",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-body-site"),
+                components: null,
+                expression: "Observation.bodySite",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "DEPRECATED: Observed body part")
+,
+            new SearchParameterInfo(
+                name: "body-structure-code",
+                code: "body-structure-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-body-structure-code"),
+                components: null,
+                expression: "Observation.bodyStructure.concept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "Code for observed body structure")
 ,
             new SearchParameterInfo(
                 name: "category",
@@ -9669,6 +9295,303 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Observation" },
                 description: "The classification of the type of observation")
+,
+            new SearchParameterInfo(
+                name: "combo-code",
+                code: "combo-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-code"),
+                components: null,
+                expression: "Observation.code | Observation.component.code",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The code of the observation type or component type")
+,
+            new SearchParameterInfo(
+                name: "combo-data-absent-reason",
+                code: "combo-data-absent-reason",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-data-absent-reason"),
+                components: null,
+                expression: "Observation.dataAbsentReason | Observation.component.dataAbsentReason",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The reason why the expected value in the element Observation.value[x] or Observation.component.value[x] is missing.")
+,
+            new SearchParameterInfo(
+                name: "combo-interpretation",
+                code: "combo-interpretation",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-interpretation"),
+                components: null,
+                expression: "Observation.interpretation | Observation.component.interpretation",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The interpretation of the observation type or component type")
+,
+            new SearchParameterInfo(
+                name: "combo-value-concept",
+                code: "combo-value-concept",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-value-concept"),
+                components: null,
+                expression: "Observation.value.ofType(CodeableConcept) | Observation.component.value.ofType(CodeableConcept)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value or component value of the observation, if the value is a CodeableConcept")
+,
+            new SearchParameterInfo(
+                name: "combo-value-quantity",
+                code: "combo-value-quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-value-quantity"),
+                components: null,
+                expression: "Observation.value.ofType(Quantity) |  Observation.component.value.ofType(Quantity)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value or component value of the observation, if the value is a Quantity.")
+,
+            new SearchParameterInfo(
+                name: "component-code",
+                code: "component-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code"),
+                components: null,
+                expression: "Observation.component.code",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The component code of the observation type")
+,
+            new SearchParameterInfo(
+                name: "component-data-absent-reason",
+                code: "component-data-absent-reason",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-data-absent-reason"),
+                components: null,
+                expression: "Observation.component.dataAbsentReason",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The reason why the expected value in the element Observation.component.value[x] is missing.")
+,
+            new SearchParameterInfo(
+                name: "component-interpretation",
+                code: "component-interpretation",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-interpretation"),
+                components: null,
+                expression: "Observation.component.interpretation",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The component interpretation of the observation type")
+,
+            new SearchParameterInfo(
+                name: "component-value-concept",
+                code: "component-value-concept",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-concept"),
+                components: null,
+                expression: "Observation.component.value.ofType(CodeableConcept)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value of the component observation, if the value is a CodeableConcept")
+,
+            new SearchParameterInfo(
+                name: "component-value-quantity",
+                code: "component-value-quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"),
+                components: null,
+                expression: "Observation.component.value.ofType(Quantity)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value of the component observation, if the value is a Quantity.")
+,
+            new SearchParameterInfo(
+                name: "data-absent-reason",
+                code: "data-absent-reason",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-data-absent-reason"),
+                components: null,
+                expression: "Observation.dataAbsentReason",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The reason why the expected value in the element Observation.value[x] is missing.")
+,
+            new SearchParameterInfo(
+                name: "derived-from",
+                code: "derived-from",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-derived-from"),
+                components: null,
+                expression: "Observation.derivedFrom",
+                targetResourceTypes: new[] { "ImagingStudy", "DocumentReference", "Observation", "ImagingSelection", "QuestionnaireResponse" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "Related measurements the observation is made from")
+,
+            new SearchParameterInfo(
+                name: "device",
+                code: "device",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-device"),
+                components: null,
+                expression: "Observation.device",
+                targetResourceTypes: new[] { "Device", "DeviceMetric" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "The Device that generated the observation data.")
+,
+            new SearchParameterInfo(
+                name: "focus",
+                code: "focus",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-focus"),
+                components: null,
+                expression: "Observation.focus",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "The focus of an observation when the focus is not the patient of record.")
+,
+            new SearchParameterInfo(
+                name: "has-member",
+                code: "has-member",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-has-member"),
+                components: null,
+                expression: "Observation.hasMember",
+                targetResourceTypes: new[] { "Observation", "QuestionnaireResponse" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "Related resource that belongs to the Observation group")
+,
+            new SearchParameterInfo(
+                name: "interpretation",
+                code: "interpretation",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-interpretation"),
+                components: null,
+                expression: "Observation.interpretation",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The interpretation of the observation type")
+,
+            new SearchParameterInfo(
+                name: "method",
+                code: "method",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-method"),
+                components: null,
+                expression: "Observation.method",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The method used for the observation")
+,
+            new SearchParameterInfo(
+                name: "part-of",
+                code: "part-of",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-part-of"),
+                components: null,
+                expression: "Observation.partOf",
+                targetResourceTypes: new[] { "ImagingStudy", "Procedure", "MedicationStatement", "MedicationAdministration", "Immunization", "MedicationDispense" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "Part of referenced event")
+,
+            new SearchParameterInfo(
+                name: "performer",
+                code: "performer",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-performer"),
+                components: null,
+                expression: "Observation.performer",
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "Who performed the observation")
+,
+            new SearchParameterInfo(
+                name: "reference",
+                code: "reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-reference"),
+                components: null,
+                expression: "Observation.bodyStructure.reference",
+                targetResourceTypes: new[] { "BodyStructure" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "Observed body structure (reference)")
+,
+            new SearchParameterInfo(
+                name: "specimen",
+                code: "specimen",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-specimen"),
+                components: null,
+                expression: "Observation.specimen",
+                targetResourceTypes: new[] { "Group", "Specimen" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "Specimen used for this observation")
+,
+            new SearchParameterInfo(
+                name: "status",
+                code: "status",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"),
+                components: null,
+                expression: "Observation.status",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The status of the observation")
+,
+            new SearchParameterInfo(
+                name: "subject",
+                code: "subject",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"),
+                components: null,
+                expression: "Observation.subject",
+                targetResourceTypes: new[] { "Device", "Organization", "Procedure", "NutritionProduct", "Group", "Practitioner", "BiologicallyDerivedProduct", "Substance", "Location", "Patient", "Medication" },
+                baseResourceTypes: new[] { "Observation" },
+                description: "The subject that the observation is about")
+,
+            new SearchParameterInfo(
+                name: "value-concept",
+                code: "value-concept",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"),
+                components: null,
+                expression: "Observation.value.ofType(CodeableConcept)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value of the observation, if the value is a CodeableConcept")
+,
+            new SearchParameterInfo(
+                name: "value-date",
+                code: "value-date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-date"),
+                components: null,
+                expression: "Observation.value.ofType(dateTime) | Observation.value.ofType(Period)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value of the observation, if the value is a date or period of time")
+,
+            new SearchParameterInfo(
+                name: "value-quantity",
+                code: "value-quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-quantity"),
+                components: null,
+                expression: "Observation.value.ofType(Quantity)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value of the observation, if the value is a Quantity.")
+,
+            new SearchParameterInfo(
+                name: "value-string",
+                code: "value-string",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-string"),
+                components: null,
+                expression: "Observation.value.ofType(string)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Observation" },
+                description: "The value of the observation, if the value is a string.")
 ,
             new SearchParameterInfo(
                 name: "code-value-concept",
@@ -9737,50 +9660,6 @@ public static class R6SearchParameterDefinitions
                 description: "Code and quantity value parameter pair, including in components")
 ,
             new SearchParameterInfo(
-                name: "combo-code",
-                code: "combo-code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-code"),
-                components: null,
-                expression: "Observation.code | Observation.component.code",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The code of the observation type or component type")
-,
-            new SearchParameterInfo(
-                name: "combo-data-absent-reason",
-                code: "combo-data-absent-reason",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-data-absent-reason"),
-                components: null,
-                expression: "Observation.dataAbsentReason | Observation.component.dataAbsentReason",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The reason why the expected value in the element Observation.value[x] or Observation.component.value[x] is missing.")
-,
-            new SearchParameterInfo(
-                name: "combo-value-concept",
-                code: "combo-value-concept",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-value-concept"),
-                components: null,
-                expression: "Observation.value.ofType(CodeableConcept) | Observation.component.value.ofType(CodeableConcept)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value or component value of the observation, if the value is a CodeableConcept")
-,
-            new SearchParameterInfo(
-                name: "combo-value-quantity",
-                code: "combo-value-quantity",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-combo-value-quantity"),
-                components: null,
-                expression: "Observation.value.ofType(Quantity) | Observation.value.ofType(SampledData) | Observation.component.value.ofType(Quantity) | Observation.component.value.ofType(SampledData)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value or component value of the observation, if the value is a Quantity, or a SampledData (just search on the bounds of the values in sampled data)")
-,
-            new SearchParameterInfo(
                 name: "component-code-value-concept",
                 code: "component-code-value-concept",
                 searchParamType: SearchParamType.Composite,
@@ -9803,257 +9682,15 @@ public static class R6SearchParameterDefinitions
                 description: "Component code and component quantity value parameter pair")
 ,
             new SearchParameterInfo(
-                name: "component-code",
-                code: "component-code",
+                name: "body-structure-code",
+                code: "body-structure-code",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ObservationDefinition-body-structure-code"),
                 components: null,
-                expression: "Observation.component.code",
+                expression: "ObservationDefinition.bodyStructure.concept",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The component code of the observation type")
-,
-            new SearchParameterInfo(
-                name: "component-data-absent-reason",
-                code: "component-data-absent-reason",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-data-absent-reason"),
-                components: null,
-                expression: "Observation.component.dataAbsentReason",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The reason why the expected value in the element Observation.component.value[x] is missing.")
-,
-            new SearchParameterInfo(
-                name: "component-value-canonical",
-                code: "component-value-canonical",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-canonical"),
-                components: null,
-                expression: "Observation.component.value.ofType(canonical)",
-                targetResourceTypes: new[] { "MolecularSequence" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "URL contained in valueCanonical.")
-,
-            new SearchParameterInfo(
-                name: "component-value-concept",
-                code: "component-value-concept",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-concept"),
-                components: null,
-                expression: "Observation.component.value.ofType(CodeableConcept)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value of the component observation, if the value is a CodeableConcept")
-,
-            new SearchParameterInfo(
-                name: "component-value-quantity",
-                code: "component-value-quantity",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"),
-                components: null,
-                expression: "Observation.component.value.ofType(Quantity) | Observation.component.value.ofType(SampledData)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value of the component observation, if the value is a Quantity, or a SampledData (just search on the bounds of the values in sampled data)")
-,
-            new SearchParameterInfo(
-                name: "component-value-reference",
-                code: "component-value-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-reference"),
-                components: null,
-                expression: "Observation.component.value.ofType(Reference)",
-                targetResourceTypes: new[] { "MolecularSequence" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Reference contained in valueReference.")
-,
-            new SearchParameterInfo(
-                name: "data-absent-reason",
-                code: "data-absent-reason",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-data-absent-reason"),
-                components: null,
-                expression: "Observation.dataAbsentReason",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The reason why the expected value in the element Observation.value[x] is missing.")
-,
-            new SearchParameterInfo(
-                name: "derived-from",
-                code: "derived-from",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-derived-from"),
-                components: null,
-                expression: "Observation.derivedFrom",
-                targetResourceTypes: new[] { "ImagingStudy", "DocumentReference", "Observation", "MolecularSequence", "GenomicStudy", "ImagingSelection", "QuestionnaireResponse" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Related measurements the observation is made from")
-,
-            new SearchParameterInfo(
-                name: "device",
-                code: "device",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-device"),
-                components: null,
-                expression: "Observation.device",
-                targetResourceTypes: new[] { "Device", "DeviceMetric" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "The Device that generated the observation data.")
-,
-            new SearchParameterInfo(
-                name: "focus",
-                code: "focus",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-focus"),
-                components: null,
-                expression: "Observation.focus",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "The focus of an observation when the focus is not the patient of record.")
-,
-            new SearchParameterInfo(
-                name: "has-member",
-                code: "has-member",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-has-member"),
-                components: null,
-                expression: "Observation.hasMember",
-                targetResourceTypes: new[] { "Observation", "MolecularSequence", "QuestionnaireResponse" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Related resource that belongs to the Observation group")
-,
-            new SearchParameterInfo(
-                name: "method",
-                code: "method",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-method"),
-                components: null,
-                expression: "Observation.method",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The method used for the observation")
-,
-            new SearchParameterInfo(
-                name: "part-of",
-                code: "part-of",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-part-of"),
-                components: null,
-                expression: "Observation.partOf",
-                targetResourceTypes: new[] { "ImagingStudy", "Procedure", "MedicationStatement", "MedicationAdministration", "GenomicStudy", "Immunization", "MedicationDispense" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Part of referenced event")
-,
-            new SearchParameterInfo(
-                name: "performer",
-                code: "performer",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-performer"),
-                components: null,
-                expression: "Observation.performer",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Who performed the observation")
-,
-            new SearchParameterInfo(
-                name: "specimen",
-                code: "specimen",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-specimen"),
-                components: null,
-                expression: "Observation.specimen",
-                targetResourceTypes: new[] { "Group", "Specimen" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Specimen used for this observation")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"),
-                components: null,
-                expression: "Observation.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The status of the observation")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"),
-                components: null,
-                expression: "Observation.subject",
-                targetResourceTypes: new[] { "Device", "Organization", "Procedure", "NutritionProduct", "Group", "Practitioner", "BiologicallyDerivedProduct", "Substance", "Location", "Patient", "Medication" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "The subject that the observation is about")
-,
-            new SearchParameterInfo(
-                name: "value-canonical",
-                code: "value-canonical",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-canonical"),
-                components: null,
-                expression: "Observation.value.ofType(canonical)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "URL contained in valueCanonical.")
-,
-            new SearchParameterInfo(
-                name: "value-concept",
-                code: "value-concept",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"),
-                components: null,
-                expression: "Observation.value.ofType(CodeableConcept)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value of the observation, if the value is a CodeableConcept")
-,
-            new SearchParameterInfo(
-                name: "value-date",
-                code: "value-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-date"),
-                components: null,
-                expression: "Observation.value.ofType(dateTime) | Observation.value.ofType(Period)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value of the observation, if the value is a date or period of time")
-,
-            new SearchParameterInfo(
-                name: "value-quantity",
-                code: "value-quantity",
-                searchParamType: SearchParamType.Quantity,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-quantity"),
-                components: null,
-                expression: "Observation.value.ofType(Quantity) | Observation.value.ofType(SampledData)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "The value of the observation, if the value is a Quantity, or a SampledData (just search on the bounds of the values in sampled data)")
-,
-            new SearchParameterInfo(
-                name: "value-reference",
-                code: "value-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-reference"),
-                components: null,
-                expression: "Observation.value.ofType(Reference)",
-                targetResourceTypes: new[] { "MolecularSequence" },
-                baseResourceTypes: new[] { "Observation" },
-                description: "Reference contained in valueReference.")
-,
-            new SearchParameterInfo(
-                name: "value-string",
-                code: "value-string",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-string"),
-                components: null,
-                expression: "value.ofType(string)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Observation" },
-                description: "String in valueString.")
+                baseResourceTypes: new[] { "ObservationDefinition" },
+                description: "Code for body structure to be observed")
 ,
             new SearchParameterInfo(
                 name: "category",
@@ -10100,6 +9737,17 @@ public static class R6SearchParameterDefinitions
                 description: "Method of observation")
 ,
             new SearchParameterInfo(
+                name: "reference",
+                code: "reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ObservationDefinition-reference"),
+                components: null,
+                expression: "ObservationDefinition.bodyStructure.reference",
+                targetResourceTypes: new[] { "BodyStructure" },
+                baseResourceTypes: new[] { "ObservationDefinition" },
+                description: "Body structure to be observed (reference)")
+,
+            new SearchParameterInfo(
                 name: "base",
                 code: "base",
                 searchParamType: SearchParamType.Reference,
@@ -10120,6 +9768,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "OperationDefinition" },
                 description: "Name used to invoke the operation")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/OperationDefinition-experimental"),
+                components: null,
+                expression: "OperationDefinition.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "OperationDefinition" },
+                description: "Whether the OperationDefinition is experimental")
 ,
             new SearchParameterInfo(
                 name: "input-profile",
@@ -10199,6 +9858,17 @@ public static class R6SearchParameterDefinitions
                 description: "Is the Organization record active")
 ,
             new SearchParameterInfo(
+                name: "address",
+                code: "address",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Organization-address"),
+                components: null,
+                expression: "Organization.contact.address",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Organization" },
+                description: "A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text")
+,
+            new SearchParameterInfo(
                 name: "address-city",
                 code: "address-city",
                 searchParamType: SearchParamType.String,
@@ -10252,17 +9922,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Organization" },
                 description: "A use code specified in an address")
-,
-            new SearchParameterInfo(
-                name: "address",
-                code: "address",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Organization-address"),
-                components: null,
-                expression: "Organization.contact.address",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Organization" },
-                description: "A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text")
 ,
             new SearchParameterInfo(
                 name: "endpoint",
@@ -10490,7 +10149,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-biological"),
                 components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
                 targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "A biologically derived product within this packaged product")
@@ -10501,7 +10160,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-contained-item"),
                 components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
                 targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "Any of the contained items within this packaged product")
@@ -10512,7 +10171,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-device"),
                 components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
                 targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "A device within this packaged product")
@@ -10534,7 +10193,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-manufactured-item"),
                 components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
                 targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "A manufactured item of medication within this packaged product")
@@ -10545,7 +10204,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-medication"),
                 components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
                 targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "A manufactured item of medication within this packaged product")
@@ -10567,10 +10226,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-nutrition"),
                 components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
                 targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "A nutrition product within this packaged product")
+,
+            new SearchParameterInfo(
+                name: "package",
+                code: "package",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-package"),
+                components: null,
+                expression: "PackagedProductDefinition.repeat(packaging).containedItem.item.reference",
+                targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
+                baseResourceTypes: new[] { "PackagedProductDefinition" },
+                description: "A complete packaged product within this packaged product")
 ,
             new SearchParameterInfo(
                 name: "package-for",
@@ -10582,17 +10252,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "MedicinalProductDefinition" },
                 baseResourceTypes: new[] { "PackagedProductDefinition" },
                 description: "The product that this is a pack for")
-,
-            new SearchParameterInfo(
-                name: "package",
-                code: "package",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/PackagedProductDefinition-package"),
-                components: null,
-                expression: "PackagedProductDefinition.packaging.containedItem.item.reference",
-                targetResourceTypes: new[] { "DeviceDefinition", "NutritionProduct", "BiologicallyDerivedProduct", "PackagedProductDefinition", "ManufacturedItemDefinition" },
-                baseResourceTypes: new[] { "PackagedProductDefinition" },
-                description: "A complete packaged product within this packaged product")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -10617,6 +10276,83 @@ public static class R6SearchParameterDefinitions
                 description: "Whether the patient record is active")
 ,
             new SearchParameterInfo(
+                name: "address",
+                code: "address",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address"),
+                components: null,
+                expression: "Patient.address | Person.address | Practitioner.address | RelatedPerson.address",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n* [Person](person.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n* [Practitioner](practitioner.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n* [RelatedPerson](relatedperson.html): A server defined search that may match any of the string fields in the Address, including line, city, district, state, country, postalCode, and/or text\r\n")
+,
+            new SearchParameterInfo(
+                name: "address-city",
+                code: "address-city",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-city"),
+                components: null,
+                expression: "Patient.address.city | Person.address.city | Practitioner.address.city | RelatedPerson.address.city",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A city specified in an address\r\n* [Person](person.html): A city specified in an address\r\n* [Practitioner](practitioner.html): A city specified in an address\r\n* [RelatedPerson](relatedperson.html): A city specified in an address\r\n")
+,
+            new SearchParameterInfo(
+                name: "address-country",
+                code: "address-country",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-country"),
+                components: null,
+                expression: "Patient.address.country | Person.address.country | Practitioner.address.country | RelatedPerson.address.country",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A country specified in an address\r\n* [Person](person.html): A country specified in an address\r\n* [Practitioner](practitioner.html): A country specified in an address\r\n* [RelatedPerson](relatedperson.html): A country specified in an address\r\n")
+,
+            new SearchParameterInfo(
+                name: "address-postalcode",
+                code: "address-postalcode",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-postalcode"),
+                components: null,
+                expression: "Patient.address.postalCode | Person.address.postalCode | Practitioner.address.postalCode | RelatedPerson.address.postalCode",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A postalCode specified in an address\r\n* [Person](person.html): A postal code specified in an address\r\n* [Practitioner](practitioner.html): A postalCode specified in an address\r\n* [RelatedPerson](relatedperson.html): A postal code specified in an address\r\n")
+,
+            new SearchParameterInfo(
+                name: "address-state",
+                code: "address-state",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-state"),
+                components: null,
+                expression: "Patient.address.state | Person.address.state | Practitioner.address.state | RelatedPerson.address.state",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A state specified in an address\r\n* [Person](person.html): A state specified in an address\r\n* [Practitioner](practitioner.html): A state specified in an address\r\n* [RelatedPerson](relatedperson.html): A state specified in an address\r\n")
+,
+            new SearchParameterInfo(
+                name: "address-use",
+                code: "address-use",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-address-use"),
+                components: null,
+                expression: "Patient.address.use | Person.address.use | Practitioner.address.use | RelatedPerson.address.use",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A use code specified in an address\r\n* [Person](person.html): A use code specified in an address\r\n* [Practitioner](practitioner.html): A use code specified in an address\r\n* [RelatedPerson](relatedperson.html): A use code specified in an address\r\n")
+,
+            new SearchParameterInfo(
+                name: "birthdate",
+                code: "birthdate",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-birthdate"),
+                components: null,
+                expression: "Patient.birthDate | Person.birthDate | RelatedPerson.birthDate",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): The patient's date of birth\r\n* [Person](person.html): The person's date of birth\r\n* [RelatedPerson](relatedperson.html): The Related Person's date of birth\r\n")
+,
+            new SearchParameterInfo(
                 name: "death-date",
                 code: "death-date",
                 searchParamType: SearchParamType.Date,
@@ -10639,6 +10375,39 @@ public static class R6SearchParameterDefinitions
                 description: "This patient has been marked as deceased, or has a death date entered")
 ,
             new SearchParameterInfo(
+                name: "email",
+                code: "email",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-email"),
+                components: null,
+                expression: "Patient.telecom.where(system='email') | Person.telecom.where(system='email') | Practitioner.telecom.where(system='email') | PractitionerRole.contact.telecom.where(system='email') | RelatedPerson.telecom.where(system='email')",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "PractitionerRole", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A value in an email contact\r\n* [Person](person.html): A value in an email contact\r\n* [Practitioner](practitioner.html): A value in an email contact\r\n* [PractitionerRole](practitionerrole.html): A value in an email contact\r\n* [RelatedPerson](relatedperson.html): A value in an email contact\r\n")
+,
+            new SearchParameterInfo(
+                name: "family",
+                code: "family",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-family"),
+                components: null,
+                expression: "Patient.name.family | Practitioner.name.family",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Practitioner" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A portion of the family name of the patient\r\n* [Practitioner](practitioner.html): A portion of the family name\r\n")
+,
+            new SearchParameterInfo(
+                name: "gender",
+                code: "gender",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-gender"),
+                components: null,
+                expression: "Patient.gender | Person.gender | Practitioner.gender | RelatedPerson.gender",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): Gender of the patient\r\n* [Person](person.html): The gender of the person\r\n* [Practitioner](practitioner.html): Gender of the practitioner\r\n* [RelatedPerson](relatedperson.html): Gender of the related person\r\n")
+,
+            new SearchParameterInfo(
                 name: "general-practitioner",
                 code: "general-practitioner",
                 searchParamType: SearchParamType.Reference,
@@ -10648,6 +10417,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
                 baseResourceTypes: new[] { "Patient" },
                 description: "Patient's nominated general practitioner, not the organization that manages the record")
+,
+            new SearchParameterInfo(
+                name: "given",
+                code: "given",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-given"),
+                components: null,
+                expression: "Patient.name.given | Practitioner.name.given",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Practitioner" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A portion of the given name of the patient\r\n* [Practitioner](practitioner.html): A portion of the given name\r\n")
 ,
             new SearchParameterInfo(
                 name: "identifier",
@@ -10705,6 +10485,39 @@ public static class R6SearchParameterDefinitions
                 description: "The organization that is the custodian of the patient record")
 ,
             new SearchParameterInfo(
+                name: "phone",
+                code: "phone",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-phone"),
+                components: null,
+                expression: "Patient.telecom.where(system='phone') | Person.telecom.where(system='phone') | Practitioner.telecom.where(system='phone') | PractitionerRole.contact.telecom.where(system='phone') | RelatedPerson.telecom.where(system='phone')",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "PractitionerRole", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A value in a phone contact\r\n* [Person](person.html): A value in a phone contact\r\n* [Practitioner](practitioner.html): A value in a phone contact\r\n* [PractitionerRole](practitionerrole.html): A value in a phone contact\r\n* [RelatedPerson](relatedperson.html): A value in a phone contact\r\n")
+,
+            new SearchParameterInfo(
+                name: "phonetic",
+                code: "phonetic",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-phonetic"),
+                components: null,
+                expression: "Patient.name | Person.name | Practitioner.name | RelatedPerson.name",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): A portion of either family or given name using some kind of phonetic matching algorithm\r\n* [Person](person.html): A portion of name using some kind of phonetic matching algorithm\r\n* [Practitioner](practitioner.html): A portion of either family or given name using some kind of phonetic matching algorithm\r\n* [RelatedPerson](relatedperson.html): A portion of name using some kind of phonetic matching algorithm\r\n")
+,
+            new SearchParameterInfo(
+                name: "telecom",
+                code: "telecom",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/individual-telecom"),
+                components: null,
+                expression: "Patient.telecom | Person.telecom | Practitioner.telecom | PractitionerRole.contact.telecom | RelatedPerson.telecom",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Patient", "Person", "Practitioner", "PractitionerRole", "RelatedPerson" },
+                description: "Multiple Resources: \r\n\r\n* [Patient](patient.html): The value in any kind of telecom details of the patient\r\n* [Person](person.html): The value in any kind of contact\r\n* [Practitioner](practitioner.html): The value in any kind of contact\r\n* [PractitionerRole](practitionerrole.html): The value in any kind of contact\r\n* [RelatedPerson](relatedperson.html): The value in any kind of contact\r\n")
+,
+            new SearchParameterInfo(
                 name: "created",
                 code: "created",
                 searchParamType: SearchParamType.Date,
@@ -10755,7 +10568,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PaymentNotice-request"),
                 components: null,
                 expression: "PaymentNotice.request",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "PaymentNotice" },
                 description: "The Claim")
 ,
@@ -10766,7 +10579,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PaymentNotice-response"),
                 components: null,
                 expression: "PaymentNotice.response",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "PaymentNotice" },
                 description: "The ClaimResponse")
 ,
@@ -10892,28 +10705,6 @@ public static class R6SearchParameterDefinitions
                 description: "The status of the payment reconciliation")
 ,
             new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Permission-identifier"),
-                components: null,
-                expression: "Permission.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Permission" },
-                description: "The unique id for a particular permission")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Permission-status"),
-                components: null,
-                expression: "Permission.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Permission" },
-                description: "active | entered-in-error | draft | rejected")
-,
-            new SearchParameterInfo(
                 name: "death-date",
                 code: "death-date",
                 searchParamType: SearchParamType.Date,
@@ -11018,10 +10809,54 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/PlanDefinition-definition"),
                 components: null,
-                expression: "PlanDefinition.action.definition.ofType(canonical) | PlanDefinition.action.definition.ofType(uri)",
-                targetResourceTypes: new[] { "ObservationDefinition", "ActivityDefinition", "PlanDefinition", "MessageDefinition", "Questionnaire", "SpecimenDefinition" },
+                expression: "PlanDefinition.repeat(action).definition.ofType(canonical) | PlanDefinition.repeat(action).definition.ofType(uri)",
+                targetResourceTypes: new[] { "Measure", "OperationDefinition", "ObservationDefinition", "ActivityDefinition", "PlanDefinition", "MessageDefinition", "Questionnaire", "SpecimenDefinition" },
                 baseResourceTypes: new[] { "PlanDefinition" },
                 description: "Activity or plan definitions used by plan definition")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/PlanDefinition-experimental"),
+                components: null,
+                expression: "PlanDefinition.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "PlanDefinition" },
+                description: "Whether the PlanDefinition is experimental")
+,
+            new SearchParameterInfo(
+                name: "subject-canonical",
+                code: "subject-canonical",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/PlanDefinition-subject-canonical"),
+                components: null,
+                expression: "PlanDefinition.subject as canonical",
+                targetResourceTypes: new[] { "MedicinalProductDefinition", "AdministrableProductDefinition", "Group", "PackagedProductDefinition", "EvidenceVariable", "SubstanceDefinition", "ManufacturedItemDefinition" },
+                baseResourceTypes: new[] { "PlanDefinition" },
+                description: "The subject of the PlanDefinition when expressed as a canonical")
+,
+            new SearchParameterInfo(
+                name: "subject-code",
+                code: "subject-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/PlanDefinition-subject-code"),
+                components: null,
+                expression: "PlanDefinition.subject as CodeableConcept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "PlanDefinition" },
+                description: "The subject of the PlanDefinition when expressed as a code")
+,
+            new SearchParameterInfo(
+                name: "subject-reference",
+                code: "subject-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/PlanDefinition-subject-reference"),
+                components: null,
+                expression: "PlanDefinition.subject as Reference",
+                targetResourceTypes: new[] { "MedicinalProductDefinition", "AdministrableProductDefinition", "Group", "PackagedProductDefinition", "EvidenceVariable", "SubstanceDefinition", "ManufacturedItemDefinition" },
+                baseResourceTypes: new[] { "PlanDefinition" },
+                description: "The subject of the PlanDefinition when expressed as a reference")
 ,
             new SearchParameterInfo(
                 name: "type",
@@ -11101,6 +10936,17 @@ public static class R6SearchParameterDefinitions
                 description: "A server defined search that may match any of the string fields in the HumanName, including family, give, prefix, suffix, suffix, and/or text")
 ,
             new SearchParameterInfo(
+                name: "qualification-code",
+                code: "qualification-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Practitioner-qualification-code"),
+                components: null,
+                expression: "Practitioner.qualification.code",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Practitioner" },
+                description: "The type of qualification")
+,
+            new SearchParameterInfo(
                 name: "qualification-period",
                 code: "qualification-period",
                 searchParamType: SearchParamType.Date,
@@ -11110,6 +10956,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Practitioner" },
                 description: "The date(s) a qualification is valid for")
+,
+            new SearchParameterInfo(
+                name: "qual-code-period",
+                code: "qual-code-period",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Practitioner-qual-code-period"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Practitioner-qualification-code"), "code"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/Practitioner-qualification-period"), "period") },
+                expression: "Practitioner.qualification",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Practitioner" },
+                description: "The practitioner has a qualification during a specific period")
 ,
             new SearchParameterInfo(
                 name: "active",
@@ -11189,6 +11046,17 @@ public static class R6SearchParameterDefinitions
                 description: "One of the locations at which this practitioner provides care")
 ,
             new SearchParameterInfo(
+                name: "network",
+                code: "network",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/PractitionerRole-network"),
+                components: null,
+                expression: "PractitionerRole.network",
+                targetResourceTypes: new[] { "Organization" },
+                baseResourceTypes: new[] { "PractitionerRole" },
+                description: "Health insurance provider network in which the PractitionerRole provides the role's services (if defined) at the indicated locations (if defined)")
+,
+            new SearchParameterInfo(
                 name: "organization",
                 code: "organization",
                 searchParamType: SearchParamType.Reference,
@@ -11266,28 +11134,6 @@ public static class R6SearchParameterDefinitions
                 description: "Classification of the procedure")
 ,
             new SearchParameterInfo(
-                name: "instantiates-canonical",
-                code: "instantiates-canonical",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Procedure-instantiates-canonical"),
-                components: null,
-                expression: "Procedure.instantiatesCanonical",
-                targetResourceTypes: new[] { "Measure", "OperationDefinition", "ActivityDefinition", "PlanDefinition", "Questionnaire" },
-                baseResourceTypes: new[] { "Procedure" },
-                description: "Instantiates FHIR protocol or definition")
-,
-            new SearchParameterInfo(
-                name: "instantiates-uri",
-                code: "instantiates-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Procedure-instantiates-uri"),
-                components: null,
-                expression: "Procedure.instantiatesUri",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Procedure" },
-                description: "Instantiates external protocol or definition")
-,
-            new SearchParameterInfo(
                 name: "location",
                 code: "location",
                 searchParamType: SearchParamType.Reference,
@@ -11349,7 +11195,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Procedure-report"),
                 components: null,
                 expression: "Procedure.report",
-                targetResourceTypes: new[] { "Composition", "DocumentReference", "DiagnosticReport" },
+                targetResourceTypes: new[] { "Composition", "Bundle", "DocumentReference", "DiagnosticReport" },
                 baseResourceTypes: new[] { "Procedure" },
                 description: "Any report resulting from the procedure")
 ,
@@ -11387,6 +11233,17 @@ public static class R6SearchParameterDefinitions
                 description: "Activity that occurred")
 ,
             new SearchParameterInfo(
+                name: "agent",
+                code: "agent",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Provenance-agent"),
+                components: null,
+                expression: "Provenance.agent.who",
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
+                baseResourceTypes: new[] { "Provenance" },
+                description: "Who participated")
+,
+            new SearchParameterInfo(
                 name: "agent-role",
                 code: "agent-role",
                 searchParamType: SearchParamType.Token,
@@ -11409,24 +11266,13 @@ public static class R6SearchParameterDefinitions
                 description: "How the agent participated")
 ,
             new SearchParameterInfo(
-                name: "agent",
-                code: "agent",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Provenance-agent"),
-                components: null,
-                expression: "Provenance.agent.who",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
-                baseResourceTypes: new[] { "Provenance" },
-                description: "Who participated")
-,
-            new SearchParameterInfo(
                 name: "based-on",
                 code: "based-on",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Provenance-based-on"),
                 components: null,
                 expression: "Provenance.basedOn",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Provenance" },
                 description: "Reference to the service request.")
 ,
@@ -11437,7 +11283,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Provenance-entity"),
                 components: null,
                 expression: "Provenance.entity.what",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Provenance" },
                 description: "Identity of entity")
 ,
@@ -11481,7 +11327,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Provenance-target"),
                 components: null,
                 expression: "Provenance.target",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Provenance" },
                 description: "Target Reference(s) (usually version specific)")
 ,
@@ -11502,7 +11348,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Questionnaire-combo-code"),
                 components: null,
-                expression: "Questionnaire.code | Questionnaire.item.code",
+                expression: "Questionnaire.code | Questionnaire.repeat(item).code",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Questionnaire" },
                 description: "A code that corresponds to one of its items in the questionnaire")
@@ -11513,10 +11359,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Uri,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Questionnaire-definition"),
                 components: null,
-                expression: "Questionnaire.item.definition",
+                expression: "Questionnaire.repeat(item).definition",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Questionnaire" },
                 description: "ElementDefinition - details for the item")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Questionnaire-experimental"),
+                components: null,
+                expression: "Questionnaire.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Questionnaire" },
+                description: "Whether the Questionnaire is experimental")
 ,
             new SearchParameterInfo(
                 name: "item-code",
@@ -11524,7 +11381,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Questionnaire-item-code"),
                 components: null,
-                expression: "Questionnaire.item.code",
+                expression: "Questionnaire.repeat(item).code",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Questionnaire" },
                 description: "A code that corresponds to one of the items in the questionnaire")
@@ -11552,13 +11409,79 @@ public static class R6SearchParameterDefinitions
                 description: "Resource that can be subject of QuestionnaireResponse")
 ,
             new SearchParameterInfo(
+                name: "answer-concept",
+                code: "answer-concept",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-concept"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(boolean) | QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(Coding)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question answers of type coding or boolean found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "answer-date",
+                code: "answer-date",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-date"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(date) | QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(dateTime)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question answers of type date or dateTime found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "answer-number",
+                code: "answer-number",
+                searchParamType: SearchParamType.Number,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-number"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(integer) | QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(decimal)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question answers of type integer or decimal found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "answer-quantity",
+                code: "answer-quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-quantity"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(Quantity)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question answers of type quantity found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "answer-reference",
+                code: "answer-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-reference"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(Reference)",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question answers of type reference found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "answer-string",
+                code: "answer-string",
+                searchParamType: SearchParamType.String,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-string"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).answer.value.ofType(string)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question answers of type string found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
                 name: "author",
                 code: "author",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-author"),
                 components: null,
                 expression: "QuestionnaireResponse.author",
-                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "QuestionnaireResponse" },
                 description: "The author of the questionnaire response")
 ,
@@ -11590,10 +11513,21 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-subject"),
                 components: null,
-                expression: "QuestionnaireResponse.item.where(extension('http://hl7.org/fhir/StructureDefinition/questionnaireresponse-isSubject').exists()).answer.value.ofType(Reference)",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).where(extension('http://hl7.org/fhir/StructureDefinition/questionnaireresponse-isSubject').exists()).answer.value.ofType(Reference)",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "QuestionnaireResponse" },
                 description: "Allows searching for QuestionnaireResponses by item value where the item has isSubject=true")
+,
+            new SearchParameterInfo(
+                name: "linkid",
+                code: "linkid",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"),
+                components: null,
+                expression: "QuestionnaireResponse.repeat(item.combine(item.answer.item)).linkId",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question linkIds found within the response")
 ,
             new SearchParameterInfo(
                 name: "part-of",
@@ -11646,20 +11580,86 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-subject"),
                 components: null,
                 expression: "QuestionnaireResponse.subject",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "QuestionnaireResponse" },
                 description: "The subject of the questionnaire response")
 ,
             new SearchParameterInfo(
-                name: "case-type",
-                code: "case-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/RegulatedAuthorization-case-type"),
-                components: null,
-                expression: "RegulatedAuthorization.case.type",
+                name: "item-concept",
+                code: "item-concept",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-concept"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-concept"), "item.answer.value.ofType(boolean) | item.answer.value.ofType(Coding)") },
+                expression: "QuestionnaireResponse",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "RegulatedAuthorization" },
-                description: "The defining type of case")
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type boolean or coding found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "item-date",
+                code: "item-date",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-date"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-date"), "item.answer.value.ofType(date) | item.answer.value.ofType(dateTime)") },
+                expression: "QuestionnaireResponse",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type date or dateTime found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "item-number",
+                code: "item-number",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-number"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-number"), "item.answer.value.ofType(integer) | item.answer.value.ofType(decimal)") },
+                expression: "QuestionnaireResponse",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type integer or decimal found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "item-quantity",
+                code: "item-quantity",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-quantity"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-quantity"), "item.answer.value.ofType(Quantity)") },
+                expression: "QuestionnaireResponse",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type quantity found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "item-reference",
+                code: "item-reference",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-reference"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-reference"), "item.answer.value.ofType(Reference)") },
+                expression: "QuestionnaireResponse",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type reference found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "item-string",
+                code: "item-string",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-string"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-string"), "item.answer.value.ofType(String)") },
+                expression: "QuestionnaireResponse",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type string found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
+,
+            new SearchParameterInfo(
+                name: "item-uri",
+                code: "item-uri",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-item-uri"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-linkid"), "item.linkId"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-answer-uri"), "item.answer.value.ofType(Uri)") },
+                expression: "QuestionnaireResponse",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "QuestionnaireResponse" },
+                description: "Question with items having the specified linkId and answers of type uri found within the response.  (Primarily for use as part of other composite search parameters.)  Refer to [questionnaireresponse.html#searching](searching guidance) on the resource page for considerations on the use of this parameter.")
 ,
             new SearchParameterInfo(
                 name: "case",
@@ -11671,6 +11671,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "RegulatedAuthorization" },
                 description: "The case or procedure number")
+,
+            new SearchParameterInfo(
+                name: "case-type",
+                code: "case-type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/RegulatedAuthorization-case-type"),
+                components: null,
+                expression: "RegulatedAuthorization.case.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "RegulatedAuthorization" },
+                description: "The defining type of case")
 ,
             new SearchParameterInfo(
                 name: "holder",
@@ -11726,6 +11737,28 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Ingredient", "Organization", "ObservationDefinition", "ActivityDefinition", "PlanDefinition", "BiologicallyDerivedProduct", "Practitioner", "PackagedProductDefinition", "SubstanceDefinition", "Location", "MedicinalProductDefinition", "NutritionProduct", "DeviceDefinition", "ResearchStudy", "ManufacturedItemDefinition" },
                 baseResourceTypes: new[] { "RegulatedAuthorization" },
                 description: "The type of regulated product, treatment, facility or activity that is being authorized")
+,
+            new SearchParameterInfo(
+                name: "type",
+                code: "type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/RegulatedAuthorization-type"),
+                components: null,
+                expression: "RegulatedAuthorization.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "RegulatedAuthorization" },
+                description: "Overall type of this authorization, for example drug marketing approval, orphan drug designation")
+,
+            new SearchParameterInfo(
+                name: "validity",
+                code: "validity",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/RegulatedAuthorization-validity"),
+                components: null,
+                expression: "RegulatedAuthorization.validityPeriod",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "RegulatedAuthorization" },
+                description: "The time period in which the regulatory approval, clearance or licensing is in effect")
 ,
             new SearchParameterInfo(
                 name: "active",
@@ -11794,6 +11827,17 @@ public static class R6SearchParameterDefinitions
                 description: "The functional relationship between the patient and the relatedperson")
 ,
             new SearchParameterInfo(
+                name: "action-resource",
+                code: "action-resource",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/RequestOrchestration-action-resource"),
+                components: null,
+                expression: "RequestOrchestration.repeat(action).resource",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "RequestOrchestration" },
+                description: "A resource in an action of the request orchestration")
+,
+            new SearchParameterInfo(
                 name: "author",
                 code: "author",
                 searchParamType: SearchParamType.Reference,
@@ -11822,7 +11866,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/RequestOrchestration-based-on"),
                 components: null,
                 expression: "RequestOrchestration.basedOn",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "RequestOrchestration" },
                 description: "What this request fullfills.")
 ,
@@ -11844,7 +11888,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/RequestOrchestration-instantiates-canonical"),
                 components: null,
                 expression: "RequestOrchestration.instantiatesCanonical",
-                targetResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", "CompartmentDefinition", "Composition", "ConceptMap", "ConditionDefinition", "Contract", "Device", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "GraphDefinition", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "ResearchStudy", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "TestPlan", "TestScript", "ValueSet" },
+                targetResourceTypes: new[] { "ActivityDefinition", "ActorDefinition", "CapabilityStatement", "CodeSystem", "CompartmentDefinition", "Composition", "ConceptMap", "Contract", "DeviceDefinition", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "Group", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "ObservationDefinition", "OperationDefinition", "PlanDefinition", "Questionnaire", "Requirements", "ResearchStudy", "SearchParameter", "SpecimenDefinition", "StructureDefinition", "StructureMap", "SubscriptionTopic", "TerminologyCapabilities", "ValueSet" },
                 baseResourceTypes: new[] { "RequestOrchestration" },
                 description: "The FHIR-based definition from which the request orchestration is realized")
 ,
@@ -11876,8 +11920,8 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/RequestOrchestration-participant"),
                 components: null,
-                expression: "RequestOrchestration.action.participant.actor.ofType(Reference) | RequestOrchestration.action.participant.actor.ofType(canonical)",
-                targetResourceTypes: new[] { "CareTeam", "Device", "Organization", "RelatedPerson", "Group", "Practitioner", "CapabilityStatement", "Location", "HealthcareService", "Endpoint", "DeviceDefinition", "PractitionerRole", "Patient" },
+                expression: "RequestOrchestration.repeat(action).participant.actor.ofType(Reference) | RequestOrchestration.repeat(action).participant.actor.ofType(canonical)",
+                targetResourceTypes: new[] { "StructureDefinition", "CareTeam", "Device", "Organization", "RelatedPerson", "Group", "BiologicallyDerivedProduct", "Practitioner", "Specimen", "CapabilityStatement", "Substance", "SubstanceDefinition", "Location", "ActorDefinition", "MedicinalProductDefinition", "HealthcareService", "Endpoint", "DeviceDefinition", "PractitionerRole", "SpecimenDefinition", "Medication", "Patient" },
                 baseResourceTypes: new[] { "RequestOrchestration" },
                 description: "The participant in the requests in the orchestration")
 ,
@@ -11920,7 +11964,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Requirements-actor"),
                 components: null,
-                expression: "Requirements.actor",
+                expression: "Requirements.actor.reference",
                 targetResourceTypes: new[] { "ActorDefinition" },
                 baseResourceTypes: new[] { "Requirements" },
                 description: "An actor these requirements are for")
@@ -11935,6 +11979,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "Requirements" },
                 baseResourceTypes: new[] { "Requirements" },
                 description: "The requirements these are derived from")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Requirements-experimental"),
+                components: null,
+                expression: "Requirements.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Requirements" },
+                description: "Whether the Requirements is experimental")
 ,
             new SearchParameterInfo(
                 name: "classifier",
@@ -11987,7 +12042,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-eligibility"),
                 components: null,
                 expression: "ResearchStudy.recruitment.eligibility",
-                targetResourceTypes: new[] { "Group", "EvidenceVariable" },
+                targetResourceTypes: new[] { "Group" },
                 baseResourceTypes: new[] { "ResearchStudy" },
                 description: "Inclusion and exclusion criteria")
 ,
@@ -12009,7 +12064,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-focus-reference"),
                 components: null,
                 expression: "ResearchStudy.focus.reference",
-                targetResourceTypes: new[] { "MedicinalProductDefinition", "EvidenceVariable", "SubstanceDefinition", "Medication" },
+                targetResourceTypes: new[] { "MedicinalProductDefinition", "DeviceDefinition", "PlanDefinition", "SubstanceDefinition", "Medication" },
                 baseResourceTypes: new[] { "ResearchStudy" },
                 description: "Drugs, devices, etc. under study, as a reference")
 ,
@@ -12091,37 +12146,37 @@ public static class R6SearchParameterDefinitions
                 description: "The stage in the progression of a study")
 ,
             new SearchParameterInfo(
-                name: "progress-status-state-actual",
-                code: "progress-status-state-actual",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-status-state-actual"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-state"), "state"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-actual"), "actual") },
-                expression: "ResearchStudy.progressStatus",
+                name: "progress-actual",
+                code: "progress-actual",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-actual"),
+                components: null,
+                expression: "ResearchStudy.progressStatus.actual",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ResearchStudy" },
-                description: "Status of study by state and actual")
+                description: "Actual if true else anticipated")
 ,
             new SearchParameterInfo(
-                name: "progress-status-state-period-actual",
-                code: "progress-status-state-period-actual",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-status-state-period-actual"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-state"), "state"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-period"), "period"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-actual"), "actual") },
-                expression: "ResearchStudy.progressStatus",
+                name: "progress-period",
+                code: "progress-period",
+                searchParamType: SearchParamType.Date,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-period"),
+                components: null,
+                expression: "ResearchStudy.progressStatus.period",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ResearchStudy" },
-                description: "Status of study by state, period and actual")
+                description: "Date range")
 ,
             new SearchParameterInfo(
-                name: "progress-status-state-period",
-                code: "progress-status-state-period",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-status-state-period"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-state"), "state"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-period"), "period") },
-                expression: "ResearchStudy.progressStatus",
+                name: "progress-state",
+                code: "progress-state",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-state"),
+                components: null,
+                expression: "ResearchStudy.progressStatus.state",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ResearchStudy" },
-                description: "Status of study by state and period")
+                description: "Label for status or state")
 ,
             new SearchParameterInfo(
                 name: "protocol",
@@ -12212,6 +12267,39 @@ public static class R6SearchParameterDefinitions
                 description: "The human readable name of the research study")
 ,
             new SearchParameterInfo(
+                name: "progress-status-state-actual",
+                code: "progress-status-state-actual",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-status-state-actual"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-state"), "progress-state"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-actual"), "progress-actual") },
+                expression: "ResearchStudy.progressStatus",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ResearchStudy" },
+                description: "Status of study by state and actual")
+,
+            new SearchParameterInfo(
+                name: "progress-status-state-period",
+                code: "progress-status-state-period",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-status-state-period"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-state"), "progress-state"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-period"), "progress-period") },
+                expression: "ResearchStudy.progressStatus",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ResearchStudy" },
+                description: "Status of study by state and period")
+,
+            new SearchParameterInfo(
+                name: "progress-status-state-period-actual",
+                code: "progress-status-state-period-actual",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-status-state-period-actual"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-state"), "progress-state"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-period"), "progress-period"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/ResearchStudy-progress-actual"), "progress-actual") },
+                expression: "ResearchStudy.progressStatus",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ResearchStudy" },
+                description: "Status of study by state, period and actual")
+,
+            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
@@ -12240,7 +12328,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ResearchSubject-subject"),
                 components: null,
                 expression: "ResearchSubject.subject",
-                targetResourceTypes: new[] { "Device", "Group", "BiologicallyDerivedProduct", "Specimen", "Substance", "Patient", "Medication" },
+                targetResourceTypes: new[] { "Device", "Group", "BiologicallyDerivedProduct", "Specimen", "Substance", "SubstanceDefinition", "Patient", "Medication" },
                 baseResourceTypes: new[] { "ResearchSubject" },
                 description: "Who or what is part of study")
 ,
@@ -12254,105 +12342,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ResearchSubject" },
                 description: "candidate | in-prescreening | in-screening | eligible | ineligible | on-study | on-study-intervention | in-follow-up | off-study")
-,
-            new SearchParameterInfo(
-                name: "_id",
-                code: "_id",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"),
-                components: null,
-                expression: "Resource.id",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Logical id of this artifact")
-,
-            new SearchParameterInfo(
-                name: "_in",
-                code: "_in",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-in"),
-                components: null,
-                expression: "Resource.id",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Allows for the retrieval of resources that are active members of a CareTeam, Group, or List")
-,
-            new SearchParameterInfo(
-                name: "_language",
-                code: "_language",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-language"),
-                components: null,
-                expression: "Resource.language",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Language of the resource content")
-,
-            new SearchParameterInfo(
-                name: "_lastUpdated",
-                code: "_lastUpdated",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"),
-                components: null,
-                expression: "Resource.meta.lastUpdated",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "When the resource version last changed")
-,
-            new SearchParameterInfo(
-                name: "_profile",
-                code: "_profile",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-profile"),
-                components: null,
-                expression: "Resource.meta.profile",
-                targetResourceTypes: new[] { "StructureDefinition" },
-                baseResourceTypes: new[] { "Resource" },
-                description: "Profiles this resource claims to conform to")
-,
-            new SearchParameterInfo(
-                name: "_query",
-                code: "_query",
-                searchParamType: SearchParamType.Special,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-query"),
-                components: null,
-                expression: null,
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "A custom search profile that describes a specific defined query operation")
-,
-            new SearchParameterInfo(
-                name: "_security",
-                code: "_security",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-security"),
-                components: null,
-                expression: "Resource.meta.security",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Security Labels applied to this resource")
-,
-            new SearchParameterInfo(
-                name: "_source",
-                code: "_source",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-source"),
-                components: null,
-                expression: "Resource.meta.source",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Identifies where the resource comes from")
-,
-            new SearchParameterInfo(
-                name: "_tag",
-                code: "_tag",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-tag"),
-                components: null,
-                expression: "Resource.meta.tag",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Tags applied to this resource")
 ,
             new SearchParameterInfo(
                 name: "condition",
@@ -12397,6 +12386,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "RiskAssessment" },
                 description: "Likelihood of specified outcome")
+,
+            new SearchParameterInfo(
+                name: "probability-quantity",
+                code: "probability-quantity",
+                searchParamType: SearchParamType.Quantity,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/RiskAssessment-probability-quantity"),
+                components: null,
+                expression: "RiskAssessment.prediction.probability.ofType(Quantity) | RiskAssessment.prediction.probability.ofType(Range)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "RiskAssessment" },
+                description: "Likelihood of specified outcome (as a Quantity or Range)")
 ,
             new SearchParameterInfo(
                 name: "risk",
@@ -12487,17 +12487,6 @@ public static class R6SearchParameterDefinitions
                 description: "High-level category")
 ,
             new SearchParameterInfo(
-                name: "service-type-reference",
-                code: "service-type-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Schedule-service-type-reference"),
-                components: null,
-                expression: "Schedule.serviceType.reference",
-                targetResourceTypes: new[] { "HealthcareService" },
-                baseResourceTypes: new[] { "Schedule" },
-                description: "The type (by HealthcareService) of appointments that can be booked into associated slot(s)")
-,
-            new SearchParameterInfo(
                 name: "service-type",
                 code: "service-type",
                 searchParamType: SearchParamType.Token,
@@ -12507,6 +12496,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Schedule" },
                 description: "The type (by coding) of appointments that can be booked into associated slot(s)")
+,
+            new SearchParameterInfo(
+                name: "service-type-reference",
+                code: "service-type-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Schedule-service-type-reference"),
+                components: null,
+                expression: "Schedule.serviceType.reference",
+                targetResourceTypes: new[] { "HealthcareService" },
+                baseResourceTypes: new[] { "Schedule" },
+                description: "The type (by HealthcareService) of appointments that can be booked into associated slot(s)")
 ,
             new SearchParameterInfo(
                 name: "specialty",
@@ -12564,6 +12564,17 @@ public static class R6SearchParameterDefinitions
                 description: "Original definition for the search parameter")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/SearchParameter-experimental"),
+                components: null,
+                expression: "SearchParameter.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "SearchParameter" },
+                description: "Whether the SearchParameter is experimental")
+,
+            new SearchParameterInfo(
                 name: "target",
                 code: "target",
                 searchParamType: SearchParamType.Token,
@@ -12603,31 +12614,20 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-based-on"),
                 components: null,
                 expression: "ServiceRequest.basedOn",
-                targetResourceTypes: new[] { "RequestOrchestration", "ServiceRequest", "CarePlan", "MedicationRequest" },
+                targetResourceTypes: new[] { "RequestOrchestration", "DocumentReference", "ServiceRequest", "CarePlan", "MedicationRequest", "NutritionOrder" },
                 baseResourceTypes: new[] { "ServiceRequest" },
                 description: "What request fulfills")
 ,
             new SearchParameterInfo(
-                name: "body-site",
-                code: "body-site",
+                name: "body-structure-code",
+                code: "body-structure-code",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-body-site"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-body-structure-code"),
                 components: null,
-                expression: "ServiceRequest.bodySite",
+                expression: "ServiceRequest.bodyStructure.concept",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ServiceRequest" },
-                description: "Where procedure is going to be done")
-,
-            new SearchParameterInfo(
-                name: "body-structure",
-                code: "body-structure",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-body-structure"),
-                components: null,
-                expression: "ServiceRequest.bodyStructure",
-                targetResourceTypes: new[] { "BodyStructure" },
-                baseResourceTypes: new[] { "ServiceRequest" },
-                description: "Body structure Where procedure is going to be done")
+                description: "Code for body structure where procedure is going to be done")
 ,
             new SearchParameterInfo(
                 name: "category",
@@ -12663,26 +12663,15 @@ public static class R6SearchParameterDefinitions
                 description: "What is being requested/ordered")
 ,
             new SearchParameterInfo(
-                name: "instantiates-canonical",
-                code: "instantiates-canonical",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-instantiates-canonical"),
+                name: "group-or-identifier",
+                code: "group-or-identifier",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-group-or-identifier"),
                 components: null,
-                expression: "ServiceRequest.instantiatesCanonical",
-                targetResourceTypes: new[] { "ActivityDefinition", "PlanDefinition" },
-                baseResourceTypes: new[] { "ServiceRequest" },
-                description: "Instantiates FHIR protocol or definition")
-,
-            new SearchParameterInfo(
-                name: "instantiates-uri",
-                code: "instantiates-uri",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-instantiates-uri"),
-                components: null,
-                expression: "ServiceRequest.instantiatesUri",
+                expression: "ServiceRequest.requisition | ServiceRequest.identifier",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ServiceRequest" },
-                description: "Instantiates external protocol or definition")
+                description: "Requisition ID or other identifier")
 ,
             new SearchParameterInfo(
                 name: "intent",
@@ -12729,6 +12718,17 @@ public static class R6SearchParameterDefinitions
                 description: "When service should occur")
 ,
             new SearchParameterInfo(
+                name: "performer",
+                code: "performer",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-performer"),
+                components: null,
+                expression: "ServiceRequest.performer",
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
+                baseResourceTypes: new[] { "ServiceRequest" },
+                description: "Requested performer")
+,
+            new SearchParameterInfo(
                 name: "performer-type",
                 code: "performer-type",
                 searchParamType: SearchParamType.Token,
@@ -12738,17 +12738,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ServiceRequest" },
                 description: "Performer role")
-,
-            new SearchParameterInfo(
-                name: "performer",
-                code: "performer",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-performer"),
-                components: null,
-                expression: "ServiceRequest.performer",
-                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "ServiceRequest" },
-                description: "Requested performer")
 ,
             new SearchParameterInfo(
                 name: "priority",
@@ -12762,13 +12751,24 @@ public static class R6SearchParameterDefinitions
                 description: "routine | urgent | asap | stat")
 ,
             new SearchParameterInfo(
+                name: "reference",
+                code: "reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-reference"),
+                components: null,
+                expression: "ServiceRequest.bodyStructure.reference",
+                targetResourceTypes: new[] { "BodyStructure" },
+                baseResourceTypes: new[] { "ServiceRequest" },
+                description: "Body structure where procedure is going to be done (reference)")
+,
+            new SearchParameterInfo(
                 name: "replaces",
                 code: "replaces",
                 searchParamType: SearchParamType.Reference,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-replaces"),
                 components: null,
                 expression: "ServiceRequest.replaces",
-                targetResourceTypes: new[] { "ServiceRequest" },
+                targetResourceTypes: new[] { "RequestOrchestration", "ServiceRequest", "DeviceRequest", "CarePlan", "CommunicationRequest", "MedicationRequest", "NutritionOrder", "VisionPrescription" },
                 baseResourceTypes: new[] { "ServiceRequest" },
                 description: "What request replaces")
 ,
@@ -12779,7 +12779,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-requester"),
                 components: null,
                 expression: "ServiceRequest.requester",
-                targetResourceTypes: new[] { "Organization", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "ServiceRequest" },
                 description: "Who/what is requesting service")
 ,
@@ -12793,17 +12793,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ServiceRequest" },
                 description: "Composite Request ID")
-,
-            new SearchParameterInfo(
-                name: "specimen",
-                code: "specimen",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/ServiceRequest-specimen"),
-                components: null,
-                expression: "ServiceRequest.specimen",
-                targetResourceTypes: new[] { "Specimen" },
-                baseResourceTypes: new[] { "ServiceRequest" },
-                description: "Specimen to be tested")
 ,
             new SearchParameterInfo(
                 name: "status",
@@ -12872,17 +12861,6 @@ public static class R6SearchParameterDefinitions
                 description: "A broad categorization of the service that is to be performed during this appointment")
 ,
             new SearchParameterInfo(
-                name: "service-type-reference",
-                code: "service-type-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Slot-service-type-reference"),
-                components: null,
-                expression: "Slot.serviceType.reference",
-                targetResourceTypes: new[] { "HealthcareService" },
-                baseResourceTypes: new[] { "Slot" },
-                description: "The type (by HealthcareService) of appointments that can be booked into the slot")
-,
-            new SearchParameterInfo(
                 name: "service-type",
                 code: "service-type",
                 searchParamType: SearchParamType.Token,
@@ -12892,6 +12870,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Slot" },
                 description: "The type (by coding) of appointments that can be booked into the slot")
+,
+            new SearchParameterInfo(
+                name: "service-type-reference",
+                code: "service-type-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Slot-service-type-reference"),
+                components: null,
+                expression: "Slot.serviceType.reference",
+                targetResourceTypes: new[] { "HealthcareService" },
+                baseResourceTypes: new[] { "Slot" },
+                description: "The type (by HealthcareService) of appointments that can be booked into the slot")
 ,
             new SearchParameterInfo(
                 name: "specialty",
@@ -12927,17 +12916,6 @@ public static class R6SearchParameterDefinitions
                 description: "The free/busy status of the appointment")
 ,
             new SearchParameterInfo(
-                name: "accession",
-                code: "accession",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-accession"),
-                components: null,
-                expression: "Specimen.accessionIdentifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Specimen" },
-                description: "The accession number associated with the specimen")
-,
-            new SearchParameterInfo(
                 name: "bodysite",
                 code: "bodysite",
                 searchParamType: SearchParamType.Reference,
@@ -12960,6 +12938,17 @@ public static class R6SearchParameterDefinitions
                 description: "The date the specimen was collected")
 ,
             new SearchParameterInfo(
+                name: "collection-device-code",
+                code: "collection-device-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-collection-device-code"),
+                components: null,
+                expression: "Specimen.collection.device.ofType(CodeableConcept)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Specimen" },
+                description: "The code associated with the collection device")
+,
+            new SearchParameterInfo(
                 name: "collector",
                 code: "collector",
                 searchParamType: SearchParamType.Reference,
@@ -12971,37 +12960,15 @@ public static class R6SearchParameterDefinitions
                 description: "Who collected the specimen")
 ,
             new SearchParameterInfo(
-                name: "container-device",
-                code: "container-device",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-container-device"),
+                name: "container-device-code",
+                code: "container-device-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-container-device-code"),
                 components: null,
-                expression: "Specimen.container.device.where(resolve() is Device)",
-                targetResourceTypes: new[] { "Device" },
+                expression: "Specimen.container.device.ofType(CodeableConcept)",
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "Specimen" },
-                description: "The unique identifier associated with the specimen container")
-,
-            new SearchParameterInfo(
-                name: "container-location",
-                code: "container-location",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-container-location"),
-                components: null,
-                expression: "Specimen.container.device.resolve().location",
-                targetResourceTypes: new[] { "Location" },
-                baseResourceTypes: new[] { "Specimen" },
-                description: "The location of the specimen container")
-,
-            new SearchParameterInfo(
-                name: "organization",
-                code: "organization",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-organization"),
-                components: null,
-                expression: "Specimen.container.device.resolve().owner",
-                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "Specimen" },
-                description: "The organization where the specimen is located")
+                description: "The code associated with the specimen container")
 ,
             new SearchParameterInfo(
                 name: "parent",
@@ -13026,6 +12993,28 @@ public static class R6SearchParameterDefinitions
                 description: "The procedure that collected the specimen")
 ,
             new SearchParameterInfo(
+                name: "processing-device-code",
+                code: "processing-device-code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-processing-device-code"),
+                components: null,
+                expression: "Specimen.processing.device.ofType(CodeableConcept)",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Specimen" },
+                description: "The code associated with the processing device")
+,
+            new SearchParameterInfo(
+                name: "request",
+                code: "request",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-request"),
+                components: null,
+                expression: "Specimen.request",
+                targetResourceTypes: new[] { "ServiceRequest" },
+                baseResourceTypes: new[] { "Specimen" },
+                description: "The request/order associated with the specimen")
+,
+            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
@@ -13043,7 +13032,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Specimen-subject"),
                 components: null,
                 expression: "Specimen.subject",
-                targetResourceTypes: new[] { "Device", "Group", "BiologicallyDerivedProduct", "Substance", "Location", "Patient" },
+                targetResourceTypes: new[] { "Device", "NutritionProduct", "Group", "BiologicallyDerivedProduct", "Substance", "Location", "Patient" },
                 baseResourceTypes: new[] { "Specimen" },
                 description: "The subject of the specimen")
 ,
@@ -13081,17 +13070,6 @@ public static class R6SearchParameterDefinitions
                 description: "Primary specimen (false) or derived specimen (true)")
 ,
             new SearchParameterInfo(
-                name: "type-tested",
-                code: "type-tested",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SpecimenDefinition-type-tested"),
-                components: null,
-                expression: "SpecimenDefinition.typeTested.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "SpecimenDefinition" },
-                description: "The type of specimen conditioned for testing")
-,
-            new SearchParameterInfo(
                 name: "type",
                 code: "type",
                 searchParamType: SearchParamType.Token,
@@ -13101,6 +13079,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "SpecimenDefinition" },
                 description: "The type of collected specimen")
+,
+            new SearchParameterInfo(
+                name: "type-tested",
+                code: "type-tested",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/SpecimenDefinition-type-tested"),
+                components: null,
+                expression: "SpecimenDefinition.typeTested.type",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "SpecimenDefinition" },
+                description: "The type of specimen conditioned for testing")
 ,
             new SearchParameterInfo(
                 name: "abstract",
@@ -13114,17 +13103,6 @@ public static class R6SearchParameterDefinitions
                 description: "Whether the structure is abstract")
 ,
             new SearchParameterInfo(
-                name: "base-path",
-                code: "base-path",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-base-path"),
-                components: null,
-                expression: "StructureDefinition.snapshot.element.base.path | StructureDefinition.differential.element.base.path",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "StructureDefinition" },
-                description: "Path that identifies the base element")
-,
-            new SearchParameterInfo(
                 name: "base",
                 code: "base",
                 searchParamType: SearchParamType.Reference,
@@ -13134,6 +13112,17 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "StructureDefinition" },
                 baseResourceTypes: new[] { "StructureDefinition" },
                 description: "Definition that this type is constrained/specialized from")
+,
+            new SearchParameterInfo(
+                name: "base-path",
+                code: "base-path",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-base-path"),
+                components: null,
+                expression: "StructureDefinition.snapshot.element.base.path | StructureDefinition.differential.element.base.path",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureDefinition" },
+                description: "Path that identifies the base element")
 ,
             new SearchParameterInfo(
                 name: "derivation",
@@ -13155,7 +13144,7 @@ public static class R6SearchParameterDefinitions
                 expression: "StructureDefinition.experimental",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "StructureDefinition" },
-                description: "For testing purposes, not real usage")
+                description: "Whether the StructureDefinition is experimental")
 ,
             new SearchParameterInfo(
                 name: "ext-context-expression",
@@ -13178,17 +13167,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "StructureDefinition" },
                 description: "A type of extension context assigned to the structure definition")
-,
-            new SearchParameterInfo(
-                name: "ext-context",
-                code: "ext-context",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-ext-context"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-ext-context-type"), "type"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-ext-context-expression"), "expression") },
-                expression: "StructureDefinition.context",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "StructureDefinition" },
-                description: "An extension context assigned to the structure definition")
 ,
             new SearchParameterInfo(
                 name: "keyword",
@@ -13244,6 +13222,72 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "ValueSet" },
                 baseResourceTypes: new[] { "StructureDefinition" },
                 description: "A vocabulary binding reference")
+,
+            new SearchParameterInfo(
+                name: "ext-context",
+                code: "ext-context",
+                searchParamType: SearchParamType.Composite,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-ext-context"),
+                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-ext-context-type"), "type"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/StructureDefinition-ext-context-expression"), "expression") },
+                expression: "StructureDefinition.context",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureDefinition" },
+                description: "An extension context assigned to the structure definition")
+,
+            new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureMap-experimental"),
+                components: null,
+                expression: "StructureMap.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureMap" },
+                description: "Whether the StructureMap is experimental")
+,
+            new SearchParameterInfo(
+                name: "produced",
+                code: "produced",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureMap-produced"),
+                components: null,
+                expression: "StructureMap.structure.where(mode = 'produced').url",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureMap" },
+                description: "A produced StructureDefinition for the map")
+,
+            new SearchParameterInfo(
+                name: "queried",
+                code: "queried",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureMap-queried"),
+                components: null,
+                expression: "StructureMap.structure.where(mode = 'queried').url",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureMap" },
+                description: "A queried StructureDefinition for the map")
+,
+            new SearchParameterInfo(
+                name: "source",
+                code: "source",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureMap-source"),
+                components: null,
+                expression: "StructureMap.structure.where(mode = 'source').url",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureMap" },
+                description: "A source StructureDefinition for the map")
+,
+            new SearchParameterInfo(
+                name: "target",
+                code: "target",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/StructureMap-target"),
+                components: null,
+                expression: "StructureMap.structure.where(mode = 'target').url",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "StructureMap" },
+                description: "A target StructureDefinition for the map")
 ,
             new SearchParameterInfo(
                 name: "contact",
@@ -13318,7 +13362,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Subscription-owner"),
                 components: null,
                 expression: "Subscription.managingEntity",
-                targetResourceTypes: new[] { "HealthcareService", "CareTeam", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "HealthcareService", "CareTeam", "Device", "Organization", "RelatedPerson", "PractitionerRole", "Group", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Subscription" },
                 description: "The managing entity")
 ,
@@ -13411,6 +13455,17 @@ public static class R6SearchParameterDefinitions
                 description: "Event trigger")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/SubscriptionTopic-experimental"),
+                components: null,
+                expression: "SubscriptionTopic.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "SubscriptionTopic" },
+                description: "Whether the SubscriptionTopic is experimental")
+,
+            new SearchParameterInfo(
                 name: "resource",
                 code: "resource",
                 searchParamType: SearchParamType.Uri,
@@ -13444,6 +13499,17 @@ public static class R6SearchParameterDefinitions
                 description: "The category of the substance")
 ,
             new SearchParameterInfo(
+                name: "code",
+                code: "code",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Substance-code"),
+                components: null,
+                expression: "Substance.code.concept",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Substance" },
+                description: "The code of the substance")
+,
+            new SearchParameterInfo(
                 name: "code-reference",
                 code: "code-reference",
                 searchParamType: SearchParamType.Reference,
@@ -13453,17 +13519,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: new[] { "SubstanceDefinition" },
                 baseResourceTypes: new[] { "Substance" },
                 description: "A reference to the defining substance")
-,
-            new SearchParameterInfo(
-                name: "code",
-                code: "code",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Substance-code"),
-                components: null,
-                expression: "Substance.code.concept | (Substance.ingredient.substance.ofType(CodeableConcept))",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Substance" },
-                description: "The code of the substance or ingredient")
 ,
             new SearchParameterInfo(
                 name: "expiry",
@@ -13508,17 +13563,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "Substance" },
                 description: "active | inactive | entered-in-error")
-,
-            new SearchParameterInfo(
-                name: "substance-reference",
-                code: "substance-reference",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Substance-substance-reference"),
-                components: null,
-                expression: "(Substance.ingredient.substance.ofType(Reference))",
-                targetResourceTypes: new[] { "Substance" },
-                baseResourceTypes: new[] { "Substance" },
-                description: "A component of the substance")
 ,
             new SearchParameterInfo(
                 name: "classification",
@@ -13576,92 +13620,15 @@ public static class R6SearchParameterDefinitions
                 description: "The actual name")
 ,
             new SearchParameterInfo(
-                name: "receiver",
-                code: "receiver",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyDelivery-receiver"),
-                components: null,
-                expression: "SupplyDelivery.receiver",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "SupplyDelivery" },
-                description: "Who collected the Supply")
-,
-            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyDelivery-status"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/SubstanceDefinition-status"),
                 components: null,
-                expression: "SupplyDelivery.status",
+                expression: "SubstanceDefinition.status",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "SupplyDelivery" },
-                description: "in-progress | completed | abandoned | entered-in-error")
-,
-            new SearchParameterInfo(
-                name: "supplier",
-                code: "supplier",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyDelivery-supplier"),
-                components: null,
-                expression: "SupplyDelivery.supplier",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "SupplyDelivery" },
-                description: "Dispenser")
-,
-            new SearchParameterInfo(
-                name: "category",
-                code: "category",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyRequest-category"),
-                components: null,
-                expression: "SupplyRequest.category",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "SupplyRequest" },
-                description: "The kind of supply (central, non-stock, etc.)")
-,
-            new SearchParameterInfo(
-                name: "requester",
-                code: "requester",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyRequest-requester"),
-                components: null,
-                expression: "SupplyRequest.requester",
-                targetResourceTypes: new[] { "Organization", "Device", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
-                baseResourceTypes: new[] { "SupplyRequest" },
-                description: "Individual making the request")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyRequest-status"),
-                components: null,
-                expression: "SupplyRequest.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "SupplyRequest" },
-                description: "draft | active | suspended +")
-,
-            new SearchParameterInfo(
-                name: "subject",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyRequest-subject"),
-                components: null,
-                expression: "SupplyRequest.deliverTo",
-                targetResourceTypes: new[] { "Organization", "RelatedPerson", "Location", "Patient" },
-                baseResourceTypes: new[] { "SupplyRequest" },
-                description: "The destination of the supply")
-,
-            new SearchParameterInfo(
-                name: "supplier",
-                code: "supplier",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/SupplyRequest-supplier"),
-                components: null,
-                expression: "SupplyRequest.supplier",
-                targetResourceTypes: new[] { "HealthcareService", "Organization" },
-                baseResourceTypes: new[] { "SupplyRequest" },
-                description: "Who is intended to fulfill the request")
+                baseResourceTypes: new[] { "SubstanceDefinition" },
+                description: "Status of substance within the catalogue e.g. active, retired")
 ,
             new SearchParameterInfo(
                 name: "actor",
@@ -13670,7 +13637,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-actor"),
                 components: null,
                 expression: "Task.performer.actor",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Device", "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by specific performer.")
 ,
@@ -13692,7 +13659,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-based-on"),
                 components: null,
                 expression: "Task.basedOn",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by requests this task is based on")
 ,
@@ -13708,15 +13675,26 @@ public static class R6SearchParameterDefinitions
                 description: "Search by business status")
 ,
             new SearchParameterInfo(
-                name: "focus",
-                code: "focus",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Task-focus"),
+                name: "focus-canonical",
+                code: "focus-canonical",
+                searchParamType: SearchParamType.Uri,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Task-focus-canonical"),
                 components: null,
-                expression: "Task.focus",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                expression: "Task.focus.value.ofType(canonical)",
+                targetResourceTypes: null,
                 baseResourceTypes: new[] { "Task" },
-                description: "Search by task focus")
+                description: "Search by task focus - canonical")
+,
+            new SearchParameterInfo(
+                name: "focus-reference",
+                code: "focus-reference",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Task-focus-reference"),
+                components: null,
+                expression: "Task.focus.value.ofType(Reference)",
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
+                baseResourceTypes: new[] { "Task" },
+                description: "Search by task focus - reference")
 ,
             new SearchParameterInfo(
                 name: "group-identifier",
@@ -13736,7 +13714,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-input"),
                 components: null,
                 expression: "Task.input.value.ofType(Reference)",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by task input")
 ,
@@ -13769,7 +13747,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-output"),
                 components: null,
                 expression: "Task.output.value.ofType(Reference)",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by task output")
 ,
@@ -13780,7 +13758,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-owner"),
                 components: null,
                 expression: "Task.owner",
-                targetResourceTypes: new[] { "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Organization", "CareTeam", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by task owner")
 ,
@@ -13835,7 +13813,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-requestedperformer-reference"),
                 components: null,
                 expression: "Task.requestedPerformer.reference",
-                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "HealthcareService", "Organization", "CareTeam", "Device", "RelatedPerson", "PractitionerRole", "Practitioner", "Group", "Patient" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by specific requested performer.")
 ,
@@ -13846,7 +13824,7 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-requester"),
                 components: null,
                 expression: "Task.requester",
-                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Practitioner", "Patient" },
+                targetResourceTypes: new[] { "Device", "Organization", "RelatedPerson", "PractitionerRole", "Group", "Practitioner", "Patient" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by task requester")
 ,
@@ -13868,185 +13846,20 @@ public static class R6SearchParameterDefinitions
                 url: new Uri("http://hl7.org/fhir/SearchParameter/Task-subject"),
                 components: null,
                 expression: "Task.for",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
+                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "Claim", "ClaimResponse", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAlert", "DeviceAssociation", "DeviceDefinition", "DeviceMetric", "DeviceRequest", "DiagnosticReport", "DocumentReference", "Encounter", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImplementationGuide", "Ingredient", "InsurancePlan", "InsuranceProduct", "Invoice", "Library", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "Task", "TerminologyCapabilities", "ValueSet", "VisionPrescription" },
                 baseResourceTypes: new[] { "Task" },
                 description: "Search by subject")
 ,
             new SearchParameterInfo(
-                name: "scope",
-                code: "scope",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestPlan-scope"),
-                components: null,
-                expression: "TestPlan.scope",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "TestPlan" },
-                description: "The scope that is to be tested with this test plan")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
+                name: "experimental",
+                code: "experimental",
                 searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-identifier"),
+                url: new Uri("http://hl7.org/fhir/SearchParameter/TerminologyCapabilities-experimental"),
                 components: null,
-                expression: "TestReport.identifier",
+                expression: "TerminologyCapabilities.experimental",
                 targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestReport" },
-                description: "An external identifier for the test report")
-,
-            new SearchParameterInfo(
-                name: "issued",
-                code: "issued",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-issued"),
-                components: null,
-                expression: "TestReport.issued",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestReport" },
-                description: "The test report generation date")
-,
-            new SearchParameterInfo(
-                name: "participant",
-                code: "participant",
-                searchParamType: SearchParamType.Uri,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-participant"),
-                components: null,
-                expression: "TestReport.participant.uri",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestReport" },
-                description: "The reference to a participant in the test execution")
-,
-            new SearchParameterInfo(
-                name: "result",
-                code: "result",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-result"),
-                components: null,
-                expression: "TestReport.result",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestReport" },
-                description: "The result disposition of the test execution")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-status"),
-                components: null,
-                expression: "TestReport.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestReport" },
-                description: "The current status of the test report")
-,
-            new SearchParameterInfo(
-                name: "tester",
-                code: "tester",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-tester"),
-                components: null,
-                expression: "TestReport.tester",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestReport" },
-                description: "The name of the testing organization")
-,
-            new SearchParameterInfo(
-                name: "testscript",
-                code: "testscript",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestReport-testscript"),
-                components: null,
-                expression: "TestReport.testScript",
-                targetResourceTypes: new[] { "TestScript" },
-                baseResourceTypes: new[] { "TestReport" },
-                description: "The test script executed to produce this report")
-,
-            new SearchParameterInfo(
-                name: "artifact",
-                code: "artifact",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestScript-artifact"),
-                components: null,
-                expression: "TestScript.scope.artifact",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "TestScript" },
-                description: "The artifact under test")
-,
-            new SearchParameterInfo(
-                name: "conformance",
-                code: "conformance",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestScript-conformance"),
-                components: null,
-                expression: "TestScript.scope.conformance.ofType(CodeableConcept)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestScript" },
-                description: "The artifact conformance testing expectation")
-,
-            new SearchParameterInfo(
-                name: "phase",
-                code: "phase",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestScript-phase"),
-                components: null,
-                expression: "TestScript.scope.phase.ofType(CodeableConcept)",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestScript" },
-                description: "The artifact phase of testing")
-,
-            new SearchParameterInfo(
-                name: "scope-artifact-conformance",
-                code: "scope-artifact-conformance",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-conformance"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/TestScript-artifact"), "artifact"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/TestScript-conformance"), "conformance.ofType(CodeableConcept)") },
-                expression: "TestScript.scope",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestScript" },
-                description: "The artifact under test and conformance testing expectation")
-,
-            new SearchParameterInfo(
-                name: "scope-artifact-phase",
-                code: "scope-artifact-phase",
-                searchParamType: SearchParamType.Composite,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-phase"),
-                components: new[] { new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/TestScript-artifact"), "artifact"), new SearchParameterComponentInfo(new Uri("http://hl7.org/fhir/SearchParameter/TestScript-phase"), "phase.ofType(CodeableConcept)") },
-                expression: "TestScript.scope",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestScript" },
-                description: "The artifact under test and phase of testing")
-,
-            new SearchParameterInfo(
-                name: "testscript-capability",
-                code: "testscript-capability",
-                searchParamType: SearchParamType.String,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/TestScript-testscript-capability"),
-                components: null,
-                expression: "TestScript.metadata.capability.description",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "TestScript" },
-                description: "TestScript required and validated capability")
-,
-            new SearchParameterInfo(
-                name: "identifier",
-                code: "identifier",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Transport-identifier"),
-                components: null,
-                expression: "Transport.identifier",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Transport" },
-                description: "External identifier")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/Transport-status"),
-                components: null,
-                expression: "Transport.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Transport" },
-                description: "in-progress | completed | entered-in-error")
+                baseResourceTypes: new[] { "TerminologyCapabilities" },
+                description: "Whether the TerminologyCapabilities is experimental")
 ,
             new SearchParameterInfo(
                 name: "code",
@@ -14054,7 +13867,7 @@ public static class R6SearchParameterDefinitions
                 searchParamType: SearchParamType.Token,
                 url: new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-code"),
                 components: null,
-                expression: "ValueSet.expansion.contains.code | ValueSet.compose.include.concept.code",
+                expression: "ValueSet.expansion.repeat(contains).code | ValueSet.compose.include.concept.code",
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ValueSet" },
                 description: "This special parameter searches for codes in the value set. See additional notes on the ValueSet resource")
@@ -14071,6 +13884,17 @@ public static class R6SearchParameterDefinitions
                 description: "Identifies the value set expansion (business identifier)")
 ,
             new SearchParameterInfo(
+                name: "experimental",
+                code: "experimental",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-experimental"),
+                components: null,
+                expression: "ValueSet.experimental",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "ValueSet" },
+                description: "Whether the ValueSet is experimental")
+,
+            new SearchParameterInfo(
                 name: "reference",
                 code: "reference",
                 searchParamType: SearchParamType.Uri,
@@ -14080,116 +13904,6 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "ValueSet" },
                 description: "A code system included or excluded in the value set or an imported value set")
-,
-            new SearchParameterInfo(
-                name: "attestation-method",
-                code: "attestation-method",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-attestation-method"),
-                components: null,
-                expression: "VerificationResult.attestation.communicationMethod",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was attested to using the specified method")
-,
-            new SearchParameterInfo(
-                name: "attestation-onbehalfof",
-                code: "attestation-onbehalfof",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-attestation-onbehalfof"),
-                components: null,
-                expression: "VerificationResult.attestation.onBehalfOf",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was attested to on behalf of the specified source")
-,
-            new SearchParameterInfo(
-                name: "attestation-who",
-                code: "attestation-who",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-attestation-who"),
-                components: null,
-                expression: "VerificationResult.attestation.who",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was attested to by the specified source")
-,
-            new SearchParameterInfo(
-                name: "primarysource-date",
-                code: "primarysource-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-primarysource-date"),
-                components: null,
-                expression: "VerificationResult.primarySource.validationDate",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was validated against a primary source on the specified date")
-,
-            new SearchParameterInfo(
-                name: "primarysource-type",
-                code: "primarysource-type",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-primarysource-type"),
-                components: null,
-                expression: "VerificationResult.primarySource.type",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was validated against the specified type of primary source organization")
-,
-            new SearchParameterInfo(
-                name: "primarysource-who",
-                code: "primarysource-who",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-primarysource-who"),
-                components: null,
-                expression: "VerificationResult.primarySource.who",
-                targetResourceTypes: new[] { "Organization", "PractitionerRole", "Practitioner" },
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was validated against the specified primary source")
-,
-            new SearchParameterInfo(
-                name: "status-date",
-                code: "status-date",
-                searchParamType: SearchParamType.Date,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-status-date"),
-                components: null,
-                expression: "VerificationResult.statusDate",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information with a validation status that occurred at the specified date/time")
-,
-            new SearchParameterInfo(
-                name: "status",
-                code: "status",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-status"),
-                components: null,
-                expression: "VerificationResult.status",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information with the specified status")
-,
-            new SearchParameterInfo(
-                name: "target",
-                code: "target",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-target"),
-                components: null,
-                expression: "VerificationResult.target",
-                targetResourceTypes: new[] { "Account", "ActivityDefinition", "ActorDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment", "AppointmentResponse", "ArtifactAssessment", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct", "BiologicallyDerivedProductDispense", "BodyStructure", "Bundle", "CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition", "Citation", "Claim", "ClaimResponse", "ClinicalImpression", "ClinicalUseDefinition", "CodeSystem", "Communication", "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition", "ConditionDefinition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceAssociation", "DeviceDefinition", "DeviceDispense", "DeviceMetric", "DeviceRequest", "DeviceUsage", "DiagnosticReport", "DocumentReference", "Encounter", "EncounterHistory", "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "FormularyItem", "GenomicStudy", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService", "ImagingSelection", "ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide", "Ingredient", "InsurancePlan", "InventoryItem", "InventoryReport", "Invoice", "Library", "Linkage", "List", "Location", "ManufacturedItemDefinition", "Measure", "MeasureReport", "Medication", "MedicationAdministration", "MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement", "MedicinalProductDefinition", "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionIntake", "NutritionOrder", "NutritionProduct", "Observation", "ObservationDefinition", "OperationDefinition", "OperationOutcome", "Organization", "OrganizationAffiliation", "PackagedProductDefinition", "Parameters", "Patient", "PaymentNotice", "PaymentReconciliation", "Permission", "Person", "PlanDefinition", "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse", "RegulatedAuthorization", "RelatedPerson", "RequestOrchestration", "Requirements", "ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter", "ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap", "Subscription", "SubscriptionStatus", "SubscriptionTopic", "Substance", "SubstanceDefinition", "SubstanceNucleicAcid", "SubstancePolymer", "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial", "SupplyDelivery", "SupplyRequest", "Task", "TerminologyCapabilities", "TestPlan", "TestReport", "TestScript", "Transport", "ValueSet", "VerificationResult", "VisionPrescription" },
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "A resource that was validated")
-,
-            new SearchParameterInfo(
-                name: "validator-organization",
-                code: "validator-organization",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/VerificationResult-validator-organization"),
-                components: null,
-                expression: "VerificationResult.validator.organization",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "VerificationResult" },
-                description: "Select validation information for data that was validated by the specified organization")
 ,
             new SearchParameterInfo(
                 name: "datewritten",
@@ -14214,6 +13928,17 @@ public static class R6SearchParameterDefinitions
                 description: "Who authorized the vision prescription")
 ,
             new SearchParameterInfo(
+                name: "product",
+                code: "product",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/VisionPrescription-product"),
+                components: null,
+                expression: "VisionPrescription.lensSpecification.product",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "VisionPrescription" },
+                description: "The type of product being prescribed")
+,
+            new SearchParameterInfo(
                 name: "status",
                 code: "status",
                 searchParamType: SearchParamType.Token,
@@ -14223,6 +13948,61 @@ public static class R6SearchParameterDefinitions
                 targetResourceTypes: null,
                 baseResourceTypes: new[] { "VisionPrescription" },
                 description: "The status of the vision prescription")
+,
+            new SearchParameterInfo(
+                name: "ExampleSearchParameterOnAnExtension",
+                code: "part-agree",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/example-extension"),
+                components: null,
+                expression: "Patient.extension('http://example.org/fhir/StructureDefinition/participation-agreement').value",
+                targetResourceTypes: new[] { "DocumentReference" },
+                baseResourceTypes: new[] { "Patient" },
+                description: "Search by url for a participation agreement, which is stored as an extension referencing a DocumentReference")
+,
+            new SearchParameterInfo(
+                name: "FilterSearchParameter",
+                code: "_filter",
+                searchParamType: SearchParamType.Special,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/filter"),
+                components: null,
+                expression: null,
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "This is the formal declaration for the _filter parameter, documented at [http://hl7.org/fhir/search_filter.html](http://hl7.org/fhir/search_filter.html)")
+,
+            new SearchParameterInfo(
+                name: "Exampleconstraint",
+                code: "example-constraint",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/example-constraint"),
+                components: null,
+                expression: "Bundle.entry[0].resource",
+                targetResourceTypes: new[] { "Composition" },
+                baseResourceTypes: new[] { "Bundle" },
+                description: "Search Composition Bundle")
+,
+            new SearchParameterInfo(
+                name: "ExampleSearchParameter",
+                code: "subject",
+                searchParamType: SearchParamType.Reference,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/example-reference"),
+                components: null,
+                expression: "Condition.subject",
+                targetResourceTypes: new[] { "Organization" },
+                baseResourceTypes: new[] { "Condition" },
+                description: "Search by condition subject")
+,
+            new SearchParameterInfo(
+                name: "IDSEARCHPARAMETER",
+                code: "_id",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/example"),
+                components: null,
+                expression: "id",
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Search by resource identifier - e.g. same as the read interaction, but can return included resources")
 ,
             new SearchParameterInfo(
                 name: "_type",

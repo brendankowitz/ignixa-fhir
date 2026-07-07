@@ -155,7 +155,7 @@ public sealed class MedicationOrderState : ScenarioState
         }
 
         // Build dosage instruction with version-aware structure
-        node["dosageInstruction"] = BuildDosageInstruction(isR5Plus);
+        node["dosageInstruction"] = BuildDosageInstruction(version, isR5Plus);
 
         // NOTE: We intentionally do NOT include dose quantity structure because the validation
         // schema provider doesn't properly expose nested type children (value, unit, system, code)
@@ -256,7 +256,7 @@ public sealed class MedicationOrderState : ScenarioState
     }
 
     /// <summary>
-    /// Builds the dosageInstruction array with version-appropriate structure.
+    /// Builds the dosageInstruction node with version-appropriate structure.
     /// </summary>
     /// <remarks>
     /// NOTE: We intentionally do NOT include timing.repeat structure because the validation
@@ -264,7 +264,7 @@ public sealed class MedicationOrderState : ScenarioState
     /// This is a known limitation that affects all FHIR versions. The text field provides
     /// a human-readable description of the dosage instructions.
     /// </remarks>
-    private JsonArray BuildDosageInstruction(bool isR5Plus)
+    private JsonNode BuildDosageInstruction(FhirVersion version, bool isR5Plus)
     {
         var dosageText = DosageInstructions ?? BuildDosageText();
 
@@ -274,7 +274,8 @@ public sealed class MedicationOrderState : ScenarioState
         };
 
         // Dosage.asNeeded[x] was a boolean|CodeableConcept choice (asNeededBoolean) through R4B.
-        // R5+ split it into a plain boolean "asNeeded" plus a coded "asNeededFor".
+        // R5+ split it into a plain boolean "asNeeded" plus a coded "asNeededFor". Ballot4 R6 kept
+        // both fields unchanged on the nested Dosage type (see DosageDetails.simple below).
         if (Frequency == "as-needed")
         {
             if (isR5Plus)
@@ -287,7 +288,23 @@ public sealed class MedicationOrderState : ScenarioState
             }
         }
 
-        return [dosage];
+        // Ballot4 R6 replaced MedicationRequest.dosageInstruction's cardinality and type: it is no
+        // longer a Dosage[] array but a single (0..1) DosageDetails element. DosageDetails wraps the
+        // legacy Dosage content under "simple" (confirmed via DosageDetails_Children() in
+        // R6CoreSchemaProvider.g.cs: id/extension/modifierExtension/renderedInstruction/simple/step/
+        // safety). The nested Dosage type under "simple" still carries asNeeded/asNeededFor
+        // unchanged, so no semantic loss here - DosageDetails.step/safety (dose-limit and generic
+        // conditional-trigger constructs) are unused since our as-needed data already fits on
+        // "simple".
+        if (version == FhirVersion.R6)
+        {
+            return new JsonObject
+            {
+                ["simple"] = dosage
+            };
+        }
+
+        return new JsonArray { dosage };
     }
 
     private static JsonObject BuildCodeableConcept(FhirCode code) => new()

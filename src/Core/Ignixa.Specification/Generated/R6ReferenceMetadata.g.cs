@@ -26,11 +26,12 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("subject", 0, "*", new[] { "Patient", "Device", "Practitioner", "PractitionerRole", "Location", "HealthcareService", "Organization" }, true),
             new ReferenceFieldMetadata("covers", 0, "*", new[] { "Encounter", "EpisodeOfCare" }, true),
             new ReferenceFieldMetadata("owner", 0, "1", new[] { "Organization" }, true),
+            new ReferenceFieldMetadata("parent", 0, "1", new[] { "Account" }, false),
         },
         ["ActivityDefinition"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject[x]", 0, "1", new[] { "Group", "MedicinalProductDefinition", "SubstanceDefinition", "AdministrableProductDefinition", "ManufacturedItemDefinition", "PackagedProductDefinition" }, false),
-            new ReferenceFieldMetadata("product[x]", 0, "1", new[] { "Medication", "Ingredient", "Substance", "SubstanceDefinition" }, false),
+            new ReferenceFieldMetadata("product[x]", 0, "1", new[] { "Medication", "MedicinalProductDefinition", "Ingredient", "SubstanceDefinition" }, false),
         },
         ["AdministrableProductDefinition"] = new List<ReferenceFieldMetadata>
         {
@@ -42,7 +43,6 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Practitioner", "RelatedPerson" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("resultingEffect", 0, "*", new[] { "Condition", "Observation" }, true),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
             new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson" }, true),
             new ReferenceFieldMetadata("study", 0, "*", new[] { "ResearchStudy" }, true),
@@ -62,7 +62,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("originatingAppointment", 0, "1", new[] { "Appointment" }, false),
             new ReferenceFieldMetadata("slot", 0, "*", new[] { "Slot" }, false),
             new ReferenceFieldMetadata("account", 0, "*", new[] { "Account" }, false),
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "MedicationRequest", "ServiceRequest", "RequestOrchestration", "NutritionOrder", "VisionPrescription", "ImmunizationRecommendation" }, false),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "MedicationRequest", "ServiceRequest", "RequestOrchestration", "NutritionOrder", "VisionPrescription" }, false),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
         },
         ["AppointmentResponse"] = new List<ReferenceFieldMetadata>
@@ -72,7 +72,6 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["ArtifactAssessment"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("citeAs[x]", 0, "1", new[] { "Citation" }, false),
             new ReferenceFieldMetadata("artifact[x]", 1, "1", new[] { "Resource" }, true),
         },
         ["AuditEvent"] = new List<ReferenceFieldMetadata>
@@ -96,15 +95,6 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("request", 0, "*", new[] { "ServiceRequest" }, false),
             new ReferenceFieldMetadata("processingFacility", 0, "*", new[] { "Organization" }, false),
         },
-        ["BiologicallyDerivedProductDispense"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "ServiceRequest" }, false),
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "BiologicallyDerivedProductDispense" }, false),
-            new ReferenceFieldMetadata("product", 1, "1", new[] { "BiologicallyDerivedProduct" }, false),
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, false),
-            new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
-            new ReferenceFieldMetadata("destination", 0, "1", new[] { "Location" }, false),
-        },
         ["BodyStructure"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
@@ -127,62 +117,34 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("managingOrganization", 0, "*", new[] { "Organization" }, true),
         },
-        ["ChargeItem"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "ChargeItem" }, false),
-            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("performingOrganization", 0, "1", new[] { "Organization" }, false),
-            new ReferenceFieldMetadata("requestingOrganization", 0, "1", new[] { "Organization" }, false),
-            new ReferenceFieldMetadata("costCenter", 0, "1", new[] { "Organization" }, false),
-            new ReferenceFieldMetadata("enterer", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "Device", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("account", 0, "*", new[] { "Account" }, true),
-            new ReferenceFieldMetadata("supportingInformation", 0, "*", new[] { "Resource" }, false),
-        },
-        ["ChargeItemDefinition"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("account", 0, "*", new[] { "Account" }, true),
-            new ReferenceFieldMetadata("instance", 0, "*", new[] { "Medication", "Substance", "Device", "DeviceDefinition", "ActivityDefinition", "PlanDefinition", "HealthcareService" }, false),
-        },
         ["Claim"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
+            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("enterer", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson" }, false),
             new ReferenceFieldMetadata("insurer", 0, "1", new[] { "Organization" }, true),
             new ReferenceFieldMetadata("provider", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, true),
-            new ReferenceFieldMetadata("prescription", 0, "1", new[] { "DeviceRequest", "MedicationRequest", "VisionPrescription" }, false),
-            new ReferenceFieldMetadata("originalPrescription", 0, "1", new[] { "DeviceRequest", "MedicationRequest", "VisionPrescription" }, false),
+            new ReferenceFieldMetadata("prescription", 0, "1", new[] { "DeviceRequest", "MedicationRequest", "ServiceRequest", "VisionPrescription" }, false),
+            new ReferenceFieldMetadata("originalPrescription", 0, "1", new[] { "DeviceRequest", "MedicationRequest", "ServiceRequest", "VisionPrescription" }, false),
             new ReferenceFieldMetadata("referral", 0, "1", new[] { "ServiceRequest" }, false),
             new ReferenceFieldMetadata("encounter", 0, "*", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("facility", 0, "1", new[] { "Location", "Organization" }, false),
         },
         ["ClaimResponse"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
+            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("insurer", 0, "1", new[] { "Organization" }, true),
             new ReferenceFieldMetadata("requestor", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
             new ReferenceFieldMetadata("request", 0, "1", new[] { "Claim" }, true),
             new ReferenceFieldMetadata("encounter", 0, "*", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("communicationRequest", 0, "*", new[] { "CommunicationRequest" }, false),
         },
-        ["ClinicalImpression"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("performer", 0, "1", new[] { "Practitioner", "PractitionerRole" }, true),
-            new ReferenceFieldMetadata("previous", 0, "1", new[] { "ClinicalImpression" }, false),
-            new ReferenceFieldMetadata("problem", 0, "*", new[] { "Condition", "AllergyIntolerance" }, true),
-            new ReferenceFieldMetadata("prognosisReference", 0, "*", new[] { "RiskAssessment" }, false),
-            new ReferenceFieldMetadata("supportingInfo", 0, "*", new[] { "Resource" }, false),
-        },
         ["ClinicalUseDefinition"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("subject", 0, "*", new[] { "MedicinalProductDefinition", "Medication", "ActivityDefinition", "PlanDefinition", "Device", "DeviceDefinition", "Substance", "NutritionProduct", "BiologicallyDerivedProduct" }, true),
             new ReferenceFieldMetadata("population", 0, "*", new[] { "Group" }, true),
         },
         ["Communication"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "CommunicationRequest", "DeviceRequest", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "ServiceRequest", "Task", "VisionPrescription" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "CommunicationRequest", "DeviceRequest", "MedicationRequest", "NutritionOrder", "ServiceRequest", "Task", "VisionPrescription" }, true),
             new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("inResponseTo", 0, "*", new[] { "Communication" }, false),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
@@ -198,34 +160,32 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, false),
             new ReferenceFieldMetadata("about", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device" }, true),
+            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device", "Group" }, true),
             new ReferenceFieldMetadata("recipient", 0, "*", new[] { "Device", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Group", "CareTeam", "HealthcareService", "Endpoint" }, false),
-            new ReferenceFieldMetadata("informationProvider", 0, "*", new[] { "Device", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "HealthcareService", "Endpoint" }, true),
+            new ReferenceFieldMetadata("informationProvider", 0, "*", new[] { "Device", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "HealthcareService", "Endpoint", "Group" }, true),
         },
         ["Composition"] = new List<ReferenceFieldMetadata>
         {
+            new ReferenceFieldMetadata("consent", 0, "*", new[] { "Consent" }, false),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Appointment", "AppointmentResponse", "CarePlan", "Claim", "CommunicationRequest", "CoverageEligibilityRequest", "DeviceRequest", "EnrollmentRequest", "MedicationRequest", "NutritionOrder", "RequestOrchestration", "ServiceRequest", "Task", "VisionPrescription" }, false),
             new ReferenceFieldMetadata("subject", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("author", 1, "*", new[] { "Practitioner", "PractitionerRole", "Device", "Patient", "RelatedPerson", "Organization" }, true),
-            new ReferenceFieldMetadata("custodian", 0, "1", new[] { "Organization" }, true),
+            new ReferenceFieldMetadata("author", 0, "*", new[] { "Practitioner", "PractitionerRole", "CareTeam", "Device", "Patient", "RelatedPerson", "Organization" }, true),
+            new ReferenceFieldMetadata("custodian", 0, "1", new[] { "Organization", "Patient", "Group" }, true),
         },
         ["Condition"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("bodyStructure", 0, "1", new[] { "BodyStructure" }, false),
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("asserter", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Device" }, true),
-        },
-        ["ConditionDefinition"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("team", 0, "*", new[] { "CareTeam" }, false),
+            new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Group" }, true),
+            new ReferenceFieldMetadata("asserter", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Device", "Group" }, true),
         },
         ["Consent"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Practitioner", "Group" }, true),
-            new ReferenceFieldMetadata("grantor", 0, "*", new[] { "CareTeam", "HealthcareService", "Organization", "Patient", "Practitioner", "RelatedPerson", "PractitionerRole" }, true),
-            new ReferenceFieldMetadata("grantee", 0, "*", new[] { "CareTeam", "HealthcareService", "Organization", "Patient", "Practitioner", "RelatedPerson", "PractitionerRole" }, true),
+            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Practitioner", "ResearchSubject", "Group" }, true),
+            new ReferenceFieldMetadata("grantor", 0, "*", new[] { "CareTeam", "Group", "HealthcareService", "Organization", "Patient", "Practitioner", "RelatedPerson", "PractitionerRole" }, true),
+            new ReferenceFieldMetadata("grantee", 0, "*", new[] { "CareTeam", "Group", "HealthcareService", "Organization", "Patient", "Practitioner", "RelatedPerson", "PractitionerRole" }, true),
             new ReferenceFieldMetadata("manager", 0, "*", new[] { "HealthcareService", "Organization", "Patient", "Practitioner" }, false),
             new ReferenceFieldMetadata("controller", 0, "*", new[] { "HealthcareService", "Organization", "Patient", "Practitioner" }, false),
             new ReferenceFieldMetadata("sourceReference", 0, "*", new[] { "Consent", "DocumentReference", "Contract", "QuestionnaireResponse" }, false),
@@ -238,7 +198,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("authority", 0, "*", new[] { "Organization" }, false),
             new ReferenceFieldMetadata("domain", 0, "*", new[] { "Location" }, false),
             new ReferenceFieldMetadata("site", 0, "*", new[] { "Location" }, false),
-            new ReferenceFieldMetadata("author", 0, "1", new[] { "Patient", "Practitioner", "PractitionerRole", "Organization" }, false),
+            new ReferenceFieldMetadata("author", 0, "1", new[] { "Patient", "Practitioner", "PractitionerRole", "Organization", "RelatedPerson" }, false),
             new ReferenceFieldMetadata("topic[x]", 0, "1", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("supportingInfo", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("relevantHistory", 0, "*", new[] { "Provenance" }, false),
@@ -265,7 +225,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
             new ReferenceFieldMetadata("requestor", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
-            new ReferenceFieldMetadata("request", 1, "1", new[] { "CoverageEligibilityRequest" }, true),
+            new ReferenceFieldMetadata("request", 0, "1", new[] { "CoverageEligibilityRequest" }, true),
             new ReferenceFieldMetadata("insurer", 1, "1", new[] { "Organization" }, true),
         },
         ["DetectedIssue"] = new List<ReferenceFieldMetadata>
@@ -277,39 +237,28 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["Device"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("owner", 0, "1", new[] { "Organization" }, false),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
-            new ReferenceFieldMetadata("endpoint", 0, "*", new[] { "Endpoint" }, false),
             new ReferenceFieldMetadata("parent", 0, "1", new[] { "Device" }, false),
         },
         ["DeviceAlert"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Device" }, true),
-            new ReferenceFieldMetadata("source", 0, "1", new[] { "Device", "DeviceMetric" }, false),
-            new ReferenceFieldMetadata("derivedFrom", 0, "*", new[] { "Observation" }, false),
+            new ReferenceFieldMetadata("procedure", 0, "*", new[] { "Procedure" }, true),
+            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Device", "BiologicallyDerivedProduct", "Group", "Location", "Medication", "NutritionProduct", "Specimen" }, true),
+            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
+            new ReferenceFieldMetadata("device", 0, "1", new[] { "Device", "DeviceMetric" }, true),
+            new ReferenceFieldMetadata("acknowledgedBy", 0, "1", new[] { "Patient", "Device", "Practitioner", "PractitionerRole", "RelatedPerson" }, false),
+            new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
         },
         ["DeviceAssociation"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("device", 1, "1", new[] { "Device" }, false),
-            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Practitioner", "RelatedPerson", "Device" }, false),
-            new ReferenceFieldMetadata("bodyStructure", 0, "1", new[] { "BodyStructure" }, false),
+            new ReferenceFieldMetadata("device", 1, "1", new[] { "Device" }, true),
+            new ReferenceFieldMetadata("subject", 0, "1", new[] { "BiologicallyDerivedProduct", "CareTeam", "Device", "Group", "Location", "Medication", "NutritionProduct", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Specimen", "Substance" }, true),
+            new ReferenceFieldMetadata("focus", 0, "1", new[] { "BiologicallyDerivedProduct", "CareTeam", "Device", "Group", "Location", "Medication", "NutritionProduct", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Specimen", "Substance" }, true),
+            new ReferenceFieldMetadata("bodyStructure", 0, "1", new[] { "BodyStructure" }, true),
         },
         ["DeviceDefinition"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("manufacturer", 0, "1", new[] { "Organization" }, true),
-            new ReferenceFieldMetadata("owner", 0, "1", new[] { "Organization" }, false),
-        },
-        ["DeviceDispense"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest" }, false),
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Procedure" }, false),
-            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Practitioner" }, true),
-            new ReferenceFieldMetadata("receiver", 0, "1", new[] { "Patient", "Practitioner", "RelatedPerson", "Location", "PractitionerRole" }, false),
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
-            new ReferenceFieldMetadata("supportingInformation", 0, "*", new[] { "Resource" }, false),
-            new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
-            new ReferenceFieldMetadata("destination", 0, "1", new[] { "Location" }, false),
-            new ReferenceFieldMetadata("eventHistory", 0, "*", new[] { "Provenance" }, false),
         },
         ["DeviceMetric"] = new List<ReferenceFieldMetadata>
         {
@@ -319,57 +268,48 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("replaces", 0, "*", new[] { "DeviceRequest" }, true),
+            new ReferenceFieldMetadata("product[x]", 1, "1", new[] { "Device" }, true),
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Location", "Device" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Device", "Practitioner", "PractitionerRole", "Organization" }, true),
+            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Device", "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Group", "Patient", "RelatedPerson" }, true),
             new ReferenceFieldMetadata("insurance", 0, "*", new[] { "Coverage", "ClaimResponse" }, false),
             new ReferenceFieldMetadata("supportingInfo", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("relevantHistory", 0, "*", new[] { "Provenance" }, false),
         },
-        ["DeviceUsage"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "ServiceRequest" }, true),
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
-            new ReferenceFieldMetadata("derivedFrom", 0, "*", new[] { "ServiceRequest", "Procedure", "Claim", "Observation", "QuestionnaireResponse", "DocumentReference" }, true),
-            new ReferenceFieldMetadata("context", 0, "1", new[] { "Encounter", "EpisodeOfCare" }, true),
-            new ReferenceFieldMetadata("informationSource", 0, "1", new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Organization" }, true),
-        },
         ["DiagnosticReport"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "ServiceRequest" }, false),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "MedicationRequest", "NutritionOrder", "ServiceRequest" }, false),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Device", "Location", "Organization", "Practitioner", "Medication", "Substance", "BiologicallyDerivedProduct" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam" }, true),
-            new ReferenceFieldMetadata("resultsInterpreter", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam" }, true),
+            new ReferenceFieldMetadata("procedure", 0, "*", new[] { "Procedure" }, true),
+            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "HealthcareService", "Device", "Patient", "RelatedPerson" }, true),
+            new ReferenceFieldMetadata("resultsInterpreter", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson" }, true),
             new ReferenceFieldMetadata("specimen", 0, "*", new[] { "Specimen" }, false),
             new ReferenceFieldMetadata("result", 0, "*", new[] { "Observation" }, false),
-            new ReferenceFieldMetadata("study", 0, "*", new[] { "GenomicStudy", "ImagingStudy" }, false),
+            new ReferenceFieldMetadata("study", 0, "*", new[] { "ImagingStudy" }, false),
             new ReferenceFieldMetadata("composition", 0, "1", new[] { "Composition" }, false),
+            new ReferenceFieldMetadata("communication", 0, "*", new[] { "Communication" }, false),
+            new ReferenceFieldMetadata("comparison", 0, "1", new[] { "List" }, false),
         },
         ["DocumentReference"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Appointment", "AppointmentResponse", "CarePlan", "Claim", "CommunicationRequest", "Contract", "CoverageEligibilityRequest", "DeviceRequest", "EnrollmentRequest", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "RequestOrchestration", "ServiceRequest", "SupplyRequest", "VisionPrescription" }, false),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Appointment", "AppointmentResponse", "CarePlan", "Claim", "CommunicationRequest", "Contract", "CoverageEligibilityRequest", "DeviceRequest", "EnrollmentRequest", "MedicationRequest", "NutritionOrder", "RequestOrchestration", "ServiceRequest", "VisionPrescription" }, false),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("context", 0, "*", new[] { "Appointment", "Encounter", "EpisodeOfCare" }, true),
             new ReferenceFieldMetadata("related", 0, "*", new[] { "Resource" }, false),
-            new ReferenceFieldMetadata("author", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "Device", "Patient", "RelatedPerson", "CareTeam" }, true),
+            new ReferenceFieldMetadata("author", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "Device", "Patient", "RelatedPerson", "CareTeam", "Group" }, true),
             new ReferenceFieldMetadata("custodian", 0, "1", new[] { "Organization" }, false),
         },
         ["Encounter"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("episodeOfCare", 0, "*", new[] { "EpisodeOfCare" }, true),
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "MedicationRequest", "ServiceRequest", "RequestOrchestration", "NutritionOrder", "VisionPrescription", "ImmunizationRecommendation" }, false),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "MedicationRequest", "ServiceRequest", "RequestOrchestration", "NutritionOrder", "VisionPrescription" }, false),
             new ReferenceFieldMetadata("careTeam", 0, "*", new[] { "CareTeam" }, false),
             new ReferenceFieldMetadata("partOf", 0, "1", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("serviceProvider", 0, "1", new[] { "Organization" }, false),
             new ReferenceFieldMetadata("appointment", 0, "*", new[] { "Appointment" }, true),
             new ReferenceFieldMetadata("account", 0, "*", new[] { "Account" }, false),
-        },
-        ["EncounterHistory"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
-            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
         },
         ["Endpoint"] = new List<ReferenceFieldMetadata>
         {
@@ -379,7 +319,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("insurer", 0, "1", new[] { "Organization" }, false),
             new ReferenceFieldMetadata("provider", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
-            new ReferenceFieldMetadata("candidate", 0, "1", new[] { "Patient" }, false),
+            new ReferenceFieldMetadata("candidate", 0, "1", new[] { "Patient", "Group" }, false),
             new ReferenceFieldMetadata("coverage", 0, "1", new[] { "Coverage" }, false),
         },
         ["EnrollmentResponse"] = new List<ReferenceFieldMetadata>
@@ -387,6 +327,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("request", 0, "1", new[] { "EnrollmentRequest" }, false),
             new ReferenceFieldMetadata("organization", 0, "1", new[] { "Organization" }, false),
             new ReferenceFieldMetadata("requestProvider", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
+            new ReferenceFieldMetadata("candidate", 0, "1", new[] { "Patient", "Group" }, false),
         },
         ["EpisodeOfCare"] = new List<ReferenceFieldMetadata>
         {
@@ -401,22 +342,14 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("subject[x]", 0, "1", new[] { "Group" }, false),
         },
-        ["Evidence"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("citeAs[x]", 0, "1", new[] { "Citation" }, false),
-        },
-        ["EvidenceReport"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("citeAs[x]", 0, "1", new[] { "Citation" }, false),
-        },
         ["ExplanationOfBenefit"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
+            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("enterer", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson" }, false),
             new ReferenceFieldMetadata("insurer", 0, "1", new[] { "Organization" }, true),
             new ReferenceFieldMetadata("provider", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, true),
-            new ReferenceFieldMetadata("prescription", 0, "1", new[] { "MedicationRequest", "VisionPrescription" }, false),
-            new ReferenceFieldMetadata("originalPrescription", 0, "1", new[] { "MedicationRequest" }, false),
+            new ReferenceFieldMetadata("prescription", 0, "1", new[] { "DeviceRequest", "MedicationRequest", "ServiceRequest", "VisionPrescription" }, false),
+            new ReferenceFieldMetadata("originalPrescription", 0, "1", new[] { "DeviceRequest", "MedicationRequest", "ServiceRequest", "VisionPrescription" }, false),
             new ReferenceFieldMetadata("referral", 0, "1", new[] { "ServiceRequest" }, false),
             new ReferenceFieldMetadata("encounter", 0, "*", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("facility", 0, "1", new[] { "Location", "Organization" }, false),
@@ -426,6 +359,8 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         ["FamilyMemberHistory"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
+            new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Organization", "CareTeam", "Group" }, true),
+            new ReferenceFieldMetadata("asserter", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Organization", "CareTeam", "Device", "Group" }, true),
         },
         ["Flag"] = new List<ReferenceFieldMetadata>
         {
@@ -434,18 +369,11 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("author", 0, "1", new[] { "Device", "Organization", "Patient", "RelatedPerson", "Practitioner", "PractitionerRole" }, true),
             new ReferenceFieldMetadata("supportingInfo", 0, "*", new[] { "Condition", "Procedure", "AllergyIntolerance", "Observation", "RiskAssessment" }, false),
         },
-        ["GenomicStudy"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Substance", "BiologicallyDerivedProduct", "NutritionProduct" }, true),
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "ServiceRequest", "Task" }, false),
-            new ReferenceFieldMetadata("referrer", 0, "1", new[] { "Practitioner", "PractitionerRole" }, false),
-            new ReferenceFieldMetadata("interpreter", 0, "*", new[] { "Practitioner", "PractitionerRole" }, false),
-        },
         ["Goal"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Organization" }, true),
-            new ReferenceFieldMetadata("source", 0, "1", new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "CareTeam" }, true),
+            new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Group" }, true),
+            new ReferenceFieldMetadata("source", 0, "1", new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "CareTeam", "Group" }, true),
             new ReferenceFieldMetadata("addresses", 0, "*", new[] { "Condition", "Observation", "MedicationStatement", "MedicationRequest", "NutritionOrder", "ServiceRequest", "RiskAssessment", "Procedure", "NutritionIntake" }, false),
         },
         ["Group"] = new List<ReferenceFieldMetadata>
@@ -454,12 +382,13 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["GuidanceResponse"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, false),
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
+            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
+            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
             new ReferenceFieldMetadata("performer", 0, "1", new[] { "Device" }, false),
+            new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
             new ReferenceFieldMetadata("evaluationMessage", 0, "1", new[] { "OperationOutcome" }, false),
             new ReferenceFieldMetadata("outputParameters", 0, "1", new[] { "Parameters" }, false),
-            new ReferenceFieldMetadata("result", 0, "*", new[] { "Appointment", "AppointmentResponse", "CarePlan", "Claim", "CommunicationRequest", "Contract", "CoverageEligibilityRequest", "DeviceRequest", "EnrollmentRequest", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "RequestOrchestration", "ServiceRequest", "SupplyRequest", "Task", "VisionPrescription" }, false),
+            new ReferenceFieldMetadata("result", 0, "*", new[] { "Appointment", "AppointmentResponse", "CarePlan", "Claim", "CommunicationRequest", "Contract", "CoverageEligibilityRequest", "DeviceRequest", "EnrollmentRequest", "MedicationRequest", "NutritionOrder", "RequestOrchestration", "ServiceRequest", "Task", "VisionPrescription" }, false),
         },
         ["HealthcareService"] = new List<ReferenceFieldMetadata>
         {
@@ -472,8 +401,8 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         ["ImagingSelection"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Device", "Procedure", "Practitioner", "Medication", "Substance", "Specimen" }, true),
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "ServiceRequest", "Appointment", "AppointmentResponse", "Task" }, true),
-            new ReferenceFieldMetadata("derivedFrom", 0, "*", new[] { "ImagingStudy", "DocumentReference" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "ServiceRequest", "Appointment", "Task" }, true),
+            new ReferenceFieldMetadata("derivedFrom", 0, "1", new[] { "ImagingStudy", "DocumentReference" }, true),
             new ReferenceFieldMetadata("focus", 0, "*", new[] { "ImagingSelection" }, true),
             new ReferenceFieldMetadata("endpoint", 0, "*", new[] { "Endpoint" }, true),
         },
@@ -481,30 +410,19 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Device", "Group" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "ServiceRequest", "Appointment", "AppointmentResponse", "Task" }, true),
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Procedure" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "ServiceRequest", "Appointment", "Task" }, true),
+            new ReferenceFieldMetadata("procedure", 0, "*", new[] { "Procedure" }, true),
             new ReferenceFieldMetadata("referrer", 0, "1", new[] { "Practitioner", "PractitionerRole" }, true),
             new ReferenceFieldMetadata("endpoint", 0, "*", new[] { "Endpoint" }, true),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
         },
         ["Immunization"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "MedicationRequest", "ServiceRequest", "ImmunizationRecommendation" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "MedicationRequest", "ServiceRequest" }, true),
             new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("supportingInformation", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
-        },
-        ["ImmunizationEvaluation"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
-            new ReferenceFieldMetadata("authority", 0, "1", new[] { "Organization" }, false),
-            new ReferenceFieldMetadata("immunizationEvent", 1, "1", new[] { "Immunization" }, true),
-        },
-        ["ImmunizationRecommendation"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("patient", 1, "1", new[] { "Patient" }, true),
-            new ReferenceFieldMetadata("authority", 0, "1", new[] { "Organization" }, false),
         },
         ["Ingredient"] = new List<ReferenceFieldMetadata>
         {
@@ -524,34 +442,22 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("endpoint", 0, "*", new[] { "Endpoint" }, false),
             new ReferenceFieldMetadata("network", 0, "*", new[] { "Organization" }, false),
         },
-        ["InventoryItem"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("productReference", 0, "1", new[] { "Medication", "Device", "NutritionProduct", "BiologicallyDerivedProduct" }, false),
-        },
-        ["InventoryReport"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("reporter", 0, "1", new[] { "Practitioner", "Patient", "RelatedPerson", "Device" }, false),
-        },
         ["Invoice"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("recipient", 0, "1", new[] { "Organization", "Patient", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("issuer", 0, "1", new[] { "Organization" }, false),
+            new ReferenceFieldMetadata("issuer", 0, "1", new[] { "Organization", "Practitioner", "PractitionerRole" }, false),
             new ReferenceFieldMetadata("account", 0, "1", new[] { "Account" }, false),
         },
         ["Library"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject[x]", 0, "1", new[] { "Group" }, false),
         },
-        ["Linkage"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("author", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, true),
-        },
         ["List"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("subject", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
-            new ReferenceFieldMetadata("source", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "Device", "Organization", "RelatedPerson", "CareTeam" }, true),
+            new ReferenceFieldMetadata("source", 0, "1", new[] { "Practitioner", "PractitionerRole", "Patient", "Device", "Organization", "RelatedPerson", "CareTeam", "Group" }, true),
         },
         ["Location"] = new List<ReferenceFieldMetadata>
         {
@@ -569,10 +475,11 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["MeasureReport"] = new List<ReferenceFieldMetadata>
         {
+            new ReferenceFieldMetadata("messages", 0, "1", new[] { "OperationOutcome" }, false),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "CareTeam", "Device", "Group", "HealthcareService", "Location", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("reporter", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Group" }, true),
+            new ReferenceFieldMetadata("reporter", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, true),
             new ReferenceFieldMetadata("reportingVendor", 0, "1", new[] { "Organization" }, false),
-            new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
+            new ReferenceFieldMetadata("location", 0, "*", new[] { "Location" }, false),
             new ReferenceFieldMetadata("inputParameters", 0, "1", new[] { "Parameters" }, false),
             new ReferenceFieldMetadata("supplementalData", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("evaluatedResource", 0, "*", new[] { "Resource" }, false),
@@ -580,7 +487,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         ["Medication"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("marketingAuthorizationHolder", 0, "1", new[] { "Organization" }, true),
-            new ReferenceFieldMetadata("definition", 0, "1", new[] { "MedicationKnowledge" }, false),
+            new ReferenceFieldMetadata("definition", 0, "1", new[] { "MedicinalProductDefinition", "AdministrableProductDefinition", "PackagedProductDefinition", "ManufacturedItemDefinition" }, false),
         },
         ["MedicationAdministration"] = new List<ReferenceFieldMetadata>
         {
@@ -602,24 +509,19 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
             new ReferenceFieldMetadata("authorizingPrescription", 0, "*", new[] { "MedicationRequest" }, false),
             new ReferenceFieldMetadata("destination", 0, "1", new[] { "Location" }, false),
-            new ReferenceFieldMetadata("receiver", 0, "*", new[] { "Patient", "Practitioner", "RelatedPerson", "Location", "PractitionerRole" }, false),
+            new ReferenceFieldMetadata("receiver", 0, "*", new[] { "Patient", "Practitioner", "RelatedPerson", "Location", "PractitionerRole", "Organization", "Group" }, false),
             new ReferenceFieldMetadata("eventHistory", 0, "*", new[] { "Provenance" }, false),
-        },
-        ["MedicationKnowledge"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("associatedMedication", 0, "*", new[] { "Medication" }, false),
-            new ReferenceFieldMetadata("clinicalUseIssue", 0, "*", new[] { "ClinicalUseDefinition" }, false),
         },
         ["MedicationRequest"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "MedicationRequest", "ServiceRequest", "ImmunizationRecommendation", "RequestOrchestration" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "MedicationRequest", "ServiceRequest", "RequestOrchestration" }, true),
             new ReferenceFieldMetadata("priorPrescription", 0, "1", new[] { "MedicationRequest" }, false),
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
-            new ReferenceFieldMetadata("informationSource", 0, "*", new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Organization" }, false),
+            new ReferenceFieldMetadata("informationSource", 0, "*", new[] { "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Organization", "Group" }, false),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("supportingInformation", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device" }, true),
-            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "DeviceDefinition", "RelatedPerson", "CareTeam", "HealthcareService" }, false),
+            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "DeviceDefinition", "RelatedPerson", "CareTeam", "HealthcareService", "Group" }, false),
             new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Practitioner", "PractitionerRole" }, false),
             new ReferenceFieldMetadata("insurance", 0, "*", new[] { "Coverage", "ClaimResponse" }, false),
             new ReferenceFieldMetadata("eventHistory", 0, "*", new[] { "Provenance" }, false),
@@ -629,7 +531,8 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Procedure", "MedicationStatement" }, false),
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("informationSource", 0, "*", new[] { "Device", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Organization" }, false),
+            new ReferenceFieldMetadata("author", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device" }, true),
+            new ReferenceFieldMetadata("informationSource", 0, "*", new[] { "Device", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Organization", "Group" }, false),
             new ReferenceFieldMetadata("derivedFrom", 0, "*", new[] { "Resource" }, false),
             new ReferenceFieldMetadata("relatedClinicalInformation", 0, "*", new[] { "Observation", "Condition" }, false),
         },
@@ -643,10 +546,6 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         ["MessageHeader"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("focus", 0, "*", new[] { "Resource" }, true),
-        },
-        ["MolecularDefinition"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("memberState", 0, "*", new[] { "MolecularDefinition" }, true),
         },
         ["NutritionIntake"] = new List<ReferenceFieldMetadata>
         {
@@ -664,33 +563,30 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, false),
             new ReferenceFieldMetadata("supportingInformation", 0, "*", new[] { "Resource" }, false),
-            new ReferenceFieldMetadata("orderer", 0, "1", new[] { "Practitioner", "PractitionerRole" }, true),
+            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole" }, true),
             new ReferenceFieldMetadata("allergyIntolerance", 0, "*", new[] { "AllergyIntolerance" }, false),
         },
         ["NutritionProduct"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("manufacturer", 0, "*", new[] { "Organization" }, true),
+            new ReferenceFieldMetadata("manufacturer", 0, "*", new[] { "Organization", "RelatedPerson" }, true),
         },
         ["Observation"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("instantiates[x]", 0, "1", new[] { "ObservationDefinition" }, true),
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "ServiceRequest" }, true),
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "MedicationAdministration", "MedicationDispense", "MedicationStatement", "Procedure", "Immunization", "ImagingStudy", "GenomicStudy" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "MedicationRequest", "NutritionOrder", "ServiceRequest" }, true),
+            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "MedicationAdministration", "MedicationDispense", "MedicationStatement", "Procedure", "Immunization", "ImagingStudy" }, true),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Device", "Location", "Organization", "Procedure", "Practitioner", "Medication", "Substance", "BiologicallyDerivedProduct", "NutritionProduct" }, true),
             new ReferenceFieldMetadata("focus", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("value[x]", 0, "1", new[] { "MolecularSequence" }, true),
-            new ReferenceFieldMetadata("bodyStructure", 0, "1", new[] { "BodyStructure" }, false),
+            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson", "HealthcareService", "Group" }, true),
             new ReferenceFieldMetadata("specimen", 0, "1", new[] { "Specimen", "Group" }, false),
             new ReferenceFieldMetadata("device", 0, "1", new[] { "Device", "DeviceMetric" }, false),
-            new ReferenceFieldMetadata("hasMember", 0, "*", new[] { "Observation", "QuestionnaireResponse", "MolecularSequence" }, true),
-            new ReferenceFieldMetadata("derivedFrom", 0, "*", new[] { "DocumentReference", "ImagingStudy", "ImagingSelection", "QuestionnaireResponse", "Observation", "MolecularSequence", "GenomicStudy" }, true),
+            new ReferenceFieldMetadata("hasMember", 0, "*", new[] { "Observation", "QuestionnaireResponse" }, true),
+            new ReferenceFieldMetadata("derivedFrom", 0, "*", new[] { "DocumentReference", "ImagingStudy", "ImagingSelection", "QuestionnaireResponse", "Observation" }, true),
         },
         ["ObservationDefinition"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("specimen", 0, "*", new[] { "SpecimenDefinition" }, false),
-            new ReferenceFieldMetadata("device", 0, "*", new[] { "DeviceDefinition", "Device" }, false),
+            new ReferenceFieldMetadata("device[x]", 0, "1", new[] { "Device" }, false),
             new ReferenceFieldMetadata("hasMember", 0, "*", new[] { "ObservationDefinition", "Questionnaire" }, false),
         },
         ["Organization"] = new List<ReferenceFieldMetadata>
@@ -735,10 +631,6 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("requestor", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, false),
         },
-        ["Permission"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("asserter", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson", "HealthcareService" }, true),
-        },
         ["Person"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("managingOrganization", 0, "1", new[] { "Organization" }, true),
@@ -751,6 +643,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         {
             new ReferenceFieldMetadata("practitioner", 0, "1", new[] { "Practitioner" }, true),
             new ReferenceFieldMetadata("organization", 0, "1", new[] { "Organization" }, true),
+            new ReferenceFieldMetadata("network", 0, "*", new[] { "Organization" }, true),
             new ReferenceFieldMetadata("location", 0, "*", new[] { "Location" }, true),
             new ReferenceFieldMetadata("healthcareService", 0, "*", new[] { "HealthcareService" }, false),
             new ReferenceFieldMetadata("endpoint", 0, "*", new[] { "Endpoint" }, false),
@@ -765,8 +658,8 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("recorder", 0, "1", new[] { "Patient", "RelatedPerson", "Practitioner", "PractitionerRole" }, true),
             new ReferenceFieldMetadata("reported[x]", 0, "1", new[] { "Patient", "RelatedPerson", "Practitioner", "PractitionerRole", "Organization" }, true),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
-            new ReferenceFieldMetadata("bodyStructure", 0, "*", new[] { "BodyStructure" }, false),
-            new ReferenceFieldMetadata("report", 0, "*", new[] { "DiagnosticReport", "DocumentReference", "Composition" }, false),
+            new ReferenceFieldMetadata("bodyStructure", 0, "1", new[] { "BodyStructure" }, false),
+            new ReferenceFieldMetadata("report", 0, "*", new[] { "DiagnosticReport", "DocumentReference", "Composition", "Bundle" }, false),
             new ReferenceFieldMetadata("supportingInfo", 0, "*", new[] { "Resource" }, false),
         },
         ["Provenance"] = new List<ReferenceFieldMetadata>
@@ -783,7 +676,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Observation", "Procedure" }, true),
             new ReferenceFieldMetadata("subject", 0, "1", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("author", 0, "1", new[] { "Device", "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Organization" }, true),
+            new ReferenceFieldMetadata("author", 0, "1", new[] { "Device", "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Organization", "Group" }, true),
             new ReferenceFieldMetadata("source", 0, "1", new[] { "Device", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson" }, true),
         },
         ["RegulatedAuthorization"] = new List<ReferenceFieldMetadata>
@@ -811,12 +704,12 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
             new ReferenceFieldMetadata("protocol", 0, "*", new[] { "PlanDefinition" }, true),
             new ReferenceFieldMetadata("partOf", 0, "*", new[] { "ResearchStudy" }, true),
             new ReferenceFieldMetadata("site", 0, "*", new[] { "Location", "ResearchStudy", "Organization" }, true),
-            new ReferenceFieldMetadata("result", 0, "*", new[] { "Citation", "Composition", "DiagnosticReport" }, true),
+            new ReferenceFieldMetadata("result", 0, "*", new[] { "Composition", "DiagnosticReport", "Evidence" }, true),
         },
         ["ResearchSubject"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("study", 1, "1", new[] { "ResearchStudy" }, true),
-            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Specimen", "Device", "Medication", "Substance", "BiologicallyDerivedProduct" }, true),
+            new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Specimen", "Device", "Medication", "Substance", "SubstanceDefinition", "BiologicallyDerivedProduct" }, true),
             new ReferenceFieldMetadata("consent", 0, "*", new[] { "Consent" }, false),
         },
         ["RiskAssessment"] = new List<ReferenceFieldMetadata>
@@ -835,16 +728,15 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["ServiceRequest"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "ServiceRequest", "MedicationRequest", "RequestOrchestration" }, true),
-            new ReferenceFieldMetadata("replaces", 0, "*", new[] { "ServiceRequest" }, true),
+            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DocumentReference", "ServiceRequest", "MedicationRequest", "RequestOrchestration", "NutritionOrder", "DocumentReference" }, true),
+            new ReferenceFieldMetadata("replaces", 0, "*", new[] { "ServiceRequest", "MedicationRequest", "RequestOrchestration", "CarePlan", "DeviceRequest", "CommunicationRequest", "NutritionOrder", "VisionPrescription" }, true),
             new ReferenceFieldMetadata("subject", 1, "1", new[] { "Patient", "Group", "Location", "Device" }, true),
             new ReferenceFieldMetadata("focus", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device" }, true),
-            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "HealthcareService", "Patient", "Device", "RelatedPerson" }, true),
+            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device", "Group" }, true),
+            new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "HealthcareService", "Patient", "Device", "RelatedPerson", "Group" }, true),
             new ReferenceFieldMetadata("insurance", 0, "*", new[] { "Coverage", "ClaimResponse" }, false),
             new ReferenceFieldMetadata("specimen", 0, "*", new[] { "Specimen" }, true),
-            new ReferenceFieldMetadata("bodyStructure", 0, "1", new[] { "BodyStructure" }, true),
             new ReferenceFieldMetadata("relevantHistory", 0, "*", new[] { "Provenance" }, false),
         },
         ["Slot"] = new List<ReferenceFieldMetadata>
@@ -853,7 +745,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["Specimen"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Device", "BiologicallyDerivedProduct", "Substance", "Location" }, true),
+            new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Device", "BiologicallyDerivedProduct", "Substance", "Location", "NutritionProduct" }, true),
             new ReferenceFieldMetadata("parent", 0, "*", new[] { "Specimen" }, false),
             new ReferenceFieldMetadata("request", 0, "*", new[] { "ServiceRequest" }, false),
         },
@@ -863,7 +755,7 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["Subscription"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("managingEntity", 0, "1", new[] { "CareTeam", "HealthcareService", "Organization", "RelatedPerson", "Patient", "Practitioner", "PractitionerRole" }, true),
+            new ReferenceFieldMetadata("managingEntity", 0, "1", new[] { "CareTeam", "Device", "Group", "HealthcareService", "Organization", "RelatedPerson", "Patient", "Practitioner", "PractitionerRole" }, true),
         },
         ["SubscriptionStatus"] = new List<ReferenceFieldMetadata>
         {
@@ -871,68 +763,20 @@ public sealed class R6ReferenceMetadata : IReferenceMetadataProvider
         },
         ["SubstanceDefinition"] = new List<ReferenceFieldMetadata>
         {
-            new ReferenceFieldMetadata("informationSource", 0, "*", new[] { "Citation" }, true),
             new ReferenceFieldMetadata("manufacturer", 0, "*", new[] { "Organization" }, true),
             new ReferenceFieldMetadata("supplier", 0, "*", new[] { "Organization" }, true),
-            new ReferenceFieldMetadata("referenceInformation", 0, "1", new[] { "SubstanceReferenceInformation" }, true),
-            new ReferenceFieldMetadata("nucleicAcid", 0, "1", new[] { "SubstanceNucleicAcid" }, true),
-            new ReferenceFieldMetadata("polymer", 0, "1", new[] { "SubstancePolymer" }, true),
-            new ReferenceFieldMetadata("protein", 0, "1", new[] { "SubstanceProtein" }, true),
-        },
-        ["SupplyDelivery"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "SupplyRequest" }, true),
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "SupplyDelivery", "Contract" }, true),
-            new ReferenceFieldMetadata("patient", 0, "1", new[] { "Patient" }, false),
-            new ReferenceFieldMetadata("supplier", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
-            new ReferenceFieldMetadata("destination", 0, "1", new[] { "Location", "Practitioner", "PractitionerRole", "Organization" }, false),
-            new ReferenceFieldMetadata("receiver", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization" }, false),
-        },
-        ["SupplyRequest"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Resource" }, true),
-            new ReferenceFieldMetadata("deliverFor", 0, "1", new[] { "Patient" }, false),
-            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "Patient", "RelatedPerson", "Device", "CareTeam" }, true),
-            new ReferenceFieldMetadata("supplier", 0, "*", new[] { "Organization", "HealthcareService" }, true),
-            new ReferenceFieldMetadata("deliverFrom", 0, "1", new[] { "Organization", "Location" }, false),
-            new ReferenceFieldMetadata("deliverTo", 0, "1", new[] { "Organization", "Location", "Patient", "RelatedPerson" }, false),
         },
         ["Task"] = new List<ReferenceFieldMetadata>
         {
             new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Task" }, true),
-            new ReferenceFieldMetadata("focus", 0, "1", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("for", 0, "1", new[] { "Resource" }, true),
             new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Device", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("owner", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson" }, true),
+            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Device", "Group", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson" }, true),
+            new ReferenceFieldMetadata("owner", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson", "Group" }, true),
             new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
             new ReferenceFieldMetadata("insurance", 0, "*", new[] { "Coverage", "ClaimResponse" }, false),
             new ReferenceFieldMetadata("relevantHistory", 0, "*", new[] { "Provenance" }, false),
-        },
-        ["TestPlan"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("scope", 0, "*", new[] { "Resource" }, false),
-        },
-        ["Transport"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "Resource" }, true),
-            new ReferenceFieldMetadata("partOf", 0, "*", new[] { "Transport" }, true),
-            new ReferenceFieldMetadata("focus", 0, "1", new[] { "Resource" }, true),
-            new ReferenceFieldMetadata("for", 0, "1", new[] { "Resource" }, true),
-            new ReferenceFieldMetadata("encounter", 0, "1", new[] { "Encounter" }, true),
-            new ReferenceFieldMetadata("requester", 0, "1", new[] { "Device", "Organization", "Patient", "Practitioner", "PractitionerRole", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("owner", 0, "1", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "HealthcareService", "Patient", "Device", "RelatedPerson" }, true),
-            new ReferenceFieldMetadata("location", 0, "1", new[] { "Location" }, true),
-            new ReferenceFieldMetadata("insurance", 0, "*", new[] { "Coverage", "ClaimResponse" }, false),
-            new ReferenceFieldMetadata("relevantHistory", 0, "*", new[] { "Provenance" }, false),
-            new ReferenceFieldMetadata("requestedLocation", 1, "1", new[] { "Location" }, true),
-            new ReferenceFieldMetadata("currentLocation", 1, "1", new[] { "Location" }, true),
-            new ReferenceFieldMetadata("history", 0, "1", new[] { "Transport" }, false),
-        },
-        ["VerificationResult"] = new List<ReferenceFieldMetadata>
-        {
-            new ReferenceFieldMetadata("target", 0, "*", new[] { "Resource" }, true),
         },
         ["VisionPrescription"] = new List<ReferenceFieldMetadata>
         {

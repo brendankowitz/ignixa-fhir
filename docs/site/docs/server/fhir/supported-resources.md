@@ -85,7 +85,7 @@ Ignixa supports all standard FHIR R4, R4B, and R5 resources. This page details r
 | R4 (4.0.1) | All R4 resources | Primary target |
 | R4B (4.3.0) | All R4B resources | R4 + extensions |
 | R5 (5.0.0) | All R5 resources | Full support |
-| R6 (6.0.0-ballot2) | Preview | Limited support |
+| R6 (6.0.0-ballot4) | Preview | Limited support |
 | STU3 (3.0.2) | Common resources | Legacy support |
 
 ## Custom Resources

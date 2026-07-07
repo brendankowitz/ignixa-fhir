@@ -364,3 +364,6 @@ kimi.ps1
 claude-kimi.ps1
 
 .worktrees/
+
+# Superpowers subagent-driven-development scratch (progress ledger, task briefs, review packages)
+.superpowers/

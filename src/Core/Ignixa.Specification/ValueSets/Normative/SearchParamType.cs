@@ -31,6 +31,9 @@ public enum SearchParamType
     /// <summary>Reference</summary>
     [EnumLiteral("reference", "http://hl7.org/fhir/search-param-type")]
     Reference,
+    /// <summary>Resource (new in FHIR R6 ballot4)</summary>
+    [EnumLiteral("resource", "http://hl7.org/fhir/search-param-type")]
+    Resource,
     /// <summary>Special</summary>
     [EnumLiteral("special", "http://hl7.org/fhir/search-param-type")]
     Special,

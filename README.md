@@ -31,7 +31,7 @@ Designed for the cloud, Ignixa supports multi-tenancy out of the box, with data 
 
 ### 🏥 Core FHIR Capabilities
 
-* **Multi-Version Support**: Seamlessly handles **R4, R4B, R5, R6-Ballot2, and STU3**.
+* **Multi-Version Support**: Seamlessly handles **R4, R4B, R5, R6-Ballot4, and STU3**.
 * **Comprehensive API**: Full CRUD, Search, History, Batch/Transaction Bundles, and Patch (FHIRPath Patch).
 * **Advanced Validation**: Three-tier validation engine (Fast, Spec, Profile) ensuring data integrity.
 * **Extensive Search**: Support for standard and advanced search parameters, including chaining and includes.

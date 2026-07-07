@@ -12,8 +12,8 @@ $ErrorActionPreference = "Stop"
 
 # Paths
 $scriptDir = $PSScriptRoot
-$outputDir = Join-Path $scriptDir ".." "src" "Ignixa.Search" "Generated"
-$codegenExe = Join-Path $scriptDir "fhir-codegen" "src" "fhir-codegen" "bin" "Release" "net8.0" "fhir-codegen.exe"
+$outputDir = Join-Path $scriptDir ".." "src" "Core" "Ignixa.Search" "Generated"
+$codegenExe = Join-Path $scriptDir "fhir-codegen" "src" "fhir-codegen" "bin" "Release" "net9.0" "fhir-codegen.exe"
 
 # Create output directory
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
@@ -46,7 +46,7 @@ function Generate-Version {
         'R4' = 'hl7.fhir.r4.core'
         'R4B' = 'hl7.fhir.r4b.core'
         'R5' = 'hl7.fhir.r5.core'
-        'R6' = 'hl7.fhir.r6.core#6.0.0-ballot2'
+        'R6' = 'hl7.fhir.r6.core#6.0.0-ballot4'
         'STU3' = 'hl7.fhir.r3.core'
     }
 

@@ -6,11 +6,11 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Hl7.Fhir.Model;
-using Microsoft.Health.Fhir.CodeGen.Language;
-using Microsoft.Health.Fhir.CodeGen.Models;
-using Microsoft.Health.Fhir.CodeGenCommon.Models;
-using Microsoft.Health.Fhir.CodeGenCommon.Packaging;
-using Microsoft.Health.Fhir.CodeGen.FhirExtensions;
+using Fhir.CodeGen.Lib.Language;
+using Fhir.CodeGen.Lib.Models;
+using Fhir.CodeGen.Common.Models;
+using Fhir.CodeGen.Common.Packaging;
+using Fhir.CodeGen.Lib.FhirExtensions;
 
 namespace Ignixa.Specification.Generators;
 
@@ -73,7 +73,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             FhirReleases.FhirSequenceCodes.R4 => "4.0.1",
             FhirReleases.FhirSequenceCodes.R4B => "4.3.0",
             FhirReleases.FhirSequenceCodes.R5 => "5.0.0",
-            FhirReleases.FhirSequenceCodes.R6 => "6.0.0-ballot2",
+            FhirReleases.FhirSequenceCodes.R6 => "6.0.0-ballot4",
             FhirReleases.FhirSequenceCodes.STU3 => "3.0.2",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
