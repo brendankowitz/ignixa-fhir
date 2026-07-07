@@ -351,6 +351,34 @@ public class StructureDefinitionSchemaBuilder
         if (typeDefinition.Info.IsResource)
         {
             profileChecks.Add(new ReferenceResolutionCheck());
+
+            // Closed-world, terminology-independent structural rules the HL7 reference validator
+            // enforces. Registered in the profile (Full) tier so Compatibility depth is unaffected.
+            profileChecks.Add(new ExtensionUrlVersionCheck());
+
+            switch (typeDefinition.Info.Name)
+            {
+                case "ValueSet":
+                    profileChecks.Add(new ValueSetIncludeSystemCheck());
+                    profileChecks.Add(new ValueSetFilterCheck());
+                    break;
+                case "CodeSystem":
+                    profileChecks.Add(new CodeSystemSupplementContentCheck());
+                    profileChecks.Add(new CodeSystemPropertyTypeCheck());
+                    break;
+            }
+        }
+
+        // Choice-variant nested validation (Full tier): a complex value[x] variant (e.g.
+        // valueAttachment) is skipped by ChoiceElementCheck, which only recurses into primitive
+        // variants. Route each complex variant through its datatype's own schema — reusing
+        // NestedComplexTypeCheck against the concrete variant name — so nested rules (base64Binary on
+        // Attachment.data, cardinality, shape) apply. A no-op when that variant is absent. Profile
+        // tier keeps Compatibility depth unchanged.
+        foreach (var choiceElement in elements.Where(e => e.Info.IsChoiceElement))
+        {
+            profileChecks.AddRange(BuildChoiceVariantChecks(
+                choiceElement, schema, terminologyService, _logger, _parser));
         }
 
         // Slicing (Full tier): enforce per-slice cardinality and closed/openAtEnd rules for elements
@@ -395,6 +423,72 @@ public class StructureDefinitionSchemaBuilder
         {
             ["ext-1"] = new[] { "Extension" },
         };
+
+    /// <summary>
+    /// Known FHIR R4.0.1 constraint errata: the published core StructureDefinitions carry an
+    /// incorrect FHIRPath expression that the HL7 reference validator evaluates with a correction.
+    /// Keyed by constraint key, each entry replaces one exact source expression with its corrected
+    /// form. The match is on the full expression so we only ever touch the precise erratum; if the
+    /// generated schema is regenerated with a fixed expression, the substitution silently no-ops.
+    /// <para>
+    /// que-12 shipped as <c>enableWhen.count() &gt; 2</c> in R4.0.1 (should be <c>&gt;= 2</c> per the
+    /// human text "If there are more than one enableWhen"); corrected in R4B/R5. Without the fix an
+    /// item with exactly two enableWhen and no enableBehavior is wrongly accepted.
+    /// </para>
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, (string From, string To)> ConstraintExpressionErrata =
+        new Dictionary<string, (string From, string To)>(StringComparer.Ordinal)
+        {
+            ["que-12"] = (
+                "enableWhen.count() > 2 implies enableBehavior.exists()",
+                "enableWhen.count() >= 2 implies enableBehavior.exists()"),
+        };
+
+    /// <summary>
+    /// Datatype invariants absent from the generated core schema (the codegen emits
+    /// <c>constraints: null</c> for complex datatypes such as Period) but enforced by the HL7
+    /// reference validator. Injected into the datatype's own build so they evaluate once per
+    /// occurrence at that element's altitude, exactly like any element-owned constraint. Keyed by
+    /// the datatype name.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<IConstraint>> SupplementalDatatypeConstraints =
+        new Dictionary<string, IReadOnlyList<IConstraint>>(StringComparer.Ordinal)
+        {
+            ["Period"] = new IConstraint[]
+            {
+                new Ignixa.Abstractions.ConstraintDefinition
+                {
+                    Key = "per-1",
+                    Severity = "error",
+                    Human = "If present, start SHALL have a lower or equal value than end",
+                    Expression = "start.hasValue().not() or end.hasValue().not() or (start <= end)",
+                    Xpath = null,
+                },
+            },
+        };
+
+    /// <summary>
+    /// Applies a known-erratum correction to a constraint's FHIRPath expression, if one is registered
+    /// for its key and the source expression matches exactly. Returns the original constraint
+    /// otherwise.
+    /// </summary>
+    private static IConstraint NormalizeConstraint(IConstraint constraint)
+    {
+        if (ConstraintExpressionErrata.TryGetValue(constraint.Key, out var erratum)
+            && string.Equals(constraint.Expression, erratum.From, StringComparison.Ordinal))
+        {
+            return new Ignixa.Abstractions.ConstraintDefinition
+            {
+                Key = constraint.Key,
+                Severity = constraint.Severity,
+                Human = constraint.Human,
+                Expression = erratum.To,
+                Xpath = constraint.Xpath,
+            };
+        }
+
+        return constraint;
+    }
 
     private static IReadOnlyList<string>? ResolveAppliesTo(IConstraint constraint)
     {
@@ -463,7 +557,20 @@ public class StructureDefinitionSchemaBuilder
                 }
 
                 seenConstraints.Add(constraint.Key);
-                checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo, logger));
+                checks.Add(new FhirPathInvariantCheck(NormalizeConstraint(constraint), schema, parser, appliesTo, logger));
+            }
+        }
+
+        // Inject datatype invariants missing from codegen (e.g. Period's per-1). These belong to the
+        // type currently being built, so they run at this altitude once per occurrence.
+        if (SupplementalDatatypeConstraints.TryGetValue(typeDefinition.Info.Name, out var supplemental))
+        {
+            foreach (var constraint in supplemental)
+            {
+                if (seenConstraints.Add(constraint.Key))
+                {
+                    checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo: null, logger));
+                }
             }
         }
 
@@ -706,10 +813,63 @@ public class StructureDefinitionSchemaBuilder
             }
 
             var appliesTo = ResolveAppliesTo(constraint);
-            checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo, logger));
+            checks.Add(new FhirPathInvariantCheck(NormalizeConstraint(constraint), schema, parser, appliesTo, logger));
         }
 
         return checks;
+    }
+
+    /// <summary>
+    /// Builds nested-schema checks for the complex variants of a choice element. Primitive variants
+    /// are handled by <see cref="ChoiceElementCheck"/>; specially-handled datatypes (Reference,
+    /// CodeableConcept, Coding, Extension, Resource, xhtml) are left to their own dedicated checks to
+    /// keep the newly-lit validation surface narrow. Each remaining complex variant yields a
+    /// <see cref="NestedComplexTypeCheck"/> targeting the concrete variant name (e.g. "valueAttachment").
+    /// </summary>
+    private static IEnumerable<IValidationCheck> BuildChoiceVariantChecks(
+        IType choiceElement,
+        ISchema schema,
+        ITerminologyService? terminologyService,
+        ILogger<StructureDefinitionSchemaBuilder>? logger,
+        FhirPathParser? parser)
+    {
+        if (choiceElement is not ITypeExtended extended || extended.Types.Count == 0)
+        {
+            yield break;
+        }
+
+        var baseName = choiceElement.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+            ? choiceElement.Info.Name[..^3]
+            : choiceElement.Info.Name;
+
+        var isCollection = IsCollectionElement(choiceElement);
+        var visiting = _activeTypeNames.Value;
+        var seenTypes = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var typeReference in extended.Types)
+        {
+            var typeName = typeReference.Code;
+            if (string.IsNullOrEmpty(typeName)
+                || !seenTypes.Add(typeName)
+                || IsPrimitiveType(typeName)
+                || typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml" or "Resource"
+                || (visiting is not null && visiting.Contains(typeName)))
+            {
+                continue;
+            }
+
+            var typeDefinition = schema.GetTypeDefinition(typeName);
+            if (typeDefinition is null)
+            {
+                continue;
+            }
+
+            var nestedSchema = new StructureDefinitionSchemaBuilder(parser, logger)
+                .BuildSchema(typeDefinition, schema, terminologyService);
+
+            yield return new ChoiceVariantNestedCheck(
+                baseName + CapitalizeFirst(typeName), isCollection, nestedSchema);
+        }
     }
 
     /// <summary>
