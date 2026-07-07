@@ -1,8 +1,41 @@
 # Investigation: Differential → Snapshot Generation (own ElementMerger)
 
 **Feature**: validation
-**Status**: Planned (decision locked — build our own `ElementMerger`)
+**Status**: M1 shipped — base-merge constraint tightening (no slicing). M2/M3 planned.
 **Created**: 2026-07-06
+
+## Implementation status
+
+**M1 — shipped.** `src/Core/Ignixa.PackageManagement/Infrastructure/Snapshot/`:
+
+- `ElementMerger` — pure field-by-field merge of a base snapshot element list with a
+  differential. Every facet in the differential overrides the base (`min`, `max`, `type`,
+  `binding`, `fixed[x]`, `pattern[x]`, `short`, `definition`, `mustSupport`, …); `constraint`
+  is unioned by key. Base elements untouched by the differential are preserved in base order.
+- `SnapshotGenerator` — resolves the `baseDefinition` chain (recursively), uses an existing
+  `snapshot` as-is, detects circular chains (`SnapshotGenerationException`). Base resolution is
+  delegated to `ISnapshotBaseResolver`.
+- `PackageSnapshotBaseResolver` — resolves package profiles by canonical URL; for core types
+  (only available in-process as generated `IType` trees) projects the base snapshot on demand via
+  `TypeSnapshotProjector`.
+- Wiring: `ProfileLayeredSchemaProvider.BackfillSnapshotIfNeeded` generates `snapshot.element`
+  for differential-only profiles before handing them to `StructureDefinitionTypeAdapter`. The
+  adapter, schema builder, checks, and resolver are unchanged.
+
+**Correctness gate.** `ShippedSnapshotOracleTests` regenerates the snapshot from the differential
+for 7 R4-core dual-form constraint profiles (296 elements across 5 base types) and diffs it against
+the shipped snapshot on paths + `min`/`max`/`type`/`binding`/`fixed[x]`/`pattern[x]`: **100% match**.
+
+**M2 — not started (slicing + extension insertion).** Plugs into `ElementMerger`: see the
+`M2 TODO` marker in `ElementMerger.cs`. When a differential introduces a named slice (`sliceName`
+set) whose sliced path has base children, copy those base children into the slice tagged with the
+`sliceName`, and carry the `slicing` discriminator metadata. Mirrors rh-foundation
+`ElementMerger::expand_slice_children`. Feeds `slicing-discriminators.md`.
+
+**M3 — not started (type expansion + edge cases).** `contentReference` expansion, complex-datatype
+child expansion when a profile constrains into it, choice-type `[x]` narrowing, re-slicing, and
+richer profile-on-profile. Base-chain recursion + cycle guard are already in place in
+`SnapshotGenerator`; profile-on-profile already works for the constraint case.
 
 ## Problem Statement
 
