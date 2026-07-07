@@ -86,6 +86,19 @@ public class StructureDefinitionSchemaBuilder
             universalChecks.Add(new NarrativeCheck());
         }
 
+        // Bundle-specific structural checks: closed-world rules with no terminology dependency.
+        if (typeDefinition.Info.Name == "Bundle")
+        {
+            universalChecks.Add(new BundleFullUrlCheck());
+            universalChecks.Add(new BundleLinkRelationCheck());
+        }
+
+        // Attachment.size, when stated, must match the decoded Attachment.data length.
+        if (typeDefinition.Info.Name == "Attachment")
+        {
+            universalChecks.Add(new AttachmentSizeCheck());
+        }
+
         // Extract cardinality checks (moved to Fast tier for Microsoft FHIR Server alignment)
         // Cardinality checks enforce both minimum (required fields have min=1) and maximum cardinality
         // This eliminates the need for a separate RequiredFieldCheck
@@ -157,6 +170,15 @@ public class StructureDefinitionSchemaBuilder
                     typeName);
             });
         specChecks.AddRange(shapeChecks);
+
+        // Empty-array rejection (ele-1) at resource altitude: closes the gap StructuralShapeCheck
+        // leaves for complex datatypes (CodeableConcept, Coding, ...) that never get their own nested
+        // schema, so an empty array nested inside one (e.g. category[0].coding: []) would otherwise
+        // go unchecked. Runs once per resource via a single raw-JSON walk; see EmptyArrayCheck remarks.
+        if (typeDefinition.Info.IsResource)
+        {
+            specChecks.Add(new EmptyArrayCheck());
+        }
 
         // Extract reference format checks - check the type name, not element name
         // Skip choice elements: their DefaultTypeName may be Reference but the actual type

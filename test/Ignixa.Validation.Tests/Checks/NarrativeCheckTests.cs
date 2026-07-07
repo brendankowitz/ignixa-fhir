@@ -252,4 +252,110 @@ public class NarrativeCheckTests
         Assert.Single(result.Issues);
         Assert.Contains(result.Issues, i => i.Code == "txt-1" && i.Path.Contains(".div", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void GivenNarrativeDivWithScriptElement_WhenValidating_ThenReturnsError()
+    {
+        // Arrange
+        var json = JsonNode.Parse("""
+        {
+          "resourceType": "Patient",
+          "text": {
+            "status": "generated",
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">some text   <script>somescript</script>   </div>"
+          }
+        }
+        """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new NarrativeCheck();
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Message.Contains("Invalid element name in the XHTML ('script')", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GivenNarrativeDivWithInvalidNamedEntity_WhenValidating_ThenReturnsError()
+    {
+        // Arrange
+        var json = JsonNode.Parse("""
+        {
+          "resourceType": "Encounter",
+          "status": "finished",
+          "class": { "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB" },
+          "text": {
+            "status": "generated",
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Current Procedural Terminology (CPT&reg;)</div>"
+          }
+        }
+        """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new NarrativeCheck();
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Message.Contains("Invalid entity in the XHTML ('&reg;')", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GivenNarrativeDivWithOnlyPredefinedXmlEntities_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse("""
+        {
+          "resourceType": "Patient",
+          "text": {
+            "status": "generated",
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">A &amp; B &lt;tag&gt; &quot;quoted&quot; &apos;text&apos;</div>"
+          }
+        }
+        """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new NarrativeCheck();
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenNarrativeDivWithBasicFormattingElements_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse("""
+        {
+          "resourceType": "Patient",
+          "text": {
+            "status": "generated",
+            "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p><b>Name</b>: <a href=\"Patient-example.html\">Jane</a></p></div>"
+          }
+        }
+        """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new NarrativeCheck();
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
 }

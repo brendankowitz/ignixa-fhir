@@ -61,6 +61,27 @@ public static class FhirPrimitiveValidator
     public static bool IsPrimitiveType(string fhirType) => PrimitiveTypes.Contains(fhirType);
 
     /// <summary>
+    /// Decodes a FHIR <c>base64Binary</c> string, tolerating the interspersed whitespace the FHIR
+    /// base64Binary regex permits. Used both to validate the encoding and (by callers that need the
+    /// decoded length, e.g. Attachment.size cross-checks) to obtain the actual byte content.
+    /// </summary>
+    /// <param name="text">The candidate base64Binary string value.</param>
+    /// <param name="bytes">The decoded bytes, or null when <paramref name="text"/> is not valid base64.</param>
+    /// <returns>True if <paramref name="text"/> is valid base64; otherwise false.</returns>
+    public static bool TryDecodeBase64(string text, out byte[]? bytes)
+    {
+        Span<byte> buffer = text.Length <= 256 ? stackalloc byte[text.Length] : new byte[text.Length];
+        if (!Convert.TryFromBase64String(text, buffer, out var bytesWritten))
+        {
+            bytes = null;
+            return false;
+        }
+
+        bytes = buffer[..bytesWritten].ToArray();
+        return true;
+    }
+
+    /// <summary>
     /// Validates the primitive value carried by <paramref name="element"/> against
     /// <paramref name="fhirType"/>. Non-primitive types and absent/null values return
     /// success (shape/cardinality are enforced by other checks).
@@ -188,6 +209,12 @@ public static class FhirPrimitiveValidator
 
         if (fhirType is "date" or "dateTime" or "instant" && !IsCalendarDateValid(text, out reason))
         {
+            return false;
+        }
+
+        if (fhirType == "base64Binary" && !TryDecodeBase64(text, out _))
+        {
+            reason = $"value '{text}' is not valid base64: contains characters outside the base64 alphabet or has an invalid length/padding";
             return false;
         }
 
