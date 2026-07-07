@@ -355,6 +355,7 @@ public class StructureDefinitionSchemaBuilder
             // Closed-world, terminology-independent structural rules the HL7 reference validator
             // enforces. Registered in the profile (Full) tier so Compatibility depth is unaffected.
             profileChecks.Add(new ExtensionUrlVersionCheck());
+            profileChecks.Add(new ExtensionDefinitionCheck());
 
             switch (typeDefinition.Info.Name)
             {
