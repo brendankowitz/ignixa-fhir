@@ -88,7 +88,7 @@ public class DailyAppointmentScheduleScenarioTests
                 .ToList();
             tags.ShouldNotBeNull($"{resource.ResourceType}/{resource.Id} should have meta.tag");
             tags!.Any(t => t!["system"] is { } system &&
-                system.ToString() == FhirFakeTags.TestIsolationSystem &&
+                system.ToString() == FhirFakeTags.TestIsolationCodeSystem &&
                 t["code"] is { } code &&
                 code.ToString() == tag).ShouldBeTrue(
                 $"{resource.ResourceType}/{resource.Id} should carry the qualified test-isolation tag");

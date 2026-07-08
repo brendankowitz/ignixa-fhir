@@ -54,7 +54,7 @@ public class WithTagFunctionalityTests
         tagArray.Count.ShouldBe(1);
 
         var tag = tagArray[0]!.AsObject();
-        tag["system"]!.GetValue<string>().ShouldBe(FhirFakeTags.TestIsolationSystem);
+        tag["system"]!.GetValue<string>().ShouldBe(FhirFakeTags.TestIsolationCodeSystem);
         tag["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 
@@ -150,7 +150,7 @@ public class WithTagFunctionalityTests
     private static void AssertQualifiedTag(JsonNode resource, string tagCode)
     {
         var tag = resource["meta"]!["tag"]![0]!.AsObject();
-        tag["system"]!.GetValue<string>().ShouldBe(FhirFakeTags.TestIsolationSystem);
+        tag["system"]!.GetValue<string>().ShouldBe(FhirFakeTags.TestIsolationCodeSystem);
         tag["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 }

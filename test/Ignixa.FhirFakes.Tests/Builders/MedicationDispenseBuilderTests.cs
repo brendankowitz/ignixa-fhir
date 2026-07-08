@@ -116,7 +116,7 @@ public class MedicationDispenseBuilderTests
 
         var metaTag = tags?[0]?.AsObject();
         metaTag?["code"]?.GetValue<string>().ShouldBe(tag);
-        metaTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
+        metaTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/CodeSystem/test-isolation");
     }
 
     #endregion
