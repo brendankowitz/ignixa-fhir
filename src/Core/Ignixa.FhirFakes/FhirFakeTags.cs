@@ -9,7 +9,7 @@ namespace Ignixa.FhirFakes;
 
 internal static class FhirFakeTags
 {
-    public const string TestIsolationCodeSystem = "http://ignixa.dev/CodeSystem/test-isolation";
+    public const string TestIsolationCodeSystem = "http://ignixa.io/fhir/CodeSystem/test-isolation";
 
     public static JsonObject CreateTestIsolationCoding(string code)
     {
