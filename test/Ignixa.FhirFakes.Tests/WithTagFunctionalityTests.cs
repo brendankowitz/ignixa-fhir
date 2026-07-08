@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.FhirFakes;
 using Shouldly;
 using Ignixa.Specification.Generated;
 
@@ -35,7 +36,7 @@ public class WithTagFunctionalityTests
     }
 
     [Fact]
-    public void GivenFakerWithTag_WhenGeneratingResource_ThenResourceHasTagWithCode()
+    public void GivenFakerWithTag_WhenGeneratingResource_ThenResourceHasQualifiedTag()
     {
         // Arrange
         var tagCode = Guid.NewGuid().ToString();
@@ -53,7 +54,7 @@ public class WithTagFunctionalityTests
         tagArray.Count.ShouldBe(1);
 
         var tag = tagArray[0]!.AsObject();
-        tag["code"].ShouldNotBeNull();
+        tag["system"]!.GetValue<string>().ShouldBe(FhirFakeTags.TestIsolationSystem);
         tag["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 
@@ -70,12 +71,9 @@ public class WithTagFunctionalityTests
         var observation = _faker.Generate("Observation");
 
         // Assert - All resources should have the same tag
-        var getTagCode = (JsonNode resource) =>
-            resource["meta"]!["tag"]![0]!["code"]!.GetValue<string>();
-
-        getTagCode(patient1.MutableNode).ShouldBe(tagCode);
-        getTagCode(patient2.MutableNode).ShouldBe(tagCode);
-        getTagCode(observation.MutableNode).ShouldBe(tagCode);
+        AssertQualifiedTag(patient1.MutableNode, tagCode);
+        AssertQualifiedTag(patient2.MutableNode, tagCode);
+        AssertQualifiedTag(observation.MutableNode, tagCode);
     }
 
     [Fact]
@@ -94,11 +92,8 @@ public class WithTagFunctionalityTests
         var patient2 = _faker.Generate("Patient");
 
         // Assert
-        var getTagCode = (JsonNode resource) =>
-            resource["meta"]!["tag"]![0]!["code"]!.GetValue<string>();
-
-        getTagCode(patient1.MutableNode).ShouldBe(tagCode1);
-        getTagCode(patient2.MutableNode).ShouldBe(tagCode2);
+        AssertQualifiedTag(patient1.MutableNode, tagCode1);
+        AssertQualifiedTag(patient2.MutableNode, tagCode2);
     }
 
     [Fact]
@@ -149,6 +144,13 @@ public class WithTagFunctionalityTests
 
         var tagArray = meta["tag"]!.AsArray();
         tagArray.Count.ShouldBe(1);
-        tagArray[0]!["code"]!.GetValue<string>().ShouldBe(tagCode);
+        AssertQualifiedTag(patient.MutableNode, tagCode);
+    }
+
+    private static void AssertQualifiedTag(JsonNode resource, string tagCode)
+    {
+        var tag = resource["meta"]!["tag"]![0]!.AsObject();
+        tag["system"]!.GetValue<string>().ShouldBe(FhirFakeTags.TestIsolationSystem);
+        tag["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 }

@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
+using Ignixa.FhirFakes;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -189,11 +190,7 @@ public abstract class FhirResourceBuilder<TBuilder>
         {
             meta["tag"] = new JsonArray
             {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
+                FhirFakeTags.CreateTestIsolationCoding(_tag)
             };
         }
 

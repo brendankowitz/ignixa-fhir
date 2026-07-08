@@ -1106,7 +1106,7 @@ public class SchemaBasedFhirResourceFaker
             meta["tag"] = tagArray;
         }
 
-        tagArray.Add(new JsonObject { ["code"] = _tag });
+        tagArray.Add(FhirFakeTags.CreateTestIsolationCoding(_tag));
     }
 
     /// <summary>
