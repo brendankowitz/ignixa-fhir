@@ -87,11 +87,15 @@ public class DailyAppointmentScheduleScenarioTests
             var tags = resource.MutableNode["meta"]?["tag"]?.AsArray()
                 .ToList();
             tags.ShouldNotBeNull($"{resource.ResourceType}/{resource.Id} should have meta.tag");
-            tags!.Any(t => t!["system"] is { } system &&
-                system.ToString() == FhirFakeTags.TestIsolationCodeSystem &&
-                t["code"] is { } code &&
-                code.ToString() == tag).ShouldBeTrue(
+            tags!.ShouldContain(t => HasQualifiedTestIsolationTag(t, tag),
                 $"{resource.ResourceType}/{resource.Id} should carry the qualified test-isolation tag");
         }
     }
+
+    private static bool HasQualifiedTestIsolationTag(JsonNode? tagElement, string tag) =>
+        tagElement is not null &&
+        tagElement["system"] is { } system &&
+        system.GetValue<string>() == FhirFakeTags.TestIsolationCodeSystem &&
+        tagElement["code"] is { } code &&
+        code.GetValue<string>() == tag;
 }
