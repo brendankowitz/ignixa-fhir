@@ -72,7 +72,7 @@ public class GroupBuilderTests
         tags!.Count.ShouldBe(1);
 
         var firstTag = tags?[0]?.AsObject();
-        firstTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
+        firstTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.io/fhir/CodeSystem/test-isolation");
         firstTag?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 

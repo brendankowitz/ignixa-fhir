@@ -68,7 +68,7 @@ public class CareTeamBuilderTests
         metaTags.Count.ShouldBe(1);
 
         var tagObj = metaTags![0] as JsonObject;
-        tagObj!["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
+        tagObj!["system"]?.GetValue<string>().ShouldBe("http://ignixa.io/fhir/CodeSystem/test-isolation");
         tagObj["code"]?.GetValue<string>().ShouldBe(tag);
     }
 

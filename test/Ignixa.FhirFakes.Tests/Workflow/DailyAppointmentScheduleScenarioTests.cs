@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Workflow;
 using Ignixa.Specification.Generated;
 using Shouldly;
@@ -83,11 +84,18 @@ public class DailyAppointmentScheduleScenarioTests
         result.Graph.AllResources.Count.ShouldBeGreaterThan(0);
         foreach (var resource in result.Graph.AllResources)
         {
-            var tagCodes = resource.MutableNode["meta"]?["tag"]?.AsArray()
-                .Select(t => t!["code"]?.ToString())
+            var tags = resource.MutableNode["meta"]?["tag"]?.AsArray()
                 .ToList();
-            tagCodes.ShouldNotBeNull($"{resource.ResourceType}/{resource.Id} should have meta.tag");
-            tagCodes!.ShouldContain(tag, $"{resource.ResourceType}/{resource.Id} should carry the tag");
+            tags.ShouldNotBeNull($"{resource.ResourceType}/{resource.Id} should have meta.tag");
+            tags!.ShouldContain(t => HasQualifiedTestIsolationTag(t, tag),
+                $"{resource.ResourceType}/{resource.Id} should carry the qualified test-isolation tag");
         }
     }
+
+    private static bool HasQualifiedTestIsolationTag(JsonNode? tagElement, string tag) =>
+        tagElement is not null &&
+        tagElement["system"] is { } system &&
+        system.GetValue<string>() == FhirFakeTags.TestIsolationCodeSystem &&
+        tagElement["code"] is { } code &&
+        code.GetValue<string>() == tag;
 }
