@@ -40,33 +40,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "date", "dateTime", "time", "instant", "uuid",
     ];
 
-    /// <summary>
-    /// Resource types that already have a hand-written facade in <c>Ignixa.Serialization</c> or
-    /// <c>Ignixa.Application</c> (the <c>*JsonNode</c> classes the request pipeline depends on). The
-    /// generated base layer (namespace <c>Ignixa.Models</c>) emits a facade named exactly after the
-    /// resource (<c>Bundle</c>), so it would NOT collide with the hand-written <c>BundleJsonNode</c> at
-    /// the CLR level. This guard is nonetheless ACTIVE: it stops the generator from emitting a base
-    /// facade for any resource the server already models by hand, so the two never diverge and a
-    /// consumer reaching for, say, <c>Bundle</c> handling is steered to the single server-critical
-    /// implementation rather than a parallel generated one. The skip logs and continues (see
-    /// <see cref="ExportMultiVersion"/>). Sourced from the hand-written resource facades under
-    /// <c>src/Core/Ignixa.Serialization/Models/*JsonNode.cs</c> and
-    /// <c>src/Application/**/Models/*JsonNode.cs</c>.
-    /// </summary>
-    private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
-    {
-        "Bundle",
-        "OperationOutcome",
-        "Parameters",
-        "Provenance",
-        "SearchParameter",
-        "CapabilityStatement",
-        "StructureDefinition",
-        "StructureMap",
-        "ConceptMap",
-        "Composition",
-    };
-
     /// <summary>Gets the language name.</summary>
     public string Name => LanguageName;
 
@@ -135,12 +108,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         foreach (var classification in classifications.Values.OrderBy(c => c.TypeName, StringComparer.Ordinal))
         {
-            if (ReservedBaseTypeNames.Contains(classification.TypeName))
-            {
-                Console.WriteLine($"  ! Skipping reserved base type '{classification.TypeName}' (collides with a hand-written facade)");
-                continue;
-            }
-
             if (!classification.HasBaseType)
             {
                 continue;

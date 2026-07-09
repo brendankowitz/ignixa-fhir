@@ -16,12 +16,19 @@ public sealed class CSharpTypedModelConfig
     /// <summary>Gets or sets the namespace for generated facade classes.</summary>
     public string Namespace { get; set; } = "Ignixa.Models.R4";
 
-    /// <summary>Gets or sets the resources to generate facades for (MVP allow-list).</summary>
+    /// <summary>Gets or sets the resources to generate facades for.</summary>
+    /// <remarks>Ignored when <see cref="GenerateAllResources"/> is <c>true</c>.</remarks>
     public IReadOnlyCollection<string> ResourceAllowList { get; set; } = [];
 
     /// <summary>Gets or sets the complex datatypes to generate facades for (MVP allow-list).</summary>
     /// <remarks>Ignored when <see cref="GenerateAllDatatypes"/> is <c>true</c>.</remarks>
     public IReadOnlyCollection<string> DatatypeAllowList { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to generate facades for the full set of FHIR resources
+    /// for the version, rather than the hand-picked <see cref="ResourceAllowList"/>.
+    /// </summary>
+    public bool GenerateAllResources { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether to generate facades for the FULL set of concrete

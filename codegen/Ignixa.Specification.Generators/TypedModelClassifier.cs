@@ -167,7 +167,9 @@ internal sealed class TypedModelClassifier
     private VersionView BuildVersionView(string version, DefinitionCollection definitions)
     {
         var view = new VersionView();
-        var resourceAllow = new HashSet<string>(_config.ResourceAllowList, StringComparer.Ordinal);
+        var resourceAllow = _config.GenerateAllResources
+            ? ResolveAllConcreteResources(definitions)
+            : new HashSet<string>(_config.ResourceAllowList, StringComparer.Ordinal);
         var datatypeAllow = _config.GenerateAllDatatypes
             ? ResolveAllConcreteDatatypes(definitions)
             : new HashSet<string>(_config.DatatypeAllowList, StringComparer.Ordinal);
@@ -427,6 +429,27 @@ internal sealed class TypedModelClassifier
 
         var result = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (name, sd) in definitions.ComplexTypesByName)
+        {
+            if (abstractBaseTypes.Contains(name) || sd.Abstract == true)
+            {
+                continue;
+            }
+
+            result.Add(name);
+        }
+
+        return result;
+    }
+
+    private static HashSet<string> ResolveAllConcreteResources(DefinitionCollection definitions)
+    {
+        var abstractBaseTypes = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Resource", "DomainResource",
+        };
+
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (name, sd) in definitions.ResourcesByName)
         {
             if (abstractBaseTypes.Contains(name) || sd.Abstract == true)
             {
