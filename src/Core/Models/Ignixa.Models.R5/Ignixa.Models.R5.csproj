@@ -11,7 +11,7 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageStability>alpha</PackageStability>
+    <PackageStability>beta</PackageStability>
     <Description>FHIR R5 strongly-typed POCO facades over the Ignixa element/JSON runtime (opt-in). Subclasses the shared Ignixa.Models base layer in Ignixa.Serialization.</Description>
     <PackageTags>FHIR;HL7;Models;POCO;R5</PackageTags>
   </PropertyGroup>
