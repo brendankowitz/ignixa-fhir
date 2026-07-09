@@ -364,3 +364,6 @@ kimi.ps1
 claude-kimi.ps1
 
 .worktrees/
+
+# Scratch samples/exploration, not part of the shipped solution
+/samples/

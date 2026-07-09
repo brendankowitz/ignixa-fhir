@@ -21,6 +21,7 @@ mode = mode switch
     "coreschema" => "coreschema",
     "validation-terminology" => "validation-terminology",
     "narrative-template" => "narrative-template",
+    "typed-model" => "typed-model",
     _ => "structure"
 };
 
@@ -34,6 +35,9 @@ string defaultOutputDir = mode switch
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "validation-terminology" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Validation", "Generated"),
     "narrative-template" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.NarrativeGenerator", "Generated"),
+
+    // NOTE: typed-model has no arm here: that mode short-circuits to RunTypedModelMultiVersion
+    // (which owns its own output paths), so this switch never runs for it.
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
 };
 
@@ -52,11 +56,26 @@ string title = mode switch
     "coreschema" => "Ignixa FHIR Core Schema Provider Generator",
     "validation-terminology" => "Ignixa FHIR In-Memory Terminology Service Generator",
     "narrative-template" => "Ignixa FHIR Narrative Template Generator",
+    "typed-model" => "Ignixa FHIR Typed-Model (POCO Facade) Generator",
     _ => "Ignixa FHIR Structure Definition Provider Generator"
 };
 
 Console.WriteLine(title);
 Console.WriteLine("====================================================");
+
+// The typed-model mode is a multi-version pass (loads every targeted version, classifies
+// shared-vs-version-specific types, emits base layer + per-version subclasses). It bypasses the
+// single-version package/banner/load below entirely.
+if (mode == "typed-model")
+{
+    var typedModelLoaderConfig = new ConfigRoot
+    {
+        UseOfficialRegistries = true,
+        AutoLoadExpansions = true
+    };
+
+    return await RunTypedModelMultiVersion(typedModelLoaderConfig);
+}
 
 // Map FHIR version to package name
 string packageId = fhirVersion.ToUpperInvariant() switch
@@ -214,3 +233,83 @@ switch (mode)
 Console.WriteLine();
 Console.WriteLine("✓ Generation complete!");
 return 0;
+
+// -------------------------------------------------------------------------------------------------
+// Multi-version typed-model pass
+// -------------------------------------------------------------------------------------------------
+static async Task<int> RunTypedModelMultiVersion(ConfigRoot loaderConfig)
+{
+    Console.WriteLine("Generating typed-model POCO facades (multi-version shared-base pass)...");
+
+    // Stage 1 targets R4 + R5. Order matters: the first version is treated as primary for
+    // base-element enum expansion (Identical => the set is the same across versions).
+    var targets = new[]
+    {
+        ("R4", "hl7.fhir.r4.core#4.0.1"),
+        ("R5", "hl7.fhir.r5.core#5.0.0"),
+    };
+
+    string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    string baseOutputDir = Path.Combine(repoRoot, "src", "Core", "Ignixa.Serialization", "Generated", "Models");
+
+    var typedModelConfig = new CSharpTypedModelConfig
+    {
+        ResourceAllowList = ["Patient", "Observation"],
+        DatatypeAllowList = ["HumanName", "CodeableConcept", "Coding", "Quantity", "Identifier", "Period", "ContactPoint"],
+        GenerateAllDatatypes = true,
+    };
+
+    var loaded = new List<(string Version, DefinitionCollection Definitions, string OutputDir)>();
+    foreach (var (version, packageId) in targets)
+    {
+        Console.WriteLine($"Loading {version} ({packageId})...");
+        var loader = new PackageLoader(loaderConfig, null);
+        DefinitionCollection? defs = await loader.LoadPackages([packageId]);
+        if (defs is null)
+        {
+            Console.WriteLine($"✗ Failed to load package {packageId}");
+            return 1;
+        }
+
+        string versionOutputDir = Path.Combine(repoRoot, "src", "Core", "Models", $"Ignixa.Models.{version}", "Generated");
+        loaded.Add((version, defs, versionOutputDir));
+        Console.WriteLine($"  {version}: {defs.ResourcesByName.Count} resources, {defs.ComplexTypesByName.Count} complex types");
+    }
+
+    // Clean before emit: the emitter only creates/overwrites, it never deletes. Without this, a type
+    // that stops being emitted to a directory on this run (e.g. a classification flip demotes it from
+    // base-shared to per-version) leaves its old file behind -- content-identical before and after
+    // regeneration, so the regen-drift guard's before/after hash comparison cannot see it as stale.
+    // These directories are 100% generator-owned, so a full wipe-then-regenerate is safe and is the
+    // only way to guarantee the output set, not just each file's content, matches the current
+    // classification. Recurses through every file in every subdirectory (matching the regen guard's
+    // own `Get-ChildItem -Recurse -File` snapshot) rather than assuming today's flat *.cs-only shape
+    // holds forever -- a narrower wipe would just relocate this exact blind spot to the first
+    // subdirectory or non-.cs file a future emitter change introduces.
+    CleanGeneratedDir(baseOutputDir);
+    foreach (var (_, _, versionOutputDir) in loaded)
+    {
+        CleanGeneratedDir(versionOutputDir);
+    }
+
+    Console.WriteLine();
+    var language = new CSharpTypedModelLanguage();
+    language.ExportMultiVersion(typedModelConfig, loaded, baseOutputDir);
+
+    Console.WriteLine();
+    Console.WriteLine("✓ Generation complete!");
+    return 0;
+}
+
+static void CleanGeneratedDir(string dir)
+{
+    if (!Directory.Exists(dir))
+    {
+        return;
+    }
+
+    foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+    {
+        File.Delete(file);
+    }
+}

@@ -175,4 +175,37 @@ public class ResourceJsonNodeAsTests
         Assert.Same(result1, result2); // Same instance when already correct type (casting optimization)
         Assert.Same(((IMutableJsonNode)result1).MutableNode, ((IMutableJsonNode)result2).MutableNode); // Same underlying JsonObject
     }
+
+    /// <summary>
+    /// Test-only facade sharing "Bundle" as its post-JsonNode-suffix-strip simple name (matching
+    /// ResourceTypeRegistry's "Bundle" key) but a different CLR type than the real, registered
+    /// <see cref="BundleJsonNode"/> -- exercises the "registry produced a type other than T" branch of
+    /// As&lt;T&gt;() (ResourceJsonNode.cs), which no other test reaches: every other As&lt;T&gt;() call in
+    /// this suite either targets a registered type exactly (registry hit, type matches) or a type absent
+    /// from the registry entirely (falls straight to the reflection constructor, registry never consulted).
+    /// </summary>
+    private sealed class BundleJsonNode : ResourceJsonNode
+    {
+        internal BundleJsonNode(JsonObject jsonObject)
+            : base(jsonObject)
+        {
+        }
+    }
+
+    [Fact]
+    public void GivenRegistryProducesADifferentRuntimeType_WhenConvertingViaAs_ThenFallsBackToReflectionConstructor()
+    {
+        // Arrange: "resourceType": "Bundle" satisfies the resource-type-name check for our LOCAL
+        // BundleJsonNode, and ResourceTypeRegistry.TryCreateInstance("Bundle", ...) DOES hit -- but it
+        // produces Ignixa.Serialization.BundleJsonNode (the real, hand-written one), not this local type.
+        var bundleNode = ResourceJsonNode.Parse(_parametersInvalidJson);
+
+        // Act
+        var result = bundleNode.As<BundleJsonNode>();
+
+        // Assert: the reflection-constructor fallback produced OUR type, not the registry's, and still
+        // wraps the same backing node (zero-copy) despite the registry hit being discarded.
+        Assert.IsType<BundleJsonNode>(result);
+        Assert.Same(((IMutableJsonNode)bundleNode).MutableNode, ((IMutableJsonNode)result).MutableNode);
+    }
 }

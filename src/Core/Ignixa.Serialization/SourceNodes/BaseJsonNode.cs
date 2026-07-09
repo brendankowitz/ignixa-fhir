@@ -74,6 +74,14 @@ public abstract class BaseJsonNode : IMutableJsonNode
     /// </summary>
     /// <param name="name">The property name (e.g., "active", "name", "telecom").</param>
     /// <param name="value">The JsonNode value to set.</param>
+    /// <remarks>
+    /// <paramref name="value"/> is attached in place (zero-copy) only when it has no existing parent. A
+    /// <see cref="JsonNode"/> can belong to just one parent, so a value already attached elsewhere (e.g.
+    /// read off another facade: <c>a.Code = b.Code</c>) is deep-cloned before assignment rather than
+    /// throwing. This means later mutations through the original facade (<c>b</c>) are NOT visible
+    /// through the new one (<c>a</c>) in that case — plain aliasing (`a.Code = someUnparentedNode`) is
+    /// unaffected and remains zero-copy.
+    /// </remarks>
     public void SetProperty(string name, JsonNode? value)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -84,9 +92,13 @@ public abstract class BaseJsonNode : IMutableJsonNode
         }
         else
         {
-            _internalNode[name] = value;
+            _internalNode[name] = Reparentable(value);
         }
     }
+
+    // A JsonNode can have only one parent; assigning one that is already attached elsewhere throws.
+    // Clone in that case so reusing a model instance across parents copies rather than crashes.
+    private static JsonNode Reparentable(JsonNode value) => value.Parent is null ? value : value.DeepClone();
 
     protected T? GetProperty<T>(string name)
     {
@@ -105,7 +117,7 @@ public abstract class BaseJsonNode : IMutableJsonNode
         }
         else if (value is JsonNode jsonNodeValue)
         {
-            MutableNode[name] = jsonNodeValue;
+            MutableNode[name] = Reparentable(jsonNodeValue);
         }
         else
         {

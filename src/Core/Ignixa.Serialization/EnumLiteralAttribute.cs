@@ -80,11 +80,10 @@ public static class EnumLiteralExtensions
     /// <returns>The literal string, or the enum's ToString() if no attribute found.</returns>
     public static string GetLiteral(this Enum value)
     {
-        var field = value.GetType().GetField(value.ToString());
-        if (field == null) return value.ToString();
-
-        var attribute = (EnumLiteralAttribute?)Attribute.GetCustomAttribute(field, typeof(EnumLiteralAttribute));
-        return attribute?.Literal ?? value.ToString();
+        string name = value.ToString();
+        return EnumLiteralCache.GetMap(value.GetType()).LiteralByMemberName.TryGetValue(name, out string? literal)
+            ? literal
+            : name;
     }
 }
 
@@ -105,16 +104,9 @@ public static class EnumUtility
         if (string.IsNullOrWhiteSpace(literal))
             return null;
 
-        var enumType = typeof(T);
-        foreach (var field in enumType.GetFields())
+        if (EnumLiteralCache.GetMap(typeof(T)).ValueByLiteral.TryGetValue(literal, out object? boxedValue))
         {
-            if (field.IsSpecialName) continue; // Skip value__ field
-
-            var attribute = (EnumLiteralAttribute?)Attribute.GetCustomAttribute(field, typeof(EnumLiteralAttribute));
-            if (attribute?.Literal == literal)
-            {
-                return (T?)field.GetValue(null);
-            }
+            return (T)boxedValue;
         }
 
         // Fallback: try parsing as regular enum name
@@ -126,3 +118,42 @@ public static class EnumUtility
         return null;
     }
 }
+
+/// <summary>
+/// Reflects an enum type's <see cref="EnumLiteralAttribute"/> fields exactly once and caches the
+/// resulting literal&lt;-&gt;value maps. Generated typed-model accessors call <see cref="EnumUtility.ParseLiteral{T}"/>
+/// / <see cref="EnumLiteralExtensions.GetLiteral"/> on every property read, which made the prior
+/// per-call <see cref="Attribute.GetCustomAttribute(System.Reflection.MemberInfo, Type)"/> reflection
+/// walk a hot path.
+/// </summary>
+internal static class EnumLiteralCache
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EnumLiteralMap> Maps = new();
+
+    public static EnumLiteralMap GetMap(Type enumType) => Maps.GetOrAdd(enumType, BuildMap);
+
+    private static EnumLiteralMap BuildMap(Type enumType)
+    {
+        var valueByLiteral = new Dictionary<string, object>(StringComparer.Ordinal);
+        var literalByMemberName = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var field in enumType.GetFields())
+        {
+            if (field.IsSpecialName) continue; // Skip value__ field
+
+            var attribute = (EnumLiteralAttribute?)Attribute.GetCustomAttribute(field, typeof(EnumLiteralAttribute));
+            if (attribute is null) continue;
+
+            // First declared member for a given literal wins, matching the original linear-scan semantics.
+            valueByLiteral.TryAdd(attribute.Literal, field.GetValue(null)!);
+            literalByMemberName[field.Name] = attribute.Literal;
+        }
+
+        return new EnumLiteralMap(valueByLiteral, literalByMemberName);
+    }
+}
+
+/// <summary>Cached literal&lt;-&gt;value maps for one enum type. See <see cref="EnumLiteralCache"/>.</summary>
+internal sealed record EnumLiteralMap(
+    IReadOnlyDictionary<string, object> ValueByLiteral,
+    IReadOnlyDictionary<string, string> LiteralByMemberName);
