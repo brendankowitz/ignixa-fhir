@@ -86,6 +86,7 @@ const sidebars = {
         'core-sdk/stability',
         'core-sdk/abstractions',
         'core-sdk/serialization',
+        'core-sdk/typed-models',
         'core-sdk/fhirpath',
         'core-sdk/validation',
         'core-sdk/search',
