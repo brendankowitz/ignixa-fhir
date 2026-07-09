@@ -18,6 +18,7 @@ namespace Ignixa.Models.R4;
 /// <summary>
 /// FHIR SubstanceAmount R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
 public sealed class SubstanceAmount : Ignixa.Models.SubstanceAmount
 {
     public SubstanceAmount()

@@ -18,6 +18,7 @@ namespace Ignixa.Models.R4;
 /// <summary>
 /// FHIR Population R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
 public sealed class Population : Ignixa.Models.Population
 {
     public Population()

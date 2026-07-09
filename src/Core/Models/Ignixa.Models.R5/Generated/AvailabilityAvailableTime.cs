@@ -18,6 +18,7 @@ namespace Ignixa.Models.R5;
 /// <summary>
 /// FHIR AvailabilityAvailableTime R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
 public sealed class AvailabilityAvailableTime : Ignixa.Models.AvailabilityAvailableTime
 {
     public AvailabilityAvailableTime()

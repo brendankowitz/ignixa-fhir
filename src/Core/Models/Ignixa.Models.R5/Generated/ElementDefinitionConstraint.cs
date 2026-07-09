@@ -18,6 +18,7 @@ namespace Ignixa.Models.R5;
 /// <summary>
 /// FHIR ElementDefinitionConstraint R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
 public sealed class ElementDefinitionConstraint : Ignixa.Models.ElementDefinitionConstraint
 {
     public ElementDefinitionConstraint()

@@ -18,6 +18,7 @@ namespace Ignixa.Models.R5;
 /// <summary>
 /// FHIR ProductShelfLife R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
 public sealed class ProductShelfLife : Ignixa.Models.ProductShelfLife
 {
     public ProductShelfLife()

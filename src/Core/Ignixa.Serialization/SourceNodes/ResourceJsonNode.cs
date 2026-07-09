@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json.Nodes;
@@ -184,15 +185,26 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
     }
 
+    private static readonly ConcurrentDictionary<Type, FhirVersion[]?> CompatibleVersionsCache = new();
+
     /// <summary>
     /// Converts this ResourceJsonNode to a strongly-typed subclass (e.g., ParametersJsonNode).
     /// Uses reflection to invoke the internal constructor, providing zero-copy conversion.
     /// </summary>
     /// <typeparam name="T">Target type (must be a ResourceJsonNode subclass with internal JsonObject constructor).</typeparam>
-    /// <param name="validate">If true (default), validates that the resource type matches the expected type for T.</param>
+    /// <param name="validate">
+    /// If true (default), validates that the resource type matches the expected type for T, and --
+    /// when both this node's <see cref="BaseJsonNode.FhirVersion"/> and T's
+    /// <see cref="CompatibleFhirVersionsAttribute"/> are present -- that the node's version is one T
+    /// actually supports. Pass false to bypass both checks as an expert escape hatch (e.g. reinterpreting
+    /// a node whose version is deliberately unknown or being intentionally overridden).
+    /// </param>
     /// <returns>A new instance of T wrapping the same underlying JsonObject.</returns>
     /// <exception cref="InvalidOperationException">If the internal constructor cannot be found.</exception>
-    /// <exception cref="InvalidCastException">If validation is enabled and the resource type doesn't match the expected type.</exception>
+    /// <exception cref="InvalidCastException">
+    /// If validation is enabled and the resource type doesn't match the expected type, or this node's
+    /// FhirVersion is set to a version T's <see cref="CompatibleFhirVersionsAttribute"/> doesn't list.
+    /// </exception>
     public T As<T>(bool validate = true) where T : ResourceJsonNode
     {
         // no-op if already the correct type
@@ -216,6 +228,26 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
             throw new InvalidCastException($"Cannot convert resource of type '{ResourceType}' to {targetType.Name}, expected '{targetResourceType}'");
         }
 
+        FhirVersion[]? compatibleVersions = GetCompatibleVersions(targetType);
+
+        // A version-tagged node reinterpreted through a version-marked facade that doesn't list it is a
+        // silent misread waiting to happen (e.g. STU3 JSON read through an R4/R5-shaped accessor) --
+        // structurally identical property names can mean different things across versions. Unspecified
+        // is a deliberate "assume latest" choice (see FhirVersion docs), not "unknown", but it isn't a
+        // hard version constraint either, so it's exempt from this check the same as an untagged (null)
+        // node. Unmarked target types (hand-written, version-agnostic facades) are never checked.
+        if (validate
+            && FhirVersion is { } sourceVersion
+            && sourceVersion != global::Ignixa.Abstractions.FhirVersion.Unspecified
+            && compatibleVersions is not null
+            && Array.IndexOf(compatibleVersions, sourceVersion) < 0)
+        {
+            throw new InvalidCastException(
+                $"Cannot convert a {sourceVersion} resource to {targetType.Name}, which only supports "
+                + $"[{string.Join(", ", compatibleVersions)}]. Use TryAsVersion/AsVersion for safe "
+                + "dispatch, or As<T>(validate: false) to bypass this check.");
+        }
+
         T? instance = null;
         if (ResourceTypeRegistry.TryCreateInstance(
                 targetResourceType,
@@ -228,11 +260,17 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
 
         instance ??= CreateViaReflectionConstructor<T>(targetType, MutableNode);
 
-        // Copy FhirVersion to maintain metadata
-        instance.FhirVersion = FhirVersion;
+        // Copy FhirVersion to maintain metadata; when this node is untagged and T is unambiguously
+        // single-version, stamp that version instead of leaving the result untagged too.
+        instance.FhirVersion = FhirVersion ?? (compatibleVersions is { Length: 1 } single ? single[0] : null);
 
         return instance;
     }
+
+    private static FhirVersion[]? GetCompatibleVersions(Type type) =>
+        CompatibleVersionsCache.GetOrAdd(type, static t =>
+            ((CompatibleFhirVersionsAttribute?)Attribute.GetCustomAttribute(t, typeof(CompatibleFhirVersionsAttribute), inherit: false))
+                ?.Versions.ToArray());
 
     /// <summary>
     /// Builds a <typeparamref name="T"/> by invoking its internal <c>T(JsonObject)</c> constructor via

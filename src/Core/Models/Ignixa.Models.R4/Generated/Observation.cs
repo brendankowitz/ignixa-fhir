@@ -18,6 +18,7 @@ namespace Ignixa.Models.R4;
 /// <summary>
 /// FHIR Observation R4 resource facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
 public sealed class Observation : Ignixa.Models.Observation
 {
     public Observation()

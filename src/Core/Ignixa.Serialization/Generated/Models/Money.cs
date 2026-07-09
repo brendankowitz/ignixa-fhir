@@ -17,6 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Money datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
 public sealed class Money : BaseJsonNode
 {
     public Money()
