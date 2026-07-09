@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -121,7 +121,7 @@ public class StateIdPatternTests
         // Assert
         scenario.Observations.Count.ShouldBe(1, "should not create duplicate observations");
         var report = scenario.DiagnosticReports[0];
-        var resultRef = ((IMutableJsonNode)report).MutableNode["result"]![0]!["reference"]!.GetValue<string>();
+        var resultRef = report.MutableNode()["result"]![0]!["reference"]!.GetValue<string>();
         resultRef.ShouldBe($"urn:uuid:{scenario.Observations[0].Id}");
     }
 
@@ -156,7 +156,7 @@ public class StateIdPatternTests
         // Assert
         scenario.Observations.Count.ShouldBe(2);
         var report = scenario.DiagnosticReports[0];
-        var results = ((IMutableJsonNode)report).MutableNode["result"]!.AsArray();
+        var results = report.MutableNode()["result"]!.AsArray();
         results!.Count.ShouldBe(2);
         results[0]!["reference"]!.GetValue<string>().ShouldContain(scenario.Observations[0].Id);
         results[1]!["reference"]!.GetValue<string>().ShouldContain(scenario.Observations[1].Id);
@@ -188,7 +188,7 @@ public class StateIdPatternTests
         // Assert
         scenario.Observations.Count.ShouldBe(2, "one referenced + one inline");
         var report = scenario.DiagnosticReports[0];
-        var results = ((IMutableJsonNode)report).MutableNode["result"]!.AsArray();
+        var results = report.MutableNode()["result"]!.AsArray();
         results!.Count.ShouldBe(2);
     }
 
@@ -209,7 +209,7 @@ public class StateIdPatternTests
         // Assert
         scenario.Observations.Count.ShouldBe(0, "no observations created");
         var report = scenario.DiagnosticReports[0];
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
 
         // The result field might be null or an empty array depending on implementation
         if (results is not null)
@@ -240,7 +240,7 @@ public class StateIdPatternTests
 
         // Assert
         var org = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)org).MutableNode["identifier"]!.AsArray();
+        var identifiers = org.MutableNode()["identifier"]!.AsArray();
         identifiers.ShouldContain(i =>
             i!["system"]!.GetValue<string>() == "http://test-system" &&
             i["value"]!.GetValue<string>() == customId);
@@ -268,7 +268,7 @@ public class StateIdPatternTests
 
         // Assert
         var org = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)org).MutableNode["identifier"]!.AsArray();
+        var identifiers = org.MutableNode()["identifier"]!.AsArray();
         identifiers.Count.ShouldBeGreaterThanOrEqualTo(4, "NPI + TaxId + 2 custom");
         identifiers.ShouldContain(i => i!["value"]!.GetValue<string>() == id1);
         identifiers.ShouldContain(i => i!["value"]!.GetValue<string>() == id2);
@@ -288,7 +288,7 @@ public class StateIdPatternTests
 
         // Assert
         var org = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)org).MutableNode["identifier"]!.AsArray();
+        var identifiers = org.MutableNode()["identifier"]!.AsArray();
         identifiers.Count.ShouldBe(2, "NPI + TaxId only");
 
         var npiIdentifier = identifiers.FirstOrDefault(i =>
@@ -316,7 +316,7 @@ public class StateIdPatternTests
         // Assert
         scenario.CareTeams.Count.ShouldBe(1);
         var careTeam = scenario.CareTeams[0];
-        ((IMutableJsonNode)careTeam).MutableNode["subject"]!["reference"]!.GetValue<string>()
+        careTeam.MutableNode()["subject"]!["reference"]!.GetValue<string>()
             .ShouldContain(scenario.Patient!.Id);
     }
 
@@ -347,7 +347,7 @@ public class StateIdPatternTests
 
         // Assert
         var careTeam = scenario.CareTeams[0];
-        var participants = ((IMutableJsonNode)careTeam).MutableNode["participant"]!.AsArray();
+        var participants = careTeam.MutableNode()["participant"]!.AsArray();
         participants!.Count.ShouldBe(2);
         participants[0]!["member"]!["reference"]!.GetValue<string>()
             .ShouldContain(scenario.Practitioners[0].Id);
@@ -366,7 +366,7 @@ public class StateIdPatternTests
 
         // Assert
         var careTeam = scenario.CareTeams[0];
-        var participants = ((IMutableJsonNode)careTeam).MutableNode["participant"];
+        var participants = careTeam.MutableNode()["participant"];
         participants.ShouldBeNull("no participants specified");
     }
 
@@ -385,7 +385,7 @@ public class StateIdPatternTests
 
         // Assert
         var careTeam = scenario.CareTeams[0];
-        var participants = ((IMutableJsonNode)careTeam).MutableNode["participant"]?.AsArray();
+        var participants = careTeam.MutableNode()["participant"]?.AsArray();
         participants.ShouldNotBeNull();
         participants!.ShouldBeEmpty("should not add invalid references");
     }
@@ -411,7 +411,7 @@ public class StateIdPatternTests
 
         // Assert
         var careTeam = scenario.CareTeams[0];
-        var participants = ((IMutableJsonNode)careTeam).MutableNode["participant"]!.AsArray();
+        var participants = careTeam.MutableNode()["participant"]!.AsArray();
         participants!.Count.ShouldBe(1, "only valid practitioner should be added");
         participants[0]!["member"]!["reference"]!.GetValue<string>()
             .ShouldContain(scenario.Practitioners[0].Id);
@@ -466,11 +466,11 @@ public class StateIdPatternTests
         scenario.CareTeams.Count.ShouldBe(1);
 
         var report = scenario.DiagnosticReports[0];
-        var reportResults = ((IMutableJsonNode)report).MutableNode["result"]!.AsArray();
+        var reportResults = report.MutableNode()["result"]!.AsArray();
         reportResults.Count.ShouldBe(2, "references both observations");
 
         var careTeam = scenario.CareTeams[0];
-        var careTeamParticipants = ((IMutableJsonNode)careTeam).MutableNode["participant"]!.AsArray();
+        var careTeamParticipants = careTeam.MutableNode()["participant"]!.AsArray();
         careTeamParticipants.Count.ShouldBe(1, "references the practitioner");
     }
 
@@ -525,7 +525,7 @@ public class StateIdPatternTests
         var org = scenario.GetStateResource("org_main");
         org.ShouldNotBeNull();
         org!.ResourceType.ShouldBe("Organization");
-        ((IMutableJsonNode)org).MutableNode["name"]!.GetValue<string>().ShouldBe("Main Hospital");
+        org.MutableNode()["name"]!.GetValue<string>().ShouldBe("Main Hospital");
     }
 
     #endregion

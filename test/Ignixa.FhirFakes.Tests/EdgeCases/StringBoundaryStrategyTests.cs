@@ -7,6 +7,7 @@ using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.EdgeCases.Strategies;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.EdgeCases;
 
@@ -117,7 +118,7 @@ public class StringBoundaryStrategyTests
         var m2 = new EdgeCasePipeline(99, EdgeCaseTargetFactory.Schema).Apply(r2, strategies, includeNonValidityPreserving: false);
 
         m1.ToJson().ShouldBe(m2.ToJson());
-        ((IMutableJsonNode)r1).MutableNode.ToJsonString().ShouldBe(((IMutableJsonNode)r2).MutableNode.ToJsonString());
+        r1.MutableNode().ToJsonString().ShouldBe(r2.MutableNode().ToJsonString());
     }
 
     // ── Targeting safety ──────────────────────────────────────────────────────
@@ -133,8 +134,8 @@ public class StringBoundaryStrategyTests
         // gender (bound code), identifier.system / coding.system (uri) and coding.code (code) are
         // not free-text strings, so string strategies must leave them untouched. identifier.value
         // IS a string and is legitimately mutable, so it is not asserted here.
-        ((IMutableJsonNode)resource).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
-        var identifier = ((IMutableJsonNode)resource).MutableNode["identifier"]?.AsArray()?[0]?.AsObject();
+        resource.MutableNode()["gender"]?.GetValue<string>().ShouldBe("male");
+        var identifier = resource.MutableNode()["identifier"]?.AsArray()?[0]?.AsObject();
         identifier?["system"]?.GetValue<string>().ShouldBe("http://example.org/mrn");
         var coding = identifier?["type"]?.AsObject()?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("MR");
@@ -152,7 +153,7 @@ public class StringBoundaryStrategyTests
 
         // identifier.value is a FHIR string (not a code/uri), so it is legitimately mutable. The
         // refactor away from an element-name allowlist makes it reachable; assert that positively.
-        var mutatedValue = ((IMutableJsonNode)resource).MutableNode["identifier"]?.AsArray()?[0]?.AsObject()?["value"]?.GetValue<string>();
+        var mutatedValue = resource.MutableNode()["identifier"]?.AsArray()?[0]?.AsObject()?["value"]?.GetValue<string>();
         mutatedValue.ShouldNotBe("MRN-999");
         manifest.Mutations.ShouldContain(m => m.Path == "Patient.identifier[0].value");
     }
@@ -170,7 +171,7 @@ public class StringBoundaryStrategyTests
         var r2 = ResourceJsonNode.Parse(SampleJson);
         var m2 = new EdgeCasePipeline(1234, EdgeCaseTargetFactory.Schema).Apply(r2, strategies, includeNonValidityPreserving: true);
 
-        ((IMutableJsonNode)r1).MutableNode.ToJsonString().ShouldBe(((IMutableJsonNode)r2).MutableNode.ToJsonString());
+        r1.MutableNode().ToJsonString().ShouldBe(r2.MutableNode().ToJsonString());
         m1.ToJson().ShouldBe(m2.ToJson());
         m1.Mutations.Count.ShouldBeGreaterThan(0);
     }

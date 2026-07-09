@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -49,7 +49,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var name = ((IMutableJsonNode)organization).MutableNode["name"]?.GetValue<string>();
+        var name = organization.MutableNode()["name"]?.GetValue<string>();
         name.ShouldBe("Test General Hospital");
     }
 
@@ -64,7 +64,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var active = ((IMutableJsonNode)organization).MutableNode["active"]?.GetValue<bool?>();
+        var active = organization.MutableNode()["active"]?.GetValue<bool?>();
         active!.Value.ShouldBeTrue();
     }
 
@@ -83,7 +83,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)organization).MutableNode["identifier"];
+        var identifiers = organization.MutableNode()["identifier"];
         identifiers.ShouldNotBeNull();
 
         var npiIdentifier = identifiers!.AsArray()
@@ -173,7 +173,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)organization).MutableNode["identifier"];
+        var identifiers = organization.MutableNode()["identifier"];
 
         var taxIdIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.TaxIdSystem);
@@ -231,7 +231,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var typeArray = ((IMutableJsonNode)organization).MutableNode["type"];
+        var typeArray = organization.MutableNode()["type"];
         typeArray.ShouldNotBeNull();
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
@@ -249,7 +249,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var typeArray = ((IMutableJsonNode)organization).MutableNode["type"];
+        var typeArray = organization.MutableNode()["type"];
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("ins");
@@ -266,7 +266,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var typeArray = ((IMutableJsonNode)organization).MutableNode["type"];
+        var typeArray = organization.MutableNode()["type"];
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("dept");
@@ -283,7 +283,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var typeArray = ((IMutableJsonNode)organization).MutableNode["type"];
+        var typeArray = organization.MutableNode()["type"];
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("pay");
@@ -304,7 +304,7 @@ public class OrganizationStateTests
 
         // Assert
         scenario.Organizations.Count.ShouldBe(1);
-        var name = ((IMutableJsonNode)scenario.Organizations[0]).MutableNode["name"]?.GetValue<string>();
+        var name = scenario.Organizations[0].MutableNode()["name"]?.GetValue<string>();
         name.ShouldBe("City General Hospital");
     }
 
@@ -319,7 +319,7 @@ public class OrganizationStateTests
 
         // Assert
         scenario.Organizations.Count.ShouldBe(1);
-        var name = ((IMutableJsonNode)scenario.Organizations[0]).MutableNode["name"]?.GetValue<string>();
+        var name = scenario.Organizations[0].MutableNode()["name"]?.GetValue<string>();
         name.ShouldNotBeNullOrEmpty();
     }
 
@@ -389,7 +389,7 @@ public class OrganizationStateTests
 
         // Assert
         scenario.Organizations.Count.ShouldBe(1);
-        var name = ((IMutableJsonNode)scenario.Organizations[0]).MutableNode["name"]?.GetValue<string>();
+        var name = scenario.Organizations[0].MutableNode()["name"]?.GetValue<string>();
         name!.ShouldContain("Cardiology");
     }
 
@@ -408,7 +408,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var telecom = ((IMutableJsonNode)organization).MutableNode["telecom"];
+        var telecom = organization.MutableNode()["telecom"];
         telecom.ShouldNotBeNull();
 
         var phoneEntry = telecom!.AsArray()
@@ -433,7 +433,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var telecom = ((IMutableJsonNode)organization).MutableNode["telecom"];
+        var telecom = organization.MutableNode()["telecom"];
 
         var emailEntry = telecom!.AsArray()
             .FirstOrDefault(t => t?["system"]?.GetValue<string>() == "email");
@@ -459,7 +459,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var addresses = ((IMutableJsonNode)organization).MutableNode["address"];
+        var addresses = organization.MutableNode()["address"];
         addresses.ShouldNotBeNull();
 
         var address = addresses![0];
@@ -483,7 +483,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var address = ((IMutableJsonNode)organization).MutableNode["address"]![0];
+        var address = organization.MutableNode()["address"]![0];
         var cityName = address!["city"]?.GetValue<string>();
         var country = address["country"]?.GetValue<string>();
 
@@ -518,7 +518,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var address = ((IMutableJsonNode)organization).MutableNode["address"]![0];
+        var address = organization.MutableNode()["address"]![0];
         address!["city"]?.GetValue<string>().ShouldBe("Boston");
         address["state"]?.GetValue<string>().ShouldBe("Massachusetts");
         address["postalCode"]?.GetValue<string>().ShouldBe("02101");
@@ -555,7 +555,7 @@ public class OrganizationStateTests
         // Assert
         scenario.Organizations.Count.ShouldBe(2);
         scenario.CurrentOrganization.ShouldBe(scenario.Organizations[1]);
-        var name = ((IMutableJsonNode)scenario.CurrentOrganization!).MutableNode["name"]?.GetValue<string>();
+        var name = scenario.CurrentOrganization!.MutableNode()["name"]?.GetValue<string>();
         name.ShouldBe("Second Clinic");
     }
 
@@ -658,7 +658,7 @@ public class OrganizationStateTests
         var bundle = scenario.ToBundle();
 
         // Assert
-        var entries = ((IMutableJsonNode)bundle).MutableNode["entry"]!.AsArray();
+        var entries = bundle.MutableNode()["entry"]!.AsArray();
         var orgEntry = entries.FirstOrDefault(e =>
             e?["resource"]?["resourceType"]?.GetValue<string>() == "Organization");
 
@@ -689,7 +689,7 @@ public class OrganizationStateTests
 
         // Assert
         scenario.Organizations.Count.ShouldBe(2);
-        ((IMutableJsonNode)scenario.CurrentOrganization!).MutableNode["name"]?.GetValue<string>().ShouldBe("Main Hospital");
+        scenario.CurrentOrganization!.MutableNode()["name"]?.GetValue<string>().ShouldBe("Main Hospital");
     }
 
     [Fact]
@@ -711,7 +711,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)organization).MutableNode["identifier"];
+        var identifiers = organization.MutableNode()["identifier"];
         var npiIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.NpiSystem);
 
@@ -737,7 +737,7 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var identifiers = ((IMutableJsonNode)organization).MutableNode["identifier"];
+        var identifiers = organization.MutableNode()["identifier"];
         var taxIdIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.TaxIdSystem);
 

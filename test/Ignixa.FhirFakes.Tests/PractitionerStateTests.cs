@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -49,7 +49,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var active = ((IMutableJsonNode)practitioner).MutableNode["active"]?.GetValue<bool?>();
+        var active = practitioner.MutableNode()["active"]?.GetValue<bool?>();
         active!.Value.ShouldBeTrue();
     }
 
@@ -64,7 +64,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var familyName = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        var familyName = practitioner.MutableNode()["name"]?[0]?["family"]?.GetValue<string>();
         familyName.ShouldNotBeNullOrEmpty();
     }
 
@@ -79,7 +79,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var gender = ((IMutableJsonNode)practitioner).MutableNode["gender"]?.GetValue<string>();
+        var gender = practitioner.MutableNode()["gender"]?.GetValue<string>();
         gender.ShouldBeOneOf("male", "female");
     }
 
@@ -98,7 +98,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var identifierSystem = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?[0]?["system"]?.GetValue<string>();
+        var identifierSystem = practitioner.MutableNode()["identifier"]?[0]?["system"]?.GetValue<string>();
         identifierSystem.ShouldBe("http://hl7.org/fhir/sid/us-npi");
     }
 
@@ -113,7 +113,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var npi = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var npi = practitioner.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         npi!.Length.ShouldBe(10);
         npi.ShouldMatch(@"^\d{10}$");
     }
@@ -130,7 +130,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var npi = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var npi = practitioner.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         npi.ShouldStartWith("1");
     }
 
@@ -226,7 +226,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var npi = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var npi = practitioner.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         npi.ShouldBe(customNpi);
     }
 
@@ -245,7 +245,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var prefix = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["prefix"]?[0]?.GetValue<string>();
+        var prefix = practitioner.MutableNode()["name"]?[0]?["prefix"]?[0]?.GetValue<string>();
         prefix.ShouldBe("Dr.");
     }
 
@@ -260,7 +260,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var prefix = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["prefix"];
+        var prefix = practitioner.MutableNode()["name"]?[0]?["prefix"];
         prefix.ShouldBeNull();
     }
 
@@ -275,7 +275,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var suffix = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
+        var suffix = practitioner.MutableNode()["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
         suffix.ShouldBeOneOf("MD", "DO");
     }
 
@@ -290,7 +290,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var suffix = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
+        var suffix = practitioner.MutableNode()["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
         suffix.ShouldBe("RN");
     }
 
@@ -305,7 +305,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var suffix = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
+        var suffix = practitioner.MutableNode()["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
         suffix.ShouldBe("NP");
     }
 
@@ -325,8 +325,8 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var givenName = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
-        var familyName = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        var givenName = practitioner.MutableNode()["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var familyName = practitioner.MutableNode()["name"]?[0]?["family"]?.GetValue<string>();
         givenName.ShouldBe("John");
         familyName.ShouldBe("Smith");
     }
@@ -346,7 +346,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"];
+        var qualifications = practitioner.MutableNode()["qualification"];
         qualifications.ShouldNotBeNull();
     }
 
@@ -361,7 +361,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var qualCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var qualCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         qualCode.ShouldBe("419772000"); // SNOMED code for Family Medicine
     }
 
@@ -380,7 +380,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var phoneSystem = ((IMutableJsonNode)practitioner).MutableNode["telecom"]?[0]?["system"]?.GetValue<string>();
+        var phoneSystem = practitioner.MutableNode()["telecom"]?[0]?["system"]?.GetValue<string>();
         phoneSystem.ShouldBe("phone");
     }
 
@@ -395,7 +395,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var emailSystem = ((IMutableJsonNode)practitioner).MutableNode["telecom"]?[1]?["system"]?.GetValue<string>();
+        var emailSystem = practitioner.MutableNode()["telecom"]?[1]?["system"]?.GetValue<string>();
         emailSystem.ShouldBe("email");
     }
 
@@ -410,7 +410,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var addressUse = ((IMutableJsonNode)practitioner).MutableNode["address"]?[0]?["use"]?.GetValue<string>();
+        var addressUse = practitioner.MutableNode()["address"]?[0]?["use"]?.GetValue<string>();
         addressUse.ShouldBe("work");
     }
 
@@ -429,7 +429,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var specialtyCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var specialtyCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         specialtyCode.ShouldBe("419772000");
     }
 
@@ -444,7 +444,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var specialtyCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var specialtyCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         specialtyCode.ShouldBe("394537008");
     }
 
@@ -459,7 +459,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var specialtyCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var specialtyCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         specialtyCode.ShouldBe("394579002");
     }
 
@@ -474,7 +474,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var specialtyCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var specialtyCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         specialtyCode.ShouldBe("773568002");
     }
 
@@ -489,7 +489,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var specialtyCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var specialtyCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         specialtyCode.ShouldBe("394609007");
     }
 
@@ -504,7 +504,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var specialtyCode = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var specialtyCode = practitioner.MutableNode()["qualification"]?[0]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         specialtyCode.ShouldBe("224535009");
     }
 
@@ -655,7 +655,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var gender = ((IMutableJsonNode)practitioner).MutableNode["gender"]?.GetValue<string>();
+        var gender = practitioner.MutableNode()["gender"]?.GetValue<string>();
         gender.ShouldBe("female");
     }
 
@@ -674,7 +674,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"];
+        var qualifications = practitioner.MutableNode()["qualification"];
         // First qualification is the specialty, additional ones are custom
         qualifications?.AsArray().Count.ShouldBeGreaterThan(1);
     }
@@ -690,7 +690,7 @@ public class PractitionerStateTests
 
         // Assert
         var practitioner = scenario.Practitioners[0];
-        var suffix = ((IMutableJsonNode)practitioner).MutableNode["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
+        var suffix = practitioner.MutableNode()["name"]?[0]?["suffix"]?[0]?.GetValue<string>();
         suffix.ShouldBe("PA-C");
     }
 

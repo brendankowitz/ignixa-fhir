@@ -16,6 +16,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Xunit.Abstractions;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -60,7 +61,7 @@ public class ComprehensiveValidationTests
     /// <returns>ValidationResult with any issues found.</returns>
     private ValidationResult ValidateResource(ResourceJsonNode resource, FhirVersion version)
     {
-        var sourceNode = JsonNodeSourceNode.Create(((IMutableJsonNode)resource).MutableNode);
+        var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode());
         var resourceType = resource.ResourceType;
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
 

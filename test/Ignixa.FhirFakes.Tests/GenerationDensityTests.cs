@@ -11,6 +11,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using System.Text.Json.Nodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -38,7 +39,7 @@ public class GenerationDensityTests
 
         var patient = faker.Generate("Patient");
 
-        ((IMutableJsonNode)patient).MutableNode["gender"].ShouldBeNull(
+        patient.MutableNode()["gender"].ShouldBeNull(
             "Patient.gender is optional (0..1) and should be omitted under Minimal density");
     }
 
@@ -49,7 +50,7 @@ public class GenerationDensityTests
 
         var observation = faker.Generate("Observation");
 
-        ((IMutableJsonNode)observation).MutableNode["bodySite"].ShouldBeNull(
+        observation.MutableNode()["bodySite"].ShouldBeNull(
             "Observation.bodySite is optional and should be omitted under Minimal density");
     }
 
@@ -60,7 +61,7 @@ public class GenerationDensityTests
 
         var patient = faker.Generate("Patient");
 
-        ((IMutableJsonNode)patient).MutableNode["gender"].ShouldNotBeNull(
+        patient.MutableNode()["gender"].ShouldNotBeNull(
             "Patient.gender is optional and should be populated under Maximum density");
     }
 
@@ -71,7 +72,7 @@ public class GenerationDensityTests
 
         var observation = faker.Generate("Observation");
 
-        ((IMutableJsonNode)observation).MutableNode["bodySite"].ShouldNotBeNull(
+        observation.MutableNode()["bodySite"].ShouldNotBeNull(
             "Observation.bodySite is optional and should be populated under Maximum density");
     }
 
@@ -83,8 +84,8 @@ public class GenerationDensityTests
         var maximal = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 5) { Density = GenerationDensity.Maximum }
             .Generate("Patient");
 
-        var minimalKeys = ((IMutableJsonNode)minimal).MutableNode.Count;
-        var maximalKeys = ((IMutableJsonNode)maximal).MutableNode.Count;
+        var minimalKeys = minimal.MutableNode().Count;
+        var maximalKeys = maximal.MutableNode().Count;
 
         maximalKeys.ShouldBeGreaterThan(minimalKeys,
             "Maximum density should populate strictly more top-level elements than Minimal");
@@ -103,7 +104,7 @@ public class GenerationDensityTests
 
         resource.ShouldNotBeNull();
         resource.ResourceType.ShouldBe(resourceType);
-        MeasureMaxDepth(((IMutableJsonNode)resource).MutableNode).ShouldBeLessThanOrEqualTo(50,
+        MeasureMaxDepth(resource.MutableNode()).ShouldBeLessThanOrEqualTo(50,
             "Generated tree nesting depth should be finite and bounded");
     }
 
@@ -115,10 +116,10 @@ public class GenerationDensityTests
         var realistic = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 11) { Density = GenerationDensity.Realistic }
             .Generate("Patient");
 
-        RemoveNonDeterministicFields(((IMutableJsonNode)minimal).MutableNode);
-        RemoveNonDeterministicFields(((IMutableJsonNode)realistic).MutableNode);
+        RemoveNonDeterministicFields(minimal.MutableNode());
+        RemoveNonDeterministicFields(realistic.MutableNode());
 
-        ((IMutableJsonNode)minimal).MutableNode.ToJsonString().ShouldBe(((IMutableJsonNode)realistic).MutableNode.ToJsonString(),
+        minimal.MutableNode().ToJsonString().ShouldBe(realistic.MutableNode().ToJsonString(),
             "Realistic density currently behaves identically to Minimal (required-only) — full JSON content should match");
     }
 
@@ -130,10 +131,10 @@ public class GenerationDensityTests
         var realistic = new SchemaBasedFhirResourceFaker(_schemaProvider, seed: 12) { Density = GenerationDensity.Realistic }
             .Generate("Observation");
 
-        RemoveNonDeterministicFields(((IMutableJsonNode)minimal).MutableNode);
-        RemoveNonDeterministicFields(((IMutableJsonNode)realistic).MutableNode);
+        RemoveNonDeterministicFields(minimal.MutableNode());
+        RemoveNonDeterministicFields(realistic.MutableNode());
 
-        ((IMutableJsonNode)minimal).MutableNode.ToJsonString().ShouldBe(((IMutableJsonNode)realistic).MutableNode.ToJsonString(),
+        minimal.MutableNode().ToJsonString().ShouldBe(realistic.MutableNode().ToJsonString(),
             "Realistic density currently behaves identically to Minimal (required-only) — full JSON content should match");
     }
 
@@ -158,7 +159,7 @@ public class GenerationDensityTests
         var schema = resolver.GetSchema(canonicalUrl)
             ?? throw new InvalidOperationException($"Schema not found for {resource.ResourceType}");
 
-        var sourceNode = JsonNodeSourceNode.Create(((IMutableJsonNode)resource).MutableNode);
+        var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode());
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         return schema.Validate(sourceNode.ToElement(_schemaProvider), settings, new ValidationState());
     }

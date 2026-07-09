@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -35,9 +35,9 @@ public class DiagnosticReportBuilderTests
         report.ShouldNotBeNull();
         report.ResourceType.ShouldBe("DiagnosticReport");
         report.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("final");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("final");
 
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         code.ShouldNotBeNull();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["system"]?.GetValue<string>().ShouldBe("http://loinc.org");
@@ -74,8 +74,8 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tags = ((IMutableJsonNode)report).MutableNode["meta"]?["tag"]?.AsArray();
+        report.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tags = report.MutableNode()["meta"]?["tag"]?.AsArray();
         tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
@@ -108,7 +108,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("final");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("final");
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("preliminary");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("preliminary");
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("amended");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("amended");
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("corrected");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("corrected");
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("cancelled");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("cancelled");
     }
 
     #endregion
@@ -176,7 +176,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
 
         coding?["system"]?.GetValue<string>().ShouldBe("http://loinc.org");
@@ -193,7 +193,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
 
         coding?["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
@@ -210,7 +210,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
 
         coding?["system"]?.GetValue<string>().ShouldBe("http://loinc.org");
@@ -235,7 +235,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var subject = ((IMutableJsonNode)report).MutableNode["subject"]?.AsObject();
+        var subject = report.MutableNode()["subject"]?.AsObject();
         subject.ShouldNotBeNull();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
@@ -249,7 +249,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode.TryGetPropertyValue("subject", out _).ShouldBeFalse();
+        report.MutableNode().TryGetPropertyValue("subject", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -269,7 +269,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results.ShouldNotBeNull();
         results!.Count.ShouldBe(1);
 
@@ -294,7 +294,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(3);
 
         results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs1}");
@@ -318,7 +318,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(4);
 
         results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs1}");
@@ -345,7 +345,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(4);
 
         results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs1}");
@@ -363,7 +363,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode.TryGetPropertyValue("result", out _).ShouldBeFalse();
+        report.MutableNode().TryGetPropertyValue("result", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -392,20 +392,20 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         report.Id.ShouldBe("report-complete");
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("final");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("final");
 
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("24323-8");
         coding?["display"]?.GetValue<string>().ShouldBe("Comprehensive metabolic panel");
 
-        var subject = ((IMutableJsonNode)report).MutableNode["subject"]?.AsObject();
+        var subject = report.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(3);
 
-        var tags = ((IMutableJsonNode)report).MutableNode["meta"]?["tag"]?.AsArray();
+        var tags = report.MutableNode()["meta"]?["tag"]?.AsArray();
         tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
@@ -429,12 +429,12 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         report.ResourceType.ShouldBe("DiagnosticReport");
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("final");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("final");
 
-        var subject = ((IMutableJsonNode)report).MutableNode["subject"]?.AsObject();
+        var subject = report.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(4);
     }
 
@@ -456,12 +456,12 @@ public class DiagnosticReportBuilderTests
         // Assert
         report.ResourceType.ShouldBe("DiagnosticReport");
 
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("36554-4");
         coding?["display"]?.GetValue<string>().ShouldBe("Chest X-ray");
 
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(1);
         results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{imagingObs}");
     }
@@ -482,9 +482,9 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("preliminary");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("preliminary");
 
-        var results = ((IMutableJsonNode)report).MutableNode["result"]?.AsArray();
+        var results = report.MutableNode()["result"]?.AsArray();
         results!.Count.ShouldBe(1);
     }
 
@@ -517,8 +517,8 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode["meta"].ShouldNotBeNull();
-        var meta = ((IMutableJsonNode)report).MutableNode["meta"]?.AsObject();
+        report.MutableNode()["meta"].ShouldNotBeNull();
+        var meta = report.MutableNode()["meta"]?.AsObject();
         meta?["versionId"]?.GetValue<string>().ShouldBe("1");
         meta?["lastUpdated"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
@@ -539,9 +539,9 @@ public class DiagnosticReportBuilderTests
         report.ShouldNotBeNull();
         report.ResourceType.ShouldBe("DiagnosticReport");
         report.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>().ShouldBe("final");
+        report.MutableNode()["status"]?.GetValue<string>().ShouldBe("final");
 
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         code.ShouldNotBeNull();
     }
 
@@ -554,7 +554,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)report).MutableNode.TryGetPropertyValue("result", out _).ShouldBeFalse();
+        report.MutableNode().TryGetPropertyValue("result", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -575,7 +575,7 @@ public class DiagnosticReportBuilderTests
         // Assert
         report.ResourceType.ShouldBe("DiagnosticReport");
 
-        var code = ((IMutableJsonNode)report).MutableNode["code"]?.AsObject();
+        var code = report.MutableNode()["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("60568-3");
         coding?["display"]?.GetValue<string>().ShouldBe("Pathology Synoptic report");

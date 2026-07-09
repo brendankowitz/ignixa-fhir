@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -34,8 +34,8 @@ public class LocationBuilderTests
         // Assert
         location.ShouldNotBeNull();
         location.ResourceType.ShouldBe("Location");
-        ((IMutableJsonNode)location).MutableNode["name"]?.GetValue<string>().ShouldBe("Main Clinic");
-        ((IMutableJsonNode)location).MutableNode["status"]?.GetValue<string>().ShouldBe("active");
+        location.MutableNode()["name"]?.GetValue<string>().ShouldBe("Main Clinic");
+        location.MutableNode()["status"]?.GetValue<string>().ShouldBe("active");
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["status"]?.GetValue<string>().ShouldBe("inactive");
+        location.MutableNode()["status"]?.GetValue<string>().ShouldBe("inactive");
     }
 
     [Fact]
@@ -80,8 +80,8 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tags = ((IMutableJsonNode)location).MutableNode["meta"]?["tag"]?.AsArray();
+        location.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tags = location.MutableNode()["meta"]?["tag"]?.AsArray();
         tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
@@ -100,7 +100,7 @@ public class LocationBuilderTests
         location.ShouldNotBeNull();
         location.ResourceType.ShouldBe("Location");
         location.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)location).MutableNode["status"]?.GetValue<string>().ShouldBe("active");
+        location.MutableNode()["status"]?.GetValue<string>().ShouldBe("active");
     }
 
     #endregion
@@ -117,8 +117,8 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["address"].ShouldNotBeNull();
-        var address = ((IMutableJsonNode)location).MutableNode["address"]?.AsObject();
+        location.MutableNode()["address"].ShouldNotBeNull();
+        var address = location.MutableNode()["address"]?.AsObject();
 
         address?["line"]?.AsArray().Count.ShouldBe(1);
         address?["line"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("725 Albany St");
@@ -136,7 +136,7 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode.TryGetPropertyValue("address", out _).ShouldBeFalse();
+        location.MutableNode().TryGetPropertyValue("address", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -156,8 +156,8 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["managingOrganization"].ShouldNotBeNull();
-        var managingOrg = ((IMutableJsonNode)location).MutableNode["managingOrganization"]?.AsObject();
+        location.MutableNode()["managingOrganization"].ShouldNotBeNull();
+        var managingOrg = location.MutableNode()["managingOrganization"]?.AsObject();
         managingOrg?["reference"]?.GetValue<string>().ShouldBe($"Organization/{orgId}");
     }
 
@@ -174,8 +174,8 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["partOf"].ShouldNotBeNull();
-        var partOf = ((IMutableJsonNode)location).MutableNode["partOf"]?.AsObject();
+        location.MutableNode()["partOf"].ShouldNotBeNull();
+        var partOf = location.MutableNode()["partOf"]?.AsObject();
         partOf?["reference"]?.GetValue<string>().ShouldBe($"Location/{parentLocationId}");
     }
 
@@ -200,12 +200,12 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)building).MutableNode.TryGetPropertyValue("partOf", out _).ShouldBeFalse();
+        building.MutableNode().TryGetPropertyValue("partOf", out _).ShouldBeFalse();
 
-        var floorPartOf = ((IMutableJsonNode)floor).MutableNode["partOf"]?.AsObject();
+        var floorPartOf = floor.MutableNode()["partOf"]?.AsObject();
         floorPartOf?["reference"]?.GetValue<string>().ShouldBe($"Location/{building.Id}");
 
-        var roomPartOf = ((IMutableJsonNode)room).MutableNode["partOf"]?.AsObject();
+        var roomPartOf = room.MutableNode()["partOf"]?.AsObject();
         roomPartOf?["reference"]?.GetValue<string>().ShouldBe($"Location/{floor.Id}");
     }
 
@@ -232,16 +232,16 @@ public class LocationBuilderTests
 
         // Assert
         location.Id.ShouldBe("loc-complete");
-        ((IMutableJsonNode)location).MutableNode["name"]?.GetValue<string>().ShouldBe("Complete Clinic");
-        ((IMutableJsonNode)location).MutableNode["status"]?.GetValue<string>().ShouldBe("active");
+        location.MutableNode()["name"]?.GetValue<string>().ShouldBe("Complete Clinic");
+        location.MutableNode()["status"]?.GetValue<string>().ShouldBe("active");
 
-        var managingOrg = ((IMutableJsonNode)location).MutableNode["managingOrganization"]?.AsObject();
+        var managingOrg = location.MutableNode()["managingOrganization"]?.AsObject();
         managingOrg?["reference"]?.GetValue<string>().ShouldBe($"Organization/{orgId}");
 
-        var address = ((IMutableJsonNode)location).MutableNode["address"]?.AsObject();
+        var address = location.MutableNode()["address"]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Seattle");
 
-        var tags = ((IMutableJsonNode)location).MutableNode["meta"]?["tag"]?.AsArray();
+        var tags = location.MutableNode()["meta"]?["tag"]?.AsArray();
         tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
@@ -276,10 +276,10 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        var managingOrg = ((IMutableJsonNode)location).MutableNode["managingOrganization"]?.AsObject();
+        var managingOrg = location.MutableNode()["managingOrganization"]?.AsObject();
         managingOrg?["reference"]?.GetValue<string>().ShouldBe($"Organization/{orgId}");
 
-        var partOf = ((IMutableJsonNode)location).MutableNode["partOf"]?.AsObject();
+        var partOf = location.MutableNode()["partOf"]?.AsObject();
         partOf?["reference"]?.GetValue<string>().ShouldBe($"Location/{parentLocationId}");
     }
 
@@ -296,8 +296,8 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["meta"].ShouldNotBeNull();
-        var meta = ((IMutableJsonNode)location).MutableNode["meta"]?.AsObject();
+        location.MutableNode()["meta"].ShouldNotBeNull();
+        var meta = location.MutableNode()["meta"]?.AsObject();
         meta?["versionId"]?.GetValue<string>().ShouldBe("1");
         meta?["lastUpdated"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
@@ -314,7 +314,7 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode.TryGetPropertyValue("name", out _).ShouldBeFalse();
+        location.MutableNode().TryGetPropertyValue("name", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -327,7 +327,7 @@ public class LocationBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)location).MutableNode["status"]?.GetValue<string>().ShouldBe("suspended");
+        location.MutableNode()["status"]?.GetValue<string>().ShouldBe("suspended");
     }
 
     #endregion

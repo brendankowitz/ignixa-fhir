@@ -18,6 +18,7 @@ using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Application.Tests.Features.Patch.Executors;
 
@@ -51,7 +52,7 @@ public class MoveOperationExecutorTests
     public async Task GivenArrayElement_WhenMoving_ThenElementIsMovedToNewArray()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -62,10 +63,10 @@ public class MoveOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         Assert.Empty(names);
 
-        var addresses = ((IMutableJsonNode)result).MutableNode["address"]?.AsArray();
+        var addresses = result.MutableNode()["address"]?.AsArray();
         Assert.Single(addresses);
     }
 
@@ -73,7 +74,7 @@ public class MoveOperationExecutorTests
     public async Task GivenNestedArrayElement_WhenMovingWithinArray_ThenElementIsMoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[
             {""given"":[""John""]},
             {""given"":[""Jane""]}
         ]");
@@ -87,10 +88,10 @@ public class MoveOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var firstName = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray()?[0]?.AsObject();
+        var firstName = result.MutableNode()["name"]?.AsArray()?[0]?.AsObject();
         Assert.Empty(firstName?["given"]?.AsArray());
 
-        var secondName = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray()?[1]?.AsObject()?["given"]?.AsArray();
+        var secondName = result.MutableNode()["name"]?.AsArray()?[1]?.AsObject()?["given"]?.AsArray();
         Assert.Equal(2, secondName?.Count);
         Assert.Equal("John", secondName?[1]?.GetValue<string>());
     }
@@ -99,7 +100,7 @@ public class MoveOperationExecutorTests
     public async Task GivenProperty_WhenMovingBetweenObjects_ThenPropertyIsMoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        ((IMutableJsonNode)resource).MutableNode["gender"] = "male";
+        resource.MutableNode()["gender"] = "male";
 
         var operation = new FhirPatchOperation
         {
@@ -110,8 +111,8 @@ public class MoveOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        Assert.Null(((IMutableJsonNode)result).MutableNode["gender"]);
-        var telecom = ((IMutableJsonNode)result).MutableNode["telecom"]?.AsArray();
+        Assert.Null(result.MutableNode()["gender"]);
+        var telecom = result.MutableNode()["telecom"]?.AsArray();
         Assert.NotNull(telecom);
     }
 
@@ -134,7 +135,7 @@ public class MoveOperationExecutorTests
     public async Task GivenNullDestination_WhenMoving_ThenThrowsException()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        ((IMutableJsonNode)resource).MutableNode["gender"] = "male";
+        resource.MutableNode()["gender"] = "male";
 
         var operation = new FhirPatchOperation
         {
@@ -166,7 +167,7 @@ public class MoveOperationExecutorTests
     public async Task GivenComplexFhirPathSource_WhenMoving_ThenValueIsMoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        ((IMutableJsonNode)resource).MutableNode["address"] = JsonNode.Parse(@"[
+        resource.MutableNode()["address"] = JsonNode.Parse(@"[
             {""use"":""home"",""city"":""Boston""},
             {""use"":""work"",""city"":""Cambridge""}
         ]");
@@ -180,11 +181,11 @@ public class MoveOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var addresses = ((IMutableJsonNode)result).MutableNode["address"]?.AsArray();
+        var addresses = result.MutableNode()["address"]?.AsArray();
         Assert.Single(addresses);
         Assert.Equal("work", addresses?[0]?.AsObject()?["use"]?.GetValue<string>());
 
-        var contact = ((IMutableJsonNode)result).MutableNode["contact"]?.AsArray();
+        var contact = result.MutableNode()["contact"]?.AsArray();
         Assert.Single(contact);
     }
 
@@ -192,7 +193,7 @@ public class MoveOperationExecutorTests
     public async Task GivenComplexObject_WhenMoving_ThenEntireObjectIsMoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe"",""given"":[""John""]}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"":""Doe"",""given"":[""John""]}]");
 
         var operation = new FhirPatchOperation
         {
@@ -203,10 +204,10 @@ public class MoveOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         Assert.Empty(names);
 
-        var link = ((IMutableJsonNode)result).MutableNode["link"]?.AsArray();
+        var link = result.MutableNode()["link"]?.AsArray();
         Assert.Single(link);
         Assert.Equal("Doe", link?[0]?.AsObject()?["family"]?.GetValue<string>());
     }

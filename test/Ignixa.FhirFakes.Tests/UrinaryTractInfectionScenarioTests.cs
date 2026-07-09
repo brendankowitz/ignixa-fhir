@@ -6,7 +6,7 @@
 using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -36,7 +36,7 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         context.Patient.ShouldNotBeNull();
-        ((IMutableJsonNode)context.Patient!).MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
+        context.Patient!.MutableNode()["gender"]?.GetValue<string>().ShouldBe("female");
     }
 
     #endregion
@@ -52,8 +52,8 @@ public sealed class UrinaryTractInfectionScenarioTests
         // Assert
         context.Conditions.ShouldHaveSingleItem();
         var condition = context.Conditions.Single();
-        ((IMutableJsonNode)condition).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("68566005");
-        ((IMutableJsonNode)condition).MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>().ShouldBe("Urinary tract infectious disease");
+        condition.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("68566005");
+        condition.MutableNode()["code"]?["coding"]?[0]?["display"]?.GetValue<string>().ShouldBe("Urinary tract infectious disease");
     }
 
     [Fact]
@@ -64,8 +64,8 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var condition = context.Conditions.Single();
-        ((IMutableJsonNode)condition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("resolved");
-        ((IMutableJsonNode)condition).MutableNode["abatementDateTime"].ShouldNotBeNull();
+        condition.MutableNode()["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("resolved");
+        condition.MutableNode()["abatementDateTime"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var condition = context.Conditions.Single();
-        ((IMutableJsonNode)condition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("active");
-        ((IMutableJsonNode)condition).MutableNode["abatementDateTime"].ShouldBeNull();
+        condition.MutableNode()["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("active");
+        condition.MutableNode()["abatementDateTime"].ShouldBeNull();
     }
 
     #endregion
@@ -92,8 +92,8 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         context.Encounters.Count.ShouldBe(2);
-        ((IMutableJsonNode)context.Encounters[0]).MutableNode["reasonCode"].ShouldNotBeNull();
-        ((IMutableJsonNode)context.Encounters[1]).MutableNode["reasonCode"].ShouldNotBeNull();
+        context.Encounters[0].MutableNode()["reasonCode"].ShouldNotBeNull();
+        context.Encounters[1].MutableNode()["reasonCode"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -118,12 +118,12 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var temperatureObs = context.Observations.FirstOrDefault(o =>
-            ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "8310-5");
+            o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "8310-5");
 
         temperatureObs.ShouldNotBeNull();
-        var tempValue = ((IMutableJsonNode)temperatureObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var tempValue = temperatureObs!.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
         tempValue.ShouldBe(38.5m);
-        ((IMutableJsonNode)temperatureObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>().ShouldBe("Cel");
+        temperatureObs.MutableNode()["valueQuantity"]?["unit"]?.GetValue<string>().ShouldBe("Cel");
     }
 
     [Fact]
@@ -134,10 +134,10 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var painObs = context.Observations.FirstOrDefault(o =>
-            ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "72514-3");
+            o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "72514-3");
 
         painObs.ShouldNotBeNull();
-        var painValue = ((IMutableJsonNode)painObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var painValue = painObs!.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
         painValue.ShouldBe(5m);
     }
 
@@ -154,8 +154,8 @@ public sealed class UrinaryTractInfectionScenarioTests
         // Assert
         context.DiagnosticReports.ShouldHaveSingleItem();
         var report = context.DiagnosticReports.Single();
-        ((IMutableJsonNode)report).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("24356-8");
-        ((IMutableJsonNode)report).MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>().ShouldBe("Urinalysis complete panel - Urine");
+        report.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("24356-8");
+        report.MutableNode()["code"]?["coding"]?[0]?["display"]?.GetValue<string>().ShouldBe("Urinalysis complete panel - Urine");
     }
 
     [Fact]
@@ -166,10 +166,10 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var leukocyteObs = context.Observations.FirstOrDefault(o =>
-            ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "5799-2");
+            o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "5799-2");
 
         leukocyteObs.ShouldNotBeNull();
-        ((IMutableJsonNode)leukocyteObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>().ShouldBe(1m);
+        leukocyteObs!.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>().ShouldBe(1m);
     }
 
     [Fact]
@@ -180,10 +180,10 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var nitriteObs = context.Observations.FirstOrDefault(o =>
-            ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "5802-4");
+            o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "5802-4");
 
         nitriteObs.ShouldNotBeNull();
-        ((IMutableJsonNode)nitriteObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>().ShouldBe(1m);
+        nitriteObs!.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>().ShouldBe(1m);
     }
 
     [Fact]
@@ -194,10 +194,10 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var bacteriaObs = context.Observations.FirstOrDefault(o =>
-            ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "25145-4");
+            o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "25145-4");
 
         bacteriaObs.ShouldNotBeNull();
-        ((IMutableJsonNode)bacteriaObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>().ShouldBe(1m);
+        bacteriaObs!.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>().ShouldBe(1m);
     }
 
     #endregion
@@ -213,8 +213,8 @@ public sealed class UrinaryTractInfectionScenarioTests
         // Assert
         context.Medications.ShouldHaveSingleItem();
         var medication = context.Medications.Single();
-        ((IMutableJsonNode)medication).MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("312017");
-        ((IMutableJsonNode)medication).MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["display"]?.GetValue<string>().ShouldContain("Nitrofurantoin");
+        medication.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>().ShouldBe("312017");
+        medication.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["display"]?.GetValue<string>().ShouldContain("Nitrofurantoin");
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var medication = context.Medications.Single();
-        var dosage = ((IMutableJsonNode)medication).MutableNode["dosageInstruction"]?[0];
+        var dosage = medication.MutableNode()["dosageInstruction"]?[0];
         dosage.ShouldNotBeNull();
         dosage!["timing"]?["repeat"]?["frequency"]?.GetValue<int>().ShouldBe(2); // Twice daily
         dosage["timing"]?["repeat"]?["period"]?.GetValue<int>().ShouldBe(1);
@@ -240,9 +240,9 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         // Assert
         var medication = context.Medications.Single();
-        ((IMutableJsonNode)medication).MutableNode["status"]?.GetValue<string>().ShouldBe("active");
-        ((IMutableJsonNode)medication).MutableNode["intent"]?.GetValue<string>().ShouldBe("order");
-        var dispenseRequest = ((IMutableJsonNode)medication).MutableNode["dispenseRequest"];
+        medication.MutableNode()["status"]?.GetValue<string>().ShouldBe("active");
+        medication.MutableNode()["intent"]?.GetValue<string>().ShouldBe("order");
+        var dispenseRequest = medication.MutableNode()["dispenseRequest"];
         dispenseRequest?["quantity"]?["value"]?.GetValue<int>().ShouldBe(7);
     }
 
@@ -262,17 +262,17 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         foreach (var condition in context.Conditions)
         {
-            ((IMutableJsonNode)condition).MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{patientId}");
+            condition.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{patientId}");
         }
 
         foreach (var observation in context.Observations)
         {
-            ((IMutableJsonNode)observation).MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{patientId}");
+            observation.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{patientId}");
         }
 
         foreach (var medication in context.Medications)
         {
-            ((IMutableJsonNode)medication).MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{patientId}");
+            medication.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{patientId}");
         }
     }
 
@@ -285,7 +285,7 @@ public sealed class UrinaryTractInfectionScenarioTests
         // Assert
         var conditionId = context.Conditions.Single().Id;
         var medication = context.Medications.Single();
-        ((IMutableJsonNode)medication).MutableNode["reasonReference"]?[0]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{conditionId}");
+        medication.MutableNode()["reasonReference"]?[0]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{conditionId}");
     }
 
     #endregion

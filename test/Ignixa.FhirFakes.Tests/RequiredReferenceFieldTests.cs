@@ -5,7 +5,7 @@
 
 using Shouldly;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -30,7 +30,7 @@ public class RequiredReferenceFieldTests
         allergy.ResourceType.ShouldBe("AllergyIntolerance");
 
         // Verify patient field is present and is a valid reference
-        var patientNode = ((IMutableJsonNode)allergy).MutableNode["patient"];
+        var patientNode = allergy.MutableNode()["patient"];
         patientNode.ShouldNotBeNull("patient is a required field in AllergyIntolerance");
 
         var referenceNode = patientNode?["reference"];
@@ -53,7 +53,7 @@ public class RequiredReferenceFieldTests
         allergy.ResourceType.ShouldBe("AllergyIntolerance");
 
         // Verify patient field is present and is a valid reference
-        var patientNode = ((IMutableJsonNode)allergy).MutableNode["patient"];
+        var patientNode = allergy.MutableNode()["patient"];
         patientNode.ShouldNotBeNull("patient is a required field in AllergyIntolerance");
 
         var referenceNode = patientNode?["reference"];
@@ -76,7 +76,7 @@ public class RequiredReferenceFieldTests
         allergy.ResourceType.ShouldBe("AllergyIntolerance");
 
         // Verify patient field is present and is a valid reference
-        var patientNode = ((IMutableJsonNode)allergy).MutableNode["patient"];
+        var patientNode = allergy.MutableNode()["patient"];
         patientNode.ShouldNotBeNull("patient is a required field in AllergyIntolerance");
 
         var referenceNode = patientNode?["reference"];

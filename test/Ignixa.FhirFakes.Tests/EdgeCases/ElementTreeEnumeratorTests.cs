@@ -8,6 +8,7 @@ using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.EdgeCases.Strategies;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.EdgeCases;
 
@@ -105,7 +106,7 @@ public class ElementTreeEnumeratorTests
 
         target.Replace("NEW");
 
-        var name0 = ((IMutableJsonNode)resource).MutableNode["name"]!.AsArray()[0]!.AsObject();
+        var name0 = resource.MutableNode()["name"]!.AsArray()[0]!.AsObject();
         name0["family"]!.GetValue<string>().ShouldBe("NEW");
         name0["_family"]!["extension"]!.AsArray()[0]!["valueString"]!.GetValue<string>().ShouldBe("ext");
     }
@@ -240,7 +241,7 @@ public class ElementTreeEnumeratorTests
 
         target.Replace("NEW");
 
-        var given = ((IMutableJsonNode)resource).MutableNode["name"]!.AsArray()[0]!["given"]!.AsArray();
+        var given = resource.MutableNode()["name"]!.AsArray()[0]!["given"]!.AsArray();
         given[0]!.GetValue<string>().ShouldBe("NEW");
         given[1]!.GetValue<string>().ShouldBe("Mary");
     }

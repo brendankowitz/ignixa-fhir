@@ -8,7 +8,7 @@ using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Workflow;
 using Ignixa.Specification.Generated;
 using Shouldly;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Workflow;
 
@@ -65,8 +65,8 @@ public class DailyAppointmentScheduleScenarioTests
         var first = WorkflowScenarioCatalog.Invoke(scenario, schemaProvider, new WorkflowScenarioOptions { Seed = 99 });
         var second = WorkflowScenarioCatalog.Invoke(scenario, schemaProvider, new WorkflowScenarioOptions { Seed = 99 });
 
-        var firstBirthDates = first.Graph.AllResources.Where(r => r.ResourceType == "Patient").Select(r => ((IMutableJsonNode)r).MutableNode["birthDate"]!.ToString()).ToList();
-        var secondBirthDates = second.Graph.AllResources.Where(r => r.ResourceType == "Patient").Select(r => ((IMutableJsonNode)r).MutableNode["birthDate"]!.ToString()).ToList();
+        var firstBirthDates = first.Graph.AllResources.Where(r => r.ResourceType == "Patient").Select(r => r.MutableNode()["birthDate"]!.ToString()).ToList();
+        var secondBirthDates = second.Graph.AllResources.Where(r => r.ResourceType == "Patient").Select(r => r.MutableNode()["birthDate"]!.ToString()).ToList();
         firstBirthDates.ShouldBe(secondBirthDates);
     }
 
@@ -85,7 +85,7 @@ public class DailyAppointmentScheduleScenarioTests
         result.Graph.AllResources.Count.ShouldBeGreaterThan(0);
         foreach (var resource in result.Graph.AllResources)
         {
-            var tags = ((IMutableJsonNode)resource).MutableNode["meta"]?["tag"]?.AsArray()
+            var tags = resource.MutableNode()["meta"]?["tag"]?.AsArray()
                 .ToList();
             tags.ShouldNotBeNull($"{resource.ResourceType}/{resource.Id} should have meta.tag");
             tags!.ShouldContain(t => HasQualifiedTestIsolationTag(t, tag),

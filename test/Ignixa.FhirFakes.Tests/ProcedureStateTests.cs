@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -51,7 +51,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var status = ((IMutableJsonNode)procedure).MutableNode["status"]?.GetValue<string>();
+        var status = procedure.MutableNode()["status"]?.GetValue<string>();
         status.ShouldBe("completed");
     }
 
@@ -67,7 +67,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var code = ((IMutableJsonNode)procedure).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = procedure.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("80146002"); // SNOMED CT for appendectomy
     }
 
@@ -87,7 +87,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var subjectRef = ((IMutableJsonNode)procedure).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = procedure.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -103,7 +103,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var encounterRef = ((IMutableJsonNode)procedure).MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var encounterRef = procedure.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
@@ -123,7 +123,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var performedDateTime = ((IMutableJsonNode)procedure).MutableNode["performedDateTime"]?.GetValue<string>();
+        var performedDateTime = procedure.MutableNode()["performedDateTime"]?.GetValue<string>();
 
         performedDateTime.ShouldNotBeNullOrEmpty();
         // Verify it's a valid dateTime
@@ -142,7 +142,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var performedDateTime = ((IMutableJsonNode)procedure).MutableNode["performedDateTime"]?.GetValue<string>();
+        var performedDateTime = procedure.MutableNode()["performedDateTime"]?.GetValue<string>();
 
         // Verify it has a performedDateTime value and it's parseable
         performedDateTime.ShouldNotBeNullOrEmpty();
@@ -167,7 +167,7 @@ public class ProcedureStateTests
         // Note: Duration is ignored since we use performedDateTime (not performedPeriod)
         // This is a known limitation due to schema validation issues with performedPeriod
         var procedure = scenario.Procedures[0];
-        var performedDateTime = ((IMutableJsonNode)procedure).MutableNode["performedDateTime"]?.GetValue<string>();
+        var performedDateTime = procedure.MutableNode()["performedDateTime"]?.GetValue<string>();
 
         performedDateTime.ShouldNotBeNullOrEmpty();
         DateTime.TryParse(performedDateTime, out _).ShouldBeTrue();
@@ -189,7 +189,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var categoryCode = ((IMutableJsonNode)procedure).MutableNode["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = procedure.MutableNode()["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("387713003"); // SNOMED CT for surgical procedure
     }
 
@@ -205,7 +205,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var categoryCode = ((IMutableJsonNode)procedure).MutableNode["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = procedure.MutableNode()["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("103693007"); // SNOMED CT for diagnostic procedure
     }
 
@@ -225,7 +225,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var bodySite = ((IMutableJsonNode)procedure).MutableNode["bodySite"]?[0]?["text"]?.GetValue<string>();
+        var bodySite = procedure.MutableNode()["bodySite"]?[0]?["text"]?.GetValue<string>();
         bodySite.ShouldBe("Appendix");
     }
 
@@ -241,7 +241,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var bodySiteCode = ((IMutableJsonNode)procedure).MutableNode["bodySite"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var bodySiteCode = procedure.MutableNode()["bodySite"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         bodySiteCode.ShouldBe("66754008"); // SNOMED CT for appendix
     }
 
@@ -257,7 +257,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var bodySite = ((IMutableJsonNode)procedure).MutableNode["bodySite"]?[0]?["text"]?.GetValue<string>();
+        var bodySite = procedure.MutableNode()["bodySite"]?[0]?["text"]?.GetValue<string>();
         bodySite.ShouldBe("left arm");
     }
 
@@ -277,7 +277,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var outcome = ((IMutableJsonNode)procedure).MutableNode["outcome"]?["text"]?.GetValue<string>();
+        var outcome = procedure.MutableNode()["outcome"]?["text"]?.GetValue<string>();
         outcome!.ShouldContain("without complications");
     }
 
@@ -294,7 +294,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var outcome = ((IMutableJsonNode)procedure).MutableNode["outcome"]?["text"]?.GetValue<string>();
+        var outcome = procedure.MutableNode()["outcome"]?["text"]?.GetValue<string>();
         outcome.ShouldBe(customOutcome);
     }
 
@@ -314,7 +314,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var reason = ((IMutableJsonNode)procedure).MutableNode["reasonCode"]?[0]?["text"]?.GetValue<string>();
+        var reason = procedure.MutableNode()["reasonCode"]?[0]?["text"]?.GetValue<string>();
         reason.ShouldBe("Coronary artery disease");
     }
 
@@ -335,7 +335,7 @@ public class ProcedureStateTests
         // Assert
         // Note: Duration (45 minutes) is ignored since we use performedDateTime
         var procedure = scenario.Procedures[0];
-        var performedDateTime = ((IMutableJsonNode)procedure).MutableNode["performedDateTime"]?.GetValue<string>();
+        var performedDateTime = procedure.MutableNode()["performedDateTime"]?.GetValue<string>();
 
         performedDateTime.ShouldNotBeNullOrEmpty();
         DateTime.TryParse(performedDateTime, out _).ShouldBeTrue();
@@ -353,7 +353,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var followUp = ((IMutableJsonNode)procedure).MutableNode["followUp"]?[0]?["text"]?.GetValue<string>();
+        var followUp = procedure.MutableNode()["followUp"]?[0]?["text"]?.GetValue<string>();
         followUp!.ShouldContain("Repeat colonoscopy");
     }
 
@@ -370,7 +370,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var outcome = ((IMutableJsonNode)procedure).MutableNode["outcome"]?["text"]?.GetValue<string>();
+        var outcome = procedure.MutableNode()["outcome"]?["text"]?.GetValue<string>();
         outcome.ShouldBe(customOutcome);
     }
 
@@ -387,7 +387,7 @@ public class ProcedureStateTests
         // Assert
         // Note: Duration (4 hours) is ignored since we use performedDateTime
         var procedure = scenario.Procedures[0];
-        var performedDateTime = ((IMutableJsonNode)procedure).MutableNode["performedDateTime"]?.GetValue<string>();
+        var performedDateTime = procedure.MutableNode()["performedDateTime"]?.GetValue<string>();
 
         performedDateTime.ShouldNotBeNullOrEmpty();
         DateTime.TryParse(performedDateTime, out _).ShouldBeTrue();
@@ -409,7 +409,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var performer = ((IMutableJsonNode)procedure).MutableNode["performer"]?[0]?["actor"]?["display"]?.GetValue<string>();
+        var performer = procedure.MutableNode()["performer"]?[0]?["actor"]?["display"]?.GetValue<string>();
         performer.ShouldNotBeNullOrEmpty();
         performer.ShouldContain("Dr.");
     }
@@ -426,7 +426,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var location = ((IMutableJsonNode)procedure).MutableNode["location"]?["display"]?.GetValue<string>();
+        var location = procedure.MutableNode()["location"]?["display"]?.GetValue<string>();
         location.ShouldNotBeNullOrEmpty();
         location.ShouldContain("Operating Room");
     }
@@ -496,7 +496,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var encounterRef = ((IMutableJsonNode)procedure).MutableNode["encounter"];
+        var encounterRef = procedure.MutableNode()["encounter"];
         encounterRef.ShouldBeNull();
     }
 
@@ -512,7 +512,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedure = scenario.Procedures[0];
-        var categoryCode = ((IMutableJsonNode)procedure).MutableNode["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = procedure.MutableNode()["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("103693007"); // Diagnostic procedure
     }
 
@@ -529,7 +529,7 @@ public class ProcedureStateTests
         // Assert
         // Note: Duration (45 minutes) is ignored since we use performedDateTime
         var procedure = scenario.Procedures[0];
-        var performedDateTime = ((IMutableJsonNode)procedure).MutableNode["performedDateTime"]?.GetValue<string>();
+        var performedDateTime = procedure.MutableNode()["performedDateTime"]?.GetValue<string>();
 
         performedDateTime.ShouldNotBeNullOrEmpty();
         DateTime.TryParse(performedDateTime, out _).ShouldBeTrue();

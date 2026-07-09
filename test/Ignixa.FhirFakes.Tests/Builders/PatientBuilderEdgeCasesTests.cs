@@ -11,6 +11,7 @@ using Ignixa.Specification.Generated;
 using Shouldly;
 using Xunit;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -35,8 +36,8 @@ public class PatientBuilderEdgeCasesTests
         builder.LastEdgeCaseManifest.ShouldNotBeNull();
         builder.LastEdgeCaseManifest.Mutations.Count.ShouldBeGreaterThanOrEqualTo(1);
         patient.ResourceType.ShouldBe("Patient");
-        ((IMutableJsonNode)patient).MutableNode["name"].ShouldNotBeNull();
-        ((IMutableJsonNode)patient).MutableNode["birthDate"].ShouldNotBeNull();
+        patient.MutableNode()["name"].ShouldNotBeNull();
+        patient.MutableNode()["birthDate"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -100,7 +101,7 @@ public class PatientBuilderEdgeCasesTests
 
     private static string Canonicalize(Ignixa.Serialization.SourceNodes.ResourceJsonNode resource)
     {
-        var clone = JsonNode.Parse(((IMutableJsonNode)resource).MutableNode.ToJsonString())!.AsObject();
+        var clone = JsonNode.Parse(resource.MutableNode().ToJsonString())!.AsObject();
         if (clone["meta"] is JsonObject meta)
         {
             meta.Remove("lastUpdated");

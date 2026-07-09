@@ -10,7 +10,7 @@ using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -45,8 +45,8 @@ public class Stu3ConditionFieldTests
         // Assert
         condition.ShouldNotBeNull("Condition resource should be generated");
 
-        var hasContext = ((IMutableJsonNode)condition!).MutableNode.TryGetPropertyValue("context", out _);
-        var hasEncounter = ((IMutableJsonNode)condition).MutableNode.TryGetPropertyValue("encounter", out _);
+        var hasContext = condition!.MutableNode().TryGetPropertyValue("context", out _);
+        var hasEncounter = condition.MutableNode().TryGetPropertyValue("encounter", out _);
 
         _output.WriteLine($"Has 'context' (STU3 field): {hasContext}");
         _output.WriteLine($"Has 'encounter' (R4+ field): {hasEncounter}");
@@ -73,8 +73,8 @@ public class Stu3ConditionFieldTests
         // Assert
         condition.ShouldNotBeNull("Condition resource should be generated");
 
-        var hasAssertedDate = ((IMutableJsonNode)condition!).MutableNode.TryGetPropertyValue("assertedDate", out _);
-        var hasRecordedDate = ((IMutableJsonNode)condition).MutableNode.TryGetPropertyValue("recordedDate", out _);
+        var hasAssertedDate = condition!.MutableNode().TryGetPropertyValue("assertedDate", out _);
+        var hasRecordedDate = condition.MutableNode().TryGetPropertyValue("recordedDate", out _);
 
         _output.WriteLine($"Has 'assertedDate' (STU3 field): {hasAssertedDate}");
         _output.WriteLine($"Has 'recordedDate' (R4+ field): {hasRecordedDate}");
@@ -101,8 +101,8 @@ public class Stu3ConditionFieldTests
         // Assert
         condition.ShouldNotBeNull("Condition resource should be generated");
 
-        var hasOnset = ((IMutableJsonNode)condition!).MutableNode.TryGetPropertyValue("onset", out _);
-        var hasOnsetDateTime = ((IMutableJsonNode)condition).MutableNode.TryGetPropertyValue("onsetDateTime", out _);
+        var hasOnset = condition!.MutableNode().TryGetPropertyValue("onset", out _);
+        var hasOnsetDateTime = condition.MutableNode().TryGetPropertyValue("onsetDateTime", out _);
 
         _output.WriteLine($"Has 'onset' (base field): {hasOnset}");
         _output.WriteLine($"Has 'onsetDateTime' (choice variant): {hasOnsetDateTime}");
@@ -130,10 +130,10 @@ public class Stu3ConditionFieldTests
         // Assert
         condition.ShouldNotBeNull("Condition resource should be generated");
 
-        var hasContext = ((IMutableJsonNode)condition!).MutableNode.TryGetPropertyValue("context", out _);
-        var hasEncounter = ((IMutableJsonNode)condition).MutableNode.TryGetPropertyValue("encounter", out _);
-        var hasAssertedDate = ((IMutableJsonNode)condition).MutableNode.TryGetPropertyValue("assertedDate", out _);
-        var hasRecordedDate = ((IMutableJsonNode)condition).MutableNode.TryGetPropertyValue("recordedDate", out _);
+        var hasContext = condition!.MutableNode().TryGetPropertyValue("context", out _);
+        var hasEncounter = condition.MutableNode().TryGetPropertyValue("encounter", out _);
+        var hasAssertedDate = condition.MutableNode().TryGetPropertyValue("assertedDate", out _);
+        var hasRecordedDate = condition.MutableNode().TryGetPropertyValue("recordedDate", out _);
 
         _output.WriteLine($"Has 'context' (STU3 field): {hasContext}");
         _output.WriteLine($"Has 'encounter' (R4+ field): {hasEncounter}");

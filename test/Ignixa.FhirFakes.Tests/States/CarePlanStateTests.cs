@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.States;
 
@@ -49,7 +49,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var status = ((IMutableJsonNode)carePlan).MutableNode["status"]?.GetValue<string>();
+        var status = carePlan.MutableNode()["status"]?.GetValue<string>();
         status.ShouldBe("active");
     }
 
@@ -64,7 +64,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var intent = ((IMutableJsonNode)carePlan).MutableNode["intent"]?.GetValue<string>();
+        var intent = carePlan.MutableNode()["intent"]?.GetValue<string>();
         intent.ShouldBe("plan");
     }
 
@@ -79,7 +79,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Diabetes Management Plan");
     }
 
@@ -98,7 +98,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var subjectRef = ((IMutableJsonNode)carePlan).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = carePlan.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -130,7 +130,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var categoryArray = ((IMutableJsonNode)carePlan).MutableNode["category"];
+        var categoryArray = carePlan.MutableNode()["category"];
         categoryArray.ShouldNotBeNull();
     }
 
@@ -145,7 +145,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var categoryCode = ((IMutableJsonNode)carePlan).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = carePlan.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("assess-plan");
     }
 
@@ -160,7 +160,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var categoryArray = ((IMutableJsonNode)carePlan).MutableNode["category"] as System.Text.Json.Nodes.JsonArray;
+        var categoryArray = carePlan.MutableNode()["category"] as System.Text.Json.Nodes.JsonArray;
         categoryArray!.Count.ShouldBeGreaterThanOrEqualTo(1);
     }
 
@@ -179,7 +179,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var periodStart = ((IMutableJsonNode)carePlan).MutableNode["period"]?["start"]?.GetValue<string>();
+        var periodStart = carePlan.MutableNode()["period"]?["start"]?.GetValue<string>();
         periodStart.ShouldNotBeNullOrEmpty();
     }
 
@@ -194,7 +194,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var periodEnd = ((IMutableJsonNode)carePlan).MutableNode["period"]?["end"]?.GetValue<string>();
+        var periodEnd = carePlan.MutableNode()["period"]?["end"]?.GetValue<string>();
         periodEnd.ShouldNotBeNullOrEmpty();
     }
 
@@ -213,7 +213,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var activityArray = ((IMutableJsonNode)carePlan).MutableNode["activity"] as System.Text.Json.Nodes.JsonArray;
+        var activityArray = carePlan.MutableNode()["activity"] as System.Text.Json.Nodes.JsonArray;
         activityArray.ShouldNotBeNull();
         activityArray!.Count.ShouldBeGreaterThan(0);
     }
@@ -229,7 +229,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var activityStatus = ((IMutableJsonNode)carePlan).MutableNode["activity"]?[0]?["detail"]?["status"]?.GetValue<string>();
+        var activityStatus = carePlan.MutableNode()["activity"]?[0]?["detail"]?["status"]?.GetValue<string>();
         activityStatus.ShouldBe("scheduled");
     }
 
@@ -244,7 +244,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var activityCode = ((IMutableJsonNode)carePlan).MutableNode["activity"]?[0]?["detail"]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var activityCode = carePlan.MutableNode()["activity"]?[0]?["detail"]?["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         activityCode.ShouldNotBeNullOrEmpty();
     }
 
@@ -264,7 +264,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var goalArray = ((IMutableJsonNode)carePlan).MutableNode["goal"] as System.Text.Json.Nodes.JsonArray;
+        var goalArray = carePlan.MutableNode()["goal"] as System.Text.Json.Nodes.JsonArray;
         goalArray.ShouldNotBeNull();
         goalArray!.Count.ShouldBe(1);
 
@@ -285,7 +285,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var goalArray = ((IMutableJsonNode)carePlan).MutableNode["goal"] as System.Text.Json.Nodes.JsonArray;
+        var goalArray = carePlan.MutableNode()["goal"] as System.Text.Json.Nodes.JsonArray;
         goalArray.ShouldNotBeNull();
         goalArray!.Count.ShouldBe(2);
     }
@@ -305,7 +305,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Diabetes Management Plan");
     }
 
@@ -320,7 +320,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Hypertension Management Plan");
     }
 
@@ -335,7 +335,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Cardiac Rehabilitation Plan");
     }
 
@@ -350,7 +350,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Weight Management Plan");
     }
 
@@ -365,7 +365,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Chronic Pain Management Plan");
     }
 
@@ -380,7 +380,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Post-Surgical Recovery Plan");
     }
 
@@ -395,7 +395,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Smoking Cessation Plan");
     }
 
@@ -410,7 +410,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var title = ((IMutableJsonNode)carePlan).MutableNode["title"]?.GetValue<string>();
+        var title = carePlan.MutableNode()["title"]?.GetValue<string>();
         title.ShouldBe("Mental Health Care Plan");
     }
 
@@ -429,7 +429,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var description = ((IMutableJsonNode)carePlan).MutableNode["description"]?.GetValue<string>();
+        var description = carePlan.MutableNode()["description"]?.GetValue<string>();
         description.ShouldNotBeNullOrEmpty();
         description.ShouldContain("Diabetes");
     }
@@ -523,7 +523,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var encounterRef = ((IMutableJsonNode)carePlan).MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var encounterRef = carePlan.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
@@ -542,7 +542,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var noteText = ((IMutableJsonNode)carePlan).MutableNode["note"]?[0]?["text"]?.GetValue<string>();
+        var noteText = carePlan.MutableNode()["note"]?[0]?["text"]?.GetValue<string>();
         noteText.ShouldNotBeNullOrEmpty();
     }
 
@@ -561,7 +561,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var created = ((IMutableJsonNode)carePlan).MutableNode["created"]?.GetValue<string>();
+        var created = carePlan.MutableNode()["created"]?.GetValue<string>();
         created.ShouldNotBeNullOrEmpty();
     }
 
@@ -581,7 +581,7 @@ public class CarePlanStateTests
 
         // Assert
         var carePlan = scenario.CarePlans[0];
-        var authorRef = ((IMutableJsonNode)carePlan).MutableNode["author"]?["reference"]?.GetValue<string>();
+        var authorRef = carePlan.MutableNode()["author"]?["reference"]?.GetValue<string>();
         authorRef.ShouldBe($"urn:uuid:{scenario.Practitioners[0].Id}");
     }
 
@@ -633,19 +633,19 @@ public class CarePlanStateTests
         var carePlan = scenario.CarePlans[0];
 
         // CarePlan references the patient
-        var subjectRef = ((IMutableJsonNode)carePlan).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = carePlan.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
 
         // CarePlan references the encounter
-        var encounterRef = ((IMutableJsonNode)carePlan).MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var encounterRef = carePlan.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
 
         // CarePlan references the practitioner as author
-        var authorRef = ((IMutableJsonNode)carePlan).MutableNode["author"]?["reference"]?.GetValue<string>();
+        var authorRef = carePlan.MutableNode()["author"]?["reference"]?.GetValue<string>();
         authorRef.ShouldBe($"urn:uuid:{scenario.Practitioners[0].Id}");
 
         // CarePlan references all goals
-        var goalArray = ((IMutableJsonNode)carePlan).MutableNode["goal"] as System.Text.Json.Nodes.JsonArray;
+        var goalArray = carePlan.MutableNode()["goal"] as System.Text.Json.Nodes.JsonArray;
         goalArray!.Count.ShouldBe(2);
     }
 

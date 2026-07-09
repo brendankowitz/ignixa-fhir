@@ -6,7 +6,7 @@
 using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -323,7 +323,7 @@ public class BindingAwareGenerationTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        var gender = ((IMutableJsonNode)patient).MutableNode["gender"]?.GetValue<string>();
+        var gender = patient.MutableNode()["gender"]?.GetValue<string>();
         if (gender is not null)
         {
             gender.ShouldBeOneOf("male", "female", "other", "unknown",
@@ -338,7 +338,7 @@ public class BindingAwareGenerationTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        var name = ((IMutableJsonNode)patient).MutableNode["name"]?[0];
+        var name = patient.MutableNode()["name"]?[0];
         var use = name?["use"]?.GetValue<string>();
         if (use is not null)
         {
@@ -354,7 +354,7 @@ public class BindingAwareGenerationTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        var address = ((IMutableJsonNode)patient).MutableNode["address"]?[0];
+        var address = patient.MutableNode()["address"]?[0];
         var use = address?["use"]?.GetValue<string>();
         if (use is not null)
         {
@@ -370,7 +370,7 @@ public class BindingAwareGenerationTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        var telecom = ((IMutableJsonNode)patient).MutableNode["telecom"]?[0];
+        var telecom = patient.MutableNode()["telecom"]?[0];
         var system = telecom?["system"]?.GetValue<string>();
         if (system is not null)
         {
@@ -386,7 +386,7 @@ public class BindingAwareGenerationTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        var maritalStatus = ((IMutableJsonNode)patient).MutableNode["maritalStatus"];
+        var maritalStatus = patient.MutableNode()["maritalStatus"];
         if (maritalStatus is not null)
         {
             var coding = maritalStatus["coding"]?[0];
@@ -407,7 +407,7 @@ public class BindingAwareGenerationTests
         var observation = _faker.Generate("Observation");
 
         // Assert
-        var status = ((IMutableJsonNode)observation).MutableNode["status"]?.GetValue<string>();
+        var status = observation.MutableNode()["status"]?.GetValue<string>();
         if (status is not null)
         {
             status.ShouldBeOneOf(
@@ -424,7 +424,7 @@ public class BindingAwareGenerationTests
         var condition = _faker.Generate("Condition");
 
         // Assert
-        var clinicalStatus = ((IMutableJsonNode)condition).MutableNode["clinicalStatus"];
+        var clinicalStatus = condition.MutableNode()["clinicalStatus"];
         if (clinicalStatus is not null)
         {
             var coding = clinicalStatus["coding"]?[0];
@@ -444,7 +444,7 @@ public class BindingAwareGenerationTests
         var encounter = _faker.Generate("Encounter");
 
         // Assert
-        var status = ((IMutableJsonNode)encounter).MutableNode["status"]?.GetValue<string>();
+        var status = encounter.MutableNode()["status"]?.GetValue<string>();
         if (status is not null)
         {
             status.ShouldBeOneOf(
@@ -461,7 +461,7 @@ public class BindingAwareGenerationTests
         var allergy = _faker.Generate("AllergyIntolerance");
 
         // Assert
-        var clinicalStatus = ((IMutableJsonNode)allergy).MutableNode["clinicalStatus"];
+        var clinicalStatus = allergy.MutableNode()["clinicalStatus"];
         if (clinicalStatus is not null)
         {
             var coding = clinicalStatus["coding"]?[0];
@@ -481,7 +481,7 @@ public class BindingAwareGenerationTests
         var allergy = _faker.Generate("AllergyIntolerance");
 
         // Assert
-        var type = ((IMutableJsonNode)allergy).MutableNode["type"]?.GetValue<string>();
+        var type = allergy.MutableNode()["type"]?.GetValue<string>();
         if (type is not null)
         {
             type.ShouldBeOneOf("allergy", "intolerance",
@@ -496,7 +496,7 @@ public class BindingAwareGenerationTests
         var allergy = _faker.Generate("AllergyIntolerance");
 
         // Assert
-        var category = ((IMutableJsonNode)allergy).MutableNode["category"]?[0]?.GetValue<string>();
+        var category = allergy.MutableNode()["category"]?[0]?.GetValue<string>();
         if (category is not null)
         {
             category.ShouldBeOneOf("food", "medication", "environment", "biologic",
@@ -511,7 +511,7 @@ public class BindingAwareGenerationTests
         var procedure = _faker.Generate("Procedure");
 
         // Assert
-        var status = ((IMutableJsonNode)procedure).MutableNode["status"]?.GetValue<string>();
+        var status = procedure.MutableNode()["status"]?.GetValue<string>();
         if (status is not null)
         {
             status.ShouldBeOneOf(
@@ -528,7 +528,7 @@ public class BindingAwareGenerationTests
         var medRequest = _faker.Generate("MedicationRequest");
 
         // Assert
-        var status = ((IMutableJsonNode)medRequest).MutableNode["status"]?.GetValue<string>();
+        var status = medRequest.MutableNode()["status"]?.GetValue<string>();
         if (status is not null)
         {
             status.ShouldBeOneOf(
@@ -545,7 +545,7 @@ public class BindingAwareGenerationTests
         var medRequest = _faker.Generate("MedicationRequest");
 
         // Assert
-        var intent = ((IMutableJsonNode)medRequest).MutableNode["intent"]?.GetValue<string>();
+        var intent = medRequest.MutableNode()["intent"]?.GetValue<string>();
         if (intent is not null)
         {
             intent.ShouldBeOneOf(
@@ -562,7 +562,7 @@ public class BindingAwareGenerationTests
         var report = _faker.Generate("DiagnosticReport");
 
         // Assert
-        var status = ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>();
+        var status = report.MutableNode()["status"]?.GetValue<string>();
         if (status is not null)
         {
             status.ShouldBeOneOf(
@@ -579,7 +579,7 @@ public class BindingAwareGenerationTests
         var immunization = _faker.Generate("Immunization");
 
         // Assert
-        var status = ((IMutableJsonNode)immunization).MutableNode["status"]?.GetValue<string>();
+        var status = immunization.MutableNode()["status"]?.GetValue<string>();
         if (status is not null)
         {
             status.ShouldBeOneOf("completed", "entered-in-error", "not-done",
@@ -594,7 +594,7 @@ public class BindingAwareGenerationTests
         var carePlan = _faker.Generate("CarePlan");
 
         // Assert
-        var intent = ((IMutableJsonNode)carePlan).MutableNode["intent"]?.GetValue<string>();
+        var intent = carePlan.MutableNode()["intent"]?.GetValue<string>();
         intent.ShouldNotBeNullOrEmpty("CarePlan.intent is required");
         intent.ShouldBeOneOf("proposal", "plan", "order", "option",
             "CarePlan.intent should use care-plan-intent value set (required binding)");
@@ -611,7 +611,7 @@ public class BindingAwareGenerationTests
         // Patient.gender is optional (0..1), so with deterministic generation
         // it should NOT be populated (only required fields are populated)
         var patient = _faker.Generate("Patient");
-        var gender = ((IMutableJsonNode)patient).MutableNode["gender"]?.GetValue<string>();
+        var gender = patient.MutableNode()["gender"]?.GetValue<string>();
 
         // Assert - gender is optional and should not be populated by default
         gender.ShouldBeNull(
@@ -623,7 +623,7 @@ public class BindingAwareGenerationTests
     {
         // Arrange & Act - Use PatientBuilder to explicitly set gender
         var patient = _faker.CreatePatient(p => p.WithGender(g => g.Female));
-        var gender = ((IMutableJsonNode)patient).MutableNode["gender"]?.GetValue<string>();
+        var gender = patient.MutableNode()["gender"]?.GetValue<string>();
 
         // Assert - when gender IS set via builder, it should be a valid code
         gender.ShouldNotBeNullOrEmpty();
@@ -641,7 +641,7 @@ public class BindingAwareGenerationTests
         for (int i = 0; i < 50; i++)
         {
             var observation = _faker.Generate("Observation");
-            var status = ((IMutableJsonNode)observation).MutableNode["status"]?.GetValue<string>();
+            var status = observation.MutableNode()["status"]?.GetValue<string>();
             if (status is not null)
             {
                 generatedStatuses.Add(status);
@@ -664,7 +664,7 @@ public class BindingAwareGenerationTests
         for (int i = 0; i < 50; i++)
         {
             var carePlan = _faker.Generate("CarePlan");
-            var intent = ((IMutableJsonNode)carePlan).MutableNode["intent"]?.GetValue<string>();
+            var intent = carePlan.MutableNode()["intent"]?.GetValue<string>();
             if (intent is not null)
             {
                 generatedIntents.Add(intent);

@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.States;
 
@@ -49,7 +49,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var status = ((IMutableJsonNode)serviceRequest).MutableNode["status"]?.GetValue<string>();
+        var status = serviceRequest.MutableNode()["status"]?.GetValue<string>();
         status.ShouldBe("active");
     }
 
@@ -64,7 +64,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var intent = ((IMutableJsonNode)serviceRequest).MutableNode["intent"]?.GetValue<string>();
+        var intent = serviceRequest.MutableNode()["intent"]?.GetValue<string>();
         intent.ShouldBe("order");
     }
 
@@ -79,7 +79,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var identifier = ((IMutableJsonNode)serviceRequest).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var identifier = serviceRequest.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         identifier.ShouldNotBeNullOrEmpty();
         identifier.ShouldStartWith("SR-");
     }
@@ -99,7 +99,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var subjectRef = ((IMutableJsonNode)serviceRequest).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = serviceRequest.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -115,7 +115,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var encounterRef = ((IMutableJsonNode)serviceRequest).MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var encounterRef = serviceRequest.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
@@ -131,7 +131,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var requesterRef = ((IMutableJsonNode)serviceRequest).MutableNode["requester"]?["reference"]?.GetValue<string>();
+        var requesterRef = serviceRequest.MutableNode()["requester"]?["reference"]?.GetValue<string>();
         requesterRef.ShouldBe($"urn:uuid:{scenario.CurrentPractitioner!.Id}");
     }
 
@@ -150,7 +150,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("58410-2");
     }
 
@@ -165,7 +165,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)serviceRequest).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = serviceRequest.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("108252007"); // Laboratory procedure
     }
 
@@ -180,7 +180,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("57698-3");
     }
 
@@ -195,7 +195,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var reasonCode = ((IMutableJsonNode)serviceRequest).MutableNode["reasonCode"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var reasonCode = serviceRequest.MutableNode()["reasonCode"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         reasonCode.ShouldBe("44054006"); // Diabetes mellitus type 2
     }
 
@@ -210,7 +210,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var display = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["text"]?.GetValue<string>();
+        var display = serviceRequest.MutableNode()["code"]?["text"]?.GetValue<string>();
         display.ShouldBe("Comprehensive metabolic panel");
     }
 
@@ -229,7 +229,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("399208008");
     }
 
@@ -244,7 +244,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)serviceRequest).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = serviceRequest.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("363679005"); // Imaging
     }
 
@@ -259,7 +259,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("241540006");
     }
 
@@ -274,7 +274,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var display = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["text"]?.GetValue<string>();
+        var display = serviceRequest.MutableNode()["code"]?["text"]?.GetValue<string>();
         display.ShouldBe("MRI of brain");
     }
 
@@ -289,7 +289,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)serviceRequest).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = serviceRequest.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("363679005");
     }
 
@@ -308,7 +308,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("183524002");
     }
 
@@ -323,7 +323,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)serviceRequest).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = serviceRequest.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("3457005"); // Referral
     }
 
@@ -338,7 +338,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("183516009");
     }
 
@@ -353,7 +353,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var display = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["text"]?.GetValue<string>();
+        var display = serviceRequest.MutableNode()["code"]?["text"]?.GetValue<string>();
         display.ShouldBe("Physical therapy referral");
     }
 
@@ -368,7 +368,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var code = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("183521005");
     }
 
@@ -387,7 +387,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var priority = ((IMutableJsonNode)serviceRequest).MutableNode["priority"]?.GetValue<string>();
+        var priority = serviceRequest.MutableNode()["priority"]?.GetValue<string>();
         priority.ShouldBe("routine");
     }
 
@@ -402,7 +402,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var priority = ((IMutableJsonNode)serviceRequest).MutableNode["priority"]?.GetValue<string>();
+        var priority = serviceRequest.MutableNode()["priority"]?.GetValue<string>();
         priority.ShouldBe("urgent");
     }
 
@@ -417,7 +417,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var priority = ((IMutableJsonNode)serviceRequest).MutableNode["priority"]?.GetValue<string>();
+        var priority = serviceRequest.MutableNode()["priority"]?.GetValue<string>();
         priority.ShouldBe("stat");
     }
 
@@ -432,7 +432,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var priority = ((IMutableJsonNode)serviceRequest).MutableNode["priority"]?.GetValue<string>();
+        var priority = serviceRequest.MutableNode()["priority"]?.GetValue<string>();
         priority.ShouldBe("asap");
     }
 
@@ -452,7 +452,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var performerRef = ((IMutableJsonNode)serviceRequest).MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
+        var performerRef = serviceRequest.MutableNode()["performer"]?[0]?["reference"]?.GetValue<string>();
         performerRef.ShouldBe($"urn:uuid:{scenario.CurrentOrganization!.Id}");
     }
 
@@ -467,7 +467,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var performerDisplay = ((IMutableJsonNode)serviceRequest).MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
+        var performerDisplay = serviceRequest.MutableNode()["performer"]?[0]?["display"]?.GetValue<string>();
         performerDisplay.ShouldBe("Clinical Laboratory");
     }
 
@@ -482,7 +482,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var performerDisplay = ((IMutableJsonNode)serviceRequest).MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
+        var performerDisplay = serviceRequest.MutableNode()["performer"]?[0]?["display"]?.GetValue<string>();
         performerDisplay.ShouldBe("Radiology Department");
     }
 
@@ -497,7 +497,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var performerDisplay = ((IMutableJsonNode)serviceRequest).MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
+        var performerDisplay = serviceRequest.MutableNode()["performer"]?[0]?["display"]?.GetValue<string>();
         performerDisplay.ShouldBe("Specialist Clinic");
     }
 
@@ -516,7 +516,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var authoredOn = ((IMutableJsonNode)serviceRequest).MutableNode["authoredOn"]?.GetValue<string>();
+        var authoredOn = serviceRequest.MutableNode()["authoredOn"]?.GetValue<string>();
         authoredOn.ShouldNotBeNullOrEmpty();
     }
 
@@ -538,7 +538,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var authoredOn = ((IMutableJsonNode)serviceRequest).MutableNode["authoredOn"]?.GetValue<string>();
+        var authoredOn = serviceRequest.MutableNode()["authoredOn"]?.GetValue<string>();
         authoredOn!.ShouldContain("2024-06-15");
     }
 
@@ -619,7 +619,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var system = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
+        var system = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
         system.ShouldBe("http://loinc.org");
     }
 
@@ -634,7 +634,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var system = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
+        var system = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
         system.ShouldBe("http://snomed.info/sct");
     }
 
@@ -649,7 +649,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var system = ((IMutableJsonNode)serviceRequest).MutableNode["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
+        var system = serviceRequest.MutableNode()["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
         system.ShouldBe("http://snomed.info/sct");
     }
 
@@ -668,7 +668,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)serviceRequest).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = serviceRequest.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("108252007"); // Laboratory procedure
     }
 
@@ -683,7 +683,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)serviceRequest).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = serviceRequest.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         // Echocardiogram doesn't contain typical imaging keywords, so defaults to procedure
         categoryCode.ShouldNotBeNull();
     }
@@ -703,7 +703,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var encounterRef = ((IMutableJsonNode)serviceRequest).MutableNode["encounter"];
+        var encounterRef = serviceRequest.MutableNode()["encounter"];
         encounterRef.ShouldBeNull();
     }
 
@@ -722,7 +722,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var note = ((IMutableJsonNode)serviceRequest).MutableNode["note"]?[0]?["text"]?.GetValue<string>();
+        var note = serviceRequest.MutableNode()["note"]?[0]?["text"]?.GetValue<string>();
         note.ShouldBe("Fasting required for 12 hours");
     }
 
@@ -741,7 +741,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var reason = ((IMutableJsonNode)serviceRequest).MutableNode["reasonCode"]?[0]?["text"]?.GetValue<string>();
+        var reason = serviceRequest.MutableNode()["reasonCode"]?[0]?["text"]?.GetValue<string>();
         reason.ShouldBe("Screening for hyperlipidemia");
     }
 
@@ -763,7 +763,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
-        var occurrenceDateTime = ((IMutableJsonNode)serviceRequest).MutableNode["occurrenceDateTime"]?.GetValue<string>();
+        var occurrenceDateTime = serviceRequest.MutableNode()["occurrenceDateTime"]?.GetValue<string>();
         occurrenceDateTime.ShouldNotBeNullOrEmpty();
     }
 
@@ -788,11 +788,11 @@ public class ServiceRequestStateTests
         scenario.ServiceRequests.Count.ShouldBe(3);
         foreach (var sr in scenario.ServiceRequests)
         {
-            ((IMutableJsonNode)sr).MutableNode["status"]?.GetValue<string>().ShouldBe("active");
-            ((IMutableJsonNode)sr).MutableNode["intent"]?.GetValue<string>().ShouldBe("order");
-            ((IMutableJsonNode)sr).MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
-            ((IMutableJsonNode)sr).MutableNode["requester"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
-            ((IMutableJsonNode)sr).MutableNode["encounter"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+            sr.MutableNode()["status"]?.GetValue<string>().ShouldBe("active");
+            sr.MutableNode()["intent"]?.GetValue<string>().ShouldBe("order");
+            sr.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+            sr.MutableNode()["requester"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+            sr.MutableNode()["encounter"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
         }
     }
 
@@ -813,7 +813,7 @@ public class ServiceRequestStateTests
         scenario.ServiceRequests.Count.ShouldBe(2);
         foreach (var sr in scenario.ServiceRequests)
         {
-            var categoryCode = ((IMutableJsonNode)sr).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var categoryCode = sr.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
             categoryCode.ShouldBe("363679005"); // Imaging
         }
     }
@@ -833,7 +833,7 @@ public class ServiceRequestStateTests
         // Assert
         scenario.ServiceRequests.Count.ShouldBe(1);
         var referral = scenario.ServiceRequests[0];
-        var categoryCode = ((IMutableJsonNode)referral).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = referral.MutableNode()["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("3457005"); // Referral
     }
 

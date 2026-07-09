@@ -6,7 +6,7 @@
 using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -43,7 +43,7 @@ public class EarInfectionScenarioTests
 
         // Assert
         scenario.Patient.ShouldNotBeNull();
-        var birthDate = ((IMutableJsonNode)scenario.Patient!).MutableNode["birthDate"]?.GetValue<string>();
+        var birthDate = scenario.Patient!.MutableNode()["birthDate"]?.GetValue<string>();
         birthDate.ShouldNotBeNullOrEmpty("patient should have a birth date");
 
         // Verify the age is approximately correct (within 1 year tolerance)
@@ -67,13 +67,13 @@ public class EarInfectionScenarioTests
 
         var otitisMediaCondition = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = ((IMutableJsonNode)c).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "7091009"; // SNOMED CT code for Acute otitis media
         });
 
         otitisMediaCondition.ShouldNotBeNull("should have acute otitis media diagnosis");
 
-        var display = ((IMutableJsonNode)otitisMediaCondition!).MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
+        var display = otitisMediaCondition!.MutableNode()["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
         display.ShouldBe("Acute otitis media");
     }
 
@@ -86,13 +86,13 @@ public class EarInfectionScenarioTests
         // Assert
         var otitisMediaCondition = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = ((IMutableJsonNode)c).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "7091009";
         });
 
         otitisMediaCondition.ShouldNotBeNull();
 
-        var clinicalStatus = ((IMutableJsonNode)otitisMediaCondition!).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = otitisMediaCondition!.MutableNode()["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("resolved", "condition should be resolved after follow-up");
     }
 
@@ -105,13 +105,13 @@ public class EarInfectionScenarioTests
         // Assert
         var otitisMediaCondition = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = ((IMutableJsonNode)c).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "7091009";
         });
 
         otitisMediaCondition.ShouldNotBeNull();
 
-        var clinicalStatus = ((IMutableJsonNode)otitisMediaCondition!).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = otitisMediaCondition!.MutableNode()["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("active", "condition should remain active without follow-up");
     }
 
@@ -131,7 +131,7 @@ public class EarInfectionScenarioTests
         // All encounters should reference the patient
         foreach (var encounter in scenario.Encounters)
         {
-            var subjectRef = ((IMutableJsonNode)encounter).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = encounter.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef!.ShouldContain(scenario.Patient!.Id);
         }
     }
@@ -159,7 +159,7 @@ public class EarInfectionScenarioTests
         // Assert
         var temperatureObservations = scenario.Observations.Where(o =>
         {
-            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "8310-5"; // LOINC code for Body temperature
         }).ToList();
 
@@ -167,7 +167,7 @@ public class EarInfectionScenarioTests
 
         // Initial visit should show elevated temperature (fever)
         var initialTemp = temperatureObservations.First();
-        var value = ((IMutableJsonNode)initialTemp).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = initialTemp.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThanOrEqualTo(38.0m, "initial temperature should indicate fever");
         value!.Value.ShouldBeLessThanOrEqualTo(39.5m, "temperature should be in expected range");
     }
@@ -181,7 +181,7 @@ public class EarInfectionScenarioTests
         // Assert
         var temperatureObservations = scenario.Observations.Where(o =>
         {
-            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "8310-5";
         }).ToList();
 
@@ -189,7 +189,7 @@ public class EarInfectionScenarioTests
 
         // Follow-up should show normal temperature
         var followUpTemp = temperatureObservations.Last();
-        var value = ((IMutableJsonNode)followUpTemp).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = followUpTemp.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeLessThanOrEqualTo(37.5m, "follow-up temperature should be normal or near-normal");
     }
 
@@ -202,7 +202,7 @@ public class EarInfectionScenarioTests
         // Assert
         var painObservations = scenario.Observations.Where(o =>
         {
-            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "72514-3"; // LOINC code for Pain severity
         }).ToList();
 
@@ -210,7 +210,7 @@ public class EarInfectionScenarioTests
 
         // Initial visit should show moderate to severe pain
         var initialPain = painObservations.First();
-        var value = ((IMutableJsonNode)initialPain).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = initialPain.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThanOrEqualTo(5m, "initial pain should be moderate to severe");
         value!.Value.ShouldBeLessThanOrEqualTo(8m, "pain should be in expected range");
     }
@@ -224,7 +224,7 @@ public class EarInfectionScenarioTests
         // Assert
         var painObservations = scenario.Observations.Where(o =>
         {
-            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "72514-3";
         }).ToList();
 
@@ -232,7 +232,7 @@ public class EarInfectionScenarioTests
 
         // Follow-up should show minimal or no pain
         var followUpPain = painObservations.Last();
-        var value = ((IMutableJsonNode)followUpPain).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = followUpPain.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeLessThanOrEqualTo(1m, "follow-up pain should be minimal or resolved");
     }
 
@@ -249,14 +249,14 @@ public class EarInfectionScenarioTests
         // Assert
         var otoscopyProcedures = scenario.Procedures.Where(p =>
         {
-            var code = ((IMutableJsonNode)p).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = p.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "16247007"; // SNOMED CT code for Otoscopy
         }).ToList();
 
         otoscopyProcedures.ShouldNotBeEmpty("should have otoscopy examination");
 
         var initialOtoscopy = otoscopyProcedures.First();
-        var display = ((IMutableJsonNode)initialOtoscopy).MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
+        var display = initialOtoscopy.MutableNode()["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
         display.ShouldBe("Otoscopy");
     }
 
@@ -269,7 +269,7 @@ public class EarInfectionScenarioTests
         // Assert
         var otoscopyProcedures = scenario.Procedures.Where(p =>
         {
-            var code = ((IMutableJsonNode)p).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = p.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "16247007";
         }).ToList();
 
@@ -277,7 +277,7 @@ public class EarInfectionScenarioTests
 
         // Follow-up should indicate resolution
         var followUpOtoscopy = otoscopyProcedures.Last();
-        var outcome = ((IMutableJsonNode)followUpOtoscopy).MutableNode["outcome"]?["text"]?.GetValue<string>();
+        var outcome = followUpOtoscopy.MutableNode()["outcome"]?["text"]?.GetValue<string>();
         outcome!.ShouldContain("normal", Case.Insensitive);
     }
 
@@ -296,7 +296,7 @@ public class EarInfectionScenarioTests
 
         var amoxicillin = scenario.Medications.FirstOrDefault(m =>
         {
-            var code = ((IMutableJsonNode)m).MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "308192"; // RxNorm code for Amoxicillin 500mg
         });
 
@@ -312,7 +312,7 @@ public class EarInfectionScenarioTests
         // Assert
         var amoxicillin = scenario.Medications.FirstOrDefault(m =>
         {
-            var code = ((IMutableJsonNode)m).MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "308192";
         });
 
@@ -321,7 +321,7 @@ public class EarInfectionScenarioTests
         // Check dosage instruction with text description
         // Note: timing.repeat structure is not included due to validation schema limitations
         // that don't properly expose backbone element children across all FHIR versions
-        var dosageInstruction = ((IMutableJsonNode)amoxicillin!).MutableNode["dosageInstruction"]?[0];
+        var dosageInstruction = amoxicillin!.MutableNode()["dosageInstruction"]?[0];
         dosageInstruction.ShouldNotBeNull();
 
         var dosageText = dosageInstruction!["text"]?.GetValue<string>();
@@ -330,7 +330,7 @@ public class EarInfectionScenarioTests
 
         // Check that it's not chronic (10-day course). positiveInt can't be 0, so "no repeats"
         // is represented by omitting the field entirely rather than emitting a literal 0.
-        var dispenseRequest = ((IMutableJsonNode)amoxicillin).MutableNode["dispenseRequest"];
+        var dispenseRequest = amoxicillin.MutableNode()["dispenseRequest"];
         var numberOfRepeats = dispenseRequest?["numberOfRepeatsAllowed"];
         numberOfRepeats.ShouldBeNull("should omit numberOfRepeatsAllowed for acute (non-chronic) treatment");
     }
@@ -344,13 +344,13 @@ public class EarInfectionScenarioTests
         // Assert
         var amoxicillin = scenario.Medications.FirstOrDefault(m =>
         {
-            var code = ((IMutableJsonNode)m).MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "308192";
         });
 
         amoxicillin.ShouldNotBeNull();
 
-        var reasonReference = ((IMutableJsonNode)amoxicillin!).MutableNode["reasonReference"];
+        var reasonReference = amoxicillin!.MutableNode()["reasonReference"];
         reasonReference.ShouldNotBeNull("medication should reference the condition");
     }
 
@@ -379,25 +379,25 @@ public class EarInfectionScenarioTests
         // Assert - All resources reference the patient
         foreach (var observation in scenario.Observations)
         {
-            var subjectRef = ((IMutableJsonNode)observation).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "observation should reference the patient");
         }
 
         foreach (var condition in scenario.Conditions)
         {
-            var subjectRef = ((IMutableJsonNode)condition).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = condition.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "condition should reference the patient");
         }
 
         foreach (var medication in scenario.Medications)
         {
-            var subjectRef = ((IMutableJsonNode)medication).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = medication.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "medication should reference the patient");
         }
 
         foreach (var procedure in scenario.Procedures)
         {
-            var subjectRef = ((IMutableJsonNode)procedure).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = procedure.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "procedure should reference the patient");
         }
     }
@@ -411,8 +411,8 @@ public class EarInfectionScenarioTests
         // Assert
         scenario.Encounters.Count.ShouldBe(2);
 
-        var initialVisit = ((IMutableJsonNode)scenario.Encounters[0]).MutableNode["period"]?["start"]?.GetValue<string>();
-        var followUpVisit = ((IMutableJsonNode)scenario.Encounters[1]).MutableNode["period"]?["start"]?.GetValue<string>();
+        var initialVisit = scenario.Encounters[0].MutableNode()["period"]?["start"]?.GetValue<string>();
+        var followUpVisit = scenario.Encounters[1].MutableNode()["period"]?["start"]?.GetValue<string>();
 
         initialVisit.ShouldNotBeNullOrEmpty();
         followUpVisit.ShouldNotBeNullOrEmpty();
@@ -455,7 +455,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection(gender: gender);
 
         // Assert
-        var patientGender = ((IMutableJsonNode)scenario.Patient!).MutableNode["gender"]?.GetValue<string>();
+        var patientGender = scenario.Patient!.MutableNode()["gender"]?.GetValue<string>();
         patientGender.ShouldBe(gender);
     }
 

@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -34,9 +34,9 @@ public class PractitionerBuilderTests
         // Assert
         practitioner.ShouldNotBeNull();
         practitioner.ResourceType.ShouldBe("Practitioner");
-        ((IMutableJsonNode)practitioner).MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
+        practitioner.MutableNode()["active"]?.GetValue<bool>().ShouldBeTrue();
 
-        var nameArray = ((IMutableJsonNode)practitioner).MutableNode["name"]?.AsArray();
+        var nameArray = practitioner.MutableNode()["name"]?.AsArray();
         nameArray.ShouldNotBeNull();
         nameArray!.Count.ShouldBe(1);
 
@@ -75,8 +75,8 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)practitioner).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tags = ((IMutableJsonNode)practitioner).MutableNode["meta"]?["tag"]?.AsArray();
+        practitioner.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tags = practitioner.MutableNode()["meta"]?["tag"]?.AsArray();
         tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
@@ -95,7 +95,7 @@ public class PractitionerBuilderTests
         practitioner.ShouldNotBeNull();
         practitioner.ResourceType.ShouldBe("Practitioner");
         practitioner.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)practitioner).MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
+        practitioner.MutableNode()["active"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     #endregion
@@ -111,7 +111,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var nameArray = ((IMutableJsonNode)practitioner).MutableNode["name"]?.AsArray();
+        var nameArray = practitioner.MutableNode()["name"]?.AsArray();
         nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
@@ -128,7 +128,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var nameArray = ((IMutableJsonNode)practitioner).MutableNode["name"]?.AsArray();
+        var nameArray = practitioner.MutableNode()["name"]?.AsArray();
         nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
@@ -146,7 +146,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var nameArray = ((IMutableJsonNode)practitioner).MutableNode["name"]?.AsArray();
+        var nameArray = practitioner.MutableNode()["name"]?.AsArray();
         nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
@@ -162,7 +162,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)practitioner).MutableNode.TryGetPropertyValue("name", out _).ShouldBeFalse();
+        practitioner.MutableNode().TryGetPropertyValue("name", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -182,7 +182,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var identifiers = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?.AsArray();
+        var identifiers = practitioner.MutableNode()["identifier"]?.AsArray();
         identifiers.ShouldNotBeNull();
         identifiers!.Count.ShouldBe(1);
 
@@ -205,7 +205,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var identifiers = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?.AsArray();
+        var identifiers = practitioner.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
@@ -225,7 +225,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var identifiers = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?.AsArray();
+        var identifiers = practitioner.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
@@ -244,7 +244,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var identifiers = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?.AsArray();
+        var identifiers = practitioner.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(3);
 
         // Check NPI
@@ -281,7 +281,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?.AsArray();
+        var qualifications = practitioner.MutableNode()["qualification"]?.AsArray();
         qualifications.ShouldNotBeNull();
         qualifications!.Count.ShouldBe(1);
 
@@ -309,7 +309,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?.AsArray();
+        var qualifications = practitioner.MutableNode()["qualification"]?.AsArray();
         var qualification = qualifications?[0]?.AsObject();
         var code = qualification?["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray();
@@ -329,7 +329,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?.AsArray();
+        var qualifications = practitioner.MutableNode()["qualification"]?.AsArray();
         qualifications!.Count.ShouldBe(2);
 
         var firstQual = qualifications?[0]?.AsObject();
@@ -352,7 +352,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?.AsArray();
+        var qualifications = practitioner.MutableNode()["qualification"]?.AsArray();
         var qualification = qualifications?[0]?.AsObject();
         var coding = qualification?["code"]?.AsObject()?["coding"]?.AsArray()?[0]?.AsObject();
 
@@ -385,18 +385,18 @@ public class PractitionerBuilderTests
         // Assert
         practitioner.Id.ShouldBe("pract-complete");
 
-        var nameArray = ((IMutableJsonNode)practitioner).MutableNode["name"]?.AsArray();
+        var nameArray = practitioner.MutableNode()["name"]?.AsArray();
         var name = nameArray?[0]?.AsObject();
         name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("Jennifer");
         name?["family"]?.GetValue<string>().ShouldBe("Garcia");
 
-        var identifiers = ((IMutableJsonNode)practitioner).MutableNode["identifier"]?.AsArray();
+        var identifiers = practitioner.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(2);
 
-        var qualifications = ((IMutableJsonNode)practitioner).MutableNode["qualification"]?.AsArray();
+        var qualifications = practitioner.MutableNode()["qualification"]?.AsArray();
         qualifications!.Count.ShouldBe(1);
 
-        var tags = ((IMutableJsonNode)practitioner).MutableNode["meta"]?["tag"]?.AsArray();
+        var tags = practitioner.MutableNode()["meta"]?["tag"]?.AsArray();
         tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
@@ -429,8 +429,8 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)practitioner).MutableNode["meta"].ShouldNotBeNull();
-        var meta = ((IMutableJsonNode)practitioner).MutableNode["meta"]?.AsObject();
+        practitioner.MutableNode()["meta"].ShouldNotBeNull();
+        var meta = practitioner.MutableNode()["meta"]?.AsObject();
         meta?["versionId"]?.GetValue<string>().ShouldBe("1");
         meta?["lastUpdated"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
@@ -450,7 +450,7 @@ public class PractitionerBuilderTests
         practitioner.ShouldNotBeNull();
         practitioner.ResourceType.ShouldBe("Practitioner");
         practitioner.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)practitioner).MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
+        practitioner.MutableNode()["active"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -462,7 +462,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)practitioner).MutableNode.TryGetPropertyValue("identifier", out _).ShouldBeFalse();
+        practitioner.MutableNode().TryGetPropertyValue("identifier", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -474,7 +474,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)practitioner).MutableNode.TryGetPropertyValue("qualification", out _).ShouldBeFalse();
+        practitioner.MutableNode().TryGetPropertyValue("qualification", out _).ShouldBeFalse();
     }
 
     #endregion

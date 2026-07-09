@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\tools\Ignixa.Validation.Cli\Ignixa.Validation.Cli.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

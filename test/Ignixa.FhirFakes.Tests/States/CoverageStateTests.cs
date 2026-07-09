@@ -7,7 +7,7 @@ using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.States;
 
@@ -48,7 +48,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var status = ((IMutableJsonNode)coverage).MutableNode["status"]?.GetValue<string>();
+        var status = coverage.MutableNode()["status"]?.GetValue<string>();
         status.ShouldBe("active");
     }
 
@@ -63,7 +63,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var identifier = ((IMutableJsonNode)coverage).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var identifier = coverage.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         identifier.ShouldNotBeNullOrEmpty();
     }
 
@@ -78,7 +78,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var identifier = ((IMutableJsonNode)coverage).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var identifier = coverage.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         identifier.ShouldBe("ABC123456789");
     }
 
@@ -97,7 +97,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var beneficiaryRef = ((IMutableJsonNode)coverage).MutableNode["beneficiary"]?["reference"]?.GetValue<string>();
+        var beneficiaryRef = coverage.MutableNode()["beneficiary"]?["reference"]?.GetValue<string>();
         beneficiaryRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -112,7 +112,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var policyHolderRef = ((IMutableJsonNode)coverage).MutableNode["policyHolder"]?["reference"]?.GetValue<string>();
+        var policyHolderRef = coverage.MutableNode()["policyHolder"]?["reference"]?.GetValue<string>();
         policyHolderRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -127,7 +127,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var subscriberRef = ((IMutableJsonNode)coverage).MutableNode["subscriber"]?["reference"]?.GetValue<string>();
+        var subscriberRef = coverage.MutableNode()["subscriber"]?["reference"]?.GetValue<string>();
         subscriberRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -146,7 +146,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var relationshipCode = ((IMutableJsonNode)coverage).MutableNode["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var relationshipCode = coverage.MutableNode()["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
         relationshipCode.ShouldBe("self");
     }
 
@@ -161,7 +161,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var relationshipCode = ((IMutableJsonNode)coverage).MutableNode["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var relationshipCode = coverage.MutableNode()["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
         relationshipCode.ShouldBe("child");
     }
 
@@ -176,7 +176,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var relationshipCode = ((IMutableJsonNode)coverage).MutableNode["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var relationshipCode = coverage.MutableNode()["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
         relationshipCode.ShouldBe("spouse");
     }
 
@@ -195,7 +195,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("EHCPOL");
     }
 
@@ -210,7 +210,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("PUBLICPOL");
     }
 
@@ -225,7 +225,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("PUBLICPOL");
     }
 
@@ -240,7 +240,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("DENTAL");
     }
 
@@ -255,7 +255,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("VISPOL");
     }
 
@@ -274,7 +274,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var startDate = ((IMutableJsonNode)coverage).MutableNode["period"]?["start"]?.GetValue<string>();
+        var startDate = coverage.MutableNode()["period"]?["start"]?.GetValue<string>();
         startDate.ShouldNotBeNullOrEmpty();
     }
 
@@ -289,7 +289,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var endDate = ((IMutableJsonNode)coverage).MutableNode["period"]?["end"];
+        var endDate = coverage.MutableNode()["period"]?["end"];
         endDate.ShouldBeNull();
     }
 
@@ -305,7 +305,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var actualEndDate = ((IMutableJsonNode)coverage).MutableNode["period"]?["end"]?.GetValue<string>();
+        var actualEndDate = coverage.MutableNode()["period"]?["end"]?.GetValue<string>();
         actualEndDate.ShouldNotBeNullOrEmpty();
     }
 
@@ -321,7 +321,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var actualStartDate = ((IMutableJsonNode)coverage).MutableNode["period"]?["start"]?.GetValue<string>();
+        var actualStartDate = coverage.MutableNode()["period"]?["start"]?.GetValue<string>();
         actualStartDate.ShouldBe("2020-01-01");
     }
 
@@ -340,7 +340,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var classArray = ((IMutableJsonNode)coverage).MutableNode["class"] as System.Text.Json.Nodes.JsonArray;
+        var classArray = coverage.MutableNode()["class"] as System.Text.Json.Nodes.JsonArray;
         classArray.ShouldNotBeNull();
 
         var dependentClass = classArray!
@@ -365,7 +365,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var classArray = ((IMutableJsonNode)coverage).MutableNode["class"] as System.Text.Json.Nodes.JsonArray;
+        var classArray = coverage.MutableNode()["class"] as System.Text.Json.Nodes.JsonArray;
         classArray.ShouldNotBeNull();
 
         var groupClass = classArray!
@@ -391,7 +391,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var payorArray = ((IMutableJsonNode)coverage).MutableNode["payor"] as System.Text.Json.Nodes.JsonArray;
+        var payorArray = coverage.MutableNode()["payor"] as System.Text.Json.Nodes.JsonArray;
         payorArray.ShouldNotBeNull();
         payorArray!.Count.ShouldBe(1);
 
@@ -414,7 +414,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var memberId = ((IMutableJsonNode)coverage).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
+        var memberId = coverage.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>();
         memberId.ShouldNotBeNullOrEmpty();
         memberId!.Length.ShouldBe(12); // 3 letters + 9 digits
     }
@@ -433,7 +433,7 @@ public class CoverageStateTests
         // Assert
         scenario.Coverages.Count.ShouldBe(3);
         var memberIds = scenario.Coverages
-            .Select(c => ((IMutableJsonNode)c).MutableNode["identifier"]?[0]?["value"]?.GetValue<string>())
+            .Select(c => c.MutableNode()["identifier"]?[0]?["value"]?.GetValue<string>())
             .ToList();
         memberIds.Distinct().Count().ShouldBe(3);
     }
@@ -453,10 +453,10 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var relationshipCode = ((IMutableJsonNode)coverage).MutableNode["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var relationshipCode = coverage.MutableNode()["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
         relationshipCode.ShouldBe("self");
 
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("EHCPOL");
     }
 
@@ -471,10 +471,10 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var relationshipCode = ((IMutableJsonNode)coverage).MutableNode["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var relationshipCode = coverage.MutableNode()["relationship"]?["coding"]?[0]?["code"]?.GetValue<string>();
         relationshipCode.ShouldBe("child");
 
-        var classArray = ((IMutableJsonNode)coverage).MutableNode["class"] as System.Text.Json.Nodes.JsonArray;
+        var classArray = coverage.MutableNode()["class"] as System.Text.Json.Nodes.JsonArray;
         var dependentValue = classArray?
             .FirstOrDefault(c => c?["type"]?["coding"]?[0]?["code"]?.GetValue<string>() == "subgroup")?
             ["value"]?.GetValue<string>();
@@ -492,10 +492,10 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("PUBLICPOL");
 
-        var typeDisplay = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["display"]?.GetValue<string>();
+        var typeDisplay = coverage.MutableNode()["type"]?["coding"]?[0]?["display"]?.GetValue<string>();
         typeDisplay.ShouldBe("Public healthcare");
     }
 
@@ -510,7 +510,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var typeCode = ((IMutableJsonNode)coverage).MutableNode["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var typeCode = coverage.MutableNode()["type"]?["coding"]?[0]?["code"]?.GetValue<string>();
         typeCode.ShouldBe("PUBLICPOL");
     }
 
@@ -606,7 +606,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var status = ((IMutableJsonNode)coverage).MutableNode["status"]?.GetValue<string>();
+        var status = coverage.MutableNode()["status"]?.GetValue<string>();
         status.ShouldBe("cancelled");
     }
 
@@ -624,7 +624,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var status = ((IMutableJsonNode)coverage).MutableNode["status"]?.GetValue<string>();
+        var status = coverage.MutableNode()["status"]?.GetValue<string>();
         status.ShouldBe("draft");
     }
 
@@ -661,7 +661,7 @@ public class CoverageStateTests
 
         // Assert
         var coverage = scenario.Coverages[0];
-        var subscriberId = ((IMutableJsonNode)coverage).MutableNode["subscriber"]?["identifier"]?["value"]?.GetValue<string>();
+        var subscriberId = coverage.MutableNode()["subscriber"]?["identifier"]?["value"]?.GetValue<string>();
         subscriberId.ShouldBe("SUB987654321");
     }
 

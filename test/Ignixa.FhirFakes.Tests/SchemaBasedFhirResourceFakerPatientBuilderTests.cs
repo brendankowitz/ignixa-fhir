@@ -8,7 +8,7 @@ using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Specification.Generated;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -38,9 +38,9 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         patient.ShouldNotBeNull();
         patient.ResourceType.ShouldBe("Patient");
         patient.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)patient).MutableNode["gender"].ShouldNotBeNull();
-        ((IMutableJsonNode)patient).MutableNode["birthDate"].ShouldNotBeNull();
-        ((IMutableJsonNode)patient).MutableNode["name"].ShouldNotBeNull();
+        patient.MutableNode()["gender"].ShouldNotBeNull();
+        patient.MutableNode()["birthDate"].ShouldNotBeNull();
+        patient.MutableNode()["name"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -55,15 +55,15 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
         // Assert
         patient.ShouldNotBeNull();
-        ((IMutableJsonNode)patient).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        patient.MutableNode()["gender"]?.GetValue<string>().ShouldBe("male");
 
-        var name = ((IMutableJsonNode)patient).MutableNode["name"]?.AsArray()?[0]?.AsObject();
+        var name = patient.MutableNode()["name"]?.AsArray()?[0]?.AsObject();
         name?["family"]?.GetValue<string>().ShouldBe("Smith");
         name?["given"]?[0]?.GetValue<string>().ShouldBe("John");
 
         // Verify the requested age is honored exactly (birth year is solved from the randomized
         // month/day, so it is not necessarily today.Year - 45).
-        var birthDate = ((IMutableJsonNode)patient).MutableNode["birthDate"]?.GetValue<string>();
+        var birthDate = patient.MutableNode()["birthDate"]?.GetValue<string>();
         AgeFromBirthDate(DateTime.Parse(birthDate!)).ShouldBe(45);
     }
 
@@ -78,8 +78,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         var patient = _faker.CreatePatient(p => p.WithAge(30));
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tagArray = ((IMutableJsonNode)patient).MutableNode["meta"]?["tag"]?.AsArray();
+        patient.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tagArray = patient.MutableNode()["meta"]?["tag"]?.AsArray();
         tagArray!.Count.ShouldBe(1);
 
         var tag = tagArray?[0]?.AsObject();
@@ -95,8 +95,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
             .WithAddress("123 Main St", "Boston", "MA", "02101"));
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["address"].ShouldNotBeNull();
-        var address = ((IMutableJsonNode)patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        patient.MutableNode()["address"].ShouldNotBeNull();
+        var address = patient.MutableNode()["address"]?.AsArray()?[0]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Boston");
         address?["state"]?.GetValue<string>().ShouldBe("MA");
         address?["postalCode"]?.GetValue<string>().ShouldBe("02101");
@@ -116,9 +116,9 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         patient.ShouldNotBeNull();
         patient.ResourceType.ShouldBe("Patient");
         patient.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)patient).MutableNode["gender"].ShouldNotBeNull();
-        ((IMutableJsonNode)patient).MutableNode["birthDate"].ShouldNotBeNull();
-        ((IMutableJsonNode)patient).MutableNode["name"].ShouldNotBeNull();
+        patient.MutableNode()["gender"].ShouldNotBeNull();
+        patient.MutableNode()["birthDate"].ShouldNotBeNull();
+        patient.MutableNode()["name"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -133,14 +133,14 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         patient.ResourceType.ShouldBe("Patient");
 
         // Should have address with Boston ZIP code prefix
-        ((IMutableJsonNode)patient).MutableNode["address"].ShouldNotBeNull();
-        var address = ((IMutableJsonNode)patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        patient.MutableNode()["address"].ShouldNotBeNull();
+        var address = patient.MutableNode()["address"]?.AsArray()?[0]?.AsObject();
         address?["postalCode"]?.GetValue<string>().ShouldStartWith("02");
         address?["city"]?.GetValue<string>().ShouldBe("Boston");
 
         // Should have phone with Boston area code
-        ((IMutableJsonNode)patient).MutableNode["telecom"].ShouldNotBeNull();
-        var telecom = ((IMutableJsonNode)patient).MutableNode["telecom"]?.AsArray()?[0]?.AsObject();
+        patient.MutableNode()["telecom"].ShouldNotBeNull();
+        var telecom = patient.MutableNode()["telecom"]?.AsArray()?[0]?.AsObject();
         var phoneValue = telecom?["value"]?.GetValue<string>();
         phoneValue.ShouldNotBeNull();
         (phoneValue!.StartsWith("617-", StringComparison.Ordinal) || phoneValue.StartsWith("857-", StringComparison.Ordinal)).ShouldBeTrue();
@@ -158,8 +158,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
             .FromCity(KnownCities.Chicago));
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tagArray = ((IMutableJsonNode)patient).MutableNode["meta"]?["tag"]?.AsArray();
+        patient.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tagArray = patient.MutableNode()["meta"]?["tag"]?.AsArray();
         tagArray!.Count.ShouldBe(1);
 
         var tag = tagArray?[0]?.AsObject();
@@ -175,8 +175,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
             .WithRealisticBMI());
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["extension"].ShouldNotBeNull();
-        var extensions = ((IMutableJsonNode)patient).MutableNode["extension"]?.AsArray();
+        patient.MutableNode()["extension"].ShouldNotBeNull();
+        var extensions = patient.MutableNode()["extension"]?.AsArray();
 
         // Find BMI extension
         var bmiExtension = extensions?
@@ -200,8 +200,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
             .WithAge(30));
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["extension"].ShouldNotBeNull();
-        var extensions = ((IMutableJsonNode)patient).MutableNode["extension"]?.AsArray();
+        patient.MutableNode()["extension"].ShouldNotBeNull();
+        var extensions = patient.MutableNode()["extension"]?.AsArray();
 
         // Find ethnicity extension (using us-core-race URL per FHIR spec)
         var ethnicityExtension = extensions?
@@ -225,8 +225,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         patient.ResourceType.ShouldBe("Patient");
 
         // Should have Seattle address
-        ((IMutableJsonNode)patient).MutableNode["address"].ShouldNotBeNull();
-        var address = ((IMutableJsonNode)patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        patient.MutableNode()["address"].ShouldNotBeNull();
+        var address = patient.MutableNode()["address"]?.AsArray()?[0]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Seattle");
         address?["state"]?.GetValue<string>().ShouldBe("Washington");
     }
@@ -239,7 +239,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
         // Assert: the overridden age is honored exactly (birth year is solved from the randomized
         // month/day, so it is not necessarily today.Year - 35).
-        var birthDate = ((IMutableJsonNode)patient).MutableNode["birthDate"]?.GetValue<string>();
+        var birthDate = patient.MutableNode()["birthDate"]?.GetValue<string>();
         AgeFromBirthDate(DateTime.Parse(birthDate!)).ShouldBe(35);
     }
 
@@ -266,8 +266,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         var patient = _faker.CreateSeattlePatient();
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tagArray = ((IMutableJsonNode)patient).MutableNode["meta"]?["tag"]?.AsArray();
+        patient.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tagArray = patient.MutableNode()["meta"]?["tag"]?.AsArray();
         tagArray!.Count.ShouldBe(1);
 
         var tag = tagArray?[0]?.AsObject();
@@ -281,8 +281,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         var patient = _faker.CreateSeattlePatient(p => p.WithRealisticBMI());
 
         // Assert
-        ((IMutableJsonNode)patient).MutableNode["extension"].ShouldNotBeNull();
-        var extensions = ((IMutableJsonNode)patient).MutableNode["extension"]?.AsArray();
+        patient.MutableNode()["extension"].ShouldNotBeNull();
+        var extensions = patient.MutableNode()["extension"]?.AsArray();
 
         // Find BMI extension
         var bmiExtension = extensions?
@@ -310,8 +310,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         var patient2 = _faker.CreatePatient();
 
         // Assert
-        ((IMutableJsonNode)patient1).MutableNode["meta"]?["tag"]?[0]?["code"]?.GetValue<string>().ShouldBe(tag1);
-        ((IMutableJsonNode)patient2).MutableNode["meta"]?["tag"]?[0]?["code"]?.GetValue<string>().ShouldBe(tag2);
+        patient1.MutableNode()["meta"]?["tag"]?[0]?["code"]?.GetValue<string>().ShouldBe(tag1);
+        patient2.MutableNode()["meta"]?["tag"]?[0]?["code"]?.GetValue<string>().ShouldBe(tag2);
     }
 
     [Fact]
@@ -327,8 +327,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         var patient2 = _faker.CreatePatient();
 
         // Assert
-        ((IMutableJsonNode)patient1).MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        ((IMutableJsonNode)patient2).MutableNode["meta"]?["tag"].ShouldBeNull();
+        patient1.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        patient2.MutableNode()["meta"]?["tag"].ShouldBeNull();
     }
 
     [Fact]

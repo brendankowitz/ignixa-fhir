@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -34,8 +34,8 @@ public class GroupBuilderTests
         group.ShouldNotBeNull();
         group.ResourceType.ShouldBe("Group");
         group.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)group).MutableNode["type"]?.GetValue<string>().ShouldBe("person");
-        ((IMutableJsonNode)group).MutableNode["actual"]?.GetValue<bool>().ShouldBeTrue();
+        group.MutableNode()["type"]?.GetValue<string>().ShouldBe("person");
+        group.MutableNode()["actual"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var meta = ((IMutableJsonNode)group).MutableNode["meta"]?.AsObject();
+        var meta = group.MutableNode()["meta"]?.AsObject();
         meta.ShouldNotBeNull();
 
         var tags = meta?["tag"]?.AsArray();
@@ -90,7 +90,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["type"]?.GetValue<string>().ShouldBe("person");
+        group.MutableNode()["type"]?.GetValue<string>().ShouldBe("person");
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["type"]?.GetValue<string>().ShouldBe("practitioner");
+        group.MutableNode()["type"]?.GetValue<string>().ShouldBe("practitioner");
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["type"]?.GetValue<string>().ShouldBe("device");
+        group.MutableNode()["type"]?.GetValue<string>().ShouldBe("device");
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["actual"]?.GetValue<bool>().ShouldBeTrue();
+        group.MutableNode()["actual"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["actual"]?.GetValue<bool>().ShouldBeFalse();
+        group.MutableNode()["actual"]?.GetValue<bool>().ShouldBeFalse();
     }
 
     #endregion
@@ -157,7 +157,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["name"]?.GetValue<string>().ShouldBe(name);
+        group.MutableNode()["name"]?.GetValue<string>().ShouldBe(name);
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode.AsObject()["name"].ShouldBeNull();
+        group.MutableNode().AsObject()["name"].ShouldBeNull();
     }
 
     #endregion
@@ -189,7 +189,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members.ShouldNotBeNull();
         members!.Count.ShouldBe(1);
 
@@ -212,7 +212,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members.ShouldNotBeNull();
         members!.Count.ShouldBe(1);
 
@@ -243,7 +243,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members.ShouldNotBeNull();
         members!.Count.ShouldBe(3);
 
@@ -270,7 +270,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members.ShouldNotBeNull();
         members!.Count.ShouldBe(4);
 
@@ -306,7 +306,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members.ShouldNotBeNull();
         members!.Count.ShouldBe(3);
 
@@ -336,7 +336,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members.ShouldNotBeNull();
         members!.Count.ShouldBe(3);
 
@@ -363,7 +363,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode.AsObject()["member"].ShouldBeNull();
+        group.MutableNode().AsObject()["member"].ShouldBeNull();
     }
 
     #endregion
@@ -393,14 +393,14 @@ public class GroupBuilderTests
         group.ShouldNotBeNull();
         group.ResourceType.ShouldBe("Group");
         group.Id.ShouldBe(groupId);
-        ((IMutableJsonNode)group).MutableNode["type"]?.GetValue<string>().ShouldBe("person");
-        ((IMutableJsonNode)group).MutableNode["actual"]?.GetValue<bool>().ShouldBeTrue();
-        ((IMutableJsonNode)group).MutableNode["name"]?.GetValue<string>().ShouldBe(groupName);
+        group.MutableNode()["type"]?.GetValue<string>().ShouldBe("person");
+        group.MutableNode()["actual"]?.GetValue<bool>().ShouldBeTrue();
+        group.MutableNode()["name"]?.GetValue<string>().ShouldBe(groupName);
 
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members!.Count.ShouldBe(3);
 
-        var meta = ((IMutableJsonNode)group).MutableNode["meta"]?.AsObject();
+        var meta = group.MutableNode()["meta"]?.AsObject();
         var tags = meta?["tag"]?.AsArray();
         tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
@@ -416,9 +416,9 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["actual"]?.GetValue<bool>().ShouldBeFalse();
-        ((IMutableJsonNode)group).MutableNode["name"]?.GetValue<string>().ShouldBe("All diabetic patients over 65");
-        ((IMutableJsonNode)group).MutableNode.AsObject()["member"].ShouldBeNull();
+        group.MutableNode()["actual"]?.GetValue<bool>().ShouldBeFalse();
+        group.MutableNode()["name"]?.GetValue<string>().ShouldBe("All diabetic patients over 65");
+        group.MutableNode().AsObject()["member"].ShouldBeNull();
     }
 
     [Fact]
@@ -437,10 +437,10 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        ((IMutableJsonNode)group).MutableNode["type"]?.GetValue<string>().ShouldBe("practitioner");
-        ((IMutableJsonNode)group).MutableNode["name"]?.GetValue<string>().ShouldBe("Cardiology Team");
+        group.MutableNode()["type"]?.GetValue<string>().ShouldBe("practitioner");
+        group.MutableNode()["name"]?.GetValue<string>().ShouldBe("Cardiology Team");
 
-        var members =((IMutableJsonNode)group).MutableNode["member"]?.AsArray();
+        var members =group.MutableNode()["member"]?.AsArray();
         members!.Count.ShouldBe(2);
     }
 

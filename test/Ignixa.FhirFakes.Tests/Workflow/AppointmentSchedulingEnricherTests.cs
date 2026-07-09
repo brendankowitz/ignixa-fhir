@@ -11,7 +11,7 @@ using Ignixa.FhirFakes.Workflow;
 using Ignixa.FhirFakes.Workflow.Enrichers;
 using Ignixa.Specification.Generated;
 using Shouldly;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Workflow;
 
@@ -44,7 +44,7 @@ public class AppointmentSchedulingEnricherTests
         });
 
         var appointment = graph.AllResources.Single(r => r.ResourceType == "Appointment");
-        var participants = ((IMutableJsonNode)appointment).MutableNode["participant"]!.AsArray();
+        var participants = appointment.MutableNode()["participant"]!.AsArray();
         participants.Any(p => p!["actor"]!["reference"]!.ToString() == $"Patient/{patientContext.Patient!.Id}").ShouldBeTrue();
         participants.Any(p => p!["actor"]!["reference"]!.ToString() == $"Practitioner/{practitioner.Id}").ShouldBeTrue();
     }
@@ -69,7 +69,7 @@ public class AppointmentSchedulingEnricherTests
         enricher.Enrich(graph, new ResourceGraphEnrichmentContext { SchemaProvider = schemaProvider, Faker = faker, Clock = TimeProvider.System });
 
         var appointment = graph.AllResources.Single(r => r.ResourceType == "Appointment");
-        ((IMutableJsonNode)patientContext.CurrentEncounter!).MutableNode["appointment"]!.AsArray().Single()!["reference"]!.ToString().ShouldBe($"Appointment/{appointment.Id}");
+        patientContext.CurrentEncounter!.MutableNode()["appointment"]!.AsArray().Single()!["reference"]!.ToString().ShouldBe($"Appointment/{appointment.Id}");
     }
 
     [Fact]
@@ -119,6 +119,6 @@ public class AppointmentSchedulingEnricherTests
             Clock = TimeProvider.System,
         });
 
-        return ((IMutableJsonNode)patientContext.CurrentEncounter!).MutableNode["appointment"];
+        return patientContext.CurrentEncounter!.MutableNode()["appointment"];
     }
 }

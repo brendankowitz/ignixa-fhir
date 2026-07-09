@@ -7,6 +7,7 @@ using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.EdgeCases.Strategies;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.EdgeCases;
 
@@ -56,7 +57,7 @@ public class TemporalCanApplyTests
         var manifest = new EdgeCasePipeline(42, EdgeCaseTargetFactory.Schema).Apply(resource, strategies);
 
         manifest.Mutations.ShouldAllBe(m => m.Path == "Patient.birthDate");
-        ((IMutableJsonNode)resource).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
-        ((IMutableJsonNode)resource).MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>().ShouldBe("Smith");
+        resource.MutableNode()["gender"]?.GetValue<string>().ShouldBe("male");
+        resource.MutableNode()["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>().ShouldBe("Smith");
     }
 }

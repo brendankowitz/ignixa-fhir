@@ -5,6 +5,7 @@
 
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -66,6 +67,6 @@ public class ResourceBundleComposerTests
 
         var bundle = ResourceBundleComposer.ToTransactionBundle([resource]);
 
-        ((IMutableJsonNode)bundle).MutableNode["type"]?.GetValue<string>().ShouldBe("transaction");
+        bundle.MutableNode()["type"]?.GetValue<string>().ShouldBe("transaction");
     }
 }

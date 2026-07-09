@@ -12,7 +12,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Population;
 
@@ -374,7 +374,7 @@ public class PopulationGeneratorTests
             var resource = entry.Resource;
             if (resource?.ResourceType == "Patient")
             {
-                return ((IMutableJsonNode)resource).MutableNode;
+                return resource.MutableNode();
             }
         }
 
