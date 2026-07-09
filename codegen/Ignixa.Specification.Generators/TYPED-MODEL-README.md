@@ -19,7 +19,8 @@ network access.
 
 ## Regen-drift guard
 
-Generated output must not drift from the generator. CI (and local pre-commit) runs:
+Generated output must not drift from the generator. Run manually before committing generated changes
+(not yet wired into CI or a pre-commit hook):
 
 ```bash
 # PowerShell
@@ -34,4 +35,4 @@ e.g. adding a divergent version can move a type from identical/additive to incom
 an element from the base to per-version, which shows up as a diff to review.
 
 The guard is intentionally **not** part of the default `dotnet test` run (it invokes the generator);
-run it in CI or on demand.
+run it manually on demand until it's wired into CI.

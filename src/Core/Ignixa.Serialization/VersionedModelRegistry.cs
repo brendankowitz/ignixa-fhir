@@ -1,10 +1,9 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
@@ -45,7 +44,15 @@ public static class VersionedModelRegistry
         Factories[(resourceType, version)] = factory;
     }
 
-    [Conditional("DEBUG")]
+    /// <summary>
+    /// Verifies a factory actually produces the resource type it's being registered under. Runs in
+    /// every build configuration, not just Debug: this is the only check standing between a mis-wired
+    /// <c>Register()</c> call and <see cref="TryCreate"/> silently handing back a wrong-shaped facade --
+    /// exactly the class of bug <see cref="CompatibleFhirVersionsAttribute"/> exists to catch on the
+    /// read side, except <see cref="TryCreate"/> never goes through <c>As&lt;T&gt;()</c> so that guard
+    /// cannot see this path at all. Registration happens a handful of times at process/tenant startup
+    /// (module initializers), so the extra probe-construction cost here is immaterial.
+    /// </summary>
     private static void AssertFactoryProducesMatchingType(string resourceType, Func<JsonObject, ResourceJsonNode> factory)
     {
         // ResourceType reads from the JSON, so it cannot distinguish a wrong-type factory. The CLR
@@ -54,10 +61,12 @@ public static class VersionedModelRegistry
         // type's simple name (suffix stripped) to the registered resource type.
         var probe = factory(new JsonObject { ["resourceType"] = resourceType });
         string producedTypeName = probe.GetType().Name.Replace("JsonNode", string.Empty, StringComparison.Ordinal);
-        Debug.Assert(
-            string.Equals(producedTypeName, resourceType, StringComparison.Ordinal),
-            $"VersionedModelRegistry factory for '{resourceType}' produced a '{probe.GetType().Name}'. "
-            + "The factory is mis-wired to the wrong typed model.");
+        if (!string.Equals(producedTypeName, resourceType, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"VersionedModelRegistry factory for '{resourceType}' produced a '{probe.GetType().Name}'. "
+                + "The factory is mis-wired to the wrong typed model.");
+        }
     }
 
     /// <summary>

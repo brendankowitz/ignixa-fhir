@@ -286,18 +286,19 @@ internal sealed class TypedModelClassifier
         bool isArray = element.cgIsArray();
 
         // Binding only differentiates when it produces an enum (required code binding with a value set).
+        // cgHasCodes() itself only returns true for Required bindings (see its definition), so binding
+        // strength can never actually vary here -- there is no required-vs-extensible case left to
+        // track once this gate has already passed, and no need to carry it in the signature.
         string? valueSetUrl = null;
-        string? bindingStrength = null;
         string? valueSetCodesHash = null;
         if (!isArray && element.cgHasCodes() && !string.IsNullOrEmpty(element.Binding?.ValueSet))
         {
             string rawValueSetUrl = element.Binding!.ValueSet;
             valueSetUrl = StripVersion(rawValueSetUrl);
-            bindingStrength = element.Binding.Strength?.ToString();
             valueSetCodesHash = ResolveValueSetCodesHash(definitions, rawValueSetUrl);
         }
 
-        return new ElementSignature(typeCode, isArray, IsChoice: false, valueSetUrl, VariantTypeCodes: null, bindingStrength, valueSetCodesHash);
+        return new ElementSignature(typeCode, isArray, IsChoice: false, valueSetUrl, VariantTypeCodes: null, valueSetCodesHash);
     }
 
     /// <summary>

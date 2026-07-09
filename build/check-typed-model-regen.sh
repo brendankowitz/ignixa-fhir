@@ -12,11 +12,13 @@
 # could not have detected).
 #
 # It compares a content snapshot of the generated dirs taken BEFORE and AFTER regeneration, so it
-# works whether or not the generated output is committed yet. In CI (where the output IS committed)
-# this is equivalent to "regenerate, then assert no git diff".
+# works whether or not the generated output is committed yet. Once wired into CI (where the output IS
+# committed), this would be equivalent to "regenerate, then assert no git diff".
 #
-# Run locally or in CI:  build/check-typed-model-regen.sh
-# Requires the FHIR packages (cached offline in this repo); does NOT hit the network in CI.
+# Run locally:  build/check-typed-model-regen.sh
+# NOT YET wired into CI or a pre-commit hook -- run it manually before committing generated changes.
+# Requires the FHIR packages already present in your local Firely SDK package cache (this repo does
+# not ship or check in that cache); does not otherwise hit the network.
 # -------------------------------------------------------------------------------------------------
 set -euo pipefail
 

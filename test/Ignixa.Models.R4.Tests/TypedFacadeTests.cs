@@ -135,4 +135,48 @@ public sealed class TypedFacadeTests
         p2.MaritalStatus!.MutableNode()["text"]!.GetValue<string>().ShouldBe("Married");
         ReferenceEquals(p1.MaritalStatus!.MutableNode(), p2.MaritalStatus!.MutableNode()).ShouldBeFalse();
     }
+
+    // -- Reference-typed fallback elements (no typed Reference facade in this cut; raw JsonNode) -----
+
+    [Fact]
+    public void GivenReferenceTypedFallbackElement_WhenSetAndSerialized_ThenRoundTripsThroughReparse()
+    {
+        // Observation.subject is one of the most heavily-used Reference-typed elements in FHIR, and
+        // (like every Reference-typed element -- see AbstractOrFallbackTypes) has no typed facade: the
+        // generated accessor is a raw JsonNode?, not a MutableJsonList<Reference>/Reference property.
+        var obs = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""")
+            .As<Ignixa.Models.R4.Observation>();
+
+        obs.Subject = new System.Text.Json.Nodes.JsonObject
+        {
+            ["reference"] = "Patient/123",
+            ["display"] = "Jean Chalmers",
+        };
+
+        obs.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
+
+        var reparsed = ResourceJsonNode.Parse(obs.SerializeToString()).As<Ignixa.Models.R4.Observation>();
+        reparsed.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
+        reparsed.Subject!["display"]!.GetValue<string>().ShouldBe("Jean Chalmers");
+    }
+
+    [Fact]
+    public void GivenReferenceFallbackValueAlreadyAttached_WhenAssignedToAnotherParent_ThenItIsClonedNotThrown()
+    {
+        // The fallback setter routes through the same BaseJsonNode.SetProperty as typed complex
+        // properties (see GivenComplexValueAlreadyAttached... above), so the same clone-on-reparent
+        // guarantee should hold here too -- worth pinning directly rather than assuming it transfers.
+        var reference = new System.Text.Json.Nodes.JsonObject { ["reference"] = "Patient/123" };
+
+        var obs1 = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""").As<Ignixa.Models.R4.Observation>();
+        var obs2 = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""").As<Ignixa.Models.R4.Observation>();
+
+        obs1.Subject = reference; // attaches `reference` under obs1
+
+        Should.NotThrow(() => obs2.Subject = reference);
+
+        obs1.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
+        obs2.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
+        ReferenceEquals(obs1.Subject, obs2.Subject).ShouldBeFalse();
+    }
 }
