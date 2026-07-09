@@ -257,11 +257,11 @@ public sealed class StructureDefinitionTypeAdapter
         _ => DiscriminatorType.Value,
     };
 
-    private static SlicingRules ParseSlicingRules(string? rules) => rules switch
+    private static SlicingRules ParseSlicingRules(string? rules) => rules?.ToUpperInvariant() switch
     {
-        null or "" or "open" or "Open" => SlicingRules.Open,
-        "closed" or "Closed" => SlicingRules.Closed,
-        "openAtEnd" or "OpenAtEnd" or "open-at-end" => SlicingRules.OpenAtEnd,
+        null or "" or "OPEN" => SlicingRules.Open,
+        "CLOSED" => SlicingRules.Closed,
+        "OPENATEND" or "OPEN-AT-END" => SlicingRules.OpenAtEnd,
         _ => throw new InvalidOperationException($"Unsupported slicing rules value '{rules}'."),
     };
 

@@ -211,4 +211,69 @@ public class StructureDefinitionTypeAdapterTests
         subject.ReferenceTargets.ShouldContain("Patient");
         subject.ReferenceTargets.ShouldContain("Group");
     }
+
+    // ===== Slicing rules parsing =====
+
+    [Theory]
+    [InlineData("open", SlicingRules.Open)]
+    [InlineData("Open", SlicingRules.Open)]
+    [InlineData("OPEN", SlicingRules.Open)]
+    [InlineData("closed", SlicingRules.Closed)]
+    [InlineData("Closed", SlicingRules.Closed)]
+    [InlineData("CLOSED", SlicingRules.Closed)]
+    [InlineData("openAtEnd", SlicingRules.OpenAtEnd)]
+    [InlineData("OpenAtEnd", SlicingRules.OpenAtEnd)]
+    [InlineData("OPENATEND", SlicingRules.OpenAtEnd)]
+    [InlineData("open-at-end", SlicingRules.OpenAtEnd)]
+    public void GivenExtensionSlicingWithRulesValue_WhenAdapted_ThenParsesExpectedSlicingRules(string rulesValue, SlicingRules expected)
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(PatientWithExtensionSlicingJson(rulesValue), "4.0.1")!;
+        var extension = (ITypeExtended)type.Children.Single(c => c.Info.Name == "extension");
+
+        extension.Slicing.ShouldNotBeNull();
+        extension.Slicing!.Rules.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GivenExtensionSlicingWithoutRulesProperty_WhenAdapted_ThenDefaultsToOpen()
+    {
+        var type = new StructureDefinitionTypeAdapter().Adapt(PatientWithExtensionSlicingJson(rulesValue: null), "4.0.1")!;
+        var extension = (ITypeExtended)type.Children.Single(c => c.Info.Name == "extension");
+
+        extension.Slicing.ShouldNotBeNull();
+        extension.Slicing!.Rules.ShouldBe(SlicingRules.Open);
+    }
+
+    [Fact]
+    public void GivenExtensionSlicingWithUnrecognizedRulesValue_WhenAdapted_ThenThrowsInvalidOperationException()
+    {
+        var adapter = new StructureDefinitionTypeAdapter();
+
+        Should.Throw<InvalidOperationException>(() => adapter.Adapt(PatientWithExtensionSlicingJson("bogus"), "4.0.1"));
+    }
+
+    private static string PatientWithExtensionSlicingJson(string? rulesValue)
+    {
+        var rulesProperty = rulesValue is null ? string.Empty : $"\"rules\":\"{rulesValue}\",";
+        return $$"""
+            {
+              "resourceType": "StructureDefinition",
+              "id": "Patient",
+              "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+              "version": "4.0.1",
+              "name": "Patient",
+              "kind": "resource",
+              "abstract": false,
+              "type": "Patient",
+              "baseDefinition": "http://hl7.org/fhir/StructureDefinition/DomainResource",
+              "snapshot": {
+                "element": [
+                  { "id": "Patient", "path": "Patient", "min": 0, "max": "*" },
+                  { "id": "Patient.extension", "path": "Patient.extension", "min": 0, "max": "*",
+                    "slicing": { "discriminator": [{ "type": "value", "path": "url" }], {{rulesProperty}}"ordered": false } }
+                ]
+              }
+            }
+            """;
+    }
 }
