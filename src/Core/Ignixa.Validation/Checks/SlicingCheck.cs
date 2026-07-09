@@ -26,9 +26,6 @@ namespace Ignixa.Validation.Checks;
 /// </remarks>
 public sealed class SlicingCheck : IValidationCheck
 {
-    private const string ClosedRule = "CLOSED";
-    private const string OpenAtEndRule = "OPENATEND";
-
     private readonly string _slicedName;
     private readonly SlicingMetadata _metadata;
     private readonly bool _isClosed;
@@ -45,9 +42,8 @@ public sealed class SlicingCheck : IValidationCheck
         _slicedName = slicedName ?? throw new ArgumentNullException(nameof(slicedName));
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
 
-        var rules = metadata.Rules?.ToUpperInvariant().Replace("-", string.Empty, StringComparison.Ordinal) ?? "OPEN";
-        _isClosed = rules == ClosedRule;
-        _isOpenAtEnd = rules == OpenAtEndRule;
+        _isClosed = metadata.Rules == SlicingRules.Closed;
+        _isOpenAtEnd = metadata.Rules == SlicingRules.OpenAtEnd;
         _deferred = ComputeDeferred(metadata);
     }
 

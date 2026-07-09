@@ -219,7 +219,7 @@ public sealed class StructureDefinitionTypeAdapter
         }
 
         var discriminators = ExtractDiscriminators(slicing);
-        var rules = ReadString(slicing, "rules") ?? "open";
+        var rules = ParseSlicingRules(ReadString(slicing, "rules"));
         var ordered = ReadBool(slicing, "ordered") ?? false;
         var slices = ExtractSlices(elements, headerIndex, headerPath, discriminators);
 
@@ -255,6 +255,14 @@ public sealed class StructureDefinitionTypeAdapter
         "type" => DiscriminatorType.Type,
         "profile" => DiscriminatorType.Profile,
         _ => DiscriminatorType.Value,
+    };
+
+    private static SlicingRules ParseSlicingRules(string? rules) => rules switch
+    {
+        null or "" or "open" or "Open" => SlicingRules.Open,
+        "closed" or "Closed" => SlicingRules.Closed,
+        "openAtEnd" or "OpenAtEnd" or "open-at-end" => SlicingRules.OpenAtEnd,
+        _ => throw new InvalidOperationException($"Unsupported slicing rules value '{rules}'."),
     };
 
     /// <summary>

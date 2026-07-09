@@ -22,7 +22,7 @@ public sealed class SlicingMetadata
     /// <param name="slices">Named slices carried by a profile; empty for a bare slicing header.</param>
     public SlicingMetadata(
         IReadOnlyList<DiscriminatorDefinition> discriminators,
-        string rules,
+        SlicingRules rules,
         bool ordered,
         IReadOnlyList<SliceDefinition>? slices = null)
     {
@@ -36,7 +36,7 @@ public sealed class SlicingMetadata
     public IReadOnlyList<DiscriminatorDefinition> Discriminators { get; }
 
     /// <summary>Gets the slicing rules: <c>Open</c>, <c>Closed</c>, or <c>OpenAtEnd</c>.</summary>
-    public string Rules { get; }
+    public SlicingRules Rules { get; }
 
     /// <summary>Gets a value indicating whether slices must appear in order.</summary>
     public bool Ordered { get; }

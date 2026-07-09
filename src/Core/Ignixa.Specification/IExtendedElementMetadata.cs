@@ -102,10 +102,25 @@ public interface IExtendedElementMetadata
 public record BindingMetadata(string ValueSetUrl, string Strength);
 
 /// <summary>
+/// Rules that define whether unsliced content is allowed in a sliced FHIR element.
+/// </summary>
+public enum SlicingRules
+{
+    /// <summary>Additional content is allowed anywhere in the sliced element.</summary>
+    Open,
+
+    /// <summary>Additional content that does not match a slice is not allowed.</summary>
+    Closed,
+
+    /// <summary>Additional content is allowed only after all matched slices.</summary>
+    OpenAtEnd,
+}
+
+/// <summary>
 /// Slicing metadata for elements that can be sliced in profiles.
 /// </summary>
 /// <param name="Discriminators">Array of discriminator paths (e.g., ["type:url"] for extension slicing).</param>
 /// <param name="Rules">Slicing rules: Open, Closed, or OpenAtEnd.</param>
 /// <param name="Ordered">Whether slices must appear in a specific order.</param>
 [SuppressMessage("Performance", "CA1819:Properties should not return arrays", Justification = "Array is appropriate for readonly metadata")]
-public record SlicingMetadata(string[] Discriminators, string Rules, bool Ordered);
+public record SlicingMetadata(string[] Discriminators, SlicingRules Rules, bool Ordered);

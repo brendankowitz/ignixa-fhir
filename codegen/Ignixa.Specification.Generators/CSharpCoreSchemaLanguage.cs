@@ -611,12 +611,13 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
                 .ToArray() ?? Array.Empty<string>();
 
             string rules = element.Slicing.Rules?.ToString() ?? "Open";
+            string rulesValue = $"Ignixa.Abstractions.SlicingRules.{rules}";
             bool ordered = element.Slicing.Ordered ?? false;
 
             if (discriminators.Length > 0)
             {
                 string discriminatorArray = $"new Ignixa.Abstractions.DiscriminatorDefinition[] {{ {string.Join(", ", discriminators)} }}";
-                slicing = $"new Ignixa.Abstractions.SlicingMetadata({discriminatorArray}, \"{rules}\", {(ordered ? "true" : "false")})";
+                slicing = $"new Ignixa.Abstractions.SlicingMetadata({discriminatorArray}, {rulesValue}, {(ordered ? "true" : "false")})";
             }
         }
 

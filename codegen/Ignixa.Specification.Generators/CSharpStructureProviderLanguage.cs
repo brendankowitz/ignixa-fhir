@@ -442,12 +442,13 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
                 .ToArray() ?? Array.Empty<string>();
 
             string rules = element.Slicing.Rules?.ToString() ?? "Open";
+            string rulesValue = $"SlicingRules.{rules}";
             bool ordered = element.Slicing.Ordered ?? false;
 
             if (discriminators.Length > 0)
             {
                 string discriminatorArray = $"new Ignixa.Abstractions.DiscriminatorDefinition[] {{ {string.Join(", ", discriminators)} }}";
-                slicing = $"new SlicingMetadata({discriminatorArray}, \"{rules}\", {(ordered ? "true" : "false")})";
+                slicing = $"new SlicingMetadata({discriminatorArray}, {rulesValue}, {(ordered ? "true" : "false")})";
             }
         }
 

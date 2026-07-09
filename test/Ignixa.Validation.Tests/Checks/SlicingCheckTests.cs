@@ -31,7 +31,7 @@ public sealed class SlicingCheckTests
         return JsonNodeSourceNode.Create(json).ToElement(TestSchemaProvider.GetR4Schema());
     }
 
-    private static SlicingMetadata ValueUrlSlicing(string rules, params SliceDefinition[] slices)
+    private static SlicingMetadata ValueUrlSlicing(SlicingRules rules, params SliceDefinition[] slices)
         => new(
             new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "url") },
             rules,
@@ -45,7 +45,7 @@ public sealed class SlicingCheckTests
     public void GivenExtensionMatchingSliceWithinMax_WhenValidating_ThenSucceeds()
     {
         var element = PatientWith("""[{"url":"http://x/race","valueString":"Asian"}]""");
-        var metadata = ValueUrlSlicing("closed", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.Closed, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, FullDepth, new ValidationState());
@@ -58,7 +58,7 @@ public sealed class SlicingCheckTests
     public void GivenTwoExtensionsForSingleCardinalitySlice_WhenValidating_ThenReportsSliceCardinalityError()
     {
         var element = PatientWith("""[{"url":"http://x/race","valueString":"A"},{"url":"http://x/race","valueString":"B"}]""");
-        var metadata = ValueUrlSlicing("open", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.Open, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, FullDepth, new ValidationState());
@@ -74,7 +74,7 @@ public sealed class SlicingCheckTests
     public void GivenUnknownUrlUnderClosedSlicing_WhenValidating_ThenReportsUnmatchedError()
     {
         var element = PatientWith("""[{"url":"http://x/unknown","valueString":"?"}]""");
-        var metadata = ValueUrlSlicing("closed", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.Closed, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, FullDepth, new ValidationState());
@@ -88,7 +88,7 @@ public sealed class SlicingCheckTests
     public void GivenUnknownUrlUnderOpenSlicing_WhenValidating_ThenAcceptsAsDefaultBucket()
     {
         var element = PatientWith("""[{"url":"http://x/unknown","valueString":"?"}]""");
-        var metadata = ValueUrlSlicing("open", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.Open, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, FullDepth, new ValidationState());
@@ -102,7 +102,7 @@ public sealed class SlicingCheckTests
     {
         var element = PatientWith("""[{"url":"http://x/race","valueString":"A"}]""");
         var metadata = ValueUrlSlicing(
-            "open",
+            SlicingRules.Open,
             ValueUrlSlice("race", 0, 1, "http://x/race"),
             ValueUrlSlice("birthsex", 1, 1, "http://x/birthsex"));
         var check = new SlicingCheck("extension", metadata);
@@ -122,7 +122,7 @@ public sealed class SlicingCheckTests
         var element = PatientWith("""[{"url":"http://x/a","valueString":"present"}]""");
         var metadata = new SlicingMetadata(
             new[] { new DiscriminatorDefinition(DiscriminatorType.Exists, "valueString") },
-            "closed",
+            SlicingRules.Closed,
             ordered: false,
             new[] { new SliceDefinition("hasValueString", 1, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Exists, "valueString", null) }) });
         var check = new SlicingCheck("extension", metadata);
@@ -137,7 +137,7 @@ public sealed class SlicingCheckTests
     public void GivenSpecDepth_WhenValidating_ThenSkippedRegardlessOfViolations()
     {
         var element = PatientWith("""[{"url":"http://x/race","valueString":"A"},{"url":"http://x/race","valueString":"B"}]""");
-        var metadata = ValueUrlSlicing("closed", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.Closed, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec }, new ValidationState());
@@ -152,7 +152,7 @@ public sealed class SlicingCheckTests
         var element = PatientWith("""[{"url":"http://x/race","valueString":"A"},{"url":"http://x/race","valueString":"B"}]""");
         var metadata = new SlicingMetadata(
             new[] { new DiscriminatorDefinition(DiscriminatorType.Profile, "$this") },
-            "closed",
+            SlicingRules.Closed,
             ordered: false,
             new[] { new SliceDefinition("race", 0, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Profile, "$this", "http://x/race") }) });
         var check = new SlicingCheck("extension", metadata);
@@ -175,7 +175,7 @@ public sealed class SlicingCheckTests
         """);
         var metadata = new SlicingMetadata(
             new[] { new DiscriminatorDefinition(DiscriminatorType.Type, "value") },
-            "closed",
+            SlicingRules.Closed,
             ordered: false,
             new[]
             {
@@ -199,7 +199,7 @@ public sealed class SlicingCheckTests
           {"url":"http://x/extra","valueString":"trailing"}
         ]
         """);
-        var metadata = ValueUrlSlicing("openAtEnd", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.OpenAtEnd, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, FullDepth, new ValidationState());
@@ -217,7 +217,30 @@ public sealed class SlicingCheckTests
           {"url":"http://x/race","valueString":"A"}
         ]
         """);
-        var metadata = ValueUrlSlicing("openAtEnd", ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var metadata = ValueUrlSlicing(SlicingRules.OpenAtEnd, ValueUrlSlice("race", 0, 1, "http://x/race"));
+        var check = new SlicingCheck("extension", metadata);
+
+        var result = check.Validate(element, FullDepth, new ValidationState());
+
+        result.IsValid.ShouldBeFalse();
+        var issue = result.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("slicing-unmatched");
+    }
+
+    [Fact]
+    public void GivenOpenAtEndEnumRule_WhenUnmatchedContentPrecedesMatchedSlice_ThenReportsUnmatchedError()
+    {
+        var element = PatientWith("""
+        [
+          {"url":"http://x/extra","valueString":"leading"},
+          {"url":"http://x/race","valueString":"A"}
+        ]
+        """);
+        var metadata = new SlicingMetadata(
+            new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "url") },
+            SlicingRules.OpenAtEnd,
+            ordered: false,
+            new[] { ValueUrlSlice("race", 0, 1, "http://x/race") });
         var check = new SlicingCheck("extension", metadata);
 
         var result = check.Validate(element, FullDepth, new ValidationState());
@@ -238,7 +261,7 @@ public sealed class SlicingCheckTests
         """);
         var metadata = new SlicingMetadata(
             new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "url") },
-            "open",
+            SlicingRules.Open,
             ordered: true,
             new[]
             {
@@ -263,7 +286,7 @@ public sealed class SlicingCheckTests
         // Information issue, never raise a slicing Error (which would falsely reject a valid resource).
         var metadata = new SlicingMetadata(
             new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "%terminologies") },
-            "closed",
+            SlicingRules.Closed,
             ordered: false,
             new[] { new SliceDefinition("race", 0, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Value, "%terminologies", "http://x/race") }) });
         var check = new SlicingCheck("extension", metadata);
@@ -286,7 +309,7 @@ public sealed class SlicingCheckTests
         ]
         """);
         var metadata = ValueUrlSlicing(
-            "closed",
+            SlicingRules.Closed,
             ValueUrlSlice("race", 0, 1, "http://x/race"),
             ValueUrlSlice("birthsex", 0, 1, "http://x/birthsex"));
         var check = new SlicingCheck("extension", metadata);
