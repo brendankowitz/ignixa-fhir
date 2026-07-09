@@ -556,15 +556,15 @@ public class NotReferencedSearchTests : IncludeTestBase
             ResourceType = "Encounter",
             Id = Guid.NewGuid().ToString()
         };
-        ((IMutableJsonNode)encounter).MutableNode["meta"] = CreateMetaTagJson(tag);
-        ((IMutableJsonNode)encounter).MutableNode["status"] = "finished";
-        ((IMutableJsonNode)encounter).MutableNode["class"] = new JsonObject
+        encounter.MutableNode["meta"] = CreateMetaTagJson(tag);
+        encounter.MutableNode["status"] = "finished";
+        encounter.MutableNode["class"] = new JsonObject
         {
             ["system"] = "http://terminology.hl7.org/CodeSystem/v3-ActCode",
             ["code"] = "AMB",
             ["display"] = "ambulatory"
         };
-        ((IMutableJsonNode)encounter).MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
+        encounter.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
 
         return encounter;
     }

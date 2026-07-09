@@ -10,7 +10,6 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.FhirFakes.Scenarios.Codes;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Operations.Conditional;
 
@@ -86,7 +85,7 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         createdPatient.Id.ShouldNotBeNullOrEmpty();
 
         // Verify the identifier was preserved
-        var identifiers = ((IMutableJsonNode)createdPatient).MutableNode["identifier"]?.AsArray();
+        var identifiers = createdPatient.MutableNode["identifier"]?.AsArray();
         identifiers.ShouldNotBeNull();
 
         var matchingIdentifier = identifiers!.FirstOrDefault(i =>
@@ -159,7 +158,7 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
 
         var createdResources = await Harness.CreateResourcesAsync([existingPatient]);
         var existingId = createdResources[0].Id;
-        var existingVersionId = ((IMutableJsonNode)createdResources[0]).MutableNode["meta"]?["versionId"]?.GetValue<string>();
+        var existingVersionId = createdResources[0].MutableNode["meta"]?["versionId"]?.GetValue<string>();
 
         // Create a second patient with the SAME identifier (but different name)
         var duplicatePatient = CreatePatient()
@@ -185,10 +184,10 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
 
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
         returnedPatient.Id.ShouldBe(existingId, "server should return the existing resource ID");
-        ((IMutableJsonNode)returnedPatient).MutableNode["meta"]?["versionId"]?.GetValue<string>().ShouldBe(existingVersionId, "no new version should be created");
+        returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>().ShouldBe(existingVersionId, "no new version should be created");
 
         // Verify it returned the ORIGINAL patient (with "Charlie"), not the duplicate request (with "David")
-        var givenName = ((IMutableJsonNode)returnedPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = returnedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Charlie", "server should return the existing resource, not create a new one");
     }
 
@@ -240,7 +239,7 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         returnedPatient.Id.ShouldBe(existingId);
 
         // Verify original patient returned (Eve, not Frank)
-        var givenName = ((IMutableJsonNode)returnedPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = returnedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Eve");
     }
 
@@ -404,7 +403,7 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Created, "combined criteria should not match existing patient (John != Jane)");
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
-        var givenName = ((IMutableJsonNode)createdPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = createdPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Jane");
     }
 
@@ -600,14 +599,14 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
         returnedPatient.ResourceType.ShouldBe("Patient");
         returnedPatient.Id.ShouldNotBeNullOrEmpty();
-        ((IMutableJsonNode)returnedPatient).MutableNode["meta"]?["versionId"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+        returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
 
         // Verify content matches
-        var familyName = ((IMutableJsonNode)returnedPatient).MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        var familyName = returnedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>();
         familyName.ShouldBe("RepresentationTest");
 
         // Verify ETag matches versionId
-        var versionId = ((IMutableJsonNode)returnedPatient).MutableNode["meta"]?["versionId"]?.GetValue<string>();
+        var versionId = returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>();
         response.Headers.ETag!.Tag.ShouldBe($"\"{versionId}\"");
         response.Headers.ETag!.IsWeak.ShouldBeTrue();
     }
@@ -727,10 +726,10 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
 
         // Verify all content preserved
-        ((IMutableJsonNode)createdPatient).MutableNode["birthDate"]?.GetValue<string>().ShouldBe(birthDate);
-        var familyName = ((IMutableJsonNode)createdPatient).MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        createdPatient.MutableNode["birthDate"]?.GetValue<string>().ShouldBe(birthDate);
+        var familyName = createdPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>();
         familyName.ShouldBe("ContentTest");
-        var givenName = ((IMutableJsonNode)createdPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = createdPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Maria");
     }
 

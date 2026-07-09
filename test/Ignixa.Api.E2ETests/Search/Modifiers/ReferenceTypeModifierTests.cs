@@ -10,7 +10,6 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Scenarios;
 using Ignixa.FhirFakes.Builders;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Modifiers;
 
@@ -62,7 +61,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results.Length.ShouldBeGreaterThanOrEqualTo(2, "both observations have Patient1 as subject");
         foreach (var obs in results)
         {
-            var subjectRef = ((IMutableJsonNode)obs).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldNotBeNull();
             subjectRef!.ShouldContain("Patient/");
         }
@@ -120,7 +119,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results[0].Id.ShouldBe(scenario.Observation1.Id);
 
         // Verify performer is actually a Practitioner reference
-        var performerRef = ((IMutableJsonNode)results[0]).MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
+        var performerRef = results[0].MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
         performerRef.ShouldNotBeNull();
         performerRef!.ShouldContain("Practitioner/");
     }
@@ -149,7 +148,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results[0].Id.ShouldBe(scenario.Observation2.Id);
 
         // Verify performer is actually an Organization reference
-        var performerRef = ((IMutableJsonNode)results[0]).MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
+        var performerRef = results[0].MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
         performerRef.ShouldNotBeNull();
         performerRef!.ShouldContain("Organization/", customMessage: "performer should reference an Organization resource");
     }
@@ -243,7 +242,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        ((IMutableJsonNode)patientWithOrganizationGP).MutableNode["generalPractitioner"] = new JsonArray
+        patientWithOrganizationGP.MutableNode["generalPractitioner"] = new JsonArray
         {
             new JsonObject
             {
@@ -260,7 +259,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(1, "only one patient has Practitioner as generalPractitioner");
         results[0].Id.ShouldBe(patientWithPractitionerGP.Id);
 
-        var gpRef = ((IMutableJsonNode)results[0]).MutableNode["generalPractitioner"]?[0]?["reference"]?.GetValue<string>();
+        var gpRef = results[0].MutableNode["generalPractitioner"]?[0]?["reference"]?.GetValue<string>();
         gpRef.ShouldNotBeNull();
         gpRef.ShouldContain("Practitioner/", customMessage: "generalPractitioner should reference a Practitioner");
     }
@@ -302,7 +301,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        ((IMutableJsonNode)patientWithOrganizationGP).MutableNode["generalPractitioner"] = new JsonArray
+        patientWithOrganizationGP.MutableNode["generalPractitioner"] = new JsonArray
         {
             new JsonObject
             {
@@ -319,7 +318,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(1, "only one patient has Organization as generalPractitioner");
         results[0].Id.ShouldBe(patientWithOrganizationGP.Id);
 
-        var gpRef = ((IMutableJsonNode)results[0]).MutableNode["generalPractitioner"]?[0]?["reference"]?.GetValue<string>();
+        var gpRef = results[0].MutableNode["generalPractitioner"]?[0]?["reference"]?.GetValue<string>();
         gpRef.ShouldNotBeNull();
         gpRef.ShouldContain("Organization/", customMessage: "generalPractitioner should reference an Organization");
     }
@@ -392,7 +391,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
 
         foreach (var obs in results)
         {
-            var subjectRef = ((IMutableJsonNode)obs).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldNotBeNull();
             subjectRef!.ShouldContain("Patient/");
         }
@@ -437,7 +436,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(1, "observation with relative Patient reference should match");
         results[0].Id.ShouldBe(observation.Id);
 
-        var subjectRef = ((IMutableJsonNode)results[0]).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldNotBeNull();
         subjectRef!.ShouldContain("Patient/", customMessage: "subject should be a relative Patient reference");
     }
@@ -470,7 +469,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
 
         // Manually set full URL reference
         var baseUrl = Client.BaseAddress?.ToString().TrimEnd('/') ?? "http://localhost";
-        ((IMutableJsonNode)observation).MutableNode["subject"] = new JsonObject
+        observation.MutableNode["subject"] = new JsonObject
         {
             ["reference"] = $"{baseUrl}/Patient/{createdPatient.Id}"
         };
@@ -484,7 +483,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(1, "observation with full URL Patient reference should match");
         results[0].Id.ShouldBe(observation.Id);
 
-        var subjectRef = ((IMutableJsonNode)results[0]).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldNotBeNull();
         subjectRef!.ShouldContain("Patient/", customMessage: "subject should reference a Patient (full URL or relative)");
     }
@@ -574,9 +573,9 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the final observation should match");
         results[0].Id.ShouldBe(obsFinal.Id);
-        ((IMutableJsonNode)results[0]).MutableNode["status"]?.GetValue<string>().ShouldBe("final");
+        results[0].MutableNode["status"]?.GetValue<string>().ShouldBe("final");
 
-        var subjectRef = ((IMutableJsonNode)results[0]).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef!.ShouldContain("Patient/");
     }
 

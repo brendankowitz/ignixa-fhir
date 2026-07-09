@@ -9,7 +9,6 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.FhirFakes.Scenarios.Codes;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Operations.Conditional;
 
@@ -79,7 +78,7 @@ public class ConditionalUpdateTests : CapabilityDrivenTestBase
         createdPatient.Id.ShouldNotBeNullOrEmpty();
 
         // Verify the identifier was preserved
-        var identifiers = ((IMutableJsonNode)createdPatient).MutableNode["identifier"]?.AsArray();
+        var identifiers = createdPatient.MutableNode["identifier"]?.AsArray();
         identifiers.ShouldNotBeNull();
 
         var matchingIdentifier = identifiers!.FirstOrDefault(i =>
@@ -175,11 +174,11 @@ public class ConditionalUpdateTests : CapabilityDrivenTestBase
         returnedPatient.Id.ShouldBe(existingId, "server should preserve the existing resource ID");
 
         // Verify the name was updated
-        var givenName = ((IMutableJsonNode)returnedPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = returnedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Charles", "server should update the resource content");
 
         // Verify version was incremented
-        var versionId = ((IMutableJsonNode)returnedPatient).MutableNode["meta"]?["versionId"]?.GetValue<string>();
+        var versionId = returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>();
         versionId.ShouldNotBeNullOrEmpty();
         int.Parse(versionId!).ShouldBeGreaterThan(1, "version should be incremented after update");
     }
@@ -231,7 +230,7 @@ public class ConditionalUpdateTests : CapabilityDrivenTestBase
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
         returnedPatient.Id.ShouldBe(existingId);
 
-        var givenName = ((IMutableJsonNode)returnedPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = returnedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Dave", "server should update the resource content");
     }
 

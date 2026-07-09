@@ -9,7 +9,6 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -445,7 +444,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
             .WithStatus("final")
             .Build();
         // Override subject with untyped reference
-        ((IMutableJsonNode)obs).MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject { ["reference"] = createdPatient.Id };
+        obs.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject { ["reference"] = createdPatient.Id };
         var createdObs = await Harness.CreateResourceAsync(obs);
 
         // Act - wildcard include

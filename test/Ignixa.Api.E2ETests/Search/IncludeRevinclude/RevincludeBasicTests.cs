@@ -8,7 +8,6 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -219,7 +218,7 @@ public class IncludeSearchTests_BasicRevinclude : IncludeTestBase
         var observations = resources.Where(r => r.ResourceType == "Observation").ToList();
         foreach (var obs in observations)
         {
-            var subjectRef = ((IMutableJsonNode)obs).MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();
             subjectRef!.ShouldContain(trumanId);
         }
     }

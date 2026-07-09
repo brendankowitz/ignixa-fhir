@@ -114,11 +114,11 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
         patchedPatient.Id.ShouldBe(existingId, "patched resource should have same ID as existing resource");
 
         // Verify gender was changed to female
-        var gender = ((IMutableJsonNode)patchedPatient).MutableNode["gender"]?.GetValue<string>();
+        var gender = patchedPatient.MutableNode["gender"]?.GetValue<string>();
         gender.ShouldBe("female", "gender should be patched to 'female'");
 
         // Verify other fields unchanged
-        var familyName = ((IMutableJsonNode)patchedPatient).MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        var familyName = patchedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>();
         familyName.ShouldBe("Smith", "family name should be unchanged");
     }
 
@@ -260,10 +260,10 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
 
         var createdPatients = await Harness.CreateResourcesAsync([patient]);
         var existingId = createdPatients[0].Id;
-        var originalVersionId = ((IMutableJsonNode)createdPatients[0]).MutableNode["meta"]?["versionId"]?.GetValue<string>();
+        var originalVersionId = createdPatients[0].MutableNode["meta"]?["versionId"]?.GetValue<string>();
 
         // Verify original gender is male
-        var originalGender = ((IMutableJsonNode)createdPatients[0]).MutableNode["gender"]?.GetValue<string>();
+        var originalGender = createdPatients[0].MutableNode["gender"]?.GetValue<string>();
         originalGender.ShouldBe("male", "original gender should be male");
 
         var patchDocument = CreateGenderPatchDocument("female");
@@ -281,17 +281,17 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
         patchedPatient.Id.ShouldBe(existingId);
 
         // Verify gender was changed to female
-        var newGender = ((IMutableJsonNode)patchedPatient).MutableNode["gender"]?.GetValue<string>();
+        var newGender = patchedPatient.MutableNode["gender"]?.GetValue<string>();
         newGender.ShouldBe("female", "gender should be patched to 'female'");
 
         // Verify version ID was incremented (resource was updated)
-        var newVersionId = ((IMutableJsonNode)patchedPatient).MutableNode["meta"]?["versionId"]?.GetValue<string>();
+        var newVersionId = patchedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>();
         newVersionId.ShouldNotBe(originalVersionId, "version ID should be incremented after patch");
 
         // Verify other fields unchanged
-        var familyName = ((IMutableJsonNode)patchedPatient).MutableNode["name"]?[0]?["family"]?.GetValue<string>();
+        var familyName = patchedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>();
         familyName.ShouldBe(uniqueFamilyName);
-        var givenName = ((IMutableJsonNode)patchedPatient).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var givenName = patchedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         givenName.ShouldBe("Charlie");
     }
 
@@ -319,8 +319,8 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
     private static ResourceJsonNode CreateGenderPatchDocument(string newGender)
     {
         var patchDocument = new ResourceJsonNode();
-        ((IMutableJsonNode)patchDocument).MutableNode["resourceType"] = "Parameters";
-        ((IMutableJsonNode)patchDocument).MutableNode["parameter"] = new JsonArray
+        patchDocument.MutableNode["resourceType"] = "Parameters";
+        patchDocument.MutableNode["parameter"] = new JsonArray
         {
             new JsonObject
             {

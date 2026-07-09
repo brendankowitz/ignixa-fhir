@@ -159,7 +159,7 @@ public sealed class SearchTestHarness
         ArgumentNullException.ThrowIfNull(resource);
 
         var resourceType = resource.ResourceType;
-        var json = ((IMutableJsonNode)resource).MutableNode.ToJsonString();
+        var json = resource.MutableNode.ToJsonString();
 
         var response = await _client.PostAsync(
             $"/{resourceType}",
@@ -187,7 +187,7 @@ public sealed class SearchTestHarness
             throw new ArgumentException("Resource must have an ID for update", nameof(resource));
         }
 
-        var json = ((IMutableJsonNode)resource).MutableNode.ToJsonString();
+        var json = resource.MutableNode.ToJsonString();
 
         var response = await _client.PutAsync(
             $"/{resourceType}/{resourceId}",
@@ -235,7 +235,7 @@ public sealed class SearchTestHarness
         }
 
         // POST bundle to root
-        var bundleJson = ((IMutableJsonNode)bundle).MutableNode.ToJsonString();
+        var bundleJson = bundle.MutableNode.ToJsonString();
         var response = await _client.PostAsync(
             "/",
             new StringContent(bundleJson, System.Text.Encoding.UTF8, "application/fhir+json"),
@@ -340,7 +340,7 @@ public sealed class SearchTestHarness
         ArgumentNullException.ThrowIfNull(resource);
 
         var resourceType = resource.ResourceType;
-        var json = ((IMutableJsonNode)resource).MutableNode.ToJsonString();
+        var json = resource.MutableNode.ToJsonString();
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceType}")
         {
@@ -393,7 +393,7 @@ public sealed class SearchTestHarness
         ArgumentNullException.ThrowIfNull(resource);
 
         var resourceType = resource.ResourceType;
-        var json = ((IMutableJsonNode)resource).MutableNode.ToJsonString();
+        var json = resource.MutableNode.ToJsonString();
 
         var url = string.IsNullOrEmpty(queryString)
             ? $"/{resourceType}"
@@ -462,7 +462,7 @@ public sealed class SearchTestHarness
             ? $"/{resourceType}"
             : $"/{resourceType}?{queryString}";
 
-        var json = ((IMutableJsonNode)patchDocument).MutableNode.ToJsonString();
+        var json = patchDocument.MutableNode.ToJsonString();
 
         var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
         {

@@ -9,7 +9,6 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Harness;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Examples;
 
@@ -74,7 +73,7 @@ public class PatientBuilderE2EExamples : CapabilityDrivenTestBase
         results[0].ResourceType.ShouldBe("Observation");
 
         // Verify observation references the patient
-        var subjectRef = ((IMutableJsonNode)results[0]).MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef!.ShouldContain(scenario.Patient!.Id);
     }
 

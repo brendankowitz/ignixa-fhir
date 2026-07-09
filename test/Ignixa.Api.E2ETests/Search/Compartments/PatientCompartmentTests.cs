@@ -12,7 +12,6 @@ using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization.Models;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Compartments;
 
@@ -113,7 +112,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         // Verify all returned resources are tagged with our test tag
         foreach (var r in results)
         {
-            var meta = ((IMutableJsonNode)r).MutableNode["meta"];
+            var meta = r.MutableNode["meta"];
             meta.ShouldNotBeNull();
             var tagArray = meta?["tag"];
             tagArray.ShouldNotBeNull();
@@ -252,7 +251,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         foreach (var obs in results)
         {
             obs.ResourceType.ShouldBe("Observation");
-            var codeNode = ((IMutableJsonNode)obs).MutableNode["code"]?["coding"]?[0]?["code"];
+            var codeNode = obs.MutableNode["code"]?["coding"]?[0]?["code"];
             codeNode.ShouldNotBeNull();
             codeNode!.GetValue<string>().ShouldBe("29463-7");
         }
@@ -329,7 +328,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         // Verify all returned resources are tagged with our test tag
         foreach (var r in results)
         {
-            var meta = ((IMutableJsonNode)r).MutableNode["meta"];
+            var meta = r.MutableNode["meta"];
             meta.ShouldNotBeNull();
             var tagArray = meta?["tag"];
             tagArray.ShouldNotBeNull();
@@ -406,7 +405,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         var encounter = faker.Generate("Encounter");
 
         // Link encounter to patient
-        ((IMutableJsonNode)encounter).MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
+        encounter.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };

@@ -112,9 +112,9 @@ public class ChainingAndSortTests : CapabilityDrivenTestBase
         for (int i = 0; i < 13; i++)
         {
             var service = faker.Generate("HealthcareService");
-            ((IMutableJsonNode)service).MutableNode["name"] = $"Healthcare Service {i + 1:D2}";
-            ((IMutableJsonNode)service).MutableNode["active"] = true;
-            ((IMutableJsonNode)service).MutableNode["location"] = new JsonArray
+            service.MutableNode["name"] = $"Healthcare Service {i + 1:D2}";
+            service.MutableNode["active"] = true;
+            service.MutableNode["location"] = new JsonArray
             {
                 new JsonObject { ["reference"] = $"Location/{(i % 2 == 0 ? location1.Id : location2.Id)}" }
             };
@@ -122,9 +122,9 @@ public class ChainingAndSortTests : CapabilityDrivenTestBase
 
             // Create active PractitionerRole linking service to practitioner
             var role = faker.Generate("PractitionerRole");
-            ((IMutableJsonNode)role).MutableNode["active"] = true;
-            ((IMutableJsonNode)role).MutableNode["practitioner"] = new JsonObject { ["reference"] = $"Practitioner/{practitionerId}" };
-            ((IMutableJsonNode)role).MutableNode["healthcareService"] = new JsonArray
+            role.MutableNode["active"] = true;
+            role.MutableNode["practitioner"] = new JsonObject { ["reference"] = $"Practitioner/{practitionerId}" };
+            role.MutableNode["healthcareService"] = new JsonArray
             {
                 new JsonObject { ["reference"] = $"HealthcareService/{service.Id}" }
             };
@@ -134,18 +134,18 @@ public class ChainingAndSortTests : CapabilityDrivenTestBase
         // Create 2 HealthcareServices that DON'T match the filter criteria
         // Service 14: Missing name (name:missing=false will exclude it)
         var serviceNoName = faker.Generate("HealthcareService");
-        ((IMutableJsonNode)serviceNoName).MutableNode.Remove("name");
-        ((IMutableJsonNode)serviceNoName).MutableNode["active"] = true;
-        ((IMutableJsonNode)serviceNoName).MutableNode["location"] = new JsonArray
+        serviceNoName.MutableNode.Remove("name");
+        serviceNoName.MutableNode["active"] = true;
+        serviceNoName.MutableNode["location"] = new JsonArray
         {
             new JsonObject { ["reference"] = $"Location/{location1.Id}" }
         };
         resources.Add(serviceNoName);
 
         var roleForNoName = faker.Generate("PractitionerRole");
-        ((IMutableJsonNode)roleForNoName).MutableNode["active"] = true;
-        ((IMutableJsonNode)roleForNoName).MutableNode["practitioner"] = new JsonObject { ["reference"] = $"Practitioner/{practitionerId}" };
-        ((IMutableJsonNode)roleForNoName).MutableNode["healthcareService"] = new JsonArray
+        roleForNoName.MutableNode["active"] = true;
+        roleForNoName.MutableNode["practitioner"] = new JsonObject { ["reference"] = $"Practitioner/{practitionerId}" };
+        roleForNoName.MutableNode["healthcareService"] = new JsonArray
         {
             new JsonObject { ["reference"] = $"HealthcareService/{serviceNoName.Id}" }
         };
@@ -153,15 +153,15 @@ public class ChainingAndSortTests : CapabilityDrivenTestBase
 
         // Service 15: Missing location (location:missing=false will exclude it)
         var serviceNoLocation = faker.Generate("HealthcareService");
-        ((IMutableJsonNode)serviceNoLocation).MutableNode["name"] = "Healthcare Service No Location";
-        ((IMutableJsonNode)serviceNoLocation).MutableNode["active"] = true;
-        ((IMutableJsonNode)serviceNoLocation).MutableNode.Remove("location");
+        serviceNoLocation.MutableNode["name"] = "Healthcare Service No Location";
+        serviceNoLocation.MutableNode["active"] = true;
+        serviceNoLocation.MutableNode.Remove("location");
         resources.Add(serviceNoLocation);
 
         var roleForNoLocation = faker.Generate("PractitionerRole");
-        ((IMutableJsonNode)roleForNoLocation).MutableNode["active"] = true;
-        ((IMutableJsonNode)roleForNoLocation).MutableNode["practitioner"] = new JsonObject { ["reference"] = $"Practitioner/{practitionerId}" };
-        ((IMutableJsonNode)roleForNoLocation).MutableNode["healthcareService"] = new JsonArray
+        roleForNoLocation.MutableNode["active"] = true;
+        roleForNoLocation.MutableNode["practitioner"] = new JsonObject { ["reference"] = $"Practitioner/{practitionerId}" };
+        roleForNoLocation.MutableNode["healthcareService"] = new JsonArray
         {
             new JsonObject { ["reference"] = $"HealthcareService/{serviceNoLocation.Id}" }
         };

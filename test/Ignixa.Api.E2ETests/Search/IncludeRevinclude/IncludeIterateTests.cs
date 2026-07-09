@@ -49,20 +49,20 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationRequest referencing patient
         var medRequest = new ResourceJsonNode { ResourceType = "MedicationRequest" };
-        ((IMutableJsonNode)medRequest).MutableNode["meta"] = new JsonObject
+        medRequest.MutableNode["meta"] = new JsonObject
         {
             ["tag"] = new JsonArray
             {
                 new JsonObject { ["system"] = "testTag", ["code"] = tag }
             }
         };
-        ((IMutableJsonNode)medRequest).MutableNode["status"] = "completed";
-        ((IMutableJsonNode)medRequest).MutableNode["intent"] = "order";
-        ((IMutableJsonNode)medRequest).MutableNode["subject"] = new JsonObject
+        medRequest.MutableNode["status"] = "completed";
+        medRequest.MutableNode["intent"] = "order";
+        medRequest.MutableNode["subject"] = new JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };
-        ((IMutableJsonNode)medRequest).MutableNode["medicationCodeableConcept"] = new JsonObject
+        medRequest.MutableNode["medicationCodeableConcept"] = new JsonObject
         {
             ["coding"] = new JsonArray
             {
@@ -73,23 +73,23 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationDispense referencing the request
         var medDispense = new ResourceJsonNode { ResourceType = "MedicationDispense" };
-        ((IMutableJsonNode)medDispense).MutableNode["meta"] = new JsonObject
+        medDispense.MutableNode["meta"] = new JsonObject
         {
             ["tag"] = new JsonArray
             {
                 new JsonObject { ["system"] = "testTag", ["code"] = tag }
             }
         };
-        ((IMutableJsonNode)medDispense).MutableNode["status"] = "in-progress";
-        ((IMutableJsonNode)medDispense).MutableNode["authorizingPrescription"] = new JsonArray
+        medDispense.MutableNode["status"] = "in-progress";
+        medDispense.MutableNode["authorizingPrescription"] = new JsonArray
         {
             new JsonObject { ["reference"] = $"MedicationRequest/{createdMedRequest.Id}" }
         };
-        ((IMutableJsonNode)medDispense).MutableNode["subject"] = new JsonObject
+        medDispense.MutableNode["subject"] = new JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };
-        ((IMutableJsonNode)medDispense).MutableNode["medicationCodeableConcept"] = new JsonObject
+        medDispense.MutableNode["medicationCodeableConcept"] = new JsonObject
         {
             ["coding"] = new JsonArray
             {
@@ -159,20 +159,20 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationRequest referencing patient
         var medRequest = new ResourceJsonNode { ResourceType = "MedicationRequest" };
-        ((IMutableJsonNode)medRequest).MutableNode["meta"] = new JsonObject
+        medRequest.MutableNode["meta"] = new JsonObject
         {
             ["tag"] = new JsonArray
             {
                 new JsonObject { ["system"] = "testTag", ["code"] = tag }
             }
         };
-        ((IMutableJsonNode)medRequest).MutableNode["status"] = "completed";
-        ((IMutableJsonNode)medRequest).MutableNode["intent"] = "order";
-        ((IMutableJsonNode)medRequest).MutableNode["subject"] = new JsonObject
+        medRequest.MutableNode["status"] = "completed";
+        medRequest.MutableNode["intent"] = "order";
+        medRequest.MutableNode["subject"] = new JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };
-        ((IMutableJsonNode)medRequest).MutableNode["medicationCodeableConcept"] = new JsonObject
+        medRequest.MutableNode["medicationCodeableConcept"] = new JsonObject
         {
             ["coding"] = new JsonArray
             {
@@ -183,23 +183,23 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationDispense referencing the request
         var medDispense = new ResourceJsonNode { ResourceType = "MedicationDispense" };
-        ((IMutableJsonNode)medDispense).MutableNode["meta"] = new JsonObject
+        medDispense.MutableNode["meta"] = new JsonObject
         {
             ["tag"] = new JsonArray
             {
                 new JsonObject { ["system"] = "testTag", ["code"] = tag }
             }
         };
-        ((IMutableJsonNode)medDispense).MutableNode["status"] = "in-progress";
-        ((IMutableJsonNode)medDispense).MutableNode["authorizingPrescription"] = new JsonArray
+        medDispense.MutableNode["status"] = "in-progress";
+        medDispense.MutableNode["authorizingPrescription"] = new JsonArray
         {
             new JsonObject { ["reference"] = $"MedicationRequest/{createdMedRequest.Id}" }
         };
-        ((IMutableJsonNode)medDispense).MutableNode["subject"] = new JsonObject
+        medDispense.MutableNode["subject"] = new JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };
-        ((IMutableJsonNode)medDispense).MutableNode["medicationCodeableConcept"] = new JsonObject
+        medDispense.MutableNode["medicationCodeableConcept"] = new JsonObject
         {
             ["coding"] = new JsonArray
             {

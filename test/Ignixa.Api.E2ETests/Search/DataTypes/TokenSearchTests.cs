@@ -8,7 +8,6 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.DataTypes;
 
@@ -338,7 +337,7 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         matchedObs.Id.ShouldBe(_fixture.Observations[9].Id);
 
         // Verify the observation has identifiers with the expected values
-        var identifiers = ((IMutableJsonNode)matchedObs).MutableNode["identifier"];
+        var identifiers = matchedObs.MutableNode["identifier"];
         identifiers.ShouldNotBeNull();
     }
 }

@@ -13,7 +13,9 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Ignixa.FhirMappingLanguage")]
 [assembly: InternalsVisibleTo("Ignixa.TestScript")]
 [assembly: InternalsVisibleTo("Ignixa.TestScript.FhirFakes")]
+[assembly: InternalsVisibleTo("Ignixa.Api.E2ETests")]
 
-// Generated typed-model packages use the shared JSON backing store.
+// Reserved for planned generated typed-model packages (not yet present in this
+// solution) that will share this JSON backing store.
 [assembly: InternalsVisibleTo("Ignixa.Models.R4")]
 [assembly: InternalsVisibleTo("Ignixa.Models.R5")]
