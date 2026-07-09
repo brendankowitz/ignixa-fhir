@@ -134,6 +134,7 @@ docs/features/
 | [fhir-faker](fhir-faker/) | Partial | layered-architecture, scenario-generation, +6 more |
 | [fhir-operations](fhir-operations/) | In Progress | advanced-operations, patient-everything, ips-generator, +4 more |
 | [fhirpath](fhirpath/) | In Progress | performance-optimization, gap-analysis |
+| [hl7v2-mapping](hl7v2-mapping/) | Exploring | fhir-mapping-language |
 | [history](history/) | Research | streaming-migration |
 | [mcp-integration](mcp-integration/) | Proposed | mcp-overview, tool-design |
 | [multi-tenancy](multi-tenancy/) | Research | partitioning-modes, tenant-providers |

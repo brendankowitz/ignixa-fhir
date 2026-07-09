@@ -66,6 +66,7 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
     <PackageVersion Include="JsonSchema.Net" Version="7.4.0" />
+    <PackageVersion Include="NHapi" Version="3.2.4" />
     <PackageVersion Include="Autofac" Version="8.4.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
     <!-- Localization -->
