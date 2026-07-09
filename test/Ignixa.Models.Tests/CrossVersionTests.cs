@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -45,7 +46,7 @@ public sealed class CrossVersionTests
         p4.BirthDate.ShouldBe("1974-12-25");
         p5.BirthDate.ShouldBe("1974-12-25");
 
-        ReferenceEquals(p4.MutableNode, p5.MutableNode).ShouldBeTrue();
+        ReferenceEquals(p4.MutableNode(), p5.MutableNode()).ShouldBeTrue();
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public sealed class CrossVersionTests
         p4.Gender = AdministrativeGender.Male;
 
         p5.Gender.ShouldBe(AdministrativeGender.Male);
-        resource.MutableNode["gender"]!.GetValue<string>().ShouldBe("male");
+        resource.MutableNode()["gender"]!.GetValue<string>().ShouldBe("male");
     }
 
     // -- Base substitutability (Liskov) -----------------------------------------------------------

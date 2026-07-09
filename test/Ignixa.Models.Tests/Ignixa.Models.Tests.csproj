@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\Core\Models\Ignixa.Models.R4\Ignixa.Models.R4.csproj" />
     <ProjectReference Include="..\..\src\Core\Models\Ignixa.Models.R5\Ignixa.Models.R5.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

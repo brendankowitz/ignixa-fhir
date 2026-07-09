@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -57,8 +59,8 @@ public sealed class PrimitiveShadowTests
 
         patient.BirthDateElement.Value = "1975-01-01";
 
-        patient.MutableNode["birthDate"]!.GetValue<string>().ShouldBe("1975-01-01");
-        patient.MutableNode["_birthDate"].ShouldNotBeNull();
+        patient.MutableNode()["birthDate"]!.GetValue<string>().ShouldBe("1975-01-01");
+        patient.MutableNode()["_birthDate"].ShouldNotBeNull();
         patient.BirthDateElement.Extension.Count.ShouldBe(1);
         patient.BirthDateElement.Id.ShouldBe("bd-1");
     }
@@ -69,7 +71,7 @@ public sealed class PrimitiveShadowTests
         var patient = ResourceJsonNode.Parse(
             """{ "resourceType": "Patient", "birthDate": "2000-01-01" }""").As<Ignixa.Models.R4.Patient>();
 
-        patient.MutableNode["_birthDate"].ShouldBeNull();
+        patient.MutableNode()["_birthDate"].ShouldBeNull();
 
         patient.BirthDateElement.Extension.Add(new JsonObject
         {
@@ -77,10 +79,10 @@ public sealed class PrimitiveShadowTests
             ["valueString"] = "added-via-wrapper",
         });
 
-        var shadow = patient.MutableNode["_birthDate"].ShouldBeAssignableTo<JsonObject>();
+        var shadow = patient.MutableNode()["_birthDate"].ShouldBeAssignableTo<JsonObject>();
         shadow!["extension"]!.AsArray().Count.ShouldBe(1);
         shadow["extension"]![0]!["url"]!.GetValue<string>().ShouldBe("http://example.org/spike/added");
-        patient.MutableNode["birthDate"]!.GetValue<string>().ShouldBe("2000-01-01");
+        patient.MutableNode()["birthDate"]!.GetValue<string>().ShouldBe("2000-01-01");
     }
 
     [Fact]
@@ -90,7 +92,7 @@ public sealed class PrimitiveShadowTests
 
         patient.BirthDateElement.Value = "1980-06-06";
 
-        var serialized = patient.MutableNode.ToJsonString();
+        var serialized = patient.SerializeToString();
         serialized.ShouldContain("patient-birthTime");
         serialized.ShouldContain("\"id\":\"bd-1\"");
 

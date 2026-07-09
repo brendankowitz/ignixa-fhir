@@ -3,7 +3,9 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -71,9 +73,9 @@ public sealed class TypedFacadeTests
 
         patient.Gender = Ignixa.Models.AdministrativeGender.Female;
 
-        patient.MutableNode["gender"]!.GetValue<string>().ShouldBe("female");
+        patient.MutableNode()["gender"]!.GetValue<string>().ShouldBe("female");
 
-        var serialized = patient.MutableNode.ToJsonString();
+        var serialized = patient.SerializeToString();
         var reparsed = ResourceJsonNode.Parse(serialized).As<Ignixa.Models.R4.Patient>();
         reparsed.Gender.ShouldBe(Ignixa.Models.AdministrativeGender.Female);
     }
@@ -87,15 +89,15 @@ public sealed class TypedFacadeTests
         patient.Gender = Ignixa.Models.AdministrativeGender.Other;
         patient.BirthDate = "1975-01-01";
 
-        var serialized = patient.MutableNode.ToJsonString();
+        var serialized = patient.SerializeToString();
 
         serialized.ShouldContain("must-survive-round-trip");
         serialized.ShouldContain("patient-birthTime");
         serialized.ShouldContain("_birthDate");
 
         var reparsed = ResourceJsonNode.Parse(serialized);
-        reparsed.MutableNode["extension"]!.AsArray().Count.ShouldBe(1);
-        reparsed.MutableNode["_birthDate"].ShouldNotBeNull();
+        reparsed.MutableNode()["extension"]!.AsArray().Count.ShouldBe(1);
+        reparsed.MutableNode()["_birthDate"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -112,7 +114,7 @@ public sealed class TypedFacadeTests
         b.Gender = Ignixa.Models.AdministrativeGender.Female;
 
         a.Gender.ShouldBe(Ignixa.Models.AdministrativeGender.Female);
-        ReferenceEquals(a.MutableNode, b.MutableNode).ShouldBeTrue();
+        ReferenceEquals(a.MutableNode(), b.MutableNode()).ShouldBeTrue();
     }
 
     [Fact]
@@ -129,8 +131,8 @@ public sealed class TypedFacadeTests
         // cc.MutableNode now has a parent; a naive assignment would throw "node already has a parent".
         Should.NotThrow(() => p2.MaritalStatus = cc);
 
-        p1.MaritalStatus!.MutableNode["text"]!.GetValue<string>().ShouldBe("Married");
-        p2.MaritalStatus!.MutableNode["text"]!.GetValue<string>().ShouldBe("Married");
-        ReferenceEquals(p1.MaritalStatus!.MutableNode, p2.MaritalStatus!.MutableNode).ShouldBeFalse();
+        p1.MaritalStatus!.MutableNode()["text"]!.GetValue<string>().ShouldBe("Married");
+        p2.MaritalStatus!.MutableNode()["text"]!.GetValue<string>().ShouldBe("Married");
+        ReferenceEquals(p1.MaritalStatus!.MutableNode(), p2.MaritalStatus!.MutableNode()).ShouldBeFalse();
     }
 }

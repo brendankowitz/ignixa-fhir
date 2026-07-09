@@ -3,7 +3,9 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -61,11 +63,11 @@ public sealed class GraduatedAdditionsTests
         patient.Contact.Add(contact);
 
         patient.Contact.Count.ShouldBe(1);
-        patient.MutableNode["contact"]!.AsArray().Count.ShouldBe(1);
+        patient.MutableNode()["contact"]!.AsArray().Count.ShouldBe(1);
         patient.Contact[0].Name!.Family.ShouldBe("Doe");
         patient.Contact[0].Gender.ShouldBe(Ignixa.Models.AdministrativeGender.Male);
 
-        var reparsed = ResourceJsonNode.Parse(patient.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Patient>();
+        var reparsed = ResourceJsonNode.Parse(patient.SerializeToString()).As<Ignixa.Models.R4.Patient>();
         reparsed.Contact[0].Gender.ShouldBe(Ignixa.Models.AdministrativeGender.Male);
     }
 
@@ -81,9 +83,9 @@ public sealed class GraduatedAdditionsTests
 
         patient.Contact.Count.ShouldBe(1);
         patient.Contact[0].Name!.Family.ShouldBe("Second");
-        patient.MutableNode["contact"]!.AsArray().Count.ShouldBe(1);
+        patient.MutableNode()["contact"]!.AsArray().Count.ShouldBe(1);
 
-        var reparsed = ResourceJsonNode.Parse(patient.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Patient>();
+        var reparsed = ResourceJsonNode.Parse(patient.SerializeToString()).As<Ignixa.Models.R4.Patient>();
         reparsed.Contact.Count.ShouldBe(1);
         reparsed.Contact[0].Name!.Family.ShouldBe("Second");
     }
@@ -107,7 +109,7 @@ public sealed class GraduatedAdditionsTests
             """).As<Ignixa.Models.R4.Observation>();
 
         obs.Component.Count.ShouldBe(1);
-        var component = new Ignixa.Models.R4.ObservationComponent(obs.Component[0].MutableNode);
+        var component = new Ignixa.Models.R4.ObservationComponent(obs.Component[0].MutableNode());
 
         component.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.String);
         component.ValueString.ShouldBe("high");
@@ -117,12 +119,12 @@ public sealed class GraduatedAdditionsTests
         // choice accessor's type is the R4 subclass, not the shared base.
         component.ValueQuantity = new Ignixa.Models.R4.Quantity { Unit = "mmHg" };
 
-        component.MutableNode["valueString"].ShouldBeNull();
+        component.MutableNode()["valueString"].ShouldBeNull();
         component.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.Quantity);
         component.ValueQuantity!.Unit.ShouldBe("mmHg");
 
-        var reparsed = ResourceJsonNode.Parse(obs.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Observation>();
-        var reparsedComponent = new Ignixa.Models.R4.ObservationComponent(reparsed.Component[0].MutableNode);
+        var reparsed = ResourceJsonNode.Parse(obs.SerializeToString()).As<Ignixa.Models.R4.Observation>();
+        var reparsedComponent = new Ignixa.Models.R4.ObservationComponent(reparsed.Component[0].MutableNode());
         reparsedComponent.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.Quantity);
         reparsedComponent.ValueQuantity!.Unit.ShouldBe("mmHg");
     }
@@ -154,7 +156,7 @@ public sealed class GraduatedAdditionsTests
         highPrecisionLiteral.ShouldStartWith(roundedDigits);
 
         // And ValueRaw survives a serialize round-trip without loss.
-        var reparsed = ResourceJsonNode.Parse(obs.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Observation>();
+        var reparsed = ResourceJsonNode.Parse(obs.SerializeToString()).As<Ignixa.Models.R4.Observation>();
         reparsed.ValueQuantity!.ValueRaw!.ToJsonString().ShouldBe(highPrecisionLiteral);
     }
 }

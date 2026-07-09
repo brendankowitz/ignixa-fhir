@@ -5,7 +5,9 @@
 
 using System.Globalization;
 using System.Text.Json.Nodes;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -28,7 +30,9 @@ namespace Ignixa.Models.R4.Tests;
 ///   - typed get: <c>GetProperty&lt;decimal?&gt;("value")</c> -> <c>JsonValue.GetValue&lt;decimal?&gt;()</c>.
 ///   - typed set: <c>SetProperty("value", value)</c> -> <c>JsonValue.Create(decimal)</c>
 ///                (leaf is now backed by a CLR <c>decimal</c>, not the raw token).
-///   - serialize: <c>MutableNode.ToJsonString()</c>.
+///   - serialize: <c>SerializeToString()</c> for resources, or the raw backing node's
+///                <c>ToJsonString()</c> for standalone (non-resource) complex types like
+///                <see cref="Ignixa.Models.Quantity"/>, which have no resource-level serialize helper.
 ///
 /// Each test's comment records the OBSERVED behavior; assertions pin the actual (possibly lossy)
 /// result so this file documents reality, not aspiration.
@@ -81,7 +85,7 @@ public sealed class PrimitiveFidelityTests
         // OBSERVED: same fidelity through the real Parse path (custom converter -> JsonNode.Parse).
         var observation = ResourceJsonNode.Parse(ObservationJson("185.0"));
 
-        var serialized = observation.MutableNode.ToJsonString();
+        var serialized = observation.SerializeToString();
 
         serialized.ShouldContain("\"value\":185.0");
     }
@@ -168,7 +172,7 @@ public sealed class PrimitiveFidelityTests
 
         quantity.Value = scaled;
 
-        var serialized = quantity.MutableNode.ToJsonString();
+        var serialized = quantity.MutableNode().ToJsonString();
         serialized.ShouldContain($"\"value\":{scaled.ToString(CultureInfo.InvariantCulture)}");
     }
 
@@ -180,7 +184,7 @@ public sealed class PrimitiveFidelityTests
 
         quantity.Value = 185.0m;
 
-        quantity.MutableNode.ToJsonString().ShouldContain("\"value\":185.0");
+        quantity.MutableNode().ToJsonString().ShouldContain("\"value\":185.0");
     }
 
     [Fact]
@@ -207,7 +211,7 @@ public sealed class PrimitiveFidelityTests
 
         quantity.SetProperty("value", JsonNode.Parse(rawText));
 
-        quantity.MutableNode.ToJsonString().ShouldContain($"\"value\":{rawText}");
+        quantity.MutableNode().ToJsonString().ShouldContain($"\"value\":{rawText}");
     }
 
     [Fact]
@@ -221,7 +225,7 @@ public sealed class PrimitiveFidelityTests
 
         quantity.ValueRaw = JsonNode.Parse(rawText);
 
-        var serialized = quantity.MutableNode.ToJsonString();
+        var serialized = quantity.MutableNode().ToJsonString();
         serialized.ShouldContain($"\"value\":{rawText}");
 
         var reparsed = new Ignixa.Models.Quantity((JsonObject)JsonNode.Parse(serialized)!);
@@ -265,7 +269,7 @@ public sealed class PrimitiveFidelityTests
 
         quantity.Unit = "milligram";
 
-        var serialized = quantity.MutableNode.ToJsonString();
+        var serialized = quantity.MutableNode().ToJsonString();
         serialized.ShouldContain("\"value\":185.0");
         serialized.ShouldContain("\"unit\":\"milligram\"");
     }
@@ -277,9 +281,9 @@ public sealed class PrimitiveFidelityTests
         // the nested valueQuantity.value "1.230" token.
         var observation = ResourceJsonNode.Parse(ObservationJson("1.230"));
 
-        observation.MutableNode["status"] = "amended";
+        observation.MutableNode()["status"] = "amended";
 
-        observation.MutableNode.ToJsonString().ShouldContain("\"value\":1.230");
+        observation.SerializeToString().ShouldContain("\"value\":1.230");
     }
 
     [Fact]
@@ -294,7 +298,7 @@ public sealed class PrimitiveFidelityTests
         quantity.Unit = "milligram";
 
         // If reading were destructive the high-precision token would be gone. It is not.
-        quantity.MutableNode.ToJsonString().ShouldContain("\"value\":1.00000000000000000000000001");
+        quantity.MutableNode().ToJsonString().ShouldContain("\"value\":1.00000000000000000000000001");
     }
 
     // =============================================================================================
@@ -323,7 +327,7 @@ public sealed class PrimitiveFidelityTests
         patient.BirthDate = raw;
 
         // serialize
-        patient.MutableNode.ToJsonString().ShouldContain(System.Text.Json.JsonSerializer.Serialize(raw));
-        ResourceJsonNode.Parse(patient.MutableNode.ToJsonString()).As<Ignixa.Models.R4.Patient>().BirthDate.ShouldBe(raw);
+        patient.SerializeToString().ShouldContain(System.Text.Json.JsonSerializer.Serialize(raw));
+        ResourceJsonNode.Parse(patient.SerializeToString()).As<Ignixa.Models.R4.Patient>().BirthDate.ShouldBe(raw);
     }
 }

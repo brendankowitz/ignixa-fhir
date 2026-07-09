@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -67,8 +68,8 @@ public sealed class ChoiceTypeTests
 
         obs.ValueString = "switched";
 
-        obs.MutableNode["valueQuantity"].ShouldBeNull();
-        obs.MutableNode["valueString"]!.GetValue<string>().ShouldBe("switched");
+        obs.MutableNode()["valueQuantity"].ShouldBeNull();
+        obs.MutableNode()["valueString"]!.GetValue<string>().ShouldBe("switched");
         obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.String);
     }
 
@@ -92,7 +93,7 @@ public sealed class ChoiceTypeTests
 
         obs.ValueQuantity = null;
 
-        obs.MutableNode["valueQuantity"].ShouldBeNull();
+        obs.MutableNode()["valueQuantity"].ShouldBeNull();
         obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.None);
         obs.Value.ShouldBeNull();
         obs.ValueQuantity.ShouldBeNull();
@@ -105,8 +106,8 @@ public sealed class ChoiceTypeTests
 
         obs.ValueCodeableConcept = new Ignixa.Models.CodeableConcept { Text = "elevated" };
 
-        obs.MutableNode["valueQuantity"].ShouldBeNull();
-        obs.MutableNode["valueString"].ShouldBeNull();
+        obs.MutableNode()["valueQuantity"].ShouldBeNull();
+        obs.MutableNode()["valueString"].ShouldBeNull();
         obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.CodeableConcept);
         obs.ValueCodeableConcept!.Text.ShouldBe("elevated");
     }

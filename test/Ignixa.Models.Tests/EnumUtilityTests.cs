@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Serialization;
+using Ignixa.Serialization.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -50,11 +51,11 @@ public sealed class EnumUtilityTests
     {
         var quantity = new Ignixa.Models.R4.Quantity(new JsonObject());
         quantity.Comparator = Ignixa.Models.R4.QuantityComparator.LessThan;
-        quantity.MutableNode["comparator"].ShouldNotBeNull();
+        quantity.MutableNode()["comparator"].ShouldNotBeNull();
 
         quantity.Comparator = null;
 
-        quantity.MutableNode["comparator"].ShouldBeNull();
+        quantity.MutableNode()["comparator"].ShouldBeNull();
         quantity.Comparator.ShouldBeNull();
     }
 }
