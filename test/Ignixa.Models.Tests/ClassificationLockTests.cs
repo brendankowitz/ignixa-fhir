@@ -109,6 +109,44 @@ public sealed class ClassificationLockTests
     }
 
     [Fact]
+    public void GivenValueSetThatGainedManyCodesUnderTheSameUrl_WhenClassified_ThenRelatedArtifactTypeIsIncompatible()
+    {
+        // RelatedArtifact.type is the largest real-world instance of the same-URL-divergent-codes bug
+        // this session's fix caught: R5 added ~25 new relationship codes (part-of, amends, cites, ...)
+        // to http://hl7.org/fhir/related-artifact-type without changing the URL. A URL-only signature
+        // would have silently capped every R5-only code at null forever.
+        PropertyInfo r4Type = typeof(Ignixa.Models.R4.RelatedArtifact).GetProperty("Type")!;
+        PropertyInfo r5Type = typeof(Ignixa.Models.R5.RelatedArtifact).GetProperty("Type")!;
+
+        r4Type.PropertyType.ShouldNotBe(r5Type.PropertyType);
+
+        string[] r4Codes = Enum.GetNames(typeof(Ignixa.Models.R4.RelatedArtifactType));
+        string[] r5Codes = Enum.GetNames(typeof(Ignixa.Models.R5.RelatedArtifactType));
+        r5Codes.Length.ShouldBeGreaterThan(r4Codes.Length);
+        r5Codes.ShouldContain("PartOf");
+        r4Codes.ShouldNotContain("PartOf");
+
+        typeof(RelatedArtifact).GetProperty("Type").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenValueSetThatGainedOneCodeUnderTheSameUrl_WhenClassified_ThenDiscriminatorTypeIsIncompatible()
+    {
+        // ElementDefinitionSlicingDiscriminator.type: R5 added a single new code ("position") to
+        // http://hl7.org/fhir/discriminator-type -- the minimal-diff case, as distinct from the
+        // large RelatedArtifactType and single-narrow-domain QuantityComparator cases above.
+        PropertyInfo r4Type = typeof(Ignixa.Models.R4.ElementDefinitionSlicingDiscriminator).GetProperty("Type")!;
+        PropertyInfo r5Type = typeof(Ignixa.Models.R5.ElementDefinitionSlicingDiscriminator).GetProperty("Type")!;
+
+        r4Type.PropertyType.ShouldNotBe(r5Type.PropertyType);
+
+        Enum.GetNames(typeof(Ignixa.Models.R5.DiscriminatorType)).ShouldContain("Position");
+        Enum.GetNames(typeof(Ignixa.Models.R4.DiscriminatorType)).ShouldNotContain("Position");
+
+        typeof(ElementDefinitionSlicingDiscriminator).GetProperty("Type").ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenAdditiveElement_WhenClassified_ThenItLivesOnlyOnTheVersionThatIntroducedIt()
     {
         // Observation.bodyStructure is ADDITIVE: introduced in R5, absent from R4. It must surface

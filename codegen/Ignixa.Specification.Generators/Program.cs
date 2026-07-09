@@ -276,6 +276,19 @@ static async Task<int> RunTypedModelMultiVersion(ConfigRoot loaderConfig)
         Console.WriteLine($"  {version}: {defs.ResourcesByName.Count} resources, {defs.ComplexTypesByName.Count} complex types");
     }
 
+    // Clean before emit: the emitter only creates/overwrites, it never deletes. Without this, a type
+    // that stops being emitted to a directory on this run (e.g. a classification flip demotes it from
+    // base-shared to per-version) leaves its old file behind -- content-identical before and after
+    // regeneration, so the regen-drift guard's before/after hash comparison cannot see it as stale.
+    // These directories are 100% generator-owned (verified: no non-.cs files live here), so a full
+    // wipe-then-regenerate is safe and is the only way to guarantee the output set, not just each
+    // file's content, matches the current classification.
+    CleanGeneratedDir(baseOutputDir);
+    foreach (var (_, _, versionOutputDir) in loaded)
+    {
+        CleanGeneratedDir(versionOutputDir);
+    }
+
     Console.WriteLine();
     var language = new CSharpTypedModelLanguage();
     language.ExportMultiVersion(typedModelConfig, loaded, baseOutputDir);
@@ -283,4 +296,17 @@ static async Task<int> RunTypedModelMultiVersion(ConfigRoot loaderConfig)
     Console.WriteLine();
     Console.WriteLine("✓ Generation complete!");
     return 0;
+}
+
+static void CleanGeneratedDir(string dir)
+{
+    if (!Directory.Exists(dir))
+    {
+        return;
+    }
+
+    foreach (string file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.TopDirectoryOnly))
+    {
+        File.Delete(file);
+    }
 }
