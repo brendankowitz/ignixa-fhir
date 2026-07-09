@@ -280,9 +280,12 @@ static async Task<int> RunTypedModelMultiVersion(ConfigRoot loaderConfig)
     // that stops being emitted to a directory on this run (e.g. a classification flip demotes it from
     // base-shared to per-version) leaves its old file behind -- content-identical before and after
     // regeneration, so the regen-drift guard's before/after hash comparison cannot see it as stale.
-    // These directories are 100% generator-owned (verified: no non-.cs files live here), so a full
-    // wipe-then-regenerate is safe and is the only way to guarantee the output set, not just each
-    // file's content, matches the current classification.
+    // These directories are 100% generator-owned, so a full wipe-then-regenerate is safe and is the
+    // only way to guarantee the output set, not just each file's content, matches the current
+    // classification. Recurses through every file in every subdirectory (matching the regen guard's
+    // own `Get-ChildItem -Recurse -File` snapshot) rather than assuming today's flat *.cs-only shape
+    // holds forever -- a narrower wipe would just relocate this exact blind spot to the first
+    // subdirectory or non-.cs file a future emitter change introduces.
     CleanGeneratedDir(baseOutputDir);
     foreach (var (_, _, versionOutputDir) in loaded)
     {
@@ -305,7 +308,7 @@ static void CleanGeneratedDir(string dir)
         return;
     }
 
-    foreach (string file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.TopDirectoryOnly))
+    foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
     {
         File.Delete(file);
     }

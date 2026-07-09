@@ -34,8 +34,10 @@ public sealed class ClassificationLockTests
     [Fact]
     public void GivenIdenticalDatatype_WhenClassified_ThenMoneyIsBaseOnly()
     {
-        // Money has no coded binding, so unlike Quantity (see the value-set-divergence test below) it
-        // has nothing that can diverge between versions and stays genuinely Identical/base-only.
+        // Money.Currency IS a coded binding (Currencies?), but unlike Quantity.Comparator (see the
+        // value-set-divergence test below) its value set's code set is IDENTICAL across R4/R5, so it
+        // correctly stays base-only -- this pins the "same codes -> still Identical" counterpart to
+        // that test's "different codes -> Incompatible", proving the hash doesn't over-trigger.
         typeof(Money).Namespace.ShouldBe("Ignixa.Models");
 
         R4Assembly.GetType("Ignixa.Models.R4.Money").ShouldBeNull();
