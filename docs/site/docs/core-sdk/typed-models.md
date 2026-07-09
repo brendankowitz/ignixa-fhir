@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 3.5
 title: Typed Models
 description: Firely-grade strongly-typed POCO facades over the Ignixa JSON/IElement runtime -- zero-copy, opt-in, cross-version safe.
 ---
@@ -127,7 +127,8 @@ reinterpreting R4 data through an R5-only accessor:
 var r4Patient = ResourceJsonNode.Parse(json).As<Ignixa.Models.R4.Patient>(); // FhirVersion stamped R4
 
 r4Patient.As<Ignixa.Models.R5.Patient>();
-// throws InvalidCastException: "Cannot convert a R4 resource to Patient, which only supports [R5]."
+// throws InvalidCastException: "Cannot convert a R4 resource to Patient, which only supports [R5].
+// Use TryAsVersion/AsVersion for safe dispatch, or As<T>(validate: false) to bypass this check."
 ```
 
 The guard is permissive for untagged nodes (`FhirVersion == null`) so it never breaks code that doesn't
