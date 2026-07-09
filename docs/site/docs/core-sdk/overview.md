@@ -41,6 +41,7 @@ The Ignixa Core SDK is a collection of high-performance, reusable .NET libraries
 | **Abstractions** | *(foundation - no internal deps)* |
 | **Analyzers** | *(Roslyn analyzer - no runtime deps)* |
 | **Serialization** | Abstractions, Analyzers |
+| **Models.R4** / **Models.R5** | Serialization, Abstractions |
 | **FhirPath** | Abstractions |
 | **Specification** | Serialization, Abstractions |
 | **Search** | FhirPath, Specification, Serialization |
@@ -65,7 +66,9 @@ The Ignixa Core SDK is a collection of high-performance, reusable .NET libraries
 
 | Package | Description |
 |---------|-------------|
-| **Ignixa.Serialization** | High-performance JSON serialization with typed models |
+| **Ignixa.Serialization** | High-performance JSON serialization, plus the shared base layer for typed models |
+| **Ignixa.Models.R4** | Opt-in strongly-typed POCO facades for FHIR R4, zero-copy over the Serialization runtime |
+| **Ignixa.Models.R5** | Opt-in strongly-typed POCO facades for FHIR R5, zero-copy over the Serialization runtime |
 | **Ignixa.Search** | Search parameter definitions and indexing |
 | **Ignixa.Validation** | Schema-based validation engine |
 
@@ -101,6 +104,10 @@ dotnet add package Ignixa.Abstractions
 dotnet add package Ignixa.Serialization
 dotnet add package Ignixa.Specification
 
+# Typed models (opt-in, pick the version(s) you need; Beta, requires --prerelease)
+dotnet add package Ignixa.Models.R4 --prerelease
+dotnet add package Ignixa.Models.R5 --prerelease
+
 # FHIRPath evaluation
 dotnet add package Ignixa.FhirPath
 
@@ -135,6 +142,20 @@ var resourceType = sourceNode.ResourceType; // "Patient"
 var id = sourceNode["id"].Text;             // "123"
 var familyName = sourceNode["name"][0]["family"].Text; // "Smith"
 ```
+
+### Use Typed Models (opt-in)
+
+```csharp
+using Ignixa.Models.R4;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
+
+// Same zero-copy JSON underneath -- typed accessors instead of string navigation.
+Patient patient = ResourceJsonNode.Parse(json).As<Patient>();
+var familyName = patient.Name[0].Family; // "Smith", compile-time checked
+```
+
+See [Typed Models](/docs/core-sdk/typed-models) for cross-version usage and the `As<T>()` safety guard.
 
 ### Evaluate FHIRPath
 
@@ -255,11 +276,17 @@ var result2 = element.Select("name.given.first()");
 | FhirPath | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Validation | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Search | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Models.R4 | | ✅ | | | |
+| Models.R5 | | | | ✅ | |
+
+Typed models are version-specific by design (one package per FHIR version), unlike the version-agnostic
+core packages above -- see [Typed Models](/docs/core-sdk/typed-models#fhir-version-support) for details.
 
 ## Related Documentation
 
 - [Abstractions](/docs/core-sdk/abstractions)
 - [Serialization](/docs/core-sdk/serialization)
+- [Typed Models](/docs/core-sdk/typed-models)
 - [FHIRPath](/docs/core-sdk/fhirpath)
 - [Validation](/docs/core-sdk/validation)
 - [Search](/docs/core-sdk/search)

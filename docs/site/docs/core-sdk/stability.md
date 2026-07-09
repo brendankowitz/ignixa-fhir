@@ -39,6 +39,8 @@ A package is never more stable than any package it depends on.
 | `Ignixa.Validation` | Stable | FHIR resource validation with profile support |
 | `Ignixa.DeId` | Beta (pre-release) | FHIR data de-identification library supporting R4, R4B, R5, R6, and STU3 via Ignixa SDK |
 | `Ignixa.FhirMappingLanguage` | Beta (pre-release) | FHIR Mapping Language (FML) parser and execution engine |
+| `Ignixa.Models.R4` | Beta (pre-release) | FHIR R4 strongly-typed POCO facades over the Ignixa element/JSON runtime (opt-in). Subclasses the shared Ignixa.Models base layer in Ignixa.Serialization. |
+| `Ignixa.Models.R5` | Beta (pre-release) | FHIR R5 strongly-typed POCO facades over the Ignixa element/JSON runtime (opt-in). Subclasses the shared Ignixa.Models base layer in Ignixa.Serialization. |
 | `Ignixa.NarrativeGenerator` | Beta (pre-release) | FHIR narrative generation using Scriban templates with FHIRPath support |
 | `Ignixa.TestScript` | Beta (pre-release) | FHIR TestScript execution engine - parse and evaluate TestScript resources against any FHIR server |
 | `Ignixa.TestScript.FhirFakes` | Beta (pre-release) | FhirFakes integration for TestScript fixture generation - auto-generate test data from resource type |
