@@ -61,6 +61,8 @@ string serialized = patient.SerializeToString();
 ```csharp
 using Ignixa.Abstractions;
 
+ResourceJsonNode resource = ResourceJsonNode.Parse(json);
+
 // Explicit, version-aware dispatch -- throws InvalidOperationException on a registry miss rather than
 // silently returning a wrong-typed facade.
 ResourceJsonNode viaR4 = resource.AsVersion(FhirVersion.R4);
