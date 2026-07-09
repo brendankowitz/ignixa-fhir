@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -40,7 +41,7 @@ public class IncludeSearchTests_EdgeCases : IncludeTestBase
         var createdLocation = await Harness.CreateResourceAsync(location);
 
         // Update the location to reference itself
-        createdLocation.MutableNode["partOf"] = new JsonObject
+        ((IMutableJsonNode)createdLocation).MutableNode["partOf"] = new JsonObject
         {
             ["reference"] = $"Location/{createdLocation.Id}"
         };

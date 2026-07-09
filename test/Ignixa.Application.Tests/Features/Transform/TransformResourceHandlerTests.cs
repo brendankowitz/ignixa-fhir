@@ -215,17 +215,17 @@ public class TransformResourceHandlerTests
         result.ResourceType.ShouldBe("Patient", "target should be a Patient resource");
 
         // Verify MutableNode has the copied properties
-        result.MutableNode.ShouldNotBeNull("MutableNode should be populated");
+        ((IMutableJsonNode)result).MutableNode.ShouldNotBeNull("MutableNode should be populated");
 
         // Check primitive values
-        result.MutableNode!["id"]?.GetValue<string>().ShouldBe("patient-123", "id should be copied");
-        result.MutableNode["gender"]?.GetValue<string>().ShouldBe("male", "gender should be copied");
-        result.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-01-15", "birthDate should be copied");
-        result.MutableNode["active"]?.GetValue<bool>().ShouldBe(true, "active should be copied");
+        ((IMutableJsonNode)result).MutableNode!["id"]?.GetValue<string>().ShouldBe("patient-123", "id should be copied");
+        ((IMutableJsonNode)result).MutableNode["gender"]?.GetValue<string>().ShouldBe("male", "gender should be copied");
+        ((IMutableJsonNode)result).MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-01-15", "birthDate should be copied");
+        ((IMutableJsonNode)result).MutableNode["active"]?.GetValue<bool>().ShouldBe(true, "active should be copied");
 
         // Check complex object (name array)
-        result.MutableNode["name"].ShouldNotBeNull("name should be copied");
-        var nameArray = result.MutableNode["name"]!.AsArray();
+        ((IMutableJsonNode)result).MutableNode["name"].ShouldNotBeNull("name should be copied");
+        var nameArray = ((IMutableJsonNode)result).MutableNode["name"]!.AsArray();
         nameArray.Count.ShouldBe(1, "should have one name");
 
         var name = nameArray[0]!.AsObject();
@@ -287,14 +287,14 @@ public class TransformResourceHandlerTests
 
         // Assert - Verify copied fields
         result.ShouldNotBeNull();
-        result.MutableNode!["id"]?.GetValue<string>().ShouldBe("patient-456", "id should be copied");
-        result.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-01-01", "birthDate should be copied");
-        result.MutableNode["name"].ShouldNotBeNull("name should be copied");
+        ((IMutableJsonNode)result).MutableNode!["id"]?.GetValue<string>().ShouldBe("patient-456", "id should be copied");
+        ((IMutableJsonNode)result).MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-01-01", "birthDate should be copied");
+        ((IMutableJsonNode)result).MutableNode["name"].ShouldNotBeNull("name should be copied");
 
         // CRITICAL: Verify literal values were added via mutation (not just stored in variables)
-        result.MutableNode["active"]?.GetValue<bool>().ShouldBe(true,
+        ((IMutableJsonNode)result).MutableNode["active"]?.GetValue<bool>().ShouldBe(true,
             "active literal value should be mutated into target - if this fails, mutation is not working");
-        result.MutableNode["gender"]?.GetValue<string>().ShouldBe("unknown",
+        ((IMutableJsonNode)result).MutableNode["gender"]?.GetValue<string>().ShouldBe("unknown",
             "gender literal value should be mutated into target - if this fails, mutation is not working");
     }
 
@@ -429,11 +429,11 @@ public class TransformResourceHandlerTests
         result.ResourceType.ShouldBe("Patient", "target should be a Patient resource");
 
         // These assertions fail due to the bug - StructureMap JSON parsing doesn't produce working transforms
-        result.MutableNode!["id"]?.GetValue<string>().ShouldBe("inline-map-test",
+        ((IMutableJsonNode)result).MutableNode!["id"]?.GetValue<string>().ShouldBe("inline-map-test",
             "id should be copied via StructureMap JSON transform - BUG: returns null");
 
-        result.MutableNode["name"].ShouldNotBeNull("name should be copied via StructureMap JSON transform - BUG: returns null");
-        var nameArray = result.MutableNode["name"]!.AsArray();
+        ((IMutableJsonNode)result).MutableNode["name"].ShouldNotBeNull("name should be copied via StructureMap JSON transform - BUG: returns null");
+        var nameArray = ((IMutableJsonNode)result).MutableNode["name"]!.AsArray();
         nameArray.Count.ShouldBe(1, "should have one name");
 
         var name = nameArray[0]!.AsObject();

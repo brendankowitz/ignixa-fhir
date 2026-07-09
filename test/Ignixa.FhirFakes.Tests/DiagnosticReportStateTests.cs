@@ -8,6 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -50,7 +51,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var status = report.MutableNode["status"]?.GetValue<string>();
+        var status = ((IMutableJsonNode)report).MutableNode["status"]?.GetValue<string>();
         status.ShouldBe("final");
     }
 
@@ -66,7 +67,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var categoryCode = report.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = ((IMutableJsonNode)report).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("LAB");
     }
 
@@ -82,7 +83,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var code = report.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = ((IMutableJsonNode)report).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("24323-8"); // LOINC code for CMP
     }
 
@@ -102,7 +103,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var subjectRef = report.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = ((IMutableJsonNode)report).MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -118,7 +119,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var encounterRef = report.MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var encounterRef = ((IMutableJsonNode)report).MutableNode["encounter"]?["reference"]?.GetValue<string>();
         encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
@@ -152,7 +153,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var results = report.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
+        var results = ((IMutableJsonNode)report).MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
         results.ShouldNotBeNull();
         results!.Count.ShouldBe(14);
     }
@@ -170,12 +171,12 @@ public class DiagnosticReportStateTests
         // Assert - Find glucose observation
         var glucoseObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "2339-0"; // LOINC code for glucose
         });
 
         glucoseObs.ShouldNotBeNull();
-        var value = glucoseObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)glucoseObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value.ShouldBe(95); // Default value in CMP factory method
     }
 
@@ -200,12 +201,12 @@ public class DiagnosticReportStateTests
 
         var glucoseObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "2339-0";
         });
 
         glucoseObs.ShouldNotBeNull();
-        var value = glucoseObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)glucoseObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value.ShouldBe(150);
     }
 
@@ -225,7 +226,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var categoryCode = report.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var categoryCode = ((IMutableJsonNode)report).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         categoryCode.ShouldBe("RAD");
     }
 
@@ -242,7 +243,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var reportConclusion = report.MutableNode["conclusion"]?.GetValue<string>();
+        var reportConclusion = ((IMutableJsonNode)report).MutableNode["conclusion"]?.GetValue<string>();
         reportConclusion.ShouldBe(conclusion);
     }
 
@@ -357,7 +358,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var report = scenario.DiagnosticReports[0];
-        var encounterRef = report.MutableNode["encounter"];
+        var encounterRef = ((IMutableJsonNode)report).MutableNode["encounter"];
         encounterRef.ShouldBeNull();
     }
 
@@ -375,7 +376,7 @@ public class DiagnosticReportStateTests
         // DiagnosticReport.performer is a BackboneElement[] with actor (Reference)
         // The actor reference can have either "reference" or "display" or both
         var report = scenario.DiagnosticReports[0];
-        var performerActor = report.MutableNode["performer"]?[0]?["actor"];
+        var performerActor = ((IMutableJsonNode)report).MutableNode["performer"]?[0]?["actor"];
         performerActor.ShouldNotBeNull();
         var hasRefOrDisplay = performerActor?["reference"] != null || performerActor?["display"] != null;
         hasRefOrDisplay.ShouldBeTrue("performer.actor should have either reference or display");

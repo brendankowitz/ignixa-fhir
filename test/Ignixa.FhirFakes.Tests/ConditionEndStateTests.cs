@@ -8,6 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -38,10 +39,10 @@ public class ConditionEndStateTests
         scenario.Conditions.Count.ShouldBe(1);
         var condition = scenario.Conditions[0];
 
-        var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = ((IMutableJsonNode)condition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("resolved", "condition should be marked as resolved");
 
-        var abatementDateTime = condition.MutableNode["abatementDateTime"]?.GetValue<string>();
+        var abatementDateTime = ((IMutableJsonNode)condition).MutableNode["abatementDateTime"]?.GetValue<string>();
         abatementDateTime.ShouldNotBeNullOrEmpty("abatement date should be set");
     }
 
@@ -58,7 +59,7 @@ public class ConditionEndStateTests
 
         // Assert
         var condition = scenario.Conditions[0];
-        var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = ((IMutableJsonNode)condition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("inactive", "condition should be marked as inactive");
     }
 
@@ -75,7 +76,7 @@ public class ConditionEndStateTests
 
         // Assert
         var condition = scenario.Conditions[0];
-        var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = ((IMutableJsonNode)condition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("remission", "condition should be marked as in remission");
     }
 
@@ -113,10 +114,10 @@ public class ConditionEndStateTests
         scenario.Conditions.Count.ShouldBe(1);
         var condition = scenario.Conditions[0];
 
-        var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = ((IMutableJsonNode)condition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("resolved", "condition should be marked as resolved");
 
-        var abatementDateTime = condition.MutableNode["abatementDateTime"]?.GetValue<string>();
+        var abatementDateTime = ((IMutableJsonNode)condition).MutableNode["abatementDateTime"]?.GetValue<string>();
         abatementDateTime.ShouldNotBeNullOrEmpty("abatement date should be set");
     }
 
@@ -138,15 +139,15 @@ public class ConditionEndStateTests
 
         // First condition should still be active
         var firstCondition = scenario.Conditions[0];
-        var firstAbatementDateTime = firstCondition.MutableNode["abatementDateTime"]?.GetValue<string>();
+        var firstAbatementDateTime = ((IMutableJsonNode)firstCondition).MutableNode["abatementDateTime"]?.GetValue<string>();
         firstAbatementDateTime.ShouldBeNullOrEmpty("first condition should not have abatement date");
 
         // Second condition should be resolved
         var secondCondition = scenario.Conditions[1];
-        var secondClinicalStatus = secondCondition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var secondClinicalStatus = ((IMutableJsonNode)secondCondition).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         secondClinicalStatus.ShouldBe("resolved", "second (most recent) condition should be resolved");
 
-        var secondAbatementDateTime = secondCondition.MutableNode["abatementDateTime"]?.GetValue<string>();
+        var secondAbatementDateTime = ((IMutableJsonNode)secondCondition).MutableNode["abatementDateTime"]?.GetValue<string>();
         secondAbatementDateTime.ShouldNotBeNullOrEmpty("second condition should have abatement date");
     }
 
@@ -183,8 +184,8 @@ public class ConditionEndStateTests
 
         // Assert
         var condition = scenario.Conditions[0];
-        var onsetDateTime = DateTime.Parse(condition.MutableNode["onsetDateTime"]!.GetValue<string>());
-        var abatementDateTime = DateTime.Parse(condition.MutableNode["abatementDateTime"]!.GetValue<string>());
+        var onsetDateTime = DateTime.Parse(((IMutableJsonNode)condition).MutableNode["onsetDateTime"]!.GetValue<string>());
+        var abatementDateTime = DateTime.Parse(((IMutableJsonNode)condition).MutableNode["abatementDateTime"]!.GetValue<string>());
 
         // Abatement should be approximately 6 months after onset
         (abatementDateTime - onsetDateTime).TotalDays.ShouldBe(180, 5);
@@ -213,17 +214,17 @@ public class ConditionEndStateTests
 
         // Diabetes should be resolved
         var diabetes = scenario.Conditions[0];
-        var diabetesStatus = diabetes.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var diabetesStatus = ((IMutableJsonNode)diabetes).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         diabetesStatus.ShouldBe("resolved");
 
         // Hypertension should still be active
         var hypertension = scenario.Conditions[1];
-        var hypertensionAbatement = hypertension.MutableNode["abatementDateTime"]?.GetValue<string>();
+        var hypertensionAbatement = ((IMutableJsonNode)hypertension).MutableNode["abatementDateTime"]?.GetValue<string>();
         hypertensionAbatement.ShouldBeNullOrEmpty("hypertension should still be active");
 
         // Asthma should be resolved
         var asthma = scenario.Conditions[2];
-        var asthmaStatus = asthma.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var asthmaStatus = ((IMutableJsonNode)asthma).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         asthmaStatus.ShouldBe("resolved");
     }
 
@@ -266,10 +267,10 @@ public class ConditionEndStateTests
         scenario.Conditions.Count.ShouldBe(1);
         var appendicitis = scenario.Conditions[0];
 
-        var clinicalStatus = appendicitis.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var clinicalStatus = ((IMutableJsonNode)appendicitis).MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         clinicalStatus.ShouldBe("resolved", "appendicitis should be resolved after surgery");
 
-        var abatementDateTime = appendicitis.MutableNode["abatementDateTime"]?.GetValue<string>();
+        var abatementDateTime = ((IMutableJsonNode)appendicitis).MutableNode["abatementDateTime"]?.GetValue<string>();
         abatementDateTime.ShouldNotBeNullOrEmpty("abatement date should be set");
     }
 

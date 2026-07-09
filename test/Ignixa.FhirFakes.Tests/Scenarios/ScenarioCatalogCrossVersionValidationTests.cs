@@ -68,7 +68,7 @@ public class ScenarioCatalogCrossVersionValidationTests
 
             foreach (var resource in context.AllResources)
             {
-                var errors = ValidateAndCollectErrors(resource.MutableNode, schemaProvider);
+                var errors = ValidateAndCollectErrors(((IMutableJsonNode)resource).MutableNode, schemaProvider);
                 if (errors.Count == 0)
                 {
                     continue;

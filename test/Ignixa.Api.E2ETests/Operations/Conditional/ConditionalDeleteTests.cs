@@ -9,6 +9,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Operations.Conditional;
 
@@ -439,7 +440,7 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
         var searchResults = await Harness.SearchAsync("Patient", $"_tag={tag}");
         searchResults.Length.ShouldBe(1, "only 1 resource should remain (Maria)");
 
-        var remainingGivenName = searchResults[0].MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
+        var remainingGivenName = ((IMutableJsonNode)searchResults[0]).MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
         remainingGivenName.ShouldBe("Maria", "only Maria should remain");
     }
 }

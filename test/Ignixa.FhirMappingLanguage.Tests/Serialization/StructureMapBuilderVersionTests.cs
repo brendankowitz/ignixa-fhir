@@ -14,6 +14,7 @@ using Ignixa.FhirMappingLanguage.Serialization;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
 using Xunit;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Serialization;
 
@@ -191,8 +192,8 @@ public class StructureMapBuilderVersionTests
         var source = structureMap.Group[0].Rule[0].Source[0];
 
         // R4 should use defaultValueString in underlying JSON
-        source.MutableNode.ContainsKey("defaultValueString").ShouldBeTrue();
-        source.MutableNode["defaultValueString"]!.GetValue<string>().ShouldBe("'Unknown'");
+        ((IMutableJsonNode)source).MutableNode.ContainsKey("defaultValueString").ShouldBeTrue();
+        ((IMutableJsonNode)source).MutableNode["defaultValueString"]!.GetValue<string>().ShouldBe("'Unknown'");
     }
 
     [Fact]

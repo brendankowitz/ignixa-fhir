@@ -54,7 +54,7 @@ public class R5R6ShapeRegressionTests
                 .AddEncounter("Office visit")
                 .Build();
 
-            var participant = scenario.Encounters[0].MutableNode["participant"]?[0];
+            var participant = ((IMutableJsonNode)scenario.Encounters[0]).MutableNode["participant"]?[0];
             participant.ShouldNotBeNull($"participant should exist in {schema.Version}");
 
             // R5 renamed Encounter.participant.individual to Encounter.participant.actor.
@@ -87,7 +87,7 @@ public class R5R6ShapeRegressionTests
                 })
                 .Build();
 
-            var status = scenario.Encounters[0].MutableNode["status"]?.GetValue<string>();
+            var status = ((IMutableJsonNode)scenario.Encounters[0]).MutableNode["status"]?.GetValue<string>();
 
             // R5 removed "finished" from the encounter-status value set, renaming it to "completed".
             var expected = schema.Version >= FhirVersion.R5 ? "completed" : "finished";
@@ -107,7 +107,7 @@ public class R5R6ShapeRegressionTests
                 .AddHospital("Boston Medical Center")
                 .Build();
 
-            var org = scenario.Organizations[0].MutableNode;
+            var org = ((IMutableJsonNode)scenario.Organizations[0]).MutableNode;
 
             // R5 removed Organization.telecom and Organization.address, folding both into
             // Organization.contact (ExtendedContactDetail).
@@ -146,7 +146,7 @@ public class R5R6ShapeRegressionTests
                 .AddImmunization(ImmunizationState.Covid19Pfizer())
                 .Build();
 
-            var manufacturer = scenario.Immunizations[0].MutableNode["manufacturer"];
+            var manufacturer = ((IMutableJsonNode)scenario.Immunizations[0]).MutableNode["manufacturer"];
             manufacturer.ShouldNotBeNull($"manufacturer should exist in {schema.Version}");
 
             // R5 changed manufacturer from Reference(Organization) to CodeableReference(Organization):
@@ -185,7 +185,7 @@ public class R5R6ShapeRegressionTests
                 })
                 .Build();
 
-            var procedure = scenario.Procedures[0].MutableNode;
+            var procedure = ((IMutableJsonNode)scenario.Procedures[0]).MutableNode;
 
             // R5 merged Procedure.reasonCode (CodeableConcept[]) and reasonReference (Reference[])
             // into Procedure.reason (CodeableReference[]), where codes sit under ".concept".
@@ -218,7 +218,7 @@ public class R5R6ShapeRegressionTests
         };
 
         var bundle = ResourceBundleComposer.ToTransactionBundle(resources);
-        var entries = (JsonArray)bundle.MutableNode["entry"]!;
+        var entries = ((IMutableJsonNode)bundle).MutableNode["entry"]!.AsArray();
 
         entries.Count.ShouldBe(resources.Count);
         for (var i = 0; i < resources.Count; i++)
@@ -242,7 +242,7 @@ public class R5R6ShapeRegressionTests
         };
 
         var bundle = ResourceBundleComposer.ToBatchBundle(resources);
-        var entries = (JsonArray)bundle.MutableNode["entry"]!;
+        var entries = ((IMutableJsonNode)bundle).MutableNode["entry"]!.AsArray();
 
         entries.Count.ShouldBe(resources.Count);
         for (var i = 0; i < resources.Count; i++)
@@ -277,7 +277,7 @@ public class R5R6ShapeRegressionTests
                 .Build();
 
             var conditionId = scenario.Conditions[0].Id;
-            var medication = scenario.Medications[0].MutableNode;
+            var medication = ((IMutableJsonNode)scenario.Medications[0]).MutableNode;
 
             // R5 merged MedicationRequest.reasonCode/reasonReference into a single "reason"
             // element typed CodeableReference; a referenced Condition lives under ".reference",
@@ -331,7 +331,7 @@ public class R5R6ShapeRegressionTests
                 .Build();
 
             var conditionId = scenario.Conditions[0].Id;
-            var procedure = scenario.Procedures[0].MutableNode;
+            var procedure = ((IMutableJsonNode)scenario.Procedures[0]).MutableNode;
 
             // Same CodeableReference merge as MedicationRequest: a referenced Condition must
             // land under Procedure.reason[].reference, not .concept.
@@ -381,7 +381,7 @@ public class R5R6ShapeRegressionTests
                 })
                 .Build();
 
-            var mappedStatus = scenario.Encounters[0].MutableNode["status"]?.GetValue<string>();
+            var mappedStatus = ((IMutableJsonNode)scenario.Encounters[0]).MutableNode["status"]?.GetValue<string>();
 
             // R5 dropped "arrived"/"triaged" from the encounter-status value set in favor of "in-progress".
             var expected = schema.Version >= FhirVersion.R5 ? "in-progress" : status;
@@ -405,7 +405,7 @@ public class R5R6ShapeRegressionTests
                 })
                 .Build();
 
-            var status = scenario.Encounters[0].MutableNode["status"]?.GetValue<string>();
+            var status = ((IMutableJsonNode)scenario.Encounters[0]).MutableNode["status"]?.GetValue<string>();
 
             // R5 dropped "onleave" from the encounter-status value set in favor of "on-hold".
             var expected = schema.Version >= FhirVersion.R5 ? "on-hold" : "onleave";

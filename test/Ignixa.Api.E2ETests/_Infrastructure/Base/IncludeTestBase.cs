@@ -117,15 +117,15 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "Location",
             Id = Guid.NewGuid().ToString()
         };
-        location.MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)location).MutableNode["meta"] = CreateMetaTagJson(tag);
 
         if (managingOrgId is not null)
         {
-            location.MutableNode["managingOrganization"] = CreateReferenceJson("Organization", managingOrgId);
+            ((IMutableJsonNode)location).MutableNode["managingOrganization"] = CreateReferenceJson("Organization", managingOrgId);
         }
         if (partOfId is not null)
         {
-            location.MutableNode["partOf"] = CreateReferenceJson("Location", partOfId);
+            ((IMutableJsonNode)location).MutableNode["partOf"] = CreateReferenceJson("Location", partOfId);
         }
         return location;
     }
@@ -141,11 +141,11 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "Practitioner",
             Id = Guid.NewGuid().ToString()
         };
-        practitioner.MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)practitioner).MutableNode["meta"] = CreateMetaTagJson(tag);
 
         if (familyName is not null)
         {
-            practitioner.MutableNode["name"] = new JsonArray
+            ((IMutableJsonNode)practitioner).MutableNode["name"] = new JsonArray
             {
                 new JsonObject
                 {
@@ -187,7 +187,7 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
         // birthDate override - PatientBuilder calculates from age
         if (birthDate is not null)
         {
-            patient.MutableNode["birthDate"] = birthDate;
+            ((IMutableJsonNode)patient).MutableNode["birthDate"] = birthDate;
         }
 
         return patient;
@@ -211,12 +211,12 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "Observation",
             Id = Guid.NewGuid().ToString()
         };
-        obs.MutableNode["meta"] = CreateMetaTagJson(tag);
-        obs.MutableNode["status"] = "final";
-        obs.MutableNode["code"] = CreateCodeableConceptJson(codeSystem, code);
+        ((IMutableJsonNode)obs).MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)obs).MutableNode["status"] = "final";
+        ((IMutableJsonNode)obs).MutableNode["code"] = CreateCodeableConceptJson(codeSystem, code);
 
         // Handle untyped references for specific test cases
-        obs.MutableNode["subject"] = untypedReferences
+        ((IMutableJsonNode)obs).MutableNode["subject"] = untypedReferences
             ? new JsonObject { ["reference"] = patientId }
             : CreateReferenceJson("Patient", patientId);
 
@@ -235,7 +235,7 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
                     ? new JsonObject { ["reference"] = practitionerId }
                     : CreateReferenceJson("Practitioner", practitionerId));
             }
-            obs.MutableNode["performer"] = performers;
+            ((IMutableJsonNode)obs).MutableNode["performer"] = performers;
         }
 
         return obs;
@@ -257,14 +257,14 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "DiagnosticReport",
             Id = Guid.NewGuid().ToString()
         };
-        report.MutableNode["meta"] = CreateMetaTagJson(tag);
-        report.MutableNode["status"] = "final";
-        report.MutableNode["code"] = CreateCodeableConceptJson(codeSystem, code);
-        report.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
+        ((IMutableJsonNode)report).MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)report).MutableNode["status"] = "final";
+        ((IMutableJsonNode)report).MutableNode["code"] = CreateCodeableConceptJson(codeSystem, code);
+        ((IMutableJsonNode)report).MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
 
         if (observationId is not null)
         {
-            report.MutableNode["result"] = new JsonArray
+            ((IMutableJsonNode)report).MutableNode["result"] = new JsonArray
             {
                 CreateReferenceJson("Observation", observationId)
             };
@@ -284,10 +284,10 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "Group",
             Id = Guid.NewGuid().ToString()
         };
-        group.MutableNode["meta"] = CreateMetaTagJson(tag);
-        group.MutableNode["type"] = "person";
-        group.MutableNode["actual"] = true;
-        group.MutableNode["member"] = CreateGroupMemberArray(patientIds);
+        ((IMutableJsonNode)group).MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)group).MutableNode["type"] = "person";
+        ((IMutableJsonNode)group).MutableNode["actual"] = true;
+        ((IMutableJsonNode)group).MutableNode["member"] = CreateGroupMemberArray(patientIds);
 
         return group;
     }
@@ -319,8 +319,8 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "CareTeam",
             Id = Guid.NewGuid().ToString()
         };
-        careTeam.MutableNode["meta"] = CreateMetaTagJson(tag);
-        careTeam.MutableNode["participant"] = CreateCareTeamParticipantArray(patientIds, organizationId, practitionerId);
+        ((IMutableJsonNode)careTeam).MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)careTeam).MutableNode["participant"] = CreateCareTeamParticipantArray(patientIds, organizationId, practitionerId);
 
         return careTeam;
     }
@@ -408,11 +408,11 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "MedicationRequest",
             Id = Guid.NewGuid().ToString()
         };
-        medRequest.MutableNode["meta"] = CreateMetaTagJson(tag);
-        medRequest.MutableNode["status"] = "completed";
-        medRequest.MutableNode["intent"] = "order";
-        medRequest.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
-        medRequest.MutableNode["medicationCodeableConcept"] = CreateCodeableConceptJson("http://snomed.info/sct", "16590-619-30");
+        ((IMutableJsonNode)medRequest).MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)medRequest).MutableNode["status"] = "completed";
+        ((IMutableJsonNode)medRequest).MutableNode["intent"] = "order";
+        ((IMutableJsonNode)medRequest).MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
+        ((IMutableJsonNode)medRequest).MutableNode["medicationCodeableConcept"] = CreateCodeableConceptJson("http://snomed.info/sct", "16590-619-30");
 
         return medRequest;
     }
@@ -428,19 +428,19 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             ResourceType = "MedicationDispense",
             Id = Guid.NewGuid().ToString()
         };
-        medDispense.MutableNode["meta"] = CreateMetaTagJson(tag);
-        medDispense.MutableNode["status"] = "in-progress";
-        medDispense.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
-        medDispense.MutableNode["medicationCodeableConcept"] = CreateCodeableConceptJson("http://snomed.info/sct", "108505002");
+        ((IMutableJsonNode)medDispense).MutableNode["meta"] = CreateMetaTagJson(tag);
+        ((IMutableJsonNode)medDispense).MutableNode["status"] = "in-progress";
+        ((IMutableJsonNode)medDispense).MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
+        ((IMutableJsonNode)medDispense).MutableNode["medicationCodeableConcept"] = CreateCodeableConceptJson("http://snomed.info/sct", "108505002");
 
         if (whenPrepared is not null)
         {
-            medDispense.MutableNode["whenPrepared"] = whenPrepared;
+            ((IMutableJsonNode)medDispense).MutableNode["whenPrepared"] = whenPrepared;
         }
 
         if (medicationRequestId is not null)
         {
-            medDispense.MutableNode["authorizingPrescription"] = new JsonArray
+            ((IMutableJsonNode)medDispense).MutableNode["authorizingPrescription"] = new JsonArray
             {
                 CreateReferenceJson("MedicationRequest", medicationRequestId)
             };

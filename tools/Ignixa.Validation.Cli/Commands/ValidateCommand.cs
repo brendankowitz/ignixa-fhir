@@ -354,7 +354,8 @@ internal static class ValidateCommand
             WriteIndented = true
         };
 
-        var json = JsonSerializer.Serialize(operationOutcome.MutableNode, options);
+        var operationOutcomeNode = ((IMutableJsonNode)operationOutcome).MutableNode;
+        var json = JsonSerializer.Serialize(operationOutcomeNode, options);
 
         // Ensure output directory exists
         var directory = Path.GetDirectoryName(outputFile);

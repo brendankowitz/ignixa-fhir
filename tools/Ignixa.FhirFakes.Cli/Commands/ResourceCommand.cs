@@ -204,12 +204,13 @@ internal static class ResourceCommand
 
                 var patient = builder.Build();
                 var manifest = ApplyEdgeCases(schemaProvider, patient, edgeCasesEnabled, selectors, seed, includeInvalid);
+                var patientNode = ((IMutableJsonNode)patient).MutableNode;
 
-                var id = patient.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                var id = patientNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                 var filename = $"{fhirVersion}-patient-{id}.json";
                 var outputPath = Path.Combine(outFolder, filename);
 
-                var json = JsonSerializer.Serialize(patient.MutableNode, options);
+                var json = JsonSerializer.Serialize(patientNode, options);
                 await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
                 Console.WriteLine($"✓ Generated Patient: {outputPath}");
@@ -217,7 +218,7 @@ internal static class ResourceCommand
                 await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
                 if (validate)
-                    RunValidation(patient.MutableNode, schemaProvider, "Patient", fhirVersion, includeInvalid);
+                    RunValidation(patientNode, schemaProvider, "Patient", fhirVersion, includeInvalid);
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
@@ -243,12 +244,13 @@ internal static class ResourceCommand
                 {
                     var observation = allResources[allResources.Count - 1];
                     var manifest = ApplyEdgeCases(schemaProvider, observation, edgeCasesEnabled, selectors, seed, includeInvalid);
+                    var observationNode = ((IMutableJsonNode)observation).MutableNode;
 
-                    var id = observation.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                    var id = observationNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                     var filename = $"{fhirVersion}-observation-{stateName}-{id}.json";
                     var outputPath = Path.Combine(outFolder, filename);
 
-                    var json = JsonSerializer.Serialize(observation.MutableNode, options);
+                    var json = JsonSerializer.Serialize(observationNode, options);
                     await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
                     Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
@@ -256,7 +258,7 @@ internal static class ResourceCommand
                     await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
                     if (validate)
-                        RunValidation(observation.MutableNode, schemaProvider, "Observation", fhirVersion, includeInvalid);
+                        RunValidation(observationNode, schemaProvider, "Observation", fhirVersion, includeInvalid);
                 }
             }
             else
@@ -304,12 +306,13 @@ internal static class ResourceCommand
 
         var resource = faker.Generate(resourceType);
         var manifest = ApplyEdgeCases(schemaProvider, resource, edgeCasesEnabled, selectors, seed, includeInvalid);
+        var resourceNode = ((IMutableJsonNode)resource).MutableNode;
 
-        var id = resource.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
+        var id = resourceNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
         var filename = $"{fhirVersion}-{resourceType.ToLowerInvariant()}-{density.ToString().ToLowerInvariant()}-{id}.json";
         var outputPath = Path.Combine(outFolder, filename);
 
-        var json = JsonSerializer.Serialize(resource.MutableNode, options);
+        var json = JsonSerializer.Serialize(resourceNode, options);
         await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
         Console.WriteLine($"✓ Generated {resourceType} ({density}): {outputPath}");
@@ -317,7 +320,7 @@ internal static class ResourceCommand
         await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
         if (validate)
-            RunValidation(resource.MutableNode, schemaProvider, resourceType, fhirVersion, includeInvalid);
+            RunValidation(resourceNode, schemaProvider, resourceType, fhirVersion, includeInvalid);
     }
 
     private static MutationManifest? ApplyEdgeCases(IFhirSchemaProvider schemaProvider, ResourceJsonNode resource, bool enabled, string[] selectors, int seed, bool includeInvalid)

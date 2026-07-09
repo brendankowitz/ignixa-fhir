@@ -203,7 +203,7 @@ public static class SortTestScenario
                 .WithGender(g => g.Unknown);
 
             var patient = patientBuilder.Build();
-            patient.MutableNode.Remove("birthDate");
+            ((IMutableJsonNode)patient).MutableNode.Remove("birthDate");
 
             data.PatientsWithoutBirthdate.Add(patient);
         }
@@ -475,7 +475,7 @@ public static class SortTestScenario
                 .WithBirthDate(1975 + i, 6, 20)
                 .Build();
 
-            var namesArray = patient.MutableNode["name"] as System.Text.Json.Nodes.JsonArray;
+            var namesArray = ((IMutableJsonNode)patient).MutableNode["name"] as System.Text.Json.Nodes.JsonArray;
             if (namesArray is not null && namesArray.Count > 0)
             {
                 var nameObj = namesArray[0] as System.Text.Json.Nodes.JsonObject;

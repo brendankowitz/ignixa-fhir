@@ -8,6 +8,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.DataTypes;
 
@@ -136,7 +137,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         Console.WriteLine($"\n=== DIAGNOSTIC: probability=lt0.3 returned {results.Length} results ===");
         foreach (var result in results)
         {
-            var probValue = result.MutableNode["prediction"]?[0]?["probabilityDecimal"]?.GetValue<decimal>();
+            var probValue = ((IMutableJsonNode)result).MutableNode["prediction"]?[0]?["probabilityDecimal"]?.GetValue<decimal>();
             Console.WriteLine($"  ID: {result.Id}, probability: {probValue}");
         }
 #pragma warning disable CA1303 // Do not pass literals as localized parameters
@@ -208,7 +209,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         Console.WriteLine($"\n=== DIAGNOSTIC: probability=gt0.3 returned {results.Length} results ===");
         foreach (var result in results)
         {
-            var probValue = result.MutableNode["prediction"]?[0]?["probabilityDecimal"]?.GetValue<decimal>();
+            var probValue = ((IMutableJsonNode)result).MutableNode["prediction"]?[0]?["probabilityDecimal"]?.GetValue<decimal>();
             Console.WriteLine($"  ID: {result.Id}, probability: {probValue}");
         }
 #pragma warning disable CA1303 // Do not pass literals as localized parameters

@@ -12,6 +12,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
@@ -41,9 +42,9 @@ public class ScenarioBuilderPatientBuilderTests
         // Assert
         scenario.Patient.ShouldNotBeNull();
         scenario.Patient!.ResourceType.ShouldBe("Patient");
-        scenario.Patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        ((IMutableJsonNode)scenario.Patient).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
 
-        var name = scenario.Patient.MutableNode["name"]?.AsArray()?[0]?.AsObject();
+        var name = ((IMutableJsonNode)scenario.Patient).MutableNode["name"]?.AsArray()?[0]?.AsObject();
         name?["family"]?.GetValue<string>().ShouldBe("Smith");
         name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("John");
     }
@@ -92,9 +93,9 @@ public class ScenarioBuilderPatientBuilderTests
         // Assert
         scenario.Patient.ShouldNotBeNull();
         scenario.Patient!.ResourceType.ShouldBe("Patient");
-        scenario.Patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
+        ((IMutableJsonNode)scenario.Patient).MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
 
-        var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        var address = ((IMutableJsonNode)scenario.Patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Seattle");
         address?["state"]?.GetValue<string>().ShouldBe("WA");
     }
@@ -134,13 +135,13 @@ public class ScenarioBuilderPatientBuilderTests
         scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should have Boston address
-        var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        var address = ((IMutableJsonNode)scenario.Patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Boston");
         address?["state"]?.GetValue<string>().ShouldBe("Massachusetts");
         address?["postalCode"]?.GetValue<string>().ShouldStartWith("02");
 
         // Should have BMI extension
-        scenario.Patient.MutableNode["extension"].ShouldNotBeNull();
+        ((IMutableJsonNode)scenario.Patient).MutableNode["extension"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -187,7 +188,7 @@ public class ScenarioBuilderPatientBuilderTests
         scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should have Seattle address
-        var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        var address = ((IMutableJsonNode)scenario.Patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Seattle");
         address?["state"]?.GetValue<string>().ShouldBe("Washington");
     }
@@ -223,7 +224,7 @@ public class ScenarioBuilderPatientBuilderTests
         scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should have Los Angeles address
-        var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
+        var address = ((IMutableJsonNode)scenario.Patient).MutableNode["address"]?.AsArray()?[0]?.AsObject();
         address?["city"]?.GetValue<string>().ShouldBe("Los Angeles");
         address?["state"]?.GetValue<string>().ShouldBe("California");
     }
@@ -240,7 +241,7 @@ public class ScenarioBuilderPatientBuilderTests
 
         // Assert
         scenario.Patient.ShouldNotBeNull();
-        scenario.Patient!.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        ((IMutableJsonNode)scenario.Patient!).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
         scenario.GetAttribute<int>("age").ShouldBe(28);
     }
 
@@ -269,7 +270,7 @@ public class ScenarioBuilderPatientBuilderTests
 
         // Observation should reference the patient
         var observation = scenario.Observations[0];
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = ((IMutableJsonNode)observation).MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef!.ShouldContain(scenario.Patient!.Id);
     }
 
@@ -287,9 +288,9 @@ public class ScenarioBuilderPatientBuilderTests
 
         // Assert
         scenario.Patient.ShouldNotBeNull();
-        scenario.Patient!.MutableNode["meta"]?["tag"].ShouldNotBeNull();
+        ((IMutableJsonNode)scenario.Patient!).MutableNode["meta"]?["tag"].ShouldNotBeNull();
 
-        var tags = scenario.Patient.MutableNode["meta"]?["tag"]?.AsArray();
+        var tags = ((IMutableJsonNode)scenario.Patient).MutableNode["meta"]?["tag"]?.AsArray();
         tags.ShouldNotBeNull();
         tags.Count.ShouldBeGreaterThanOrEqualTo(1);
 
@@ -325,7 +326,7 @@ public class ScenarioBuilderPatientBuilderTests
         // Assert
         scenario.Conditions.Count.ShouldBe(1);
         var condition = scenario.Conditions[0];
-        var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = ((IMutableJsonNode)condition).MutableNode["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -347,9 +348,9 @@ public class ScenarioBuilderPatientBuilderTests
 
         // Assert
         bundle.ShouldNotBeNull();
-        bundle.MutableNode["entry"].ShouldNotBeNull();
+        ((IMutableJsonNode)bundle).MutableNode["entry"].ShouldNotBeNull();
 
-        var entries = bundle.MutableNode["entry"]?.AsArray();
+        var entries = ((IMutableJsonNode)bundle).MutableNode["entry"]?.AsArray();
         entries!.Count.ShouldBeGreaterThanOrEqualTo(2);
 
         // First entry should be the patient

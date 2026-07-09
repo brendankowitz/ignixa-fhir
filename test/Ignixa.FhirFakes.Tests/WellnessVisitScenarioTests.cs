@@ -6,6 +6,7 @@
 using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -71,7 +72,7 @@ public class WellnessVisitScenarioTests
         var vitalSigns = scenario.Observations
             .Where(o =>
             {
-                var category = o.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+                var category = ((IMutableJsonNode)o).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
                 return category == "vital-signs";
             })
             .ToList();
@@ -88,14 +89,14 @@ public class WellnessVisitScenarioTests
         // Assert
         var heightObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "8302-2"; // LOINC code for body height
         });
 
         heightObs.ShouldNotBeNull();
-        var value = heightObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)heightObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
-        var unit = heightObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
+        var unit = ((IMutableJsonNode)heightObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
         unit.ShouldBe("cm");
     }
 
@@ -108,14 +109,14 @@ public class WellnessVisitScenarioTests
         // Assert
         var weightObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "29463-7"; // LOINC code for body weight
         });
 
         weightObs.ShouldNotBeNull();
-        var value = weightObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)weightObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
-        var unit = weightObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
+        var unit = ((IMutableJsonNode)weightObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
         unit.ShouldBe("kg");
     }
 
@@ -128,14 +129,14 @@ public class WellnessVisitScenarioTests
         // Assert
         var bmiObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "39156-5"; // LOINC code for BMI
         });
 
         bmiObs.ShouldNotBeNull();
-        var value = bmiObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)bmiObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
-        var unit = bmiObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
+        var unit = ((IMutableJsonNode)bmiObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
         unit.ShouldBe("kg/m2");
     }
 
@@ -148,12 +149,12 @@ public class WellnessVisitScenarioTests
         // Assert
         var bpObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "85354-9"; // LOINC code for blood pressure panel
         });
 
         bpObs.ShouldNotBeNull();
-        var components = bpObs!.MutableNode["component"] as System.Text.Json.Nodes.JsonArray;
+        var components = ((IMutableJsonNode)bpObs!).MutableNode["component"] as System.Text.Json.Nodes.JsonArray;
         components.ShouldNotBeNull();
         components!.Count.ShouldBe(2); // Systolic and diastolic
     }
@@ -167,14 +168,14 @@ public class WellnessVisitScenarioTests
         // Assert
         var hrObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "8867-4"; // LOINC code for heart rate
         });
 
         hrObs.ShouldNotBeNull();
-        var value = hrObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)hrObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
-        var unit = hrObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
+        var unit = ((IMutableJsonNode)hrObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
         unit.ShouldBe("beats/minute");
     }
 
@@ -187,14 +188,14 @@ public class WellnessVisitScenarioTests
         // Assert
         var rrObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "9279-1"; // LOINC code for respiratory rate
         });
 
         rrObs.ShouldNotBeNull();
-        var value = rrObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)rrObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
-        var unit = rrObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
+        var unit = ((IMutableJsonNode)rrObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
         unit.ShouldBe("breaths/minute");
     }
 
@@ -207,14 +208,14 @@ public class WellnessVisitScenarioTests
         // Assert
         var tempObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "8310-5"; // LOINC code for body temperature
         });
 
         tempObs.ShouldNotBeNull();
-        var value = tempObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)tempObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
-        var unit = tempObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
+        var unit = ((IMutableJsonNode)tempObs).MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
         unit.ShouldBe("Cel");
     }
 
@@ -231,7 +232,7 @@ public class WellnessVisitScenarioTests
         // Assert
         var bmpReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "51990-0"; // LOINC code for BMP
         });
 
@@ -247,12 +248,12 @@ public class WellnessVisitScenarioTests
         // Assert
         var bmpReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "51990-0"; // LOINC code for BMP
         });
 
         bmpReport.ShouldNotBeNull();
-        var results = bmpReport!.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
+        var results = ((IMutableJsonNode)bmpReport!).MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
         results.ShouldNotBeNull();
         results!.Count.ShouldBe(8); // Glucose, BUN, Creatinine, Sodium, Potassium, Chloride, CO2, Calcium
     }
@@ -266,13 +267,13 @@ public class WellnessVisitScenarioTests
         // Assert - Find glucose observation in lab observations
         var glucoseObs = scenario.Observations.FirstOrDefault(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-            var category = o.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var category = ((IMutableJsonNode)o).MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "2339-0" && category == "laboratory"; // LOINC code for glucose
         });
 
         glucoseObs.ShouldNotBeNull();
-        var value = glucoseObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var value = ((IMutableJsonNode)glucoseObs!).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
         value!.Value.ShouldBeGreaterThan(0);
     }
 
@@ -289,7 +290,7 @@ public class WellnessVisitScenarioTests
         // Assert
         var lipidReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
@@ -305,7 +306,7 @@ public class WellnessVisitScenarioTests
         // Assert - Lipid panel should be included automatically for age >= 30
         var lipidReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
@@ -322,7 +323,7 @@ public class WellnessVisitScenarioTests
         scenario.DiagnosticReports.Count.ShouldBe(1);
         var bmpReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "51990-0"; // LOINC code for BMP
         });
 
@@ -339,7 +340,7 @@ public class WellnessVisitScenarioTests
         scenario.DiagnosticReports.Count.ShouldBe(2);
         var lipidReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
@@ -355,12 +356,12 @@ public class WellnessVisitScenarioTests
         // Assert
         var lipidReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
-            var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = ((IMutableJsonNode)dr).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
         lipidReport.ShouldNotBeNull();
-        var results = lipidReport!.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
+        var results = ((IMutableJsonNode)lipidReport!).MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
         results.ShouldNotBeNull();
         results!.Count.ShouldBe(4); // Total Cholesterol, HDL, LDL, Triglycerides
     }
@@ -392,7 +393,7 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit(gender: customGender);
 
         // Assert
-        var gender = scenario.Patient!.MutableNode["gender"]?.GetValue<string>();
+        var gender = ((IMutableJsonNode)scenario.Patient!).MutableNode["gender"]?.GetValue<string>();
         gender.ShouldBe(customGender);
     }
 

@@ -66,6 +66,6 @@ public class ResourceBundleComposerTests
 
         var bundle = ResourceBundleComposer.ToTransactionBundle([resource]);
 
-        bundle.MutableNode["type"]?.GetValue<string>().ShouldBe("transaction");
+        ((IMutableJsonNode)bundle).MutableNode["type"]?.GetValue<string>().ShouldBe("transaction");
     }
 }

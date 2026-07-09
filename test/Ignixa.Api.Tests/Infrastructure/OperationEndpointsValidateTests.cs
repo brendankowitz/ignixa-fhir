@@ -1,3 +1,4 @@
+using Ignixa.Serialization.SourceNodes;
 // -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
@@ -105,7 +106,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
-        var requestResource = jsonNode.MutableNode;
+        var requestResource = ((IMutableJsonNode)jsonNode).MutableNode;
 
         // Act
         string mode = null;
@@ -146,7 +147,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
-        var requestResource = jsonNode.MutableNode;
+        var requestResource = ((IMutableJsonNode)jsonNode).MutableNode;
 
         // Act
         string profile = null;
@@ -194,7 +195,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
-        var requestResource = jsonNode.MutableNode;
+        var requestResource = ((IMutableJsonNode)jsonNode).MutableNode;
 
         // Act
         JsonNode extractedResource = null;

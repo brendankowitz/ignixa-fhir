@@ -283,7 +283,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(2);
         foreach (var patient in results)
         {
-            patient.MutableNode["extension"].ShouldNotBeNull("Patient should have BMI extension");
+            ((IMutableJsonNode)patient).MutableNode["extension"].ShouldNotBeNull("Patient should have BMI extension");
         }
     }
 
@@ -310,8 +310,8 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(3);
         foreach (var patient in results)
         {
-            patient.MutableNode["name"].ShouldNotBeNull("Patient should have name");
-            patient.MutableNode["extension"].ShouldNotBeNull("Patient should have race/ethnicity extensions");
+            ((IMutableJsonNode)patient).MutableNode["name"].ShouldNotBeNull("Patient should have name");
+            ((IMutableJsonNode)patient).MutableNode["extension"].ShouldNotBeNull("Patient should have race/ethnicity extensions");
         }
     }
 
@@ -356,7 +356,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Assert - Only patient3 matches both criteria
         results.Length.ShouldBe(1);
         var matchedPatient = results[0];
-        matchedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>().ShouldBe("Jones");
+        ((IMutableJsonNode)matchedPatient).MutableNode["name"]?[0]?["family"]?.GetValue<string>().ShouldBe("Jones");
     }
 
     /// <summary>
@@ -415,7 +415,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
             .FromCity(KnownCities.Boston)
             .WithTag(tag)
             .Build();
-        patientWithoutGender.MutableNode.Remove("gender");
+        ((IMutableJsonNode)patientWithoutGender).MutableNode.Remove("gender");
 
         await Harness.CreateResourcesAsync([patientWithGender, patientWithoutGender]);
 
@@ -426,7 +426,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Act & Assert - Search for patients with gender present
         var presentResults = await Harness.SearchAsync("Patient", $"gender:missing=false&_tag={tag}");
         presentResults.Length.ShouldBe(1);
-        presentResults[0].MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
+        ((IMutableJsonNode)presentResults[0]).MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
     }
 
     /// <summary>
@@ -723,7 +723,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
             ?? throw new InvalidOperationException("No observation was created");
 
         // Act - Update the observation with a new value
-        var valueQuantity = observation.MutableNode["valueQuantity"] as JsonObject
+        var valueQuantity = ((IMutableJsonNode)observation).MutableNode["valueQuantity"] as JsonObject
             ?? throw new InvalidOperationException("Observation does not have valueQuantity");
 
         valueQuantity["value"] = JsonValue.Create(85m); // Update heart rate from 72 to 85
@@ -737,7 +737,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         searchResults.Length.ShouldBe(1, "only the current version should be returned, not historical versions");
 
         var returnedObservation = searchResults.First();
-        var returnedValue = returnedObservation.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+        var returnedValue = ((IMutableJsonNode)returnedObservation).MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
 
         returnedValue.ShouldBe(85m, "the returned observation should have the updated value");
         returnedObservation.Id.ShouldBe(observation.Id, "the returned observation should have the same ID");
@@ -771,7 +771,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(2);
         foreach (var r in results)
         {
-            var city = r.MutableNode["address"]?[0]?["city"]?.GetValue<string>();
+            var city = ((IMutableJsonNode)r).MutableNode["address"]?[0]?["city"]?.GetValue<string>();
             city.ShouldBe("Seattle", "City search should be case-insensitive");
         }
     }

@@ -13,6 +13,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -535,8 +536,8 @@ public class PatientLifecycleGeneratorTests
 
         // Assert - a 2-year-old must not be recorded at an adult height (was a flat 150-190cm)
         var height = context.Observations
-            .Where(o => o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "8302-2")
-            .Select(o => o.MutableNode["valueQuantity"]?["value"]?.GetValue<double>())
+            .Where(o => ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>() == "8302-2")
+            .Select(o => ((IMutableJsonNode)o).MutableNode["valueQuantity"]?["value"]?.GetValue<double>())
             .FirstOrDefault();
         height.ShouldNotBeNull();
         height!.Value.ShouldBeLessThan(110d, "a 2-year-old's recorded height must be age-appropriate");
@@ -604,7 +605,7 @@ public class PatientLifecycleGeneratorTests
 
     private static List<string?> ObservationLoincCodes(ScenarioContext context) =>
         context.Observations
-            .Select(o => o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>())
+            .Select(o => ((IMutableJsonNode)o).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>())
             .ToList();
 
     #endregion

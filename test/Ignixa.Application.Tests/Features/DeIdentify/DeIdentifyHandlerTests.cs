@@ -249,7 +249,7 @@ public class DeIdentifyHandlerTests
         var deIdResult = new DeIdResult
         {
             Resource = outputResource,
-            DeidentifiedJson = outputResource.MutableNode.ToJsonString(),
+            DeidentifiedJson = ((IMutableJsonNode)outputResource).MutableNode.ToJsonString(),
             Metrics = new ProcessingMetrics
             {
                 NodesProcessed = 1,

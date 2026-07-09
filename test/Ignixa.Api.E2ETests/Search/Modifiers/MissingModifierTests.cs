@@ -10,6 +10,7 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Modifiers;
 
@@ -61,7 +62,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutGender.MutableNode.Remove("gender");
+        ((IMutableJsonNode)patientWithoutGender).MutableNode.Remove("gender");
 
         await Harness.CreateResourcesAsync([patientWithGender, patientWithoutGender]);
 
@@ -71,7 +72,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient without gender should be returned");
         results[0].Id.ShouldBe(patientWithoutGender.Id);
-        results[0].MutableNode.ContainsKey("gender").ShouldBeFalse("returned patient should not have gender field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("gender").ShouldBeFalse("returned patient should not have gender field");
     }
 
     /// <summary>
@@ -98,7 +99,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutGender.MutableNode.Remove("gender");
+        ((IMutableJsonNode)patientWithoutGender).MutableNode.Remove("gender");
 
         await Harness.CreateResourcesAsync([patientWithGender, patientWithoutGender]);
 
@@ -108,8 +109,8 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient with gender should be returned");
         results[0].Id.ShouldBe(patientWithGender.Id);
-        results[0].MutableNode.ContainsKey("gender").ShouldBeTrue("returned patient should have gender field");
-        results[0].MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("gender").ShouldBeTrue("returned patient should have gender field");
+        ((IMutableJsonNode)results[0]).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
     }
 
     /// <summary>
@@ -136,7 +137,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutActive.MutableNode.Remove("active");
+        ((IMutableJsonNode)patientWithoutActive).MutableNode.Remove("active");
 
         await Harness.CreateResourcesAsync([patientWithActive, patientWithoutActive]);
 
@@ -146,7 +147,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient without active field should be returned");
         results[0].Id.ShouldBe(patientWithoutActive.Id);
-        results[0].MutableNode.ContainsKey("active").ShouldBeFalse("returned patient should not have active field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("active").ShouldBeFalse("returned patient should not have active field");
     }
 
     /// <summary>
@@ -180,7 +181,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutActive.MutableNode.Remove("active");
+        ((IMutableJsonNode)patientWithoutActive).MutableNode.Remove("active");
 
         await Harness.CreateResourcesAsync([patientWithActiveFalse, patientWithActiveTrue, patientWithoutActive]);
 
@@ -191,7 +192,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         results.Length.ShouldBe(2, "both patients with active field should be returned, regardless of value");
         foreach (var r in results)
         {
-            r.MutableNode.ContainsKey("active").ShouldBeTrue("returned patients should have active field");
+            ((IMutableJsonNode)r).MutableNode.ContainsKey("active").ShouldBeTrue("returned patients should have active field");
         }
         results.ShouldContain(r => r.Id == patientWithActiveFalse.Id);
         results.ShouldContain(r => r.Id == patientWithActiveTrue.Id);
@@ -224,7 +225,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutTelecom.MutableNode.Remove("telecom");
+        ((IMutableJsonNode)patientWithoutTelecom).MutableNode.Remove("telecom");
 
         await Harness.CreateResourcesAsync([patientWithTelecom, patientWithoutTelecom]);
 
@@ -234,7 +235,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient without telecom should be returned");
         results[0].Id.ShouldBe(patientWithoutTelecom.Id);
-        results[0].MutableNode.ContainsKey("telecom").ShouldBeFalse("returned patient should not have telecom field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("telecom").ShouldBeFalse("returned patient should not have telecom field");
     }
 
     /// <summary>
@@ -260,7 +261,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutTelecom.MutableNode.Remove("telecom");
+        ((IMutableJsonNode)patientWithoutTelecom).MutableNode.Remove("telecom");
 
         await Harness.CreateResourcesAsync([patientWithTelecom, patientWithoutTelecom]);
 
@@ -270,7 +271,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient with telecom should be returned");
         results[0].Id.ShouldBe(patientWithTelecom.Id);
-        results[0].MutableNode.ContainsKey("telecom").ShouldBeTrue("returned patient should have telecom field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("telecom").ShouldBeTrue("returned patient should have telecom field");
     }
 
     #endregion
@@ -300,7 +301,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutAddress.MutableNode.Remove("address");
+        ((IMutableJsonNode)patientWithoutAddress).MutableNode.Remove("address");
 
         await Harness.CreateResourcesAsync([patientWithAddress, patientWithoutAddress]);
 
@@ -310,7 +311,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient without address should be returned");
         results[0].Id.ShouldBe(patientWithoutAddress.Id);
-        results[0].MutableNode.ContainsKey("address").ShouldBeFalse("returned patient should not have address field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("address").ShouldBeFalse("returned patient should not have address field");
     }
 
     /// <summary>
@@ -336,7 +337,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutAddress.MutableNode.Remove("address");
+        ((IMutableJsonNode)patientWithoutAddress).MutableNode.Remove("address");
 
         await Harness.CreateResourcesAsync([patientWithAddress, patientWithoutAddress]);
 
@@ -346,7 +347,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient with address should be returned");
         results[0].Id.ShouldBe(patientWithAddress.Id);
-        results[0].MutableNode.ContainsKey("address").ShouldBeTrue("returned patient should have address field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("address").ShouldBeTrue("returned patient should have address field");
     }
 
     #endregion
@@ -394,7 +395,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient without organization should be returned");
         results[0].Id.ShouldBe(patientWithoutOrg.Id);
-        results[0].MutableNode.ContainsKey("managingOrganization").ShouldBeFalse("returned patient should not have managingOrganization field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("managingOrganization").ShouldBeFalse("returned patient should not have managingOrganization field");
     }
 
     /// <summary>
@@ -437,7 +438,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient with organization should be returned");
         results[0].Id.ShouldBe(patientWithOrg.Id);
-        results[0].MutableNode.ContainsKey("managingOrganization").ShouldBeTrue("returned patient should have managingOrganization field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("managingOrganization").ShouldBeTrue("returned patient should have managingOrganization field");
     }
 
     #endregion
@@ -463,7 +464,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .WithGender(g => g.Female)
             .WithTag(tag)
             .Build();
-        femaleWithoutActive.MutableNode.Remove("active");
+        ((IMutableJsonNode)femaleWithoutActive).MutableNode.Remove("active");
 
         // Female patient with active field - should NOT match
         var femaleWithActive = CreatePatient()
@@ -479,7 +480,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .WithGender(g => g.Male)
             .WithTag(tag)
             .Build();
-        maleWithoutActive.MutableNode.Remove("active");
+        ((IMutableJsonNode)maleWithoutActive).MutableNode.Remove("active");
 
         // Male patient with active field - should NOT match (wrong gender and has active)
         var maleWithActive = CreatePatient()
@@ -497,8 +498,8 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the female patient without active field should be returned");
         results[0].Id.ShouldBe(femaleWithoutActive.Id);
-        results[0].MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
-        results[0].MutableNode.ContainsKey("active").ShouldBeFalse();
+        ((IMutableJsonNode)results[0]).MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("active").ShouldBeFalse();
     }
 
     /// <summary>
@@ -519,15 +520,15 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutBoth.MutableNode.Remove("gender");
-        patientWithoutBoth.MutableNode.Remove("address");
+        ((IMutableJsonNode)patientWithoutBoth).MutableNode.Remove("gender");
+        ((IMutableJsonNode)patientWithoutBoth).MutableNode.Remove("address");
 
         // Patient without gender but WITH address - should NOT match
         var patientWithoutGenderWithAddress = CreatePatient()
             .FromSeattle()
             .WithTag(tag)
             .Build();
-        patientWithoutGenderWithAddress.MutableNode.Remove("gender");
+        ((IMutableJsonNode)patientWithoutGenderWithAddress).MutableNode.Remove("gender");
 
         // Patient WITH gender but without address - should NOT match
         var patientWithGenderWithoutAddress = CreatePatient()
@@ -535,7 +536,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
             .WithGender(g => g.Female)
             .WithTag(tag)
             .Build();
-        patientWithGenderWithoutAddress.MutableNode.Remove("address");
+        ((IMutableJsonNode)patientWithGenderWithoutAddress).MutableNode.Remove("address");
 
         // Patient WITH both gender and address - should NOT match
         var patientWithBoth = CreatePatient()
@@ -552,8 +553,8 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the patient without both gender and address should be returned");
         results[0].Id.ShouldBe(patientWithoutBoth.Id);
-        results[0].MutableNode.ContainsKey("gender").ShouldBeFalse();
-        results[0].MutableNode.ContainsKey("address").ShouldBeFalse();
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("gender").ShouldBeFalse();
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("address").ShouldBeFalse();
     }
 
     #endregion
@@ -581,11 +582,11 @@ public class MissingModifierTests : CapabilityDrivenTestBase
 
         // Observation with valueQuantity
         var obsWithValue = faker.Generate("Observation");
-        obsWithValue.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
+        ((IMutableJsonNode)obsWithValue).MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };
-        obsWithValue.MutableNode["code"] = new System.Text.Json.Nodes.JsonObject
+        ((IMutableJsonNode)obsWithValue).MutableNode["code"] = new System.Text.Json.Nodes.JsonObject
         {
             ["coding"] = new System.Text.Json.Nodes.JsonArray
             {
@@ -597,7 +598,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
                 }
             }
         };
-        obsWithValue.MutableNode["valueQuantity"] = new System.Text.Json.Nodes.JsonObject
+        ((IMutableJsonNode)obsWithValue).MutableNode["valueQuantity"] = new System.Text.Json.Nodes.JsonObject
         {
             ["value"] = 75,
             ["unit"] = "kg",
@@ -607,11 +608,11 @@ public class MissingModifierTests : CapabilityDrivenTestBase
 
         // Observation without valueQuantity
         var obsWithoutValue = faker.Generate("Observation");
-        obsWithoutValue.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
+        ((IMutableJsonNode)obsWithoutValue).MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };
-        obsWithoutValue.MutableNode["code"] = new System.Text.Json.Nodes.JsonObject
+        ((IMutableJsonNode)obsWithoutValue).MutableNode["code"] = new System.Text.Json.Nodes.JsonObject
         {
             ["coding"] = new System.Text.Json.Nodes.JsonArray
             {
@@ -623,8 +624,8 @@ public class MissingModifierTests : CapabilityDrivenTestBase
                 }
             }
         };
-        obsWithoutValue.MutableNode.Remove("valueQuantity");
-        obsWithoutValue.MutableNode["status"] = "cancelled";  // Reason for no value
+        ((IMutableJsonNode)obsWithoutValue).MutableNode.Remove("valueQuantity");
+        ((IMutableJsonNode)obsWithoutValue).MutableNode["status"] = "cancelled";  // Reason for no value
 
         await Harness.CreateResourcesAsync([obsWithValue, obsWithoutValue]);
 
@@ -634,7 +635,7 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         // Assert
         results.Length.ShouldBe(1, "only the observation without valueQuantity should be returned");
         results[0].Id.ShouldBe(obsWithoutValue.Id);
-        results[0].MutableNode.ContainsKey("valueQuantity").ShouldBeFalse("returned observation should not have valueQuantity field");
+        ((IMutableJsonNode)results[0]).MutableNode.ContainsKey("valueQuantity").ShouldBeFalse("returned observation should not have valueQuantity field");
     }
 
     #endregion

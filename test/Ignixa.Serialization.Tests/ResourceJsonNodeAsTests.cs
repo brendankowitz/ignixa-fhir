@@ -60,13 +60,13 @@ public class ResourceJsonNodeAsTests
     {
         // Arrange
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
-        var originalMutableNode = parametersNode.MutableNode;
+        var originalMutableNode = ((IMutableJsonNode)parametersNode).MutableNode;
 
         // Act
         var result = parametersNode.As<ParametersJsonNode>();
 
         // Assert - Zero-copy: both reference the same JsonObject
-        Assert.Same(originalMutableNode, result.MutableNode);
+        Assert.Same(originalMutableNode, ((IMutableJsonNode)result).MutableNode);
     }
 
     [Fact]
@@ -173,6 +173,6 @@ public class ResourceJsonNodeAsTests
         Assert.NotNull(result1);
         Assert.NotNull(result2);
         Assert.Same(result1, result2); // Same instance when already correct type (casting optimization)
-        Assert.Same(result1.MutableNode, result2.MutableNode); // Same underlying JsonObject
+        Assert.Same(((IMutableJsonNode)result1).MutableNode, ((IMutableJsonNode)result2).MutableNode); // Same underlying JsonObject
     }
 }

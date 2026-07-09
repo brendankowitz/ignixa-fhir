@@ -59,7 +59,7 @@ public class AddOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[
             {
                 ""family"": ""Doe"",
                 ""given"": [""John""]
@@ -82,7 +82,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
         Assert.NotNull(names);
         Assert.Equal(2, names.Count);
         Assert.Equal("Smith", names[1]?.AsObject()?["family"]?.GetValue<string>());
@@ -97,7 +97,7 @@ public class AddOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["telecom"] = JsonNode.Parse(@"[
+        ((IMutableJsonNode)resource).MutableNode["telecom"] = JsonNode.Parse(@"[
             {
                 ""system"": ""email"",
                 ""value"": ""john@example.com""
@@ -120,7 +120,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var telecom = result.MutableNode["telecom"]?.AsArray();
+        var telecom = ((IMutableJsonNode)result).MutableNode["telecom"]?.AsArray();
         Assert.NotNull(telecom);
         Assert.Equal(2, telecom.Count);
         Assert.Equal("phone", telecom[1]?.AsObject()?["system"]?.GetValue<string>());
@@ -135,7 +135,7 @@ public class AddOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[
             {
                 ""family"": ""Doe"",
                 ""given"": [""John""]
@@ -153,7 +153,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
         var givenNames = names?[0]?.AsObject()?["given"]?.AsArray();
         Assert.NotNull(givenNames);
         Assert.Equal(2, givenNames.Count);
@@ -190,7 +190,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
         Assert.NotNull(names);
         Assert.Single(names);
         Assert.Equal("Doe", names[0]?.AsObject()?["family"]?.GetValue<string>());
@@ -222,7 +222,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var telecom = result.MutableNode["telecom"]?.AsArray();
+        var telecom = ((IMutableJsonNode)result).MutableNode["telecom"]?.AsArray();
         Assert.NotNull(telecom);
         Assert.Single(telecom);
     }
@@ -253,7 +253,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var identifiers = result.MutableNode["identifier"]?.AsArray();
+        var identifiers = ((IMutableJsonNode)result).MutableNode["identifier"]?.AsArray();
         Assert.NotNull(identifiers);
         Assert.Single(identifiers);
         Assert.Equal("12345", identifiers[0]?.AsObject()?["value"]?.GetValue<string>());
@@ -316,7 +316,7 @@ public class AddOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["gender"] = "male";
+        ((IMutableJsonNode)resource).MutableNode["gender"] = "male";
 
         var operation = new FhirPatchOperation
         {
@@ -365,7 +365,7 @@ public class AddOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["address"] = JsonNode.Parse(@"[
+        ((IMutableJsonNode)resource).MutableNode["address"] = JsonNode.Parse(@"[
             {
                 ""use"": ""home"",
                 ""city"": ""Boston""
@@ -389,7 +389,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var addresses = result.MutableNode["address"]?.AsArray();
+        var addresses = ((IMutableJsonNode)result).MutableNode["address"]?.AsArray();
         Assert.NotNull(addresses);
         Assert.Equal(2, addresses.Count);
         Assert.Equal("Cambridge", addresses[1]?.AsObject()?["city"]?.GetValue<string>());
@@ -404,7 +404,7 @@ public class AddOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[
             {
                 ""family"": ""Doe"",
                 ""given"": [""John""]
@@ -422,7 +422,7 @@ public class AddOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
         var givenNames = names?[0]?.AsObject()?["given"]?.AsArray();
         Assert.NotNull(givenNames);
         Assert.Equal(2, givenNames.Count);

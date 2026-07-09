@@ -60,7 +60,7 @@ public class ComprehensiveValidationTests
     /// <returns>ValidationResult with any issues found.</returns>
     private ValidationResult ValidateResource(ResourceJsonNode resource, FhirVersion version)
     {
-        var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode);
+        var sourceNode = JsonNodeSourceNode.Create(((IMutableJsonNode)resource).MutableNode);
         var resourceType = resource.ResourceType;
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
 

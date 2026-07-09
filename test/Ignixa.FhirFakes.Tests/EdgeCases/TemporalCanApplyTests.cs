@@ -56,7 +56,7 @@ public class TemporalCanApplyTests
         var manifest = new EdgeCasePipeline(42, EdgeCaseTargetFactory.Schema).Apply(resource, strategies);
 
         manifest.Mutations.ShouldAllBe(m => m.Path == "Patient.birthDate");
-        resource.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
-        resource.MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>().ShouldBe("Smith");
+        ((IMutableJsonNode)resource).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        ((IMutableJsonNode)resource).MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>().ShouldBe("Smith");
     }
 }

@@ -570,7 +570,7 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
             .Build();
 
         // Manually override birthDate for custom string values
-        patient.MutableNode["birthDate"] = birthDateString;
+        ((IMutableJsonNode)patient).MutableNode["birthDate"] = birthDateString;
 
         return patient;
     }

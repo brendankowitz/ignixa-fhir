@@ -42,7 +42,7 @@ public class DailyAppointmentScheduleSchemaValidationTests
         result.Graph.AllResources.Count.ShouldBeGreaterThan(0);
         foreach (var resource in result.Graph.AllResources)
         {
-            var errors = ValidateAndCollectErrors(resource.MutableNode, schemaProvider);
+            var errors = ValidateAndCollectErrors(((IMutableJsonNode)resource).MutableNode, schemaProvider);
             errors.ShouldBeEmpty(
                 $"{schemaProvider.FullVersion} {resource.ResourceType}/{resource.Id} produced validation errors: {string.Join(" | ", errors)}");
         }

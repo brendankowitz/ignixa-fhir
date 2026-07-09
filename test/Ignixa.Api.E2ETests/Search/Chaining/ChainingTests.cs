@@ -633,11 +633,11 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         // Create OrganizationAffiliation linking organization and location
         var faker = Harness.CreateFaker().WithTag(tag);
         var affiliation = faker.Generate("OrganizationAffiliation");
-        affiliation.MutableNode["participatingOrganization"] = new JsonObject
+        ((IMutableJsonNode)affiliation).MutableNode["participatingOrganization"] = new JsonObject
         {
             ["reference"] = $"Organization/{data.Organization.Id}"
         };
-        affiliation.MutableNode["location"] = new JsonArray
+        ((IMutableJsonNode)affiliation).MutableNode["location"] = new JsonArray
         {
             new JsonObject { ["reference"] = $"Location/{data.Location.Id}" }
         };

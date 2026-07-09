@@ -8,6 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -236,7 +237,7 @@ public class GuardStateTests
         // Assert
         scenario.Immunizations.Count.ShouldBe(1);
         var hpv = scenario.Immunizations[0];
-        var code = hpv.MutableNode["vaccineCode"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = ((IMutableJsonNode)hpv).MutableNode["vaccineCode"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe(Immunizations.HPV.Code);
     }
 

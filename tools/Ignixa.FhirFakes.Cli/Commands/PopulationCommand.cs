@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
@@ -131,7 +132,8 @@ internal static class PopulationCommand
                     var outputPath = Path.Combine(outFolder, filename);
 
                     var bundle = context.ToBatchBundle();
-                    var json = JsonSerializer.Serialize(bundle.MutableNode, options);
+                    var bundleNode = ((IMutableJsonNode)bundle).MutableNode;
+                    var json = JsonSerializer.Serialize(bundleNode, options);
                     await File.WriteAllTextAsync(outputPath, json);
 
                     if ((i + 1) % 10 == 0 || i == contexts.Count - 1)
@@ -163,7 +165,8 @@ internal static class PopulationCommand
                 foreach (var context in contexts)
                 {
                     var bundle = context.ToBundle();
-                    if (bundle.MutableNode["entry"] is System.Text.Json.Nodes.JsonArray bundleEntries)
+                    var bundleNode = ((IMutableJsonNode)bundle).MutableNode;
+                    if (bundleNode["entry"] is System.Text.Json.Nodes.JsonArray bundleEntries)
                     {
                         foreach (var entry in bundleEntries)
                         {
@@ -239,7 +242,8 @@ internal static class PopulationCommand
             await using var writer = new StreamWriter(outputPath);
             foreach (var resource in resources)
             {
-                var json = JsonSerializer.Serialize(resource.MutableNode, options);
+                var resourceNode = ((IMutableJsonNode)resource).MutableNode;
+                var json = JsonSerializer.Serialize(resourceNode, options);
                 await writer.WriteLineAsync(json);
                 totalResources++;
             }

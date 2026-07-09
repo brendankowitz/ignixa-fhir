@@ -605,13 +605,13 @@ public class SortTests : CapabilityDrivenTestBase
 
     private static DateTimeOffset GetLastUpdated(ResourceJsonNode resource)
     {
-        var lastUpdated = resource.MutableNode["meta"]?["lastUpdated"]?.GetValue<string>();
+        var lastUpdated = ((IMutableJsonNode)resource).MutableNode["meta"]?["lastUpdated"]?.GetValue<string>();
         return DateTimeOffset.Parse(lastUpdated ?? DateTimeOffset.MinValue.ToString("o"));
     }
 
     private static DateTime? GetBirthdate(ResourceJsonNode patient)
     {
-        var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
+        var birthDate = ((IMutableJsonNode)patient).MutableNode["birthDate"]?.GetValue<string>();
         if (string.IsNullOrEmpty(birthDate))
         {
             return null;
@@ -627,7 +627,7 @@ public class SortTests : CapabilityDrivenTestBase
 
     private static string? GetFamilyName(ResourceJsonNode patient)
     {
-        var names = patient.MutableNode["name"] as System.Text.Json.Nodes.JsonArray;
+        var names = ((IMutableJsonNode)patient).MutableNode["name"] as System.Text.Json.Nodes.JsonArray;
         if (names is null || names.Count == 0)
         {
             return null;
@@ -638,13 +638,13 @@ public class SortTests : CapabilityDrivenTestBase
 
     private static DateTime? GetObservationEffectiveDate(ResourceJsonNode observation)
     {
-        var effectiveDateTime = observation.MutableNode["effectiveDateTime"]?.GetValue<string>();
+        var effectiveDateTime = ((IMutableJsonNode)observation).MutableNode["effectiveDateTime"]?.GetValue<string>();
         if (!string.IsNullOrEmpty(effectiveDateTime) && DateTime.TryParse(effectiveDateTime, out var parsed))
         {
             return parsed;
         }
 
-        var effectivePeriod = observation.MutableNode["effectivePeriod"];
+        var effectivePeriod = ((IMutableJsonNode)observation).MutableNode["effectivePeriod"];
         if (effectivePeriod is not null)
         {
             var start = effectivePeriod["start"]?.GetValue<string>();

@@ -445,7 +445,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
             .WithStatus("final")
             .Build();
         // Override subject with untyped reference
-        obs.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject { ["reference"] = createdPatient.Id };
+        ((IMutableJsonNode)obs).MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject { ["reference"] = createdPatient.Id };
         var createdObs = await Harness.CreateResourceAsync(obs);
 
         // Act - wildcard include

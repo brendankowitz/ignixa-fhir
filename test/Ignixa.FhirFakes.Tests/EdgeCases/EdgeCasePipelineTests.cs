@@ -42,7 +42,7 @@ public partial class EdgeCasePipelineTests
         var second = ResourceJsonNode.Parse(SampleJson);
         var secondManifest = new EdgeCasePipeline(4242, EdgeCaseTargetFactory.Schema).Apply(second, strategies);
 
-        first.MutableNode.ToJsonString().ShouldBe(second.MutableNode.ToJsonString());
+        ((IMutableJsonNode)first).MutableNode.ToJsonString().ShouldBe(((IMutableJsonNode)second).MutableNode.ToJsonString());
         firstManifest.ToJson().ShouldBe(secondManifest.ToJson());
         firstManifest.Mutations.Count.ShouldBeGreaterThan(0);
     }
@@ -56,8 +56,8 @@ public partial class EdgeCasePipelineTests
         new EdgeCasePipeline(7, EdgeCaseTargetFactory.Schema).Apply(resource, unicode);
 
         // gender is a bound code and system is a uri: neither is free-text, so both are off-limits.
-        resource.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
-        var identifier = resource.MutableNode["identifier"]?.AsArray()?[0]?.AsObject();
+        ((IMutableJsonNode)resource).MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        var identifier = ((IMutableJsonNode)resource).MutableNode["identifier"]?.AsArray()?[0]?.AsObject();
         identifier?["system"]?.GetValue<string>().ShouldBe("http://hospital.example/mrn");
     }
 
@@ -69,7 +69,7 @@ public partial class EdgeCasePipelineTests
 
         var manifest = new EdgeCasePipeline(7, EdgeCaseTargetFactory.Schema).Apply(resource, unicode);
 
-        var family = resource.MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>();
+        var family = ((IMutableJsonNode)resource).MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>();
         family.ShouldNotBe("Smith");
         manifest.Mutations.ShouldContain(m => m.Path == "Patient.name[0].family");
     }
@@ -82,10 +82,10 @@ public partial class EdgeCasePipelineTests
 
         var manifest = new EdgeCasePipeline(99, EdgeCaseTargetFactory.Schema).Apply(resource, temporal);
 
-        var birthDate = resource.MutableNode["birthDate"]?.GetValue<string>();
+        var birthDate = ((IMutableJsonNode)resource).MutableNode["birthDate"]?.GetValue<string>();
         FhirDateRegex().IsMatch(birthDate!).ShouldBeTrue();
 
-        resource.MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>().ShouldBe("Smith");
+        ((IMutableJsonNode)resource).MutableNode["name"]?.AsArray()?[0]?.AsObject()?["family"]?.GetValue<string>().ShouldBe("Smith");
         manifest.Mutations.ShouldAllBe(m => m.Path == "Patient.birthDate");
     }
 

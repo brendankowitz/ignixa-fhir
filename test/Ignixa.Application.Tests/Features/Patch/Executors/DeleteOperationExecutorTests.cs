@@ -45,7 +45,7 @@ public class DeleteOperationExecutorTests
     public async Task GivenSimpleProperty_WhenDeleting_ThenPropertyIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["gender"] = "male";
+        ((IMutableJsonNode)resource).MutableNode["gender"] = "male";
 
         var operation = new FhirPatchOperation
         {
@@ -55,14 +55,14 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        Assert.Null(result.MutableNode["gender"]);
+        Assert.Null(((IMutableJsonNode)result).MutableNode["gender"]);
     }
 
     [Fact]
     public async Task GivenArrayElement_WhenDeleting_ThenElementIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""},{""family"":""Smith""}]");
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""},{""family"":""Smith""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -72,7 +72,7 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
         Assert.Single(names);
         Assert.Equal("Smith", names?[0]?.AsObject()?["family"]?.GetValue<string>());
     }
@@ -81,7 +81,7 @@ public class DeleteOperationExecutorTests
     public async Task GivenNestedProperty_WhenDeleting_ThenPropertyIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe"",""given"":[""John""]}]");
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe"",""given"":[""John""]}]");
 
         var operation = new FhirPatchOperation
         {
@@ -91,7 +91,7 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var firstName = result.MutableNode["name"]?.AsArray()?[0]?.AsObject();
+        var firstName = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray()?[0]?.AsObject();
         Assert.Null(firstName?["family"]);
         Assert.NotNull(firstName?["given"]);
     }
@@ -100,7 +100,7 @@ public class DeleteOperationExecutorTests
     public async Task GivenNestedArrayElement_WhenDeleting_ThenElementIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""given"":[""John"",""Michael""]}]");
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[{""given"":[""John"",""Michael""]}]");
 
         var operation = new FhirPatchOperation
         {
@@ -110,7 +110,7 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var givenNames = result.MutableNode["name"]?.AsArray()?[0]?.AsObject()?["given"]?.AsArray();
+        var givenNames = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray()?[0]?.AsObject()?["given"]?.AsArray();
         Assert.Single(givenNames);
         Assert.Equal("Michael", givenNames?[0]?.GetValue<string>());
     }
@@ -119,7 +119,7 @@ public class DeleteOperationExecutorTests
     public async Task GivenComplexFhirPath_WhenDeleting_ThenMatchingElementIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["address"] = JsonNode.Parse(@"[
+        ((IMutableJsonNode)resource).MutableNode["address"] = JsonNode.Parse(@"[
             {""use"":""home"",""city"":""Boston""},
             {""use"":""work"",""city"":""Cambridge""}
         ]");
@@ -132,7 +132,7 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var addresses = result.MutableNode["address"]?.AsArray();
+        var addresses = ((IMutableJsonNode)result).MutableNode["address"]?.AsArray();
         Assert.Single(addresses);
         Assert.Equal("work", addresses?[0]?.AsObject()?["use"]?.GetValue<string>());
     }
@@ -191,7 +191,7 @@ public class DeleteOperationExecutorTests
     public async Task GivenComplexObject_WhenDeleting_ThenEntireObjectIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe"",""given"":[""John""]}]");
+        ((IMutableJsonNode)resource).MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe"",""given"":[""John""]}]");
 
         var operation = new FhirPatchOperation
         {
@@ -201,7 +201,7 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = ((IMutableJsonNode)result).MutableNode["name"]?.AsArray();
         Assert.Empty(names);
     }
 
@@ -209,7 +209,7 @@ public class DeleteOperationExecutorTests
     public async Task GivenBooleanProperty_WhenDeleting_ThenPropertyIsRemoved()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["active"] = true;
+        ((IMutableJsonNode)resource).MutableNode["active"] = true;
 
         var operation = new FhirPatchOperation
         {
@@ -219,6 +219,6 @@ public class DeleteOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        Assert.Null(result.MutableNode["active"]);
+        Assert.Null(((IMutableJsonNode)result).MutableNode["active"]);
     }
 }

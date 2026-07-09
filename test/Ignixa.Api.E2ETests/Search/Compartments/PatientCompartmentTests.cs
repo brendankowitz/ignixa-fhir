@@ -113,7 +113,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         // Verify all returned resources are tagged with our test tag
         foreach (var r in results)
         {
-            var meta = r.MutableNode["meta"];
+            var meta = ((IMutableJsonNode)r).MutableNode["meta"];
             meta.ShouldNotBeNull();
             var tagArray = meta?["tag"];
             tagArray.ShouldNotBeNull();
@@ -252,7 +252,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         foreach (var obs in results)
         {
             obs.ResourceType.ShouldBe("Observation");
-            var codeNode = obs.MutableNode["code"]?["coding"]?[0]?["code"];
+            var codeNode = ((IMutableJsonNode)obs).MutableNode["code"]?["coding"]?[0]?["code"];
             codeNode.ShouldNotBeNull();
             codeNode!.GetValue<string>().ShouldBe("29463-7");
         }
@@ -329,7 +329,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         // Verify all returned resources are tagged with our test tag
         foreach (var r in results)
         {
-            var meta = r.MutableNode["meta"];
+            var meta = ((IMutableJsonNode)r).MutableNode["meta"];
             meta.ShouldNotBeNull();
             var tagArray = meta?["tag"];
             tagArray.ShouldNotBeNull();
@@ -406,7 +406,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         var encounter = faker.Generate("Encounter");
 
         // Link encounter to patient
-        encounter.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
+        ((IMutableJsonNode)encounter).MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject
         {
             ["reference"] = $"Patient/{createdPatient.Id}"
         };

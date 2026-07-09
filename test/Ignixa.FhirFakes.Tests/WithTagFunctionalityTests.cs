@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Ignixa.FhirFakes;
 using Shouldly;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -31,8 +32,8 @@ public class WithTagFunctionalityTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        patient.MutableNode["meta"].ShouldNotBeNull();
-        patient.MutableNode["meta"]!["tag"].ShouldBeNull();
+        ((IMutableJsonNode)patient).MutableNode["meta"].ShouldNotBeNull();
+        ((IMutableJsonNode)patient).MutableNode["meta"]!["tag"].ShouldBeNull();
     }
 
     [Fact]
@@ -46,8 +47,8 @@ public class WithTagFunctionalityTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        patient.MutableNode["meta"].ShouldNotBeNull();
-        var meta = patient.MutableNode["meta"]!.AsObject();
+        ((IMutableJsonNode)patient).MutableNode["meta"].ShouldNotBeNull();
+        var meta = ((IMutableJsonNode)patient).MutableNode["meta"]!.AsObject();
         meta["tag"].ShouldNotBeNull();
 
         var tagArray = meta["tag"]!.AsArray();
@@ -71,9 +72,9 @@ public class WithTagFunctionalityTests
         var observation = _faker.Generate("Observation");
 
         // Assert - All resources should have the same tag
-        AssertQualifiedTag(patient1.MutableNode, tagCode);
-        AssertQualifiedTag(patient2.MutableNode, tagCode);
-        AssertQualifiedTag(observation.MutableNode, tagCode);
+        AssertQualifiedTag(((IMutableJsonNode)patient1).MutableNode, tagCode);
+        AssertQualifiedTag(((IMutableJsonNode)patient2).MutableNode, tagCode);
+        AssertQualifiedTag(((IMutableJsonNode)observation).MutableNode, tagCode);
     }
 
     [Fact]
@@ -92,8 +93,8 @@ public class WithTagFunctionalityTests
         var patient2 = _faker.Generate("Patient");
 
         // Assert
-        AssertQualifiedTag(patient1.MutableNode, tagCode1);
-        AssertQualifiedTag(patient2.MutableNode, tagCode2);
+        AssertQualifiedTag(((IMutableJsonNode)patient1).MutableNode, tagCode1);
+        AssertQualifiedTag(((IMutableJsonNode)patient2).MutableNode, tagCode2);
     }
 
     [Fact]
@@ -109,8 +110,8 @@ public class WithTagFunctionalityTests
         var patient2 = _faker.Generate("Patient");
 
         // Assert
-        patient1.MutableNode["meta"]!["tag"].ShouldNotBeNull();
-        patient2.MutableNode["meta"]!["tag"].ShouldBeNull();
+        ((IMutableJsonNode)patient1).MutableNode["meta"]!["tag"].ShouldNotBeNull();
+        ((IMutableJsonNode)patient2).MutableNode["meta"]!["tag"].ShouldBeNull();
     }
 
     [Fact]
@@ -137,14 +138,14 @@ public class WithTagFunctionalityTests
         var patient = _faker.Generate("Patient");
 
         // Assert - Meta should have both the existing properties (versionId, lastUpdated) and the new tag
-        var meta = patient.MutableNode["meta"]!.AsObject();
+        var meta = ((IMutableJsonNode)patient).MutableNode["meta"]!.AsObject();
         meta["versionId"].ShouldNotBeNull();
         meta["lastUpdated"].ShouldNotBeNull();
         meta["tag"].ShouldNotBeNull();
 
         var tagArray = meta["tag"]!.AsArray();
         tagArray.Count.ShouldBe(1);
-        AssertQualifiedTag(patient.MutableNode, tagCode);
+        AssertQualifiedTag(((IMutableJsonNode)patient).MutableNode, tagCode);
     }
 
     private static void AssertQualifiedTag(JsonNode resource, string tagCode)

@@ -74,7 +74,7 @@ public class SerializeComplexElementTests
 
         _mutator.SetProperty(target, "Observation.code", strippedElement, PropertyMutationMode.Replace);
 
-        var resultCode = target.MutableNode["code"]?.AsObject();
+        var resultCode = ((IMutableJsonNode)target).MutableNode["code"]?.AsObject();
         resultCode.ShouldNotBeNull();
         resultCode.ContainsKey("coding").ShouldBeTrue();
 
@@ -128,7 +128,7 @@ public class SerializeComplexElementTests
 
         _mutator.SetProperty(target, "Patient.identifier.type", strippedType, PropertyMutationMode.Replace);
 
-        var resultIdentifier = target.MutableNode["identifier"]?[0]?.AsObject();
+        var resultIdentifier = ((IMutableJsonNode)target).MutableNode["identifier"]?[0]?.AsObject();
         resultIdentifier.ShouldNotBeNull();
 
         var resultType = resultIdentifier["type"]?.AsObject();
@@ -177,7 +177,7 @@ public class SerializeComplexElementTests
 
         _mutator.SetProperty(target, "Observation.code", noTypeElement, PropertyMutationMode.Replace);
 
-        var resultCode = target.MutableNode["code"]?.AsObject();
+        var resultCode = ((IMutableJsonNode)target).MutableNode["code"]?.AsObject();
         resultCode.ShouldNotBeNull();
 
         var codingNode = resultCode["coding"];

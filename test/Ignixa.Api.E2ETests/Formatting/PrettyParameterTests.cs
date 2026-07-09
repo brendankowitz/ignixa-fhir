@@ -11,6 +11,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Formatting;
 
@@ -222,7 +223,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         var created = await Harness.CreateResourceAsync(patient);
 
         // Act - PUT with _pretty=true
-        created.MutableNode["active"] = true;
+        ((IMutableJsonNode)created).MutableNode["active"] = true;
         var json = created.SerializeToString();
         var content = new StringContent(json, Encoding.UTF8);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/fhir+json");

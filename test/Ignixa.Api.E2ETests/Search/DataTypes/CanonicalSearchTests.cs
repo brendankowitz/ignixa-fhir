@@ -8,6 +8,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.DataTypes;
 
@@ -53,7 +54,7 @@ public class CanonicalSearchTests : CapabilityDrivenTestBase, IClassFixture<Cano
         results[0].Id.ShouldBe(_fixture.Observations[2].Id);
 
         // Verify the profile is present in meta.profile
-        var profiles = results[0].MutableNode["meta"]?["profile"];
+        var profiles = ((IMutableJsonNode)results[0]).MutableNode["meta"]?["profile"];
         profiles.ShouldNotBeNull();
     }
 
@@ -139,7 +140,7 @@ public class CanonicalSearchTests : CapabilityDrivenTestBase, IClassFixture<Cano
         results[0].Id.ShouldBe(_fixture.Observations[3].Id);
 
         // Verify both profiles are present in meta.profile
-        var profiles = results[0].MutableNode["meta"]?["profile"];
+        var profiles = ((IMutableJsonNode)results[0]).MutableNode["meta"]?["profile"];
         profiles.ShouldNotBeNull();
     }
 }

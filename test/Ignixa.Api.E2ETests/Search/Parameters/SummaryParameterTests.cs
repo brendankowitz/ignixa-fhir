@@ -9,6 +9,7 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Parameters;
 
@@ -74,10 +75,10 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         {
             entry.Resource.ShouldNotBeNull();
             var resource = entry.Resource!;
-            resource.MutableNode["name"].ShouldNotBeNull("full representation includes name");
-            resource.MutableNode["address"].ShouldNotBeNull("full representation includes address");
-            resource.MutableNode["gender"].ShouldNotBeNull("full representation includes gender");
-            resource.MutableNode["extension"].ShouldNotBeNull("full representation includes extensions");
+            ((IMutableJsonNode)resource).MutableNode["name"].ShouldNotBeNull("full representation includes name");
+            ((IMutableJsonNode)resource).MutableNode["address"].ShouldNotBeNull("full representation includes address");
+            ((IMutableJsonNode)resource).MutableNode["gender"].ShouldNotBeNull("full representation includes gender");
+            ((IMutableJsonNode)resource).MutableNode["extension"].ShouldNotBeNull("full representation includes extensions");
         }
 
         // Verify self link includes _summary parameter
@@ -210,7 +211,7 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
             var resource = entry.Resource!;
             resource.ResourceType.ShouldBe("Patient");
             resource.Id.ShouldNotBeNullOrEmpty();
-            resource.MutableNode["name"].ShouldNotBeNull("data summary includes coded data like names");
+            ((IMutableJsonNode)resource).MutableNode["name"].ShouldNotBeNull("data summary includes coded data like names");
         }
 
         // Verify self link includes _summary parameter

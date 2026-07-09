@@ -8,6 +8,7 @@ using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification.Generated;
 using Shouldly;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -57,7 +58,7 @@ public class ThemeConsistentGenerationTests
 
         var resource = faker.Generate("MedicationRequest");
 
-        resource.MutableNode["resourceType"]!.GetValue<string>().ShouldBe("MedicationRequest");
+        ((IMutableJsonNode)resource).MutableNode["resourceType"]!.GetValue<string>().ShouldBe("MedicationRequest");
     }
 
     private static void AssertMedicationCodesAreCardiologyThemed(SchemaBasedFhirResourceFaker faker, bool requireMatch)
@@ -66,7 +67,7 @@ public class ThemeConsistentGenerationTests
         for (var i = 0; i < 20; i++)
         {
             var resource = faker.Generate("MedicationRequest");
-            foreach (var (system, code) in CollectCodings(resource.MutableNode))
+            foreach (var (system, code) in CollectCodings(((IMutableJsonNode)resource).MutableNode))
             {
                 if (MedicationPool.TryGetValue($"{system}|{code}", out var medication))
                 {
@@ -112,7 +113,7 @@ public class ThemeConsistentGenerationTests
         {
             var resource = faker.Generate(resourceType);
 
-            var domainsThisCall = CollectCodings(resource.MutableNode)
+            var domainsThisCall = CollectCodings(((IMutableJsonNode)resource).MutableNode)
                 .Select(c => pool.TryGetValue($"{c.System}|{c.Code}", out var match) ? match : null)
                 .Where(match => match?.Domain is not null)
                 .Select(match => match!.Domain!.Value)
@@ -137,7 +138,7 @@ public class ThemeConsistentGenerationTests
 
         var resource = faker.Generate("Procedure");
 
-        var codings = CollectCodings(resource.MutableNode);
+        var codings = CollectCodings(((IMutableJsonNode)resource).MutableNode);
         foreach (var (system, code) in codings)
         {
             if (ProcedurePool.TryGetValue($"{system}|{code}", out var matched))
@@ -160,7 +161,7 @@ public class ThemeConsistentGenerationTests
 
         var resource = faker.Generate("Procedure");
 
-        resource.MutableNode["resourceType"]!.GetValue<string>().ShouldBe("Procedure");
+        ((IMutableJsonNode)resource).MutableNode["resourceType"]!.GetValue<string>().ShouldBe("Procedure");
     }
 
     [Fact]
@@ -176,7 +177,7 @@ public class ThemeConsistentGenerationTests
         for (var i = 0; i < 30; i++)
         {
             var resource = faker.Generate("Procedure");
-            foreach (var (system, code) in CollectCodings(resource.MutableNode))
+            foreach (var (system, code) in CollectCodings(((IMutableJsonNode)resource).MutableNode))
             {
                 if (ProcedurePool.TryGetValue($"{system}|{code}", out var matched) && matched.Domain is { } domain)
                 {

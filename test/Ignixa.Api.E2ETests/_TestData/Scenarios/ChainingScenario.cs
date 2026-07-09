@@ -228,7 +228,7 @@ public static class ChainingTestScenario
 
         // Create Location
         var location = faker.Generate("Location");
-        location.MutableNode["address"] = new JsonObject { ["city"] = "Seattle" };
+        ((IMutableJsonNode)location).MutableNode["address"] = new JsonObject { ["city"] = "Seattle" };
         data.Location = location;
 
         // Create Devices
@@ -243,9 +243,9 @@ public static class ChainingTestScenario
 
         // Create Group containing all three patients
         var group = faker.Generate("Group");
-        group.MutableNode["type"] = "person";
-        group.MutableNode["actual"] = true;
-        group.MutableNode["member"] = CreateGroupMemberArray(
+        ((IMutableJsonNode)group).MutableNode["type"] = "person";
+        ((IMutableJsonNode)group).MutableNode["actual"] = true;
+        ((IMutableJsonNode)group).MutableNode["member"] = CreateGroupMemberArray(
             data.AdamsPatient.Id!,
             data.SmithPatient.Id!,
             data.TrumanPatient.Id!);
@@ -339,9 +339,9 @@ public static class ChainingTestScenario
         string subjectType)
     {
         var observation = faker.Generate("Observation");
-        observation.MutableNode["status"] = "final";
-        observation.MutableNode["code"] = code.DeepClone();
-        observation.MutableNode["subject"] = CreateReferenceJson(subjectType, subject.Id!);
+        ((IMutableJsonNode)observation).MutableNode["status"] = "final";
+        ((IMutableJsonNode)observation).MutableNode["code"] = code.DeepClone();
+        ((IMutableJsonNode)observation).MutableNode["subject"] = CreateReferenceJson(subjectType, subject.Id!);
         return observation;
     }
 
@@ -352,10 +352,10 @@ public static class ChainingTestScenario
         JsonObject code)
     {
         var report = faker.Generate("DiagnosticReport");
-        report.MutableNode["status"] = "final";
-        report.MutableNode["code"] = code.DeepClone();
-        report.MutableNode["subject"] = CreateReferenceJson("Patient", patient.Id!);
-        report.MutableNode["result"] = new JsonArray
+        ((IMutableJsonNode)report).MutableNode["status"] = "final";
+        ((IMutableJsonNode)report).MutableNode["code"] = code.DeepClone();
+        ((IMutableJsonNode)report).MutableNode["subject"] = CreateReferenceJson("Patient", patient.Id!);
+        ((IMutableJsonNode)report).MutableNode["result"] = new JsonArray
         {
             CreateReferenceJson("Observation", observation.Id!)
         };

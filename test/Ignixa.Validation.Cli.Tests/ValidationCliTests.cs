@@ -118,9 +118,9 @@ public class ValidationCliTests
 
         // Assert
         operationOutcome.ShouldNotBeNull();
-        operationOutcome.MutableNode.ShouldNotBeNull();
-        operationOutcome.MutableNode["resourceType"]?.ToString().ShouldBe("OperationOutcome");
-        operationOutcome.MutableNode["issue"].ShouldNotBeNull();
+        ((IMutableJsonNode)operationOutcome).MutableNode.ShouldNotBeNull();
+        ((IMutableJsonNode)operationOutcome).MutableNode["resourceType"]?.ToString().ShouldBe("OperationOutcome");
+        ((IMutableJsonNode)operationOutcome).MutableNode["issue"].ShouldNotBeNull();
     }
 
     private static ValidationResult ValidateJson(IFhirSchemaProvider schemaProvider, string json)

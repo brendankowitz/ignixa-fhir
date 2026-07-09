@@ -12,6 +12,7 @@ using Ignixa.FhirFakes.Population;
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Xunit;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -54,10 +55,10 @@ public class PatientBuilderDeterminismTests
     public void GivenSameSeed_WhenBuildingFromCity_ThenOutputsAreByteIdentical()
     {
         // Arrange & Act
-        var first = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
-        var second = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
+        var first = ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromCity(KnownCities.Boston).Build()).MutableNode;
+        var second = ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromCity(KnownCities.Boston).Build()).MutableNode;
 
         // Assert
         Canonicalize(first).ShouldBe(Canonicalize(second));
@@ -67,10 +68,10 @@ public class PatientBuilderDeterminismTests
     public void GivenSameSeed_WhenBuildingFromSeattle_ThenOutputsAreByteIdentical()
     {
         // Arrange & Act
-        var first = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromSeattle().Build().MutableNode;
-        var second = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromSeattle().Build().MutableNode;
+        var first = ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromSeattle().Build()).MutableNode;
+        var second = ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, 1234)
+            .FromSeattle().Build()).MutableNode;
 
         // Assert
         Canonicalize(first).ShouldBe(Canonicalize(second));
@@ -80,10 +81,10 @@ public class PatientBuilderDeterminismTests
     public void GivenDifferentSeeds_WhenBuildingFromCity_ThenOutputsDiffer()
     {
         // Arrange & Act
-        var first = PatientBuilderFactory.Create(_schemaProvider, 1)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
-        var second = PatientBuilderFactory.Create(_schemaProvider, 2)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
+        var first = ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, 1)
+            .FromCity(KnownCities.Boston).Build()).MutableNode;
+        var second = ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, 2)
+            .FromCity(KnownCities.Boston).Build()).MutableNode;
 
         // Assert
         Canonicalize(first).ShouldNotBe(Canonicalize(second));
@@ -118,7 +119,7 @@ public class PatientBuilderDeterminismTests
         // Assert
         patient.ShouldNotBeNull();
         patient.ResourceType.ShouldBe("Patient");
-        IdOf(patient.MutableNode).ShouldNotBeNullOrEmpty();
+        IdOf(((IMutableJsonNode)patient).MutableNode).ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -144,22 +145,21 @@ public class PatientBuilderDeterminismTests
             .Build();
 
         // Assert
-        var nhsNumber1 = patient1.MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
-        var nhsNumber2 = patient2.MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
+        var nhsNumber1 = ((IMutableJsonNode)patient1).MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
+        var nhsNumber2 = ((IMutableJsonNode)patient2).MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
 
         nhsNumber1.ShouldNotBeNullOrEmpty();
         nhsNumber1.ShouldBe(nhsNumber2);
     }
 
     private JsonNode BuildAutoNamedPatient(int seed) =>
-        PatientBuilderFactory.Create(_schemaProvider, seed)
+        ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, seed)
             .WithAge(35)
             .WithGender(g => g.Female)
-            .Build()
-            .MutableNode;
+            .Build()).MutableNode;
 
     private JsonNode BuildConfiguredPatient(int seed) =>
-        PatientBuilderFactory.Create(_schemaProvider, seed)
+        ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, seed)
             .WithAge(45)
             .WithGender(g => g.Male)
             .WithGivenName("John")
@@ -169,19 +169,17 @@ public class PatientBuilderDeterminismTests
             .WithZipCode("02101")
             .WithAreaCode("617")
             .WithRealisticBMI()
-            .Build()
-            .MutableNode;
+            .Build()).MutableNode;
 
     private JsonNode BuildUsCoreProfilePatient(int seed) =>
-        PatientBuilderFactory.Create(_schemaProvider, seed)
+        ((IMutableJsonNode)PatientBuilderFactory.Create(_schemaProvider, seed)
             .WithAge(32)
             .WithGender(g => g.Female)
             .WithGivenName("Grace")
             .WithFamilyName("Hopper")
             .WithProfile(USCorePatientProfile.Instance)
             .WithAttribute(USCorePatientProfile.UsCoreRaceAttribute, USCorePatientProfile.Race.Hispanic)
-            .Build()
-            .MutableNode;
+            .Build()).MutableNode;
 
     private static string IdOf(JsonNode patient) =>
         patient["id"]?.GetValue<string>() ?? string.Empty;

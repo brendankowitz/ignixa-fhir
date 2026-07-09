@@ -319,23 +319,23 @@ public class LibraryConfigurationLoaderTests
         var library = LibraryConfigurationLoader.CreateLibraryResource("deid-safe-harbor", "SAFE_HARBOR", options, version: "1.2.3");
 
         // Assert
-        library.MutableNode["resourceType"]?.GetValue<string>().ShouldBe("Library");
-        library.MutableNode["id"]?.GetValue<string>().ShouldBe("deid-safe-harbor");
-        library.MutableNode["status"]?.GetValue<string>().ShouldBe("active");
-        library.MutableNode["version"]?.GetValue<string>().ShouldBe("1.2.3");
+        ((IMutableJsonNode)library).MutableNode["resourceType"]?.GetValue<string>().ShouldBe("Library");
+        ((IMutableJsonNode)library).MutableNode["id"]?.GetValue<string>().ShouldBe("deid-safe-harbor");
+        ((IMutableJsonNode)library).MutableNode["status"]?.GetValue<string>().ShouldBe("active");
+        ((IMutableJsonNode)library).MutableNode["version"]?.GetValue<string>().ShouldBe("1.2.3");
 
-        var typeNode = library.MutableNode["type"]?.AsObject();
+        var typeNode = ((IMutableJsonNode)library).MutableNode["type"]?.AsObject();
         var typeCoding = typeNode?["coding"]?.AsArray()?.FirstOrDefault();
         typeCoding.ShouldNotBeNull();
         typeCoding["system"]?.GetValue<string>().ShouldBe(DartsConstants.LibraryTypeSystem);
         typeCoding["code"]?.GetValue<string>().ShouldBe(DartsConstants.LibraryTypeCode);
 
-        var identifier = library.MutableNode["identifier"]?.AsArray()?.FirstOrDefault();
+        var identifier = ((IMutableJsonNode)library).MutableNode["identifier"]?.AsArray()?.FirstOrDefault();
         identifier.ShouldNotBeNull();
         identifier["system"]?.GetValue<string>().ShouldBe("http://hl7.org/fhir/us/darts/CodeSystem/DARTSPolicyIdentifiers");
         identifier["value"]?.GetValue<string>().ShouldBe("SAFE_HARBOR");
 
-        var content = library.MutableNode["content"]?.AsArray()?.FirstOrDefault();
+        var content = ((IMutableJsonNode)library).MutableNode["content"]?.AsArray()?.FirstOrDefault();
         content.ShouldNotBeNull();
         content["contentType"]?.GetValue<string>().ShouldBe("application/json");
         content["data"]?.GetValue<string>().ShouldNotBeNullOrEmpty();

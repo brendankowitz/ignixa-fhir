@@ -204,11 +204,12 @@ public class SmartResourceJsonNodeConverterTests
     {
         // Arrange & Act
         var resource = ResourceJsonNode.Parse(_parametersJson);
+        var mutableNode = ((IMutableJsonNode)resource).MutableNode;
 
         // Assert
-        Assert.NotNull(resource.MutableNode);
-        Assert.Equal("Parameters", resource.MutableNode["resourceType"]?.GetValue<string>());
-        Assert.Equal("example", resource.MutableNode["id"]?.GetValue<string>());
+        Assert.NotNull(mutableNode);
+        Assert.Equal("Parameters", mutableNode["resourceType"]?.GetValue<string>());
+        Assert.Equal("example", mutableNode["id"]?.GetValue<string>());
     }
 
     [Fact]

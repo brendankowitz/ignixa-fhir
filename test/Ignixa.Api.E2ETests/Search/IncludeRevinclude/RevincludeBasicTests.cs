@@ -219,7 +219,7 @@ public class IncludeSearchTests_BasicRevinclude : IncludeTestBase
         var observations = resources.Where(r => r.ResourceType == "Observation").ToList();
         foreach (var obs in observations)
         {
-            var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = ((IMutableJsonNode)obs).MutableNode["subject"]?["reference"]?.GetValue<string>();
             subjectRef!.ShouldContain(trumanId);
         }
     }

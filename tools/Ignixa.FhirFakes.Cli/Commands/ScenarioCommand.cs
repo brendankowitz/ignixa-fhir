@@ -2,6 +2,7 @@ using Ignixa.Abstractions;
 using System.CommandLine;
 using System.Text.Json;
 using Ignixa.FhirFakes.Scenarios;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
@@ -129,7 +130,8 @@ internal static class ScenarioCommand
             // Create a transaction bundle (default behavior)
             // Use ToBatchBundle if resolved references is requested
             var bundle = resolvedReferences ? context.ToBatchBundle() : context.ToBundle();
-            var json = JsonSerializer.Serialize(bundle.MutableNode, options);
+            var bundleNode = ((IMutableJsonNode)bundle).MutableNode;
+            var json = JsonSerializer.Serialize(bundleNode, options);
             await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
             var bundleType = resolvedReferences ? "batch" : "transaction";
@@ -146,11 +148,12 @@ internal static class ScenarioCommand
                 var validationResults = new Dictionary<string, Ignixa.Validation.ValidationResult>();
                 foreach (var resource in context.AllResources)
                 {
-                    var resourceType = resource.MutableNode["resourceType"]?.ToString() ?? "Unknown";
-                    var resourceId = resource.MutableNode["id"]?.ToString() ?? "unknown";
+                    var resourceNode = ((IMutableJsonNode)resource).MutableNode;
+                    var resourceType = resourceNode["resourceType"]?.ToString() ?? "Unknown";
+                    var resourceId = resourceNode["id"]?.ToString() ?? "unknown";
                     var key = $"{resourceType}/{resourceId}";
 
-                    var result = ValidationHelper.ValidateResource(resource.MutableNode, schemaProvider);
+                    var result = ValidationHelper.ValidateResource(resourceNode, schemaProvider);
                     validationResults[key] = result;
 
                     var summary = ValidationHelper.GetSummary(result);

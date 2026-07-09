@@ -8,6 +8,7 @@ using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Modifiers;
 
@@ -84,7 +85,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
         results[0].Id.ShouldBe(patientWithMR.Id);
 
         // Verify the identifier structure
-        var identifiers = results[0].MutableNode["identifier"]?.AsArray();
+        var identifiers = ((IMutableJsonNode)results[0]).MutableNode["identifier"]?.AsArray();
         identifiers.ShouldNotBeNull();
         var mrIdentifier = identifiers!.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == "12345");
@@ -466,7 +467,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
         results[0].Id.ShouldBe(patient.Id);
 
         // Verify identifier structure
-        var identifiers = results[0].MutableNode["identifier"]?.AsArray();
+        var identifiers = ((IMutableJsonNode)results[0]).MutableNode["identifier"]?.AsArray();
         identifiers.ShouldNotBeNull();
         var matchedIdentifier = identifiers!.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == identifierValue);
@@ -510,7 +511,7 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             .Build();
 
         // Add plain identifier without type
-        patientWithoutType.MutableNode["identifier"] = new JsonArray
+        ((IMutableJsonNode)patientWithoutType).MutableNode["identifier"] = new JsonArray
         {
             new JsonObject
             {

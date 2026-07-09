@@ -63,7 +63,7 @@ public class DepressionScreeningGuardCoverageTests
             var failures = new List<string>();
             foreach (var resource in context.AllResources)
             {
-                var errors = ValidateAndCollectErrors(resource.MutableNode, schemaProvider);
+                var errors = ValidateAndCollectErrors(((IMutableJsonNode)resource).MutableNode, schemaProvider);
                 failures.AddRange(errors.Select(e => $"{resource.ResourceType}: {e}"));
             }
 

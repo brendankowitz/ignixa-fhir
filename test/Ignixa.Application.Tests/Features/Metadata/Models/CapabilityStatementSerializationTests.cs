@@ -10,6 +10,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Tests.Features.Metadata.Models;
 
@@ -574,7 +575,7 @@ public class CapabilityStatementSerializationTests
         deserializedResource!.ResourceType.ShouldBe("CapabilityStatement");
 
         // Access properties through MutableNode since we don't have strong typing
-        var deserialized = deserializedResource.MutableNode;
+        var deserialized = ((IMutableJsonNode)deserializedResource).MutableNode;
         deserialized["url"]!.GetValue<string>().ShouldBe(original.Url);
         deserialized["version"]!.GetValue<string>().ShouldBe(original.Version);
         deserialized["name"]!.GetValue<string>().ShouldBe(original.Name);
