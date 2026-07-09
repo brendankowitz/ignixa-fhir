@@ -166,5 +166,4 @@ public class VirtualServiceDetail : BaseJsonNode
         get => SessionKeyElement.Value;
         set => SessionKeyElement.Value = value;
     }
-
 }

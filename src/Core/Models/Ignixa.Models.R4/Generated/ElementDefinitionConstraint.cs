@@ -48,5 +48,4 @@ public sealed class ElementDefinitionConstraint : Ignixa.Models.ElementDefinitio
         get => XpathElement.Value;
         set => XpathElement.Value = value;
     }
-
 }

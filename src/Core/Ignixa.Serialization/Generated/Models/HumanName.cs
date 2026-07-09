@@ -83,5 +83,4 @@ public sealed class HumanName : BaseJsonNode
         get => EnumUtility.ParseLiteral<NameUse>(GetProperty<string>("use"));
         set => SetProperty("use", value?.GetLiteral());
     }
-
 }

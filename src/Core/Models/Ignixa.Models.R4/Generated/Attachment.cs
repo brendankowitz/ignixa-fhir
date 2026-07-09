@@ -45,5 +45,4 @@ public sealed class Attachment : Ignixa.Models.Attachment
         get => GetProperty<int?>("size");
         set => SetProperty("size", value);
     }
-
 }

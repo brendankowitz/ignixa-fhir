@@ -124,5 +124,4 @@ public sealed class Address : BaseJsonNode
         get => EnumUtility.ParseLiteral<AddressUse>(GetProperty<string>("use"));
         set => SetProperty("use", value?.GetLiteral());
     }
-
 }

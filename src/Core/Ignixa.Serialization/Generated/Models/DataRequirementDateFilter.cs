@@ -147,5 +147,4 @@ public sealed class DataRequirementDateFilter : BaseJsonNode
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

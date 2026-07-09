@@ -46,5 +46,4 @@ public class Availability : BaseJsonNode
 
     [JsonIgnore]
     public MutableJsonList<AvailabilityNotAvailableTime> NotAvailableTime => GetListProperty<AvailabilityNotAvailableTime>("notAvailableTime");
-
 }

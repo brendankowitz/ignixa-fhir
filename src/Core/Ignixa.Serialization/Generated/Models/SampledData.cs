@@ -121,5 +121,4 @@ public class SampledData : BaseJsonNode
         get => MutableNode["upperLimit"];
         set => SetProperty("upperLimit", value);
     }
-
 }

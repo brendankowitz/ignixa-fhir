@@ -103,5 +103,4 @@ public sealed class ProductShelfLife : Ignixa.Models.ProductShelfLife
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

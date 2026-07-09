@@ -154,5 +154,4 @@ public class SubstanceAmount : BaseJsonNode
         get => GetComplexProperty<SubstanceAmountReferenceRange>("referenceRange");
         set => SetProperty("referenceRange", value?.MutableNode);
     }
-
 }

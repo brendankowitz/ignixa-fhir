@@ -154,5 +154,4 @@ public class TriggerDefinition : BaseJsonNode
         get => EnumUtility.ParseLiteral<TriggerType>(GetProperty<string>("type"));
         set => SetProperty("type", value?.GetLiteral());
     }
-
 }

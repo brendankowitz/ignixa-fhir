@@ -28,5 +28,4 @@ public sealed class ElementDefinitionBindingAdditional : Ignixa.Models.ElementDe
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

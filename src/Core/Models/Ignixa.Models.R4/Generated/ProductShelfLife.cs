@@ -42,5 +42,4 @@ public sealed class ProductShelfLife : Ignixa.Models.ProductShelfLife
         get => GetComplexProperty<Quantity>("period");
         set => SetProperty("period", value?.MutableNode);
     }
-
 }

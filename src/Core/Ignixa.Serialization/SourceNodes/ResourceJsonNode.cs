@@ -216,37 +216,45 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
             throw new InvalidCastException($"Cannot convert resource of type '{ResourceType}' to {targetType.Name}, expected '{targetResourceType}'");
         }
 
-        T? instance;
+        T? instance = null;
         if (ResourceTypeRegistry.TryCreateInstance(
                 targetResourceType,
                 MutableNode,
-                out ResourceJsonNode? newInstance))
+                out ResourceJsonNode? newInstance)
+            && newInstance is T typedInstance)
         {
-            instance = (T)newInstance;
+            instance = typedInstance;
         }
-        else
-        {
-            // Use reflection to invoke the internal constructor T(JsonObject)
-            ConstructorInfo? constructor = targetType.GetConstructor(
-                BindingFlags.Instance | BindingFlags.NonPublic,
-                null,
-                [typeof(JsonObject)],
-                null);
 
-            if (constructor == null)
-            {
-                throw new InvalidOperationException(
-                    $"Type '{targetType.Name}' does not have an internal constructor with signature (JsonObject)");
-            }
-
-            // Create the new instance by invoking the internal constructor with our MutableNode
-            instance = (T)constructor.Invoke([MutableNode])
-                       ?? throw new InvalidOperationException($"Failed to create instance of {targetType.Name}");
-        }
+        instance ??= CreateViaReflectionConstructor<T>(targetType, MutableNode);
 
         // Copy FhirVersion to maintain metadata
         instance.FhirVersion = FhirVersion;
 
         return instance;
+    }
+
+    /// <summary>
+    /// Builds a <typeparamref name="T"/> by invoking its internal <c>T(JsonObject)</c> constructor via
+    /// reflection. Used when <see cref="ResourceTypeRegistry"/> has no factory for the target type, or its
+    /// factory produces a different runtime type than <typeparamref name="T"/> (e.g. a registered
+    /// hand-written facade when the caller asked for a generated typed-model subclass).
+    /// </summary>
+    private static T CreateViaReflectionConstructor<T>(Type targetType, JsonObject mutableNode) where T : ResourceJsonNode
+    {
+        ConstructorInfo? constructor = targetType.GetConstructor(
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            null,
+            [typeof(JsonObject)],
+            null);
+
+        if (constructor == null)
+        {
+            throw new InvalidOperationException(
+                $"Type '{targetType.Name}' does not have an internal constructor with signature (JsonObject)");
+        }
+
+        return (T)constructor.Invoke([mutableNode])
+               ?? throw new InvalidOperationException($"Failed to create instance of {targetType.Name}");
     }
 }

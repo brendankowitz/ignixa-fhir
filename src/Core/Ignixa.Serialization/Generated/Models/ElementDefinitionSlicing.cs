@@ -67,5 +67,4 @@ public sealed class ElementDefinitionSlicing : BaseJsonNode
         get => EnumUtility.ParseLiteral<ResourceSlicingRules>(GetProperty<string>("rules"));
         set => SetProperty("rules", value?.GetLiteral());
     }
-
 }

@@ -70,5 +70,4 @@ public class AvailabilityAvailableTime : BaseJsonNode
         get => IdElement.Value;
         set => IdElement.Value = value;
     }
-
 }

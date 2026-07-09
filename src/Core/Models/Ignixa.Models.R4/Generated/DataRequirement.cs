@@ -35,5 +35,4 @@ public sealed class DataRequirement : Ignixa.Models.DataRequirement
         get => EnumUtility.ParseLiteral<AllTypes>(GetProperty<string>("type"));
         set => SetProperty("type", value?.GetLiteral());
     }
-
 }

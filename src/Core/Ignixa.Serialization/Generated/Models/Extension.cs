@@ -50,5 +50,4 @@ public class Extension : BaseJsonNode
         get => UrlElement.Value;
         set => UrlElement.Value = value;
     }
-
 }

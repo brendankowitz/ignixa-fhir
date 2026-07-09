@@ -28,5 +28,4 @@ public sealed class Availability : Ignixa.Models.Availability
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

@@ -54,5 +54,4 @@ public sealed class Range : BaseJsonNode
         get => GetComplexProperty<Quantity>("low");
         set => SetProperty("low", value?.MutableNode);
     }
-
 }

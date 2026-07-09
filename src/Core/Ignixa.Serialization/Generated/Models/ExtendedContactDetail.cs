@@ -75,5 +75,4 @@ public class ExtendedContactDetail : BaseJsonNode
 
     [JsonIgnore]
     public MutableJsonList<ContactPoint> Telecom => GetListProperty<ContactPoint>("telecom");
-
 }

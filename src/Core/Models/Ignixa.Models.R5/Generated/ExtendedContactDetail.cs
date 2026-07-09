@@ -28,5 +28,4 @@ public sealed class ExtendedContactDetail : Ignixa.Models.ExtendedContactDetail
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

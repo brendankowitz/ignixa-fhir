@@ -30,6 +30,13 @@ public sealed class RelatedArtifact : Ignixa.Models.RelatedArtifact
     }
 
     [JsonIgnore]
+    public RelatedArtifactType? Type
+    {
+        get => EnumUtility.ParseLiteral<RelatedArtifactType>(GetProperty<string>("type"));
+        set => SetProperty("type", value?.GetLiteral());
+    }
+
+    [JsonIgnore]
     public PrimitiveElement<string> UrlElement => new(MutableNode, "url");
 
     [JsonIgnore]
@@ -38,5 +45,4 @@ public sealed class RelatedArtifact : Ignixa.Models.RelatedArtifact
         get => UrlElement.Value;
         set => UrlElement.Value = value;
     }
-
 }

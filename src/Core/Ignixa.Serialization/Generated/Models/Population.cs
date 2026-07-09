@@ -139,5 +139,4 @@ public class Population : BaseJsonNode
         get => GetComplexProperty<CodeableConcept>("race");
         set => SetProperty("race", value?.MutableNode);
     }
-
 }

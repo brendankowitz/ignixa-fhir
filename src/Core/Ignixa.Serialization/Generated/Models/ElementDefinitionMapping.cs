@@ -70,5 +70,4 @@ public class ElementDefinitionMapping : BaseJsonNode
         get => MapElement.Value;
         set => MapElement.Value = value;
     }
-
 }

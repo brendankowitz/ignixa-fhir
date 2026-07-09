@@ -54,5 +54,4 @@ public sealed class Ratio : BaseJsonNode
         get => GetComplexProperty<Quantity>("numerator");
         set => SetProperty("numerator", value?.MutableNode);
     }
-
 }

@@ -111,5 +111,4 @@ public class ProdCharacteristic : BaseJsonNode
         get => GetComplexProperty<Quantity>("width");
         set => SetProperty("width", value?.MutableNode);
     }
-
 }

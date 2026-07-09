@@ -28,5 +28,4 @@ public sealed class SubstanceAmountReferenceRange : Ignixa.Models.SubstanceAmoun
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

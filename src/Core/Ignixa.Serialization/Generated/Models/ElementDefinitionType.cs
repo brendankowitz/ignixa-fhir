@@ -66,5 +66,4 @@ public sealed class ElementDefinitionType : BaseJsonNode
         get => EnumUtility.ParseLiteral<ReferenceVersionRules>(GetProperty<string>("versioning"));
         set => SetProperty("versioning", value?.GetLiteral());
     }
-
 }

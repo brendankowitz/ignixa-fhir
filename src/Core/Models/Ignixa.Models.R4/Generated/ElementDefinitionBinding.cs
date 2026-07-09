@@ -38,5 +38,4 @@ public sealed class ElementDefinitionBinding : Ignixa.Models.ElementDefinitionBi
         get => DescriptionElement.Value;
         set => DescriptionElement.Value = value;
     }
-
 }

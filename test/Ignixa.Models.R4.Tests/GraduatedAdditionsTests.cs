@@ -112,8 +112,10 @@ public sealed class GraduatedAdditionsTests
         component.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.String);
         component.ValueString.ShouldBe("high");
 
-        // Switch the nested choice to a Quantity through the component facade.
-        component.ValueQuantity = new Ignixa.Models.Quantity { Unit = "mmHg" };
+        // Switch the nested choice to a Quantity through the component facade. Quantity.comparator now
+        // diverges between R4/R5 (R5 added the "ad" code), so Quantity is version-subclassed and the
+        // choice accessor's type is the R4 subclass, not the shared base.
+        component.ValueQuantity = new Ignixa.Models.R4.Quantity { Unit = "mmHg" };
 
         component.MutableNode["valueString"].ShouldBeNull();
         component.ValueType.ShouldBe(Ignixa.Models.R4.ObservationComponentValueType.Quantity);

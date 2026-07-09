@@ -227,5 +227,4 @@ public sealed class Observation : Ignixa.Models.Observation
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

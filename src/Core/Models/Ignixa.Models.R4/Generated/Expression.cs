@@ -38,5 +38,4 @@ public sealed class Expression : Ignixa.Models.Expression
         get => NameElement.Value;
         set => NameElement.Value = value;
     }
-
 }

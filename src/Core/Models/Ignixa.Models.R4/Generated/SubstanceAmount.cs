@@ -28,5 +28,4 @@ public sealed class SubstanceAmount : Ignixa.Models.SubstanceAmount
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

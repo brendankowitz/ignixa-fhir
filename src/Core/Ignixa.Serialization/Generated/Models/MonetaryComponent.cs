@@ -83,5 +83,4 @@ public class MonetaryComponent : BaseJsonNode
         get => TypeElement.Value;
         set => TypeElement.Value = value;
     }
-
 }

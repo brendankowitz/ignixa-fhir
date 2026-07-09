@@ -61,5 +61,4 @@ public class RatioRange : BaseJsonNode
         get => GetComplexProperty<Quantity>("lowNumerator");
         set => SetProperty("lowNumerator", value?.MutableNode);
     }
-
 }

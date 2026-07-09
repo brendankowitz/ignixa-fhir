@@ -110,5 +110,4 @@ public sealed class Dosage : Ignixa.Models.Dosage
         get => GetComplexProperty<Ratio>("maxDosePerPeriod");
         set => SetProperty("maxDosePerPeriod", value?.MutableNode);
     }
-
 }

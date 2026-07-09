@@ -38,5 +38,4 @@ public sealed class ObservationReferenceRange : Ignixa.Models.ObservationReferen
         get => TextElement.Value;
         set => TextElement.Value = value;
     }
-
 }

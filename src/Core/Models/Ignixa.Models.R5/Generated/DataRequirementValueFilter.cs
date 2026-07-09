@@ -28,5 +28,4 @@ public sealed class DataRequirementValueFilter : Ignixa.Models.DataRequirementVa
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

@@ -66,5 +66,4 @@ public sealed class Money : BaseJsonNode
         get => MutableNode["value"];
         set => SetProperty("value", value);
     }
-
 }

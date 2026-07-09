@@ -50,5 +50,4 @@ public class ElementDefinitionExample : BaseJsonNode
         get => LabelElement.Value;
         set => LabelElement.Value = value;
     }
-
 }

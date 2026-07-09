@@ -28,5 +28,4 @@ public sealed class VirtualServiceDetail : Ignixa.Models.VirtualServiceDetail
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

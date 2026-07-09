@@ -124,7 +124,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         // --- Base layer -------------------------------------------------------------------------
         // Enums for base elements expand from the first version's definitions (Identical => same set).
         string primaryVersion = versions[0].Version;
-        var baseEnumContext = new GenerationContext(defsByVersion[primaryVersion], config, BaseNamespace);
+        var baseEnumContext = new GenerationContext(defsByVersion[primaryVersion], BaseNamespace);
         WriteSupportFiles(baseOutputDir, BaseNamespace);
 
         int baseTypeCount = 0;
@@ -147,7 +147,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             }
 
             string code = GenerateBaseFacade(classification, baseEnumContext, defsByVersion, primaryVersion);
-            File.WriteAllText(Path.Combine(baseOutputDir, $"{classification.TypeName}.cs"), code, Encoding.UTF8);
+            WriteGeneratedFile(Path.Combine(baseOutputDir, $"{classification.TypeName}.cs"), code);
             baseTypeCount++;
 
             if (classification.SubclassVersions.Count == 0)
@@ -168,7 +168,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         foreach (var (enumName, enumCode) in baseEnumContext.EnumFiles)
         {
-            File.WriteAllText(Path.Combine(baseOutputDir, $"{enumName}.cs"), enumCode, Encoding.UTF8);
+            WriteGeneratedFile(Path.Combine(baseOutputDir, $"{enumName}.cs"), enumCode);
         }
 
         // Contexts whose downgrade/fallback counters feed the end-of-run summary.
@@ -181,7 +181,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         foreach (var (version, definitions, outputDir) in versions)
         {
             string versionNamespace = $"{BaseNamespace}.{version}";
-            var versionEnumContext = new GenerationContext(definitions, config, versionNamespace);
+            var versionEnumContext = new GenerationContext(definitions, versionNamespace);
             summaryContexts.Add((versionNamespace, versionEnumContext));
 
             int versionTypeCount = 0;
@@ -195,7 +195,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
                 }
 
                 string code = GenerateVersionSubclass(classification, version, versionEnumContext, defsByVersion);
-                File.WriteAllText(Path.Combine(outputDir, $"{classification.TypeName}.cs"), code, Encoding.UTF8);
+                WriteGeneratedFile(Path.Combine(outputDir, $"{classification.TypeName}.cs"), code);
                 versionTypeCount++;
 
                 if (classification.Kind is FacadeKind.DomainResource or FacadeKind.Resource)
@@ -226,18 +226,16 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
             foreach (var (enumName, enumCode) in versionEnumContext.EnumFiles)
             {
-                File.WriteAllText(Path.Combine(outputDir, $"{enumName}.cs"), enumCode, Encoding.UTF8);
+                WriteGeneratedFile(Path.Combine(outputDir, $"{enumName}.cs"), enumCode);
             }
 
-            File.WriteAllText(
+            WriteGeneratedFile(
                 Path.Combine(outputDir, "_GlobalUsings.cs"),
-                RenderGlobalUsings(version, classifications),
-                Encoding.UTF8);
+                RenderGlobalUsings(version, classifications));
 
-            File.WriteAllText(
+            WriteGeneratedFile(
                 Path.Combine(outputDir, $"{version}.cs"),
-                RenderEntryPoints(version, registrations),
-                Encoding.UTF8);
+                RenderEntryPoints(version, registrations));
 
             Console.WriteLine($"  {version}: emitted {versionTypeCount} subclasses, {versionEnumContext.EnumFiles.Count} enums, {registrations.Count} registrations");
         }
@@ -265,18 +263,21 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         int valueSetTotal = contexts.Sum(c => c.Context.ValueSetDowngrades.Count);
         int fallbackTotal = contexts.Sum(c => c.Context.JsonNodeFallbacks.Count);
         int droppedChoiceTotal = contexts.Sum(c => c.Context.DroppedChoiceVariants.Count);
+        int memberNameCollisionTotal = contexts.Sum(c => c.Context.MemberNameCollisions.Count);
 
         Console.WriteLine();
         Console.WriteLine("Coverage downgrades (no typed accessor produced):");
         Console.WriteLine($"  value-set enum -> string: {valueSetTotal}");
         Console.WriteLine($"  JsonNode fallbacks: {fallbackTotal}");
         Console.WriteLine($"  dropped choice variants: {droppedChoiceTotal}");
+        Console.WriteLine($"  member name collisions (renamed): {memberNameCollisionTotal}");
 
         foreach (var (label, context) in contexts)
         {
             WriteDowngradeSection(label, "value-set->string", context.ValueSetDowngrades);
             WriteDowngradeSection(label, "JsonNode fallback", context.JsonNodeFallbacks);
             WriteDowngradeSection(label, "dropped choice variant", context.DroppedChoiceVariants);
+            WriteDowngradeSection(label, "member name collision", context.MemberNameCollisions);
         }
     }
 
@@ -298,7 +299,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         string primaryVersion)
     {
         bool isResource = classification.Kind is FacadeKind.DomainResource or FacadeKind.Resource;
-        var memberNames = new MemberNameAllocator(classification.TypeName, isResource);
+        var memberNames = new MemberNameAllocator(classification.TypeName, isResource, enumContext);
         var body = new StringBuilder();
 
         foreach (var element in classification.BaseElements)
@@ -345,7 +346,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         Dictionary<string, DefinitionCollection> defsByVersion)
     {
         bool isResource = classification.Kind is FacadeKind.DomainResource or FacadeKind.Resource;
-        var memberNames = new MemberNameAllocator(classification.TypeName, isResource);
+        var memberNames = new MemberNameAllocator(classification.TypeName, isResource, enumContext);
 
         // Seed the allocator with base members so subclass deltas never shadow (CS0108) a base accessor.
         foreach (var baseElement in classification.BaseElements)
@@ -650,6 +651,12 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         enumBuilder.AppendLine($"/// Discriminator for the <c>{typeName}.{baseName}[x]</c> choice element: which typed");
         enumBuilder.AppendLine("/// variant (if any) is currently present in the JSON.");
         enumBuilder.AppendLine("/// </summary>");
+        enumBuilder.AppendLine("/// <remarks>");
+        enumBuilder.AppendLine("/// Probes only the value key (e.g. <c>effectiveDateTime</c>), not its FHIR extension shadow");
+        enumBuilder.AppendLine("/// (<c>_effectiveDateTime</c>). A primitive variant present only as a shadow (valid FHIR: an");
+        enumBuilder.AppendLine("/// extension on a choice element with no value) reports <c>None</c> here even though");
+        enumBuilder.AppendLine("/// <c>PrimitiveElement&lt;T&gt;</c> on the accessor itself does see it.");
+        enumBuilder.AppendLine("/// </remarks>");
         enumBuilder.AppendLine($"public enum {enumName}");
         enumBuilder.AppendLine("{");
         enumBuilder.AppendLine("    None,");
@@ -834,11 +841,16 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         sb.Append(body);
 
-        while (sb.Length >= 2 && sb[^1] == '\n')
+        // Collapse however many trailing newlines `body` ends with down to a single newline, so the
+        // closing brace sits directly on the next line with no blank line before it.
+        while (sb.Length > 0 && (sb[^1] == '\n' || sb[^1] == '\r'))
         {
-            sb.Length -= Environment.NewLine.Length;
+            sb.Length--;
+        }
+
+        if (sb.Length > 0)
+        {
             sb.AppendLine();
-            break;
         }
 
         sb.AppendLine("}");
@@ -953,7 +965,19 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
     private void WriteSupportFiles(string outputDir, string ns)
     {
-        File.WriteAllText(Path.Combine(outputDir, "PrimitiveElement.cs"), RenderPrimitiveElement(ns), Encoding.UTF8);
+        WriteGeneratedFile(Path.Combine(outputDir, "PrimitiveElement.cs"), RenderPrimitiveElement(ns));
+    }
+
+    /// <summary>
+    /// Writes generated source with normalized <c>\n</c> line endings. The emitters build content with
+    /// <see cref="StringBuilder.AppendLine"/>, which uses <see cref="Environment.NewLine"/> and therefore
+    /// produces OS-dependent bytes (CRLF on Windows, LF on Linux/macOS). Without normalization, the
+    /// regen-drift guard only agrees with itself on the machine that generated it, and cross-OS
+    /// contributors churn the whole line-ending set on every regen.
+    /// </summary>
+    private static void WriteGeneratedFile(string path, string content)
+    {
+        File.WriteAllText(path, content.Replace("\r\n", "\n", StringComparison.Ordinal), Encoding.UTF8);
     }
 
     private static string RenderPrimitiveElement(string ns)
@@ -1182,9 +1206,13 @@ public sealed class PrimitiveElement<T>
     private sealed class MemberNameAllocator
     {
         private readonly HashSet<string> _used = new(StringComparer.Ordinal);
+        private readonly GenerationContext _context;
+        private readonly string _typeName;
 
-        public MemberNameAllocator(string typeName, bool isResource)
+        public MemberNameAllocator(string typeName, bool isResource, GenerationContext context)
         {
+            _typeName = typeName;
+            _context = context;
             _used.Add(typeName);
             _used.Add("MutableNode");
             _used.Add("FhirVersion");
@@ -1214,6 +1242,11 @@ public sealed class PrimitiveElement<T>
             {
                 candidate = preferred + suffix;
                 suffix++;
+            }
+
+            if (!string.Equals(candidate, preferred, StringComparison.Ordinal))
+            {
+                _context.RecordMemberNameCollision(_typeName, preferred, candidate);
             }
 
             return candidate;

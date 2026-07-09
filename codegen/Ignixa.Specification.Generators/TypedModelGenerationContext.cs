@@ -22,11 +22,11 @@ internal sealed class GenerationContext
     private readonly List<string> _valueSetDowngrades = [];
     private readonly List<string> _jsonNodeFallbacks = [];
     private readonly List<string> _droppedChoiceVariants = [];
+    private readonly List<string> _memberNameCollisions = [];
 
-    public GenerationContext(DefinitionCollection definitions, CSharpTypedModelConfig config, string ns)
+    public GenerationContext(DefinitionCollection definitions, string ns)
     {
         _definitions = definitions;
-        _ = config;
         Namespace = ns;
     }
 
@@ -49,6 +49,9 @@ internal sealed class GenerationContext
     /// <summary>Choice <c>[x]</c> variants dropped because the variant type has no typed facade.</summary>
     public IReadOnlyList<string> DroppedChoiceVariants => _droppedChoiceVariants;
 
+    /// <summary>Member names renamed by <see cref="MemberNameAllocator"/> to resolve a collision (e.g. <c>Value2</c>).</summary>
+    public IReadOnlyList<string> MemberNameCollisions => _memberNameCollisions;
+
     /// <summary>Records a raw JsonNode fallback emitted for an untyped element.</summary>
     public void RecordJsonNodeFallback(string elementContext, string fhirTypeCode)
         => _jsonNodeFallbacks.Add($"{elementContext} ({fhirTypeCode})");
@@ -56,6 +59,14 @@ internal sealed class GenerationContext
     /// <summary>Records a choice variant dropped because its type has no typed facade.</summary>
     public void RecordDroppedChoiceVariant(string elementContext, string fhirTypeCode)
         => _droppedChoiceVariants.Add($"{elementContext} ({fhirTypeCode})");
+
+    /// <summary>
+    /// Records that <see cref="MemberNameAllocator"/> renamed a member to resolve a collision, so a
+    /// mystery-numbered property (e.g. <c>Value2</c>) has an audit trail in the end-of-run summary
+    /// instead of silently appearing with no explanation.
+    /// </summary>
+    public void RecordMemberNameCollision(string typeName, string preferred, string allocated)
+        => _memberNameCollisions.Add($"{typeName}.{preferred} -> {allocated}");
 
     /// <summary>
     /// Records a choice discriminator enum for emission to its own file. The supplied declaration is
@@ -195,7 +206,7 @@ internal sealed class GenerationContext
     private static string RenderValueSetEnum(string ns, string enumName, string valueSetUrl, List<(string Code, string? Display, string? System)> concepts)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"// Generated from FHIR ValueSet: {valueSetUrl}");
+        sb.AppendLine($"// Generated from FHIR ValueSet: {EscapeCSharpLineComment(valueSetUrl)}");
         sb.AppendLine($"public enum {enumName}");
         sb.AppendLine("{");
 
@@ -221,8 +232,8 @@ internal sealed class GenerationContext
                 sb.AppendLine($"    /// <summary>{EscapeXmlComment(display)}</summary>");
             }
 
-            string systemPart = !string.IsNullOrEmpty(system) ? $", \"{system}\"" : string.Empty;
-            sb.AppendLine($"    [EnumLiteral(\"{code}\"{systemPart})]");
+            string systemPart = !string.IsNullOrEmpty(system) ? $", \"{EscapeCSharpString(system)}\"" : string.Empty;
+            sb.AppendLine($"    [EnumLiteral(\"{EscapeCSharpString(code)}\"{systemPart})]");
             sb.AppendLine($"    {member},");
         }
 
@@ -288,6 +299,31 @@ internal sealed class GenerationContext
         }
 
         return sb.Length == 0 ? value : sb.ToString();
+    }
+
+    /// <summary>
+    /// Escapes a value for embedding in a C# regular string literal (between double quotes). Terminology
+    /// data (ValueSet codes/systems) is untrusted input to codegen: an unescaped quote or backslash would
+    /// produce uncompilable, or in the worst case injected, generated source.
+    /// </summary>
+    private static string EscapeCSharpString(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        return text
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    /// <summary>Strips characters that would let untrusted text break out of a single-line `//` comment.</summary>
+    private static string EscapeCSharpLineComment(string text)
+    {
+        return string.IsNullOrEmpty(text) ? text : text.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
     }
 
     private static string EscapeXmlComment(string text)

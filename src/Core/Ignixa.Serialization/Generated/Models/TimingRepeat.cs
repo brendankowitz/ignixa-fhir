@@ -261,5 +261,4 @@ public sealed class TimingRepeat : BaseJsonNode
 
     [JsonIgnore]
     public MutablePrimitiveList<string> When => GetPrimitiveListProperty<string>("when");
-
 }

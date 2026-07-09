@@ -8,23 +8,18 @@
 // inside Ignixa.Models.R4 resolves to the shared Ignixa.Models base type.
 
 global using Address = Ignixa.Models.Address;
-global using Age = Ignixa.Models.Age;
 global using Annotation = Ignixa.Models.Annotation;
 global using CodeableConcept = Ignixa.Models.CodeableConcept;
 global using Coding = Ignixa.Models.Coding;
 global using ContactDetail = Ignixa.Models.ContactDetail;
 global using ContactPoint = Ignixa.Models.ContactPoint;
 global using Contributor = Ignixa.Models.Contributor;
-global using Count = Ignixa.Models.Count;
 global using DataRequirementCodeFilter = Ignixa.Models.DataRequirementCodeFilter;
 global using DataRequirementDateFilter = Ignixa.Models.DataRequirementDateFilter;
 global using DataRequirementSort = Ignixa.Models.DataRequirementSort;
-global using Distance = Ignixa.Models.Distance;
 global using DosageDoseAndRate = Ignixa.Models.DosageDoseAndRate;
-global using Duration = Ignixa.Models.Duration;
 global using ElementDefinitionBase = Ignixa.Models.ElementDefinitionBase;
 global using ElementDefinitionSlicing = Ignixa.Models.ElementDefinitionSlicing;
-global using ElementDefinitionSlicingDiscriminator = Ignixa.Models.ElementDefinitionSlicingDiscriminator;
 global using ElementDefinitionType = Ignixa.Models.ElementDefinitionType;
 global using HumanName = Ignixa.Models.HumanName;
 global using Identifier = Ignixa.Models.Identifier;
@@ -36,7 +31,6 @@ global using PatientCommunication = Ignixa.Models.PatientCommunication;
 global using PatientContact = Ignixa.Models.PatientContact;
 global using PatientLink = Ignixa.Models.PatientLink;
 global using Period = Ignixa.Models.Period;
-global using Quantity = Ignixa.Models.Quantity;
 global using Range = Ignixa.Models.Range;
 global using Ratio = Ignixa.Models.Ratio;
 global using Reference = Ignixa.Models.Reference;

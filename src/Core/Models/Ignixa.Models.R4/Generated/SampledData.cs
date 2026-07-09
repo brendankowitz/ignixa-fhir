@@ -47,5 +47,4 @@ public sealed class SampledData : Ignixa.Models.SampledData
         get => MutableNode["period"];
         set => SetProperty("period", value);
     }
-
 }

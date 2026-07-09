@@ -57,5 +57,4 @@ public sealed class DataRequirementSort : BaseJsonNode
         get => PathElement.Value;
         set => PathElement.Value = value;
     }
-
 }

@@ -44,5 +44,4 @@ public sealed class Patient : Ignixa.Models.Patient
         get => LanguageElement.Value;
         set => LanguageElement.Value = value;
     }
-
 }

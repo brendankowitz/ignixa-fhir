@@ -55,5 +55,4 @@ public sealed class Narrative : BaseJsonNode
         get => EnumUtility.ParseLiteral<NarrativeStatus>(GetProperty<string>("status"));
         set => SetProperty("status", value?.GetLiteral());
     }
-
 }

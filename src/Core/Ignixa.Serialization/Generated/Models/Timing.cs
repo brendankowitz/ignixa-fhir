@@ -60,5 +60,4 @@ public sealed class Timing : BaseJsonNode
         get => GetComplexProperty<TimingRepeat>("repeat");
         set => SetProperty("repeat", value?.MutableNode);
     }
-
 }

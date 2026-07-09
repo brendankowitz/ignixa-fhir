@@ -80,5 +80,4 @@ public class Expression : BaseJsonNode
         get => ReferenceElement.Value;
         set => ReferenceElement.Value = value;
     }
-
 }

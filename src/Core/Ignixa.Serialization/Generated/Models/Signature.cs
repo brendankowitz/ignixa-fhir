@@ -99,5 +99,4 @@ public sealed class Signature : BaseJsonNode
         get => MutableNode["who"];
         set => SetProperty("who", value);
     }
-
 }

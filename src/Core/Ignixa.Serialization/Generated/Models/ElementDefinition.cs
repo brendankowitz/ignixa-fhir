@@ -250,5 +250,4 @@ public class ElementDefinition : BaseJsonNode
 
     [JsonIgnore]
     public MutableJsonList<ElementDefinitionType> Type => GetListProperty<ElementDefinitionType>("type");
-
 }

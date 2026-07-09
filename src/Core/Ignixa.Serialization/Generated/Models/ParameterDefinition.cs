@@ -94,5 +94,4 @@ public class ParameterDefinition : BaseJsonNode
         get => EnumUtility.ParseLiteral<OperationParameterUse>(GetProperty<string>("use"));
         set => SetProperty("use", value?.GetLiteral());
     }
-
 }

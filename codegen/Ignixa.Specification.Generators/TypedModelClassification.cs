@@ -31,12 +31,27 @@ internal enum FacadeKind
 /// A version-independent signature for a single element, used to decide whether two versions agree on
 /// it. Two elements are compatible iff their signatures are equal.
 /// </summary>
+/// <param name="BindingStrength">
+/// The binding's <c>ElementDefinition.Binding.Strength</c> (e.g. <c>required</c>, <c>extensible</c>),
+/// when <paramref name="ValueSetUrl"/> is set. A strength change (e.g. required -> extensible) between
+/// versions is a real behavioral difference even when the URL and code set are unchanged.
+/// </param>
+/// <param name="ValueSetCodesHash">
+/// A hash of the value set's expanded, distinct <c>(system, code)</c> pairs for this version, when
+/// <paramref name="ValueSetUrl"/> is set. FHIR value sets routinely gain codes between versions under
+/// the SAME url; comparing only the URL would wrongly classify such a binding as Identical, emit a base
+/// enum built from only one version's codes, and silently drop the other version's valid codes to
+/// `null` on read. Null when the value set could not be expanded (the emitter downgrades that element to
+/// `string` regardless of bucket in that case, so an unresolvable hash cannot hide real divergence).
+/// </param>
 internal sealed record ElementSignature(
     string TypeCode,
     bool IsArray,
     bool IsChoice,
     string? ValueSetUrl,
-    string? VariantTypeCodes);
+    string? VariantTypeCodes,
+    string? BindingStrength = null,
+    string? ValueSetCodesHash = null);
 
 /// <summary>Per-version facts about one element of one type.</summary>
 internal sealed record ElementFacts(

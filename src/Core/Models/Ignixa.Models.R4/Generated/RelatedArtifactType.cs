@@ -8,7 +8,7 @@
 
 using Ignixa.Serialization;
 
-namespace Ignixa.Models;
+namespace Ignixa.Models.R4;
 
 // Generated from FHIR ValueSet: http://hl7.org/fhir/ValueSet/related-artifact-type|4.0.1
 public enum RelatedArtifactType

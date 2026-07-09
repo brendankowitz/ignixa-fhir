@@ -60,5 +60,4 @@ public sealed class Period : BaseJsonNode
         get => StartElement.Value;
         set => StartElement.Value = value;
     }
-
 }

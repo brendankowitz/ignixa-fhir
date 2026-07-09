@@ -54,5 +54,4 @@ public class SubstanceAmountReferenceRange : BaseJsonNode
         get => GetComplexProperty<Quantity>("lowLimit");
         set => SetProperty("lowLimit", value?.MutableNode);
     }
-
 }

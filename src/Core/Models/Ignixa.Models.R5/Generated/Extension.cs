@@ -715,5 +715,4 @@ public sealed class Extension : Ignixa.Models.Extension
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

@@ -57,5 +57,4 @@ public class ElementDefinitionBinding : BaseJsonNode
         get => ValueSetElement.Value;
         set => ValueSetElement.Value = value;
     }
-
 }

@@ -77,5 +77,4 @@ public sealed class Reference : BaseJsonNode
         get => TypeElement.Value;
         set => TypeElement.Value = value;
     }
-
 }

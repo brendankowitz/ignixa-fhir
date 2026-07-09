@@ -17,7 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Distance datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-public sealed class Distance : BaseJsonNode
+public class Distance : BaseJsonNode
 {
     public Distance()
     {
@@ -36,13 +36,6 @@ public sealed class Distance : BaseJsonNode
     {
         get => CodeElement.Value;
         set => CodeElement.Value = value;
-    }
-
-    [JsonIgnore]
-    public QuantityComparator? Comparator
-    {
-        get => EnumUtility.ParseLiteral<QuantityComparator>(GetProperty<string>("comparator"));
-        set => SetProperty("comparator", value?.GetLiteral());
     }
 
     [JsonIgnore]
@@ -96,5 +89,4 @@ public sealed class Distance : BaseJsonNode
         get => MutableNode["value"];
         set => SetProperty("value", value);
     }
-
 }

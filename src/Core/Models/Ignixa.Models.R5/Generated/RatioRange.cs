@@ -28,5 +28,4 @@ public sealed class RatioRange : Ignixa.Models.RatioRange
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

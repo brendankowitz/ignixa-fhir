@@ -87,12 +87,4 @@ public class RelatedArtifact : BaseJsonNode
         get => ResourceElement.Value;
         set => ResourceElement.Value = value;
     }
-
-    [JsonIgnore]
-    public RelatedArtifactType? Type
-    {
-        get => EnumUtility.ParseLiteral<RelatedArtifactType>(GetProperty<string>("type"));
-        set => SetProperty("type", value?.GetLiteral());
-    }
-
 }

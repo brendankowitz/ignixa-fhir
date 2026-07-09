@@ -87,5 +87,4 @@ public sealed class Coding : BaseJsonNode
         get => VersionElement.Value;
         set => VersionElement.Value = value;
     }
-
 }

@@ -8,9 +8,9 @@
 
 using Ignixa.Serialization;
 
-namespace Ignixa.Models;
+namespace Ignixa.Models.R5;
 
-// Generated from FHIR ValueSet: http://hl7.org/fhir/ValueSet/discriminator-type|4.0.1
+// Generated from FHIR ValueSet: http://hl7.org/fhir/ValueSet/discriminator-type|5.0.0
 public enum DiscriminatorType
 {
     /// <summary>Value</summary>
@@ -32,4 +32,8 @@ public enum DiscriminatorType
     /// <summary>Profile</summary>
     [EnumLiteral("profile", "http://hl7.org/fhir/discriminator-type")]
     Profile,
+
+    /// <summary>Position</summary>
+    [EnumLiteral("position", "http://hl7.org/fhir/discriminator-type")]
+    Position,
 }

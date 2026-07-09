@@ -79,5 +79,4 @@ public sealed class Meta : BaseJsonNode
         get => VersionIdElement.Value;
         set => VersionIdElement.Value = value;
     }
-
 }

@@ -73,5 +73,4 @@ public sealed class DataRequirementCodeFilter : BaseJsonNode
         get => ValueSetElement.Value;
         set => ValueSetElement.Value = value;
     }
-
 }

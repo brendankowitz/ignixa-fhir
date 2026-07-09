@@ -23,16 +23,18 @@ public static class VersionedModelExtensions
     /// <exception cref="InvalidOperationException">
     /// No typed model is registered for <c>(node.ResourceType, version)</c>. This means the version
     /// model package that owns the type was not referenced (so its module initializer never ran) or
-    /// <c>{version}Models.Register()</c> was never called. Reference the package / call
+    /// <c>{version}.Register()</c> was never called. Reference the package / call
     /// <c>Register()</c>, or use <see cref="TryAsVersion"/> for a best-effort caller.
     /// </exception>
     /// <remarks>
-    /// The concrete return type is the shared base facade (<c>Ignixa.Models.X</c>). Reach a version
-    /// delta with a further <c>node.As&lt;R4.X&gt;()</c>. Backed by <see cref="VersionedModelRegistry"/>;
-    /// the relevant version model package must be referenced so its types self-register on load. On a
-    /// registry miss this throws rather than returning a wrong-typed node — a silently mistyped facade
-    /// is a correctness bug, not a usable fallback. Callers that can tolerate a miss should use
-    /// <see cref="TryAsVersion"/>.
+    /// The <em>static</em> return type is the shared base facade (<c>Ignixa.Models.X</c>); the
+    /// <em>concrete</em> runtime type is whatever the registered factory constructs, which for a
+    /// subclassed type is the version subclass (e.g. <c>Ignixa.Models.R5.Patient</c>). Callers that need
+    /// a version-specific member can either rely on virtual dispatch or narrow explicitly with a further
+    /// <c>node.As&lt;R4.X&gt;()</c>. Backed by <see cref="VersionedModelRegistry"/>; the relevant version
+    /// model package must be referenced so its types self-register on load. On a registry miss this
+    /// throws rather than returning a wrong-typed node — a silently mistyped facade is a correctness bug,
+    /// not a usable fallback. Callers that can tolerate a miss should use <see cref="TryAsVersion"/>.
     /// </remarks>
     public static ResourceJsonNode AsVersion(this ResourceJsonNode node, FhirVersion version)
     {
@@ -45,7 +47,7 @@ public static class VersionedModelExtensions
 
         throw new InvalidOperationException(
             $"No typed model is registered for resource type '{node.ResourceType}' at FHIR version {version}. "
-            + $"Reference the Ignixa.Models.{version} package (or call {version}Models.Register()) before calling AsVersion.");
+            + $"Reference the Ignixa.Models.{version} package (or call {version}.Register()) before calling AsVersion.");
     }
 
     /// <summary>

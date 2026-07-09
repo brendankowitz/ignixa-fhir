@@ -14,6 +14,12 @@ namespace Ignixa.Models.R4;
 /// Discriminator for the <c>Extension.value[x]</c> choice element: which typed
 /// variant (if any) is currently present in the JSON.
 /// </summary>
+/// <remarks>
+/// Probes only the value key (e.g. <c>effectiveDateTime</c>), not its FHIR extension shadow
+/// (<c>_effectiveDateTime</c>). A primitive variant present only as a shadow (valid FHIR: an
+/// extension on a choice element with no value) reports <c>None</c> here even though
+/// <c>PrimitiveElement&lt;T&gt;</c> on the accessor itself does see it.
+/// </remarks>
 public enum ExtensionValueType
 {
     None,

@@ -53,5 +53,4 @@ public class ProductShelfLife : BaseJsonNode
         get => GetComplexProperty<CodeableConcept>("type");
         set => SetProperty("type", value?.MutableNode);
     }
-
 }

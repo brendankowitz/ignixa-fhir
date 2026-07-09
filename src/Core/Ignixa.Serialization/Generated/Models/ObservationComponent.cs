@@ -68,5 +68,4 @@ public class ObservationComponent : BaseJsonNode
         get => MutableNode["referenceRange"] as JsonArray;
         set => SetProperty("referenceRange", value);
     }
-
 }

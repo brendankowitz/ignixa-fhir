@@ -2441,5 +2441,4 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
 
     [JsonIgnore]
     public MutablePrimitiveList<string> ValueAlternatives => GetPrimitiveListProperty<string>("valueAlternatives");
-
 }

@@ -28,5 +28,4 @@ public sealed class CodeableReference : Ignixa.Models.CodeableReference
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

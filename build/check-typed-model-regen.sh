@@ -3,8 +3,17 @@
 # Regen-drift guard for the typed-model generator.
 #
 # Regenerates the typed-model output and fails if it differs from the output already on disk.
-# Catches: stale generated code, and classification churn (e.g. when a new FHIR version moves a
-# type from identical/additive -> incompatible, demoting an element from base to per-version).
+# Catches: content drift in files the generator still emits, and classification churn (e.g. when a
+# value-set gains/loses codes between versions and an element demotes from base to per-version --
+# that changes WHICH files get emitted, which this guard also catches, since the newly-orphaned file
+# keeps its stale content while its sibling per-version files appear as new/changed).
+#
+# Known gap: the generator only creates/overwrites, it never deletes. A file the CURRENT
+# classification no longer produces at all is untouched by regeneration, so its content is identical
+# before and after -> this guard reports "up to date" even though that file is orphaned dead code.
+# It does NOT independently catch a type flipping OUT of a directory with nothing left behind to
+# diff against; watch the generator's own console diff/emit-count output (or a plain `git status`
+# after regen) for files that should have disappeared.
 #
 # It compares a content snapshot of the generated dirs taken BEFORE and AFTER regeneration, so it
 # works whether or not the generated output is committed yet. In CI (where the output IS committed)
@@ -42,7 +51,7 @@ snapshot() {
 before="$(snapshot)"
 
 echo "Regenerating typed-model output..."
-dotnet run --project codegen/Ignixa.Specification.Generators -- typed-model -p:DisableGitVersion=true
+dotnet run --project codegen/Ignixa.Specification.Generators -- typed-model
 
 after="$(snapshot)"
 

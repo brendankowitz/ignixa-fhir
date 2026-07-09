@@ -67,5 +67,4 @@ public sealed class ElementDefinitionBase : BaseJsonNode
         get => PathElement.Value;
         set => PathElement.Value = value;
     }
-
 }

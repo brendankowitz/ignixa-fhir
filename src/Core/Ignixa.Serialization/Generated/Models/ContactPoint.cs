@@ -78,5 +78,4 @@ public sealed class ContactPoint : BaseJsonNode
         get => ValueElement.Value;
         set => ValueElement.Value = value;
     }
-
 }

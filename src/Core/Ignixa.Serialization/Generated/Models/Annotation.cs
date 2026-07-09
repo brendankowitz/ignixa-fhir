@@ -123,5 +123,4 @@ public sealed class Annotation : BaseJsonNode
         get => TimeElement.Value;
         set => TimeElement.Value = value;
     }
-
 }

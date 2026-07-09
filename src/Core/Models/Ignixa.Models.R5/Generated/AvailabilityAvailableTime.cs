@@ -28,5 +28,4 @@ public sealed class AvailabilityAvailableTime : Ignixa.Models.AvailabilityAvaila
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

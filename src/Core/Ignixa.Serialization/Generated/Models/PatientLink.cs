@@ -58,5 +58,4 @@ public sealed class PatientLink : BaseJsonNode
         get => EnumUtility.ParseLiteral<LinkType>(GetProperty<string>("type"));
         set => SetProperty("type", value?.GetLiteral());
     }
-
 }

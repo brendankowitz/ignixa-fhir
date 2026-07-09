@@ -3,6 +3,8 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Security.Cryptography;
+using System.Text;
 using Hl7.Fhir.Model;
 using Microsoft.Health.Fhir.CodeGen.FhirExtensions;
 using Microsoft.Health.Fhir.CodeGen.Models;
@@ -19,6 +21,13 @@ internal sealed class TypedModelClassifier
 {
     private readonly IReadOnlyList<(string Version, DefinitionCollection Definitions)> _versions;
     private readonly CSharpTypedModelConfig _config;
+
+    // Value-set expansion is offline but not free, and classification visits every bound element,
+    // frequently repeating the same (version, url) pair (e.g. every Coding-shaped binding across many
+    // resources). Cache per version's DefinitionCollection instance -- expansion differs per version by
+    // definition, so the cache must not be shared across them.
+    private readonly Dictionary<DefinitionCollection, Dictionary<string, string?>> _valueSetCodesHashCache =
+        new(ReferenceEqualityComparer.Instance);
 
     public TypedModelClassifier(
         IReadOnlyList<(string Version, DefinitionCollection Definitions)> versions,
@@ -278,12 +287,56 @@ internal sealed class TypedModelClassifier
 
         // Binding only differentiates when it produces an enum (required code binding with a value set).
         string? valueSetUrl = null;
+        string? bindingStrength = null;
+        string? valueSetCodesHash = null;
         if (!isArray && element.cgHasCodes() && !string.IsNullOrEmpty(element.Binding?.ValueSet))
         {
-            valueSetUrl = StripVersion(element.Binding!.ValueSet);
+            string rawValueSetUrl = element.Binding!.ValueSet;
+            valueSetUrl = StripVersion(rawValueSetUrl);
+            bindingStrength = element.Binding.Strength?.ToString();
+            valueSetCodesHash = ResolveValueSetCodesHash(definitions, rawValueSetUrl);
         }
 
-        return new ElementSignature(typeCode, isArray, IsChoice: false, valueSetUrl, VariantTypeCodes: null);
+        return new ElementSignature(typeCode, isArray, IsChoice: false, valueSetUrl, VariantTypeCodes: null, bindingStrength, valueSetCodesHash);
+    }
+
+    /// <summary>
+    /// Expands <paramref name="rawValueSetUrl"/> against this version's <see cref="DefinitionCollection"/>
+    /// and hashes its distinct <c>(system, code)</c> pairs, so <see cref="ElementSignature.ValueSetCodesHash"/>
+    /// can detect a value set that gained/lost codes between versions under the same URL. Mirrors the
+    /// expansion call the emitter itself makes (<c>TypedModelGenerationContext.ExpandConcepts</c>); a
+    /// null/empty expansion here means the same thing it does there -- unexpandable, too-large, or
+    /// failed to fetch -- and is cached as "no signal" rather than retried.
+    /// </summary>
+    private string? ResolveValueSetCodesHash(DefinitionCollection definitions, string rawValueSetUrl)
+    {
+        if (!_valueSetCodesHashCache.TryGetValue(definitions, out var perUrl))
+        {
+            perUrl = new Dictionary<string, string?>(StringComparer.Ordinal);
+            _valueSetCodesHashCache[definitions] = perUrl;
+        }
+
+        if (perUrl.TryGetValue(rawValueSetUrl, out string? cached))
+        {
+            return cached;
+        }
+
+        ValueSet? vs = definitions.ExpandVs(rawValueSetUrl).GetAwaiter().GetResult();
+        string? hash = null;
+        if (vs?.Expansion?.Contains is { Count: > 0 } contains)
+        {
+            var codes = contains
+                .Where(c => !string.IsNullOrEmpty(c.Code))
+                .Select(c => $"{c.System}|{c.Code}")
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.Ordinal);
+
+            byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', codes)));
+            hash = Convert.ToHexString(digest);
+        }
+
+        perUrl[rawValueSetUrl] = hash;
+        return hash;
     }
 
     private static string StripChoiceMarker(string jsonName)

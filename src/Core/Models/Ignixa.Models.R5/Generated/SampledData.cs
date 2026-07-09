@@ -77,5 +77,4 @@ public sealed class SampledData : Ignixa.Models.SampledData
         get => OffsetsElement.Value;
         set => OffsetsElement.Value = value;
     }
-
 }

@@ -125,5 +125,4 @@ public class DataRequirement : BaseJsonNode
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

@@ -38,5 +38,4 @@ public sealed class DataRequirement : Ignixa.Models.DataRequirement
 
     [JsonIgnore]
     public MutableJsonList<DataRequirementValueFilter> ValueFilter => GetListProperty<DataRequirementValueFilter>("valueFilter");
-
 }

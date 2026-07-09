@@ -81,5 +81,4 @@ public sealed class MarketingStatus : BaseJsonNode
         get => GetComplexProperty<CodeableConcept>("status");
         set => SetProperty("status", value?.MutableNode);
     }
-
 }

@@ -57,4 +57,10 @@ public sealed class RelatedArtifact : Ignixa.Models.RelatedArtifact
         set => SetProperty("resourceReference", value);
     }
 
+    [JsonIgnore]
+    public RelatedArtifactType? Type
+    {
+        get => EnumUtility.ParseLiteral<RelatedArtifactType>(GetProperty<string>("type"));
+        set => SetProperty("type", value?.GetLiteral());
+    }
 }

@@ -45,5 +45,4 @@ public sealed class TriggerDefinition : Ignixa.Models.TriggerDefinition
         get => SubscriptionTopicElement.Value;
         set => SubscriptionTopicElement.Value = value;
     }
-
 }

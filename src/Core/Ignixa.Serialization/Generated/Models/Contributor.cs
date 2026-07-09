@@ -60,5 +60,4 @@ public sealed class Contributor : BaseJsonNode
         get => EnumUtility.ParseLiteral<ContributorType>(GetProperty<string>("type"));
         set => SetProperty("type", value?.GetLiteral());
     }
-
 }

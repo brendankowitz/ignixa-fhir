@@ -209,5 +209,4 @@ public sealed class DosageDoseAndRate : BaseJsonNode
         get => GetComplexProperty<CodeableConcept>("type");
         set => SetProperty("type", value?.MutableNode);
     }
-
 }

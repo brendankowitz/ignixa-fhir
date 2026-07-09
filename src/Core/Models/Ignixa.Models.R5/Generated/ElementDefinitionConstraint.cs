@@ -45,5 +45,4 @@ public sealed class ElementDefinitionConstraint : Ignixa.Models.ElementDefinitio
         get => GetProperty<bool?>("suppress");
         set => SetProperty("suppress", value);
     }
-
 }

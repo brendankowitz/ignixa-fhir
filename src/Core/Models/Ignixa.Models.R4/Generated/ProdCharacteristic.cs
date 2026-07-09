@@ -28,5 +28,4 @@ public sealed class ProdCharacteristic : Ignixa.Models.ProdCharacteristic
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

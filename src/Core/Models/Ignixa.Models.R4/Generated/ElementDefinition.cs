@@ -2263,5 +2263,4 @@ public sealed class ElementDefinition : Ignixa.Models.ElementDefinition
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

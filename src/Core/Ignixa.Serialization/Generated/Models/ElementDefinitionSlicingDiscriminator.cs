@@ -17,7 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR ElementDefinitionSlicingDiscriminator datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-public sealed class ElementDefinitionSlicingDiscriminator : BaseJsonNode
+public class ElementDefinitionSlicingDiscriminator : BaseJsonNode
 {
     public ElementDefinitionSlicingDiscriminator()
     {
@@ -50,12 +50,4 @@ public sealed class ElementDefinitionSlicingDiscriminator : BaseJsonNode
         get => PathElement.Value;
         set => PathElement.Value = value;
     }
-
-    [JsonIgnore]
-    public DiscriminatorType? Type
-    {
-        get => EnumUtility.ParseLiteral<DiscriminatorType>(GetProperty<string>("type"));
-        set => SetProperty("type", value?.GetLiteral());
-    }
-
 }

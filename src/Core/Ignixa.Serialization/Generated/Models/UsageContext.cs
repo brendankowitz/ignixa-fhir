@@ -134,5 +134,4 @@ public sealed class UsageContext : BaseJsonNode
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

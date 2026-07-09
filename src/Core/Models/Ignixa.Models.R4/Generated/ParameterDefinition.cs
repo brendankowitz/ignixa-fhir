@@ -35,5 +35,4 @@ public sealed class ParameterDefinition : Ignixa.Models.ParameterDefinition
         get => EnumUtility.ParseLiteral<AllTypes>(GetProperty<string>("type"));
         set => SetProperty("type", value?.GetLiteral());
     }
-
 }

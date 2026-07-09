@@ -38,5 +38,4 @@ public sealed class ElementDefinitionMapping : Ignixa.Models.ElementDefinitionMa
         get => CommentElement.Value;
         set => CommentElement.Value = value;
     }
-
 }

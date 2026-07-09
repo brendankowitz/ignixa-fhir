@@ -57,5 +57,4 @@ public sealed class PatientCommunication : BaseJsonNode
         get => GetProperty<bool?>("preferred");
         set => SetProperty("preferred", value);
     }
-
 }

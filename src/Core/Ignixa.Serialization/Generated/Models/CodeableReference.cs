@@ -55,5 +55,4 @@ public class CodeableReference : BaseJsonNode
         get => MutableNode["reference"];
         set => SetProperty("reference", value);
     }
-
 }

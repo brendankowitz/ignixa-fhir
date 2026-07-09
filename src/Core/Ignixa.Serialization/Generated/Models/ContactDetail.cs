@@ -53,5 +53,4 @@ public sealed class ContactDetail : BaseJsonNode
 
     [JsonIgnore]
     public MutableJsonList<ContactPoint> Telecom => GetListProperty<ContactPoint>("telecom");
-
 }

@@ -27,8 +27,9 @@ public sealed class CSharpTypedModelConfig
     /// Gets or sets a value indicating whether to generate facades for the FULL set of concrete
     /// FHIR complex datatypes for the version (every entry in <c>ComplexTypesByName</c> that is not
     /// an abstract base), rather than the hand-picked <see cref="DatatypeAllowList"/>. Generating the
-    /// full closure resolves Reference, Extension, Identifier, etc. to real facades and eliminates
-    /// the JsonNode fallback for in-spec complex types. Defaults to <c>false</c>; the
+    /// full closure resolves Extension, Identifier, etc. to real facades and eliminates the JsonNode
+    /// fallback for most in-spec complex types. <c>Reference</c> is intentionally excluded and keeps
+    /// its JsonNode fallback in this cut regardless of this flag. Defaults to <c>false</c>; the
     /// <c>typed-model</c> mode sets it to <c>true</c>.
     /// </summary>
     public bool GenerateAllDatatypes { get; set; }

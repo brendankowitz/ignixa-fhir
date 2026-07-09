@@ -28,5 +28,4 @@ public sealed class MonetaryComponent : Ignixa.Models.MonetaryComponent
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

@@ -53,5 +53,4 @@ public sealed class CodeableConcept : BaseJsonNode
         get => TextElement.Value;
         set => TextElement.Value = value;
     }
-
 }

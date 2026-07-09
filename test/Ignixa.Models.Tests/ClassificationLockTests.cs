@@ -32,12 +32,14 @@ public sealed class ClassificationLockTests
     }
 
     [Fact]
-    public void GivenIdenticalDatatype_WhenClassified_ThenQuantityIsBaseOnly()
+    public void GivenIdenticalDatatype_WhenClassified_ThenMoneyIsBaseOnly()
     {
-        typeof(Quantity).Namespace.ShouldBe("Ignixa.Models");
+        // Money has no coded binding, so unlike Quantity (see the value-set-divergence test below) it
+        // has nothing that can diverge between versions and stays genuinely Identical/base-only.
+        typeof(Money).Namespace.ShouldBe("Ignixa.Models");
 
-        R4Assembly.GetType("Ignixa.Models.R4.Quantity").ShouldBeNull();
-        R5Assembly.GetType("Ignixa.Models.R5.Quantity").ShouldBeNull();
+        R4Assembly.GetType("Ignixa.Models.R4.Money").ShouldBeNull();
+        R5Assembly.GetType("Ignixa.Models.R5.Money").ShouldBeNull();
     }
 
     [Fact]
@@ -78,6 +80,32 @@ public sealed class ClassificationLockTests
     {
         // The INCOMPATIBLE element is omitted from the base so the base stays Liskov-substitutable.
         typeof(Attachment).GetProperty("Size").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenValueSetThatGainedCodesUnderTheSameUrl_WhenClassified_ThenBindingIsIncompatibleNotIdentical()
+    {
+        // Quantity.comparator is bound to http://hl7.org/fhir/ValueSet/quantity-comparator in both R4 and
+        // R5 -- same URL, same binding strength -- but R5 added the "ad" (sufficient-to-achieve) code to
+        // the SAME value set. Comparing signatures by URL alone would classify this Identical and build
+        // the shared enum from R4's codes only, silently dropping "ad" to null on read for R5 callers.
+        // The value-set-codes-hash in ElementSignature must catch this and demote it to Incompatible.
+        PropertyInfo r4Comparator = typeof(Ignixa.Models.R4.Quantity).GetProperty("Comparator")!;
+        PropertyInfo r5Comparator = typeof(Ignixa.Models.R5.Quantity).GetProperty("Comparator")!;
+
+        r4Comparator.ShouldNotBeNull();
+        r5Comparator.ShouldNotBeNull();
+
+        r4Comparator.PropertyType.ShouldBe(typeof(Ignixa.Models.R4.QuantityComparator?));
+        r5Comparator.PropertyType.ShouldBe(typeof(Ignixa.Models.R5.QuantityComparator?));
+        r4Comparator.PropertyType.ShouldNotBe(r5Comparator.PropertyType);
+
+        // Per-version enum, not a shared base enum: R5's Comparator has the extra "Ad" member R4 lacks.
+        Enum.GetNames(typeof(Ignixa.Models.R5.QuantityComparator)).ShouldContain("Ad");
+        Enum.GetNames(typeof(Ignixa.Models.R4.QuantityComparator)).ShouldNotContain("Ad");
+
+        // Absent from the shared base so it stays Liskov-substitutable (mirrors Attachment.Size above).
+        typeof(Quantity).GetProperty("Comparator").ShouldBeNull();
     }
 
     [Fact]

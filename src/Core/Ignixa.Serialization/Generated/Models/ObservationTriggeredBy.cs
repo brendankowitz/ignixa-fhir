@@ -71,5 +71,4 @@ public class ObservationTriggeredBy : BaseJsonNode
         get => TypeElement.Value;
         set => TypeElement.Value = value;
     }
-
 }

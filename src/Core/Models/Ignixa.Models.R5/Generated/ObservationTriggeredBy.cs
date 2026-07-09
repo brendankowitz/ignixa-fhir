@@ -28,5 +28,4 @@ public sealed class ObservationTriggeredBy : Ignixa.Models.ObservationTriggeredB
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

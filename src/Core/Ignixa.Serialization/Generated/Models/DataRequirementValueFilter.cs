@@ -157,5 +157,4 @@ public class DataRequirementValueFilter : BaseJsonNode
             MutableNode[key] = value.Parent is null ? value : value.DeepClone();
         }
     }
-
 }

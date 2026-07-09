@@ -41,5 +41,4 @@ public sealed class Dosage : Ignixa.Models.Dosage
 
     [JsonIgnore]
     public MutableJsonList<Ratio> MaxDosePerPeriod => GetListProperty<Ratio>("maxDosePerPeriod");
-
 }

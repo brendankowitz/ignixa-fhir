@@ -118,5 +118,4 @@ public class Dosage : BaseJsonNode
         get => GetComplexProperty<Timing>("timing");
         set => SetProperty("timing", value?.MutableNode);
     }
-
 }

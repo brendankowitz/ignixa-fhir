@@ -306,5 +306,4 @@ public class Observation : DomainResourceJsonNode
         get => GetComplexProperty<Narrative>("text");
         set => SetProperty("text", value?.MutableNode);
     }
-
 }

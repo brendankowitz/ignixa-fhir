@@ -28,5 +28,4 @@ public sealed class Population : Ignixa.Models.Population
         : base(jsonObject, fhirVersion)
     {
     }
-
 }

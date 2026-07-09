@@ -89,5 +89,4 @@ public sealed class Identifier : BaseJsonNode
         get => ValueElement.Value;
         set => ValueElement.Value = value;
     }
-
 }

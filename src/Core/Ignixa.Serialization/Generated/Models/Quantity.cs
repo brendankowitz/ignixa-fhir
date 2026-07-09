@@ -17,7 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Quantity datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-public sealed class Quantity : BaseJsonNode
+public class Quantity : BaseJsonNode
 {
     public Quantity()
     {
@@ -36,13 +36,6 @@ public sealed class Quantity : BaseJsonNode
     {
         get => CodeElement.Value;
         set => CodeElement.Value = value;
-    }
-
-    [JsonIgnore]
-    public QuantityComparator? Comparator
-    {
-        get => EnumUtility.ParseLiteral<QuantityComparator>(GetProperty<string>("comparator"));
-        set => SetProperty("comparator", value?.GetLiteral());
     }
 
     [JsonIgnore]
@@ -96,5 +89,4 @@ public sealed class Quantity : BaseJsonNode
         get => MutableNode["value"];
         set => SetProperty("value", value);
     }
-
 }

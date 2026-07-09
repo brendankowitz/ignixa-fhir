@@ -285,5 +285,4 @@ public class Patient : DomainResourceJsonNode
         get => GetComplexProperty<Narrative>("text");
         set => SetProperty("text", value?.MutableNode);
     }
-
 }

@@ -87,5 +87,4 @@ public class ElementDefinitionConstraint : BaseJsonNode
         get => SourceElement.Value;
         set => SourceElement.Value = value;
     }
-
 }
