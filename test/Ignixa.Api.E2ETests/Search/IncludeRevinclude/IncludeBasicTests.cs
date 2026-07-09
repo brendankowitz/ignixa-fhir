@@ -9,7 +9,6 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 

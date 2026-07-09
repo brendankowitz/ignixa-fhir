@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Specification.Generated;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
@@ -109,8 +110,8 @@ public class ScenarioCatalogTests
         var overriddenContext = ScenarioCatalog.Invoke(
             scenario, schemaProvider, new Dictionary<string, object?> { ["age"] = 85 });
 
-        var defaultBirthYear = int.Parse(defaultContext.Patient!.MutableNode["birthDate"]!.ToString()![..4]);
-        var overriddenBirthYear = int.Parse(overriddenContext.Patient!.MutableNode["birthDate"]!.ToString()![..4]);
+        var defaultBirthYear = int.Parse(defaultContext.Patient!.MutableNode()["birthDate"]!.ToString()![..4]);
+        var overriddenBirthYear = int.Parse(overriddenContext.Patient!.MutableNode()["birthDate"]!.ToString()![..4]);
 
         overriddenBirthYear.ShouldBeLessThan(defaultBirthYear);
     }

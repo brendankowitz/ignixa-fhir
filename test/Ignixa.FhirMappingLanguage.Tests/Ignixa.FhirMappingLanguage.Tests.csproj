@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

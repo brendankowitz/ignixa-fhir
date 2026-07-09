@@ -197,6 +197,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.RepoGuards.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.ConformanceMatrix.Cli.Tests", "test\Ignixa.ConformanceMatrix.Cli.Tests\Ignixa.ConformanceMatrix.Cli.Tests.csproj", "{DCB64C16-AA56-4322-ACDD-D3CD267C31E7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Serialization.TestSupport", "test\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj", "{29D86EFE-807B-412B-AE48-A426BE4310F9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -915,6 +917,18 @@ Global
 		{DCB64C16-AA56-4322-ACDD-D3CD267C31E7}.Release|x64.Build.0 = Release|Any CPU
 		{DCB64C16-AA56-4322-ACDD-D3CD267C31E7}.Release|x86.ActiveCfg = Release|Any CPU
 		{DCB64C16-AA56-4322-ACDD-D3CD267C31E7}.Release|x86.Build.0 = Release|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Debug|x64.Build.0 = Debug|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Debug|x86.Build.0 = Debug|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Release|x64.ActiveCfg = Release|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Release|x64.Build.0 = Release|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Release|x86.ActiveCfg = Release|Any CPU
+		{29D86EFE-807B-412B-AE48-A426BE4310F9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -988,5 +1002,6 @@ Global
 		{31DE9105-1282-4F2A-8651-F40F3DA90A92} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{A9BDF164-7EA3-4105-9116-D5A53BCC9924} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{DCB64C16-AA56-4322-ACDD-D3CD267C31E7} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
+		{29D86EFE-807B-412B-AE48-A426BE4310F9} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal

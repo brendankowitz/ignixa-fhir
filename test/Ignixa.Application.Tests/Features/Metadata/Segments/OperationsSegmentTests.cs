@@ -15,6 +15,7 @@ using Ignixa.Serialization;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Application.Tests.Features.Metadata.Segments;
 
@@ -90,7 +91,7 @@ public class OperationsSegmentTests
         structureMapResource.ShouldNotBeNull("StructureMap resource should be in CapabilityStatement");
 
         // Check for operations on the resource component
-        var operationsArray = structureMapResource!.MutableNode["operation"];
+        var operationsArray = structureMapResource!.MutableNode()["operation"];
         operationsArray.ShouldNotBeNull("operation array should exist");
 
         var operations = operationsArray!.AsArray();
@@ -188,7 +189,7 @@ public class OperationsSegmentTests
         rest.Count.ShouldBeGreaterThan(0);
 
         var restComponent = rest![0];
-        var operationsArray = restComponent.MutableNode["operation"];
+        var operationsArray = restComponent.MutableNode()["operation"];
         operationsArray.ShouldNotBeNull("operation array should exist on rest component");
 
         var operations = operationsArray!.AsArray();

@@ -7,6 +7,7 @@ using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -32,15 +33,15 @@ public class CallSubScenarioStateTests
 
         // Verify specific vital signs were recorded
         var heightObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8302-2");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8302-2");
         heightObs.ShouldNotBeNull("should have body height observation");
 
         var weightObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "29463-7");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "29463-7");
         weightObs.ShouldNotBeNull("should have body weight observation");
 
         var bmiObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "39156-5");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "39156-5");
         bmiObs.ShouldNotBeNull("should have BMI observation");
     }
 
@@ -76,12 +77,12 @@ public class CallSubScenarioStateTests
 
         // Verify heart rate was recorded
         var heartRateObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8867-4");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8867-4");
         heartRateObs.ShouldNotBeNull("should have heart rate observation");
 
         // Verify oxygen saturation was recorded
         var o2SatObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "59408-5");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "59408-5");
         o2SatObs.ShouldNotBeNull("should have oxygen saturation observation");
     }
 
@@ -114,12 +115,12 @@ public class CallSubScenarioStateTests
 
         // Verify temperature was recorded
         var tempObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8310-5");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8310-5");
         tempObs.ShouldNotBeNull("should have body temperature observation");
 
         // Verify respiratory rate was recorded
         var rrObs = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "9279-1");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "9279-1");
         rrObs.ShouldNotBeNull("should have respiratory rate observation");
     }
 
@@ -144,8 +145,8 @@ public class CallSubScenarioStateTests
         scenario.Observations.Count.ShouldBeGreaterThanOrEqualTo(8, "should have vitals from both visits");
 
         // Verify time advanced
-        var firstEncounterTime = DateTime.Parse(scenario.Encounters[0].MutableNode["period"]?["start"]?.GetValue<string>()!);
-        var secondEncounterTime = DateTime.Parse(scenario.Encounters[1].MutableNode["period"]?["start"]?.GetValue<string>()!);
+        var firstEncounterTime = DateTime.Parse(scenario.Encounters[0].MutableNode()["period"]?["start"]?.GetValue<string>()!);
+        var secondEncounterTime = DateTime.Parse(scenario.Encounters[1].MutableNode()["period"]?["start"]?.GetValue<string>()!);
 
         (secondEncounterTime - firstEncounterTime).TotalDays.ShouldBeGreaterThan(85, "should be approximately 3 months apart");
     }
@@ -170,10 +171,10 @@ public class CallSubScenarioStateTests
 
         // Verify elevated values were used (heart rate should be >= 100)
         var heartRate = scenario.Observations.FirstOrDefault(obs =>
-            obs.MutableNode["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8867-4");
+            obs.MutableNode()["code"]!["coding"]![0]!["code"]!.GetValue<string>() == "8867-4");
         heartRate.ShouldNotBeNull("should have heart rate observation");
 
-        var hrValue = heartRate!.MutableNode["valueQuantity"]!["value"]!.GetValue<decimal>();
+        var hrValue = heartRate!.MutableNode()["valueQuantity"]!["value"]!.GetValue<decimal>();
         hrValue.ShouldBeGreaterThanOrEqualTo(100m, "heart rate should be elevated");
     }
 }

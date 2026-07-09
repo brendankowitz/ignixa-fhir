@@ -1,6 +1,6 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
@@ -60,11 +60,13 @@ public abstract class BaseJsonNode : IMutableJsonNode
     }
 
     /// <summary>
-    /// Gets the internal mutable JsonObject for direct manipulation.
-    /// Use this for FHIR Patch operations or reference updates.
-    /// All changes are immediately reflected in the resource.
+    /// Gets the mutable JSON object backing this facade for Ignixa implementation assemblies.
+    /// Public callers should use typed facade properties, serialization helpers, or ISourceNavigator.Meta&lt;JsonNode&gt;().
     /// </summary>
-    public JsonObject MutableNode => _internalNode;
+    internal JsonObject MutableNode => _internalNode;
+
+    [SuppressMessage("Design", "CA1033", Justification = "Raw mutable JSON access is intentionally explicit and hidden from derived public API.")]
+    JsonObject IMutableJsonNode.MutableNode => _internalNode;
 
     /// <summary>
     /// Sets a property value in the node.

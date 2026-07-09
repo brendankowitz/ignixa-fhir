@@ -6,6 +6,7 @@ using Ignixa.Validation.Schema;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Validation.Cli.Tests;
 
@@ -118,9 +119,9 @@ public class ValidationCliTests
 
         // Assert
         operationOutcome.ShouldNotBeNull();
-        operationOutcome.MutableNode.ShouldNotBeNull();
-        operationOutcome.MutableNode["resourceType"]?.ToString().ShouldBe("OperationOutcome");
-        operationOutcome.MutableNode["issue"].ShouldNotBeNull();
+        operationOutcome.MutableNode().ShouldNotBeNull();
+        operationOutcome.MutableNode()["resourceType"]?.ToString().ShouldBe("OperationOutcome");
+        operationOutcome.MutableNode()["issue"].ShouldNotBeNull();
     }
 
     private static ValidationResult ValidateJson(IFhirSchemaProvider schemaProvider, string json)

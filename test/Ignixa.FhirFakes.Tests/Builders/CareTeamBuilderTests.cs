@@ -7,10 +7,10 @@ using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.FhirFakes.Builders;
-using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -35,7 +35,7 @@ public class CareTeamBuilderTests
         careTeam.ResourceType.ShouldBe("CareTeam");
         careTeam.Id.ShouldNotBeNullOrEmpty();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         node["status"]?.GetValue<string>().ShouldBe("active");
         node["name"]?.GetValue<string>().ShouldBe("Primary Care Team");
     }
@@ -61,7 +61,7 @@ public class CareTeamBuilderTests
             .WithTag(tag)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var metaTags = node["meta"]?["tag"] as JsonArray;
 
         metaTags.ShouldNotBeNull();
@@ -88,7 +88,7 @@ public class CareTeamBuilderTests
             .WithStatus(status)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         node["status"]?.GetValue<string>().ShouldBe(status);
     }
 
@@ -98,7 +98,7 @@ public class CareTeamBuilderTests
         var careTeam = CareTeamBuilder.Create(_schemaProvider)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         node["status"]?.GetValue<string>().ShouldBe("active");
     }
 
@@ -115,7 +115,7 @@ public class CareTeamBuilderTests
             .WithSubject(patientId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var subject = node["subject"] as JsonObject;
 
         subject.ShouldNotBeNull();
@@ -128,7 +128,7 @@ public class CareTeamBuilderTests
         var careTeam = CareTeamBuilder.Create(_schemaProvider)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         node["subject"].ShouldBeNull();
     }
 
@@ -145,7 +145,7 @@ public class CareTeamBuilderTests
             .WithParticipant("Practitioner", practitionerId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
 
         participants.ShouldNotBeNull();
@@ -166,7 +166,7 @@ public class CareTeamBuilderTests
             .WithParticipant("Practitioner", practitionerId, roleCode)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
@@ -191,7 +191,7 @@ public class CareTeamBuilderTests
             .WithParticipant("Organization", organizationId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
 
@@ -209,7 +209,7 @@ public class CareTeamBuilderTests
             .WithParticipant("Practitioner", practitionerId, roleCode, customSystem)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
@@ -238,7 +238,7 @@ public class CareTeamBuilderTests
             .WithParticipant("Organization", organizationId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
 
         participants.ShouldNotBeNull();
@@ -263,7 +263,7 @@ public class CareTeamBuilderTests
             .WithParticipant("Organization", organizationId) // No role
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
 
         // First participant should have role
@@ -288,7 +288,7 @@ public class CareTeamBuilderTests
             .WithPatientParticipant(patientId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var member = participant!["member"] as JsonObject;
@@ -305,7 +305,7 @@ public class CareTeamBuilderTests
             .WithPractitionerParticipant(practitionerId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
@@ -327,7 +327,7 @@ public class CareTeamBuilderTests
             .WithPractitionerParticipant(practitionerId, customRole)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
@@ -347,7 +347,7 @@ public class CareTeamBuilderTests
             .WithOrganizationParticipant(organizationId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var member = participant!["member"] as JsonObject;
@@ -365,7 +365,7 @@ public class CareTeamBuilderTests
             .WithPatientParticipant(patientId, roleCode)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
@@ -390,7 +390,7 @@ public class CareTeamBuilderTests
             .WithOrganizationParticipant(organizationId, roleCode)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
@@ -418,7 +418,7 @@ public class CareTeamBuilderTests
             .WithOrganizationParticipant(organizationId)
             .Build();
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         var participants = node["participant"] as JsonArray;
 
         participants!.Count.ShouldBe(3);
@@ -459,7 +459,7 @@ public class CareTeamBuilderTests
 
         careTeam.Id.ShouldBe(careTeamId);
 
-        var node = careTeam.MutableNode;
+        var node = careTeam.MutableNode();
         node["status"]?.GetValue<string>().ShouldBe("active");
         node["name"]?.GetValue<string>().ShouldBe("Comprehensive Care Team");
 

@@ -13,7 +13,6 @@ using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Serialization;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Basic;
 

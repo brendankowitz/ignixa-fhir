@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Infrastructure;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
@@ -348,13 +349,7 @@ internal static class ValidateCommand
     private static async Task WriteOperationOutcomeToFile(ValidationResult result, string outputFile)
     {
         var operationOutcome = result.ToOperationOutcome();
-
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
-
-        var json = JsonSerializer.Serialize(operationOutcome.MutableNode, options);
+        var json = operationOutcome.SerializeToString(pretty: true);
 
         // Ensure output directory exists
         var directory = Path.GetDirectoryName(outputFile);

@@ -8,6 +8,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -48,7 +49,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var statusCode = allergy.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var statusCode = allergy.MutableNode()["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         statusCode.ShouldBe("active");
     }
 
@@ -63,7 +64,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var statusCode = allergy.MutableNode["verificationStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var statusCode = allergy.MutableNode()["verificationStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
         statusCode.ShouldBe("confirmed");
     }
 
@@ -78,7 +79,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var code = allergy.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        var code = allergy.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
         code.ShouldBe("91935009"); // SNOMED CT for peanut
     }
 
@@ -97,7 +98,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var patientRef = allergy.MutableNode["patient"]?["reference"]?.GetValue<string>();
+        var patientRef = allergy.MutableNode()["patient"]?["reference"]?.GetValue<string>();
         patientRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
@@ -113,7 +114,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var encounterRef = allergy.MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var encounterRef = allergy.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
@@ -132,7 +133,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var criticality = allergy.MutableNode["criticality"]?.GetValue<string>();
+        var criticality = allergy.MutableNode()["criticality"]?.GetValue<string>();
         criticality.ShouldBe("high");
     }
 
@@ -147,7 +148,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var criticality = allergy.MutableNode["criticality"]?.GetValue<string>();
+        var criticality = allergy.MutableNode()["criticality"]?.GetValue<string>();
         criticality.ShouldBe("low");
     }
 
@@ -162,7 +163,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var criticality = allergy.MutableNode["criticality"]?.GetValue<string>();
+        var criticality = allergy.MutableNode()["criticality"]?.GetValue<string>();
         criticality.ShouldBe("low");
     }
 
@@ -181,7 +182,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
+        var category = allergy.MutableNode()["category"]?[0]?.GetValue<string>();
         category.ShouldBe("food");
     }
 
@@ -196,7 +197,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
+        var category = allergy.MutableNode()["category"]?[0]?.GetValue<string>();
         category.ShouldBe("medication");
     }
 
@@ -211,7 +212,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
+        var category = allergy.MutableNode()["category"]?[0]?.GetValue<string>();
         category.ShouldBe("environment");
     }
 
@@ -226,7 +227,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
+        var category = allergy.MutableNode()["category"]?[0]?.GetValue<string>();
         category.ShouldBe("biologic");
     }
 
@@ -241,7 +242,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
+        var category = allergy.MutableNode()["category"]?[0]?.GetValue<string>();
         category.ShouldBe("medication");
     }
 
@@ -260,7 +261,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
+        var reactions = allergy.MutableNode()["reaction"] as System.Text.Json.Nodes.JsonArray;
         reactions.ShouldNotBeNull();
         reactions!.Count.ShouldBe(3);
     }
@@ -276,7 +277,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
+        var reactions = allergy.MutableNode()["reaction"] as System.Text.Json.Nodes.JsonArray;
         var anaphylaxisCode = reactions?[0]?["manifestation"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         anaphylaxisCode.ShouldBe("39579001"); // SNOMED CT for anaphylaxis
     }
@@ -293,7 +294,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
+        var reactions = allergy.MutableNode()["reaction"] as System.Text.Json.Nodes.JsonArray;
         reactions!.Count.ShouldBe(2);
     }
 
@@ -312,7 +313,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
+        var reactions = allergy.MutableNode()["reaction"] as System.Text.Json.Nodes.JsonArray;
         var severity = reactions?[0]?["severity"]?.GetValue<string>();
         severity.ShouldBe("severe");
     }
@@ -328,7 +329,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
+        var reactions = allergy.MutableNode()["reaction"] as System.Text.Json.Nodes.JsonArray;
         var severity = reactions?[0]?["severity"]?.GetValue<string>();
         severity.ShouldBe("mild");
     }
@@ -344,7 +345,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var type = allergy.MutableNode["type"]?.GetValue<string>();
+        var type = allergy.MutableNode()["type"]?.GetValue<string>();
         type.ShouldBe("intolerance");
     }
 
@@ -363,7 +364,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var recordedDate = allergy.MutableNode["recordedDate"]?.GetValue<string>();
+        var recordedDate = allergy.MutableNode()["recordedDate"]?.GetValue<string>();
         recordedDate.ShouldNotBeNullOrEmpty();
     }
 
@@ -378,7 +379,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var onsetDate = allergy.MutableNode["onsetDateTime"]?.GetValue<string>();
+        var onsetDate = allergy.MutableNode()["onsetDateTime"]?.GetValue<string>();
         onsetDate.ShouldNotBeNullOrEmpty();
     }
 
@@ -393,8 +394,8 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var onsetDate = DateTime.Parse(allergy.MutableNode["onsetDateTime"]!.GetValue<string>()!);
-        var recordedDate = DateTime.Parse(allergy.MutableNode["recordedDate"]!.GetValue<string>()!);
+        var onsetDate = DateTime.Parse(allergy.MutableNode()["onsetDateTime"]!.GetValue<string>()!);
+        var recordedDate = DateTime.Parse(allergy.MutableNode()["recordedDate"]!.GetValue<string>()!);
         onsetDate.ShouldBeLessThan(recordedDate);
     }
 
@@ -459,7 +460,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var encounterRef = allergy.MutableNode["encounter"];
+        var encounterRef = allergy.MutableNode()["encounter"];
         encounterRef.ShouldBeNull();
     }
 
@@ -474,7 +475,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var recorder = allergy.MutableNode["recorder"]?["display"]?.GetValue<string>();
+        var recorder = allergy.MutableNode()["recorder"]?["display"]?.GetValue<string>();
         recorder.ShouldNotBeNullOrEmpty();
         recorder.ShouldContain("MD");
     }
@@ -490,7 +491,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergy = scenario.Allergies[0];
-        var type = allergy.MutableNode["type"]?.GetValue<string>();
+        var type = allergy.MutableNode()["type"]?.GetValue<string>();
         type.ShouldBe("allergy");
     }
 

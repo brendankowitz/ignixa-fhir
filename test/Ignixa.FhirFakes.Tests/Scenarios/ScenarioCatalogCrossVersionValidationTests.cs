@@ -12,6 +12,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
@@ -68,7 +69,7 @@ public class ScenarioCatalogCrossVersionValidationTests
 
             foreach (var resource in context.AllResources)
             {
-                var errors = ValidateAndCollectErrors(resource.MutableNode, schemaProvider);
+                var errors = ValidateAndCollectErrors(resource.MutableNode(), schemaProvider);
                 if (errors.Count == 0)
                 {
                     continue;

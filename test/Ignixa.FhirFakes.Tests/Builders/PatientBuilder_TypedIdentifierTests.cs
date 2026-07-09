@@ -9,6 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -31,8 +32,8 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        patient.MutableNode["identifier"].ShouldNotBeNull();
-        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        patient.MutableNode()["identifier"].ShouldNotBeNull();
+        var identifiers = patient.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
@@ -62,8 +63,8 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        patient.MutableNode["identifier"].ShouldNotBeNull();
-        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        patient.MutableNode()["identifier"].ShouldNotBeNull();
+        var identifiers = patient.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
@@ -91,7 +92,7 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        var identifiers = patient.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
@@ -115,7 +116,7 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        var identifiers = patient.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(3);
 
         // Check MR identifier
@@ -150,7 +151,7 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("identifier").ShouldBeFalse("no identifiers were added");
+        patient.MutableNode().ContainsKey("identifier").ShouldBeFalse("no identifiers were added");
     }
 
     [Theory]
@@ -171,7 +172,7 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        var identifiers = patient.MutableNode["identifier"]?.AsArray();
+        var identifiers = patient.MutableNode()["identifier"]?.AsArray();
         identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();

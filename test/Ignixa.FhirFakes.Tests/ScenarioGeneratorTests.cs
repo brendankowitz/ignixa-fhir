@@ -9,6 +9,7 @@ using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests;
 
@@ -45,7 +46,7 @@ public class ScenarioGeneratorTests
 
         var diabetesCondition = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = c.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "44054006"; // SNOMED CT code for Type 2 Diabetes
         });
 
@@ -64,7 +65,7 @@ public class ScenarioGeneratorTests
         // All encounters should reference the patient
         foreach (var encounter in scenario.Encounters)
         {
-            var subjectRef = encounter.MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = encounter.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef!.ShouldContain(scenario.Patient!.Id);
         }
     }
@@ -78,7 +79,7 @@ public class ScenarioGeneratorTests
         // Assert
         var a1cObservations = scenario.Observations.Where(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "4548-4"; // LOINC code for HbA1c
         }).ToList();
 
@@ -96,7 +97,7 @@ public class ScenarioGeneratorTests
 
         var metformin = scenario.Medications.FirstOrDefault(m =>
         {
-            var code = m.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "860975" || code == "861007"; // Metformin 500mg or 1000mg
         });
 
@@ -125,7 +126,7 @@ public class ScenarioGeneratorTests
 
         foreach (var observation in scenario.Observations)
         {
-            var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
+            var encounterRef = observation.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
             if (encounterRef is not null)
             {
                 // Handle both urn:uuid: and Encounter/ formats
@@ -149,7 +150,7 @@ public class ScenarioGeneratorTests
         // Assert
         var a1cObservations = scenario.Observations.Where(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "4548-4";
         }).ToList();
 
@@ -159,7 +160,7 @@ public class ScenarioGeneratorTests
         // Just verify we got valid values (detailed correlation testing would be brittle)
         foreach (var obs in a1cObservations)
         {
-            var value = obs.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
+            var value = obs.MutableNode()["valueQuantity"]?["value"]?.GetValue<decimal>();
             value!.Value.ShouldBeGreaterThan(6.0m);
         }
     }
@@ -188,7 +189,7 @@ public class ScenarioGeneratorTests
         // Assert
         var hypertension = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = c.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "38341003"; // SNOMED CT code for Hypertension
         });
 
@@ -204,7 +205,7 @@ public class ScenarioGeneratorTests
         // Assert
         var bpObservations = scenario.Observations.Where(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "85354-9"; // Blood pressure panel
         }).ToList();
 
@@ -213,7 +214,7 @@ public class ScenarioGeneratorTests
         // Each BP observation should have systolic and diastolic components
         foreach (var bp in bpObservations)
         {
-            var components = bp.MutableNode["component"];
+            var components = bp.MutableNode()["component"];
             components.ShouldNotBeNull("BP observation should have components");
         }
     }
@@ -227,7 +228,7 @@ public class ScenarioGeneratorTests
         // Assert
         var antihypertensives = scenario.Medications.Where(m =>
         {
-            var code = m.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "314076" || code == "314077" || code == "329528"; // Lisinopril or Amlodipine
         }).ToList();
 
@@ -249,7 +250,7 @@ public class ScenarioGeneratorTests
         scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should be female
-        var gender = scenario.Patient.MutableNode["gender"]?.GetValue<string>();
+        var gender = scenario.Patient.MutableNode()["gender"]?.GetValue<string>();
         gender.ShouldBe("female");
     }
 
@@ -262,7 +263,7 @@ public class ScenarioGeneratorTests
         // Assert
         var pregnancy = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = c.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "72892002"; // Normal pregnancy
         });
 
@@ -289,7 +290,7 @@ public class ScenarioGeneratorTests
         // Assert
         var fhrObservations = scenario.Observations.Where(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "55283-6"; // Fetal heart rate
         }).ToList();
 
@@ -305,7 +306,7 @@ public class ScenarioGeneratorTests
         // Assert
         var prenatalVitamins = scenario.Medications.FirstOrDefault(m =>
         {
-            var code = m.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "315246"; // Prenatal vitamins
         });
 
@@ -327,7 +328,7 @@ public class ScenarioGeneratorTests
         scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Verify age (should be around 7 years old)
-        var birthDate = scenario.Patient.MutableNode["birthDate"]?.GetValue<string>();
+        var birthDate = scenario.Patient.MutableNode()["birthDate"]?.GetValue<string>();
         birthDate.ShouldNotBeNullOrEmpty();
     }
 
@@ -340,7 +341,7 @@ public class ScenarioGeneratorTests
         // Assert
         var asthma = scenario.Conditions.FirstOrDefault(c =>
         {
-            var code = c.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = c.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "195967001"; // Asthma
         });
 
@@ -356,7 +357,7 @@ public class ScenarioGeneratorTests
         // Assert
         var peakFlowObservations = scenario.Observations.Where(o =>
         {
-            var code = o.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = o.MutableNode()["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "33452-4"; // Peak expiratory flow rate
         }).ToList();
 
@@ -372,7 +373,7 @@ public class ScenarioGeneratorTests
         // Assert
         var albuterol = scenario.Medications.FirstOrDefault(m =>
         {
-            var code = m.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
+            var code = m.MutableNode()["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "435"; // Albuterol
         });
 
@@ -388,7 +389,7 @@ public class ScenarioGeneratorTests
         // Assert
         var emergencyVisits = scenario.Encounters.Where(e =>
         {
-            var classCode = e.MutableNode["class"]?["code"]?.GetValue<string>();
+            var classCode = e.MutableNode()["class"]?["code"]?.GetValue<string>();
             return classCode == "EMER";
         }).ToList();
 
@@ -436,8 +437,8 @@ public class ScenarioGeneratorTests
         // Assert
         scenario.Encounters.Count.ShouldBe(2);
 
-        var visit1Start = scenario.Encounters[0].MutableNode["period"]?["start"]?.GetValue<string>();
-        var visit2Start = scenario.Encounters[1].MutableNode["period"]?["start"]?.GetValue<string>();
+        var visit1Start = scenario.Encounters[0].MutableNode()["period"]?["start"]?.GetValue<string>();
+        var visit2Start = scenario.Encounters[1].MutableNode()["period"]?["start"]?.GetValue<string>();
 
         visit1Start.ShouldNotBeNull();
         visit2Start.ShouldNotBeNull();
@@ -495,21 +496,21 @@ public class ScenarioGeneratorTests
         // Act & Assert - Check all observations reference the patient
         foreach (var observation in scenario.Observations)
         {
-            var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "observation should reference the patient");
         }
 
         // Check all conditions reference the patient
         foreach (var condition in scenario.Conditions)
         {
-            var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = condition.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "condition should reference the patient");
         }
 
         // Check all medications reference the patient
         foreach (var medication in scenario.Medications)
         {
-            var subjectRef = medication.MutableNode["subject"]?["reference"]?.GetValue<string>();
+            var subjectRef = medication.MutableNode()["subject"]?["reference"]?.GetValue<string>();
             subjectRef.ShouldBe($"urn:uuid:{patientId}", "medication should reference the patient");
         }
     }

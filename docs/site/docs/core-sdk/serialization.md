@@ -78,9 +78,13 @@ ReadOnlyMemory<byte> bytes = resource.SerializeToBytes();
 var prettyBytes = resource.SerializeToBytes(pretty: true);
 ```
 
-## Mutable Nodes
+## Mutating Resources
 
-Resources are backed by `System.Text.Json.Nodes.JsonObject` for direct manipulation:
+Prefer FHIRPath (see [FHIRPath](/docs/core-sdk/fhirpath)) to *read* values, and one of the options below to *write* them. Avoid reaching for the raw backing `JsonObject` unless nothing else fits — see [Raw Mutable JSON Access](#raw-mutable-json-access-advanced) at the end of this section.
+
+### Typed Facades and SetProperty
+
+Typed `*JsonNode` model classes (see [Bundle Handling](#bundle-handling) below) expose strongly-typed properties for their resource shape. For ad-hoc properties, `SetProperty` is a public convenience method on every `*JsonNode`:
 
 ```csharp
 using Ignixa.Serialization;
@@ -89,12 +93,8 @@ using System.Text.Json.Nodes;
 // Parse resource
 var patient = JsonSourceNodeFactory.Parse(json);
 
-// Access the underlying JsonObject via MutableNode property
-JsonObject mutableNode = patient.MutableNode;
-
-// Modify directly
-mutableNode["active"] = false;
-mutableNode["meta"]!["lastUpdated"] = DateTime.UtcNow.ToString("O");
+// Set (or remove, by passing null) a top-level property
+patient.SetProperty("active", JsonValue.Create(false));
 
 // Add complex elements
 var nameArray = new JsonArray
@@ -105,15 +105,15 @@ var nameArray = new JsonArray
         ["given"] = new JsonArray { "John", "William" }
     }
 };
-mutableNode["name"] = nameArray;
+patient.SetProperty("name", nameArray);
 
 // Serialize the modified resource
 var updatedJson = patient.SerializeToString();
 ```
 
-### Accessing Mutable Node from IElement
+### Mutating After FHIRPath Navigation
 
-When working with `IElement` (for FHIRPath or validation), access the underlying `JsonNode` via `Meta<T>()`. Useful for PATCH operations after typed navigation:
+When working with `IElement` (for FHIRPath or validation), access the underlying `JsonNode` via `Meta<T>()`. Useful for targeted edits after typed navigation, without reaching for the raw resource-level backing store:
 
 ```csharp
 using Ignixa.Serialization;
@@ -137,6 +137,25 @@ if (jsonNode is JsonObject nameObject)
 // Changes are reflected in the source
 var updatedJson = sourceNode.SerializeToString();
 ```
+
+### Raw Mutable JSON Access (advanced)
+
+`MutableNode` is `internal` to Ignixa's own implementation assemblies — it isn't part of the public SDK surface. If the options above genuinely don't cover your case, request the raw `JsonObject` explicitly via `IMutableJsonNode`:
+
+```csharp
+using Ignixa.Serialization.SourceNodes;
+using System.Text.Json.Nodes;
+
+var patient = JsonSourceNodeFactory.Parse(json);
+
+JsonObject mutableNode = ((IMutableJsonNode)patient).MutableNode;
+mutableNode["active"] = false;
+mutableNode["meta"]!["lastUpdated"] = DateTime.UtcNow.ToString("O");
+
+var updatedJson = patient.SerializeToString();
+```
+
+This bypasses FHIR-specific semantics (choice types, extensions, polymorphism) that FHIRPath and typed facades handle for you — treat it as a last resort, not a default.
 
 ### Creating New Resources
 
@@ -164,7 +183,7 @@ The parser uses `System.Text.Json` for high-performance deserialization:
 
 - Zero-allocation streaming from `Stream` with `ParseAsync()`
 - Direct `JsonNode` wrapping for in-memory JSON trees
-- Lazy property access via `MutableNode` - only parsed when accessed
+- Lazy property access - properties are only parsed when accessed
 - Reusable serializer options for consistent behavior
 
 ## Bundle Handling
@@ -316,8 +335,6 @@ var output = JsonSerializer.Serialize(patient);
 var output = patient.ToJson();
 // or
 var output = patient.ToString();
-// or access underlying JSON
-var output = patient.MutableNode.ToJsonString();
 ```
 
 The analyzer provides automatic code fixes for both issues.

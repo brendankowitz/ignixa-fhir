@@ -18,6 +18,7 @@ using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Application.Tests.Features.Patch.Executors;
 
@@ -60,7 +61,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["gender"] = "male";
+        resource.MutableNode()["gender"] = "male";
 
         var operation = new FhirPatchOperation
         {
@@ -73,7 +74,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        Assert.Equal("female", result.MutableNode["gender"]?.GetValue<string>());
+        Assert.Equal("female", result.MutableNode()["gender"]?.GetValue<string>());
         Assert.Same(resource, result); // In-place mutation
     }
 
@@ -86,7 +87,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["active"] = true;
+        resource.MutableNode()["active"] = true;
 
         var operation = new FhirPatchOperation
         {
@@ -99,7 +100,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        Assert.False(result.MutableNode["active"]?.GetValue<bool>());
+        Assert.False(result.MutableNode()["active"]?.GetValue<bool>());
     }
 
     [Fact]
@@ -111,7 +112,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["multipleBirthInteger"] = 1;
+        resource.MutableNode()["multipleBirthInteger"] = 1;
 
         var operation = new FhirPatchOperation
         {
@@ -124,7 +125,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        Assert.Equal(3, result.MutableNode["multipleBirthInteger"]?.GetValue<int>());
+        Assert.Equal(3, result.MutableNode()["multipleBirthInteger"]?.GetValue<int>());
     }
 
     #endregion
@@ -140,7 +141,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[
             {
                 ""family"": ""Doe"",
                 ""given"": [""John""]
@@ -158,7 +159,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         Assert.NotNull(names);
         var firstName = names[0]?.AsObject();
         Assert.Equal("Smith", firstName?["family"]?.GetValue<string>());
@@ -173,7 +174,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[
             {
                 ""family"": ""Doe"",
                 ""given"": [""John"", ""Michael""]
@@ -191,7 +192,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         var givenNames = names?[0]?.AsObject()?["given"]?.AsArray();
         Assert.Equal("William", givenNames?[1]?.GetValue<string>());
     }
@@ -209,7 +210,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["address"] = JsonNode.Parse(@"[
+        resource.MutableNode()["address"] = JsonNode.Parse(@"[
             {
                 ""use"": ""home"",
                 ""city"": ""Boston""
@@ -231,7 +232,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var addresses = result.MutableNode["address"]?.AsArray();
+        var addresses = result.MutableNode()["address"]?.AsArray();
         Assert.Equal("New York", addresses?[0]?.AsObject()?["city"]?.GetValue<string>());
     }
 
@@ -244,7 +245,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["telecom"] = JsonNode.Parse(@"[
+        resource.MutableNode()["telecom"] = JsonNode.Parse(@"[
             {
                 ""system"": ""phone"",
                 ""value"": ""555-1234""
@@ -266,7 +267,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var telecom = result.MutableNode["telecom"]?.AsArray();
+        var telecom = result.MutableNode()["telecom"]?.AsArray();
         Assert.Equal("555-9999", telecom?[0]?.AsObject()?["value"]?.GetValue<string>());
     }
 
@@ -283,7 +284,7 @@ public class ReplaceOperationExecutorTests
             ResourceType = "Patient",
             Id = "123",
         };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[
             {
                 ""family"": ""Doe"",
                 ""given"": [""John""]
@@ -306,7 +307,7 @@ public class ReplaceOperationExecutorTests
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
         // Assert
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         var firstName = names?[0]?.AsObject();
         Assert.Equal("Smith", firstName?["family"]?.GetValue<string>());
         var givenNames = firstName?["given"]?.AsArray();

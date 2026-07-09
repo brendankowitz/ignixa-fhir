@@ -1,7 +1,7 @@
 using Ignixa.Abstractions;
 using System.CommandLine;
-using System.Text.Json;
 using Ignixa.FhirFakes.Scenarios;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
@@ -114,11 +114,6 @@ internal static class ScenarioCommand
             var filename = $"{fhirVersion}-bundle-{scenario.Id}-{id}.json";
             var outputPath = Path.Combine(outFolder, filename);
 
-            JsonSerializerOptions options = new()
-            {
-                WriteIndented = true
-            };
-
             // Rewrite references if using batch bundle (resolved references)
             // Transaction bundles use urn:uuid by default, batch bundles need Patient/id format
             if (resolvedReferences)
@@ -129,7 +124,7 @@ internal static class ScenarioCommand
             // Create a transaction bundle (default behavior)
             // Use ToBatchBundle if resolved references is requested
             var bundle = resolvedReferences ? context.ToBatchBundle() : context.ToBundle();
-            var json = JsonSerializer.Serialize(bundle.MutableNode, options);
+            var json = bundle.SerializeToString(pretty: true);
             await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
             var bundleType = resolvedReferences ? "batch" : "transaction";
@@ -146,11 +141,11 @@ internal static class ScenarioCommand
                 var validationResults = new Dictionary<string, Ignixa.Validation.ValidationResult>();
                 foreach (var resource in context.AllResources)
                 {
-                    var resourceType = resource.MutableNode["resourceType"]?.ToString() ?? "Unknown";
-                    var resourceId = resource.MutableNode["id"]?.ToString() ?? "unknown";
+                    var resourceType = string.IsNullOrEmpty(resource.ResourceType) ? "Unknown" : resource.ResourceType;
+                    var resourceId = string.IsNullOrEmpty(resource.Id) ? "unknown" : resource.Id;
                     var key = $"{resourceType}/{resourceId}";
 
-                    var result = ValidationHelper.ValidateResource(resource.MutableNode, schemaProvider);
+                    var result = ValidationHelper.ValidateResource(resource, schemaProvider);
                     validationResults[key] = result;
 
                     var summary = ValidationHelper.GetSummary(result);

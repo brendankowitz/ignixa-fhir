@@ -10,6 +10,7 @@ using Ignixa.Api.Http;
 using Ignixa.Serialization;
 using System.Text.Json.Nodes;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Api.Tests.Infrastructure;
 
@@ -105,7 +106,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
-        var requestResource = jsonNode.MutableNode;
+        var requestResource = jsonNode.MutableNode();
 
         // Act
         string mode = null;
@@ -146,7 +147,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
-        var requestResource = jsonNode.MutableNode;
+        var requestResource = jsonNode.MutableNode();
 
         // Act
         string profile = null;
@@ -194,7 +195,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
-        var requestResource = jsonNode.MutableNode;
+        var requestResource = jsonNode.MutableNode();
 
         // Act
         JsonNode extractedResource = null;

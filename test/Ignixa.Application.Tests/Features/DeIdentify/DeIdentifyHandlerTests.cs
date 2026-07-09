@@ -19,6 +19,7 @@ using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Application.Tests.Features.DeIdentify;
 
@@ -249,7 +250,7 @@ public class DeIdentifyHandlerTests
         var deIdResult = new DeIdResult
         {
             Resource = outputResource,
-            DeidentifiedJson = outputResource.MutableNode.ToJsonString(),
+            DeidentifiedJson = outputResource.MutableNode().ToJsonString(),
             Metrics = new ProcessingMetrics
             {
                 NodesProcessed = 1,

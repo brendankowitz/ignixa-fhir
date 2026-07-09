@@ -9,6 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
 using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 using Xunit;
 
 namespace Ignixa.Serialization.Tests;
@@ -475,11 +476,13 @@ public class StructureMapVersionTests
         // Arrange
         var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R4);
         source.SetDefaultValue("Integer", JsonValue.Create(42));
+        var sourceNode = ((IMutableJsonNode)source).MutableNode;
 
         // Act - serialize and deserialize
-        var json = source.MutableNode.ToJsonString();
+        var json = sourceNode.ToJsonString();
         var parsed = JsonNode.Parse(json) as JsonObject;
         var roundTripped = new StructureMapSourceJsonNode(parsed!, FhirVersion.R4);
+        var roundTrippedNode = ((IMutableJsonNode)roundTripped).MutableNode;
 
         // Assert
         var defaultValue = roundTripped.GetDefaultValue();
@@ -487,7 +490,7 @@ public class StructureMapVersionTests
         defaultValue!.GetValue<int>().ShouldBe(42);
 
         // Check the property name is preserved
-        roundTripped.MutableNode.ContainsKey("defaultValueInteger").ShouldBeTrue();
+        roundTrippedNode.ContainsKey("defaultValueInteger").ShouldBeTrue();
     }
 
     #endregion

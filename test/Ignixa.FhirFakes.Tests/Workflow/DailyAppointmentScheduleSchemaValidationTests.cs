@@ -12,6 +12,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Workflow;
 
@@ -42,7 +43,7 @@ public class DailyAppointmentScheduleSchemaValidationTests
         result.Graph.AllResources.Count.ShouldBeGreaterThan(0);
         foreach (var resource in result.Graph.AllResources)
         {
-            var errors = ValidateAndCollectErrors(resource.MutableNode, schemaProvider);
+            var errors = ValidateAndCollectErrors(resource.MutableNode(), schemaProvider);
             errors.ShouldBeEmpty(
                 $"{schemaProvider.FullVersion} {resource.ResourceType}/{resource.Id} produced validation errors: {string.Join(" | ", errors)}");
         }

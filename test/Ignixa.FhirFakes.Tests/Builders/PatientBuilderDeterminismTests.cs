@@ -12,6 +12,7 @@ using Ignixa.FhirFakes.Population;
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -55,9 +56,9 @@ public class PatientBuilderDeterminismTests
     {
         // Arrange & Act
         var first = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
+            .FromCity(KnownCities.Boston).Build().MutableNode();
         var second = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
+            .FromCity(KnownCities.Boston).Build().MutableNode();
 
         // Assert
         Canonicalize(first).ShouldBe(Canonicalize(second));
@@ -68,9 +69,9 @@ public class PatientBuilderDeterminismTests
     {
         // Arrange & Act
         var first = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromSeattle().Build().MutableNode;
+            .FromSeattle().Build().MutableNode();
         var second = PatientBuilderFactory.Create(_schemaProvider, 1234)
-            .FromSeattle().Build().MutableNode;
+            .FromSeattle().Build().MutableNode();
 
         // Assert
         Canonicalize(first).ShouldBe(Canonicalize(second));
@@ -81,9 +82,9 @@ public class PatientBuilderDeterminismTests
     {
         // Arrange & Act
         var first = PatientBuilderFactory.Create(_schemaProvider, 1)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
+            .FromCity(KnownCities.Boston).Build().MutableNode();
         var second = PatientBuilderFactory.Create(_schemaProvider, 2)
-            .FromCity(KnownCities.Boston).Build().MutableNode;
+            .FromCity(KnownCities.Boston).Build().MutableNode();
 
         // Assert
         Canonicalize(first).ShouldNotBe(Canonicalize(second));
@@ -118,7 +119,7 @@ public class PatientBuilderDeterminismTests
         // Assert
         patient.ShouldNotBeNull();
         patient.ResourceType.ShouldBe("Patient");
-        IdOf(patient.MutableNode).ShouldNotBeNullOrEmpty();
+        IdOf(patient.MutableNode()).ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -144,8 +145,8 @@ public class PatientBuilderDeterminismTests
             .Build();
 
         // Assert
-        var nhsNumber1 = patient1.MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
-        var nhsNumber2 = patient2.MutableNode["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
+        var nhsNumber1 = patient1.MutableNode()["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
+        var nhsNumber2 = patient2.MutableNode()["identifier"]?.AsArray()?[0]?["value"]?.GetValue<string>();
 
         nhsNumber1.ShouldNotBeNullOrEmpty();
         nhsNumber1.ShouldBe(nhsNumber2);
@@ -155,8 +156,7 @@ public class PatientBuilderDeterminismTests
         PatientBuilderFactory.Create(_schemaProvider, seed)
             .WithAge(35)
             .WithGender(g => g.Female)
-            .Build()
-            .MutableNode;
+            .Build().MutableNode();
 
     private JsonNode BuildConfiguredPatient(int seed) =>
         PatientBuilderFactory.Create(_schemaProvider, seed)
@@ -169,8 +169,7 @@ public class PatientBuilderDeterminismTests
             .WithZipCode("02101")
             .WithAreaCode("617")
             .WithRealisticBMI()
-            .Build()
-            .MutableNode;
+            .Build().MutableNode();
 
     private JsonNode BuildUsCoreProfilePatient(int seed) =>
         PatientBuilderFactory.Create(_schemaProvider, seed)
@@ -180,8 +179,7 @@ public class PatientBuilderDeterminismTests
             .WithFamilyName("Hopper")
             .WithProfile(USCorePatientProfile.Instance)
             .WithAttribute(USCorePatientProfile.UsCoreRaceAttribute, USCorePatientProfile.Race.Hispanic)
-            .Build()
-            .MutableNode;
+            .Build().MutableNode();
 
     private static string IdOf(JsonNode patient) =>
         patient["id"]?.GetValue<string>() ?? string.Empty;

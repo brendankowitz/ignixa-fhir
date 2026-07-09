@@ -9,6 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Builders;
 
@@ -34,9 +35,9 @@ public class MedicationDispenseBuilderTests
         // Assert
         dispense.ShouldNotBeNull();
         dispense.ResourceType.ShouldBe("MedicationDispense");
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe("completed");
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe("completed");
 
-        var medication = dispense.MutableNode["medicationCodeableConcept"]?.AsObject();
+        var medication = dispense.MutableNode()["medicationCodeableConcept"]?.AsObject();
         medication.ShouldNotBeNull();
 
         var coding = medication?["coding"]?.AsArray()?[0]?.AsObject();
@@ -61,7 +62,7 @@ public class MedicationDispenseBuilderTests
         dispense.ShouldNotBeNull();
         dispense.ResourceType.ShouldBe("MedicationDispense");
 
-        var medicationRef = dispense.MutableNode["medicationReference"]?.AsObject();
+        var medicationRef = dispense.MutableNode()["medicationReference"]?.AsObject();
         medicationRef?["reference"]?.GetValue<string>().ShouldBe($"Medication/{medicationId}");
     }
 
@@ -110,8 +111,8 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode["meta"]?["tag"].ShouldNotBeNull();
-        var tags = dispense.MutableNode["meta"]?["tag"]?.AsArray();
+        dispense.MutableNode()["meta"]?["tag"].ShouldNotBeNull();
+        var tags = dispense.MutableNode()["meta"]?["tag"]?.AsArray();
         tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
@@ -133,7 +134,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe("completed");
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe("completed");
     }
 
     [Fact]
@@ -147,7 +148,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe("in-progress");
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe("in-progress");
     }
 
     [Theory]
@@ -165,7 +166,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe(status);
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe(status);
     }
 
     #endregion
@@ -186,8 +187,8 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode.TryGetPropertyValue("medicationCodeableConcept", out _).ShouldBeFalse();
-        var medicationRef = dispense.MutableNode["medicationReference"]?.AsObject();
+        dispense.MutableNode().TryGetPropertyValue("medicationCodeableConcept", out _).ShouldBeFalse();
+        var medicationRef = dispense.MutableNode()["medicationReference"]?.AsObject();
         medicationRef?["reference"]?.GetValue<string>().ShouldBe($"Medication/{medicationId}");
     }
 
@@ -205,8 +206,8 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode.TryGetPropertyValue("medicationReference", out _).ShouldBeFalse();
-        var medication = dispense.MutableNode["medicationCodeableConcept"]?.AsObject();
+        dispense.MutableNode().TryGetPropertyValue("medicationReference", out _).ShouldBeFalse();
+        var medication = dispense.MutableNode()["medicationCodeableConcept"]?.AsObject();
         var coding = medication?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("108505002");
     }
@@ -221,7 +222,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        var medication = dispense.MutableNode["medicationCodeableConcept"]?.AsObject();
+        var medication = dispense.MutableNode()["medicationCodeableConcept"]?.AsObject();
         var coding = medication?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("197361");
         coding?["system"]?.GetValue<string>().ShouldBe("http://www.nlm.nih.gov/research/umls/rxnorm");
@@ -245,7 +246,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        var subject = dispense.MutableNode["subject"]?.AsObject();
+        var subject = dispense.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
@@ -281,7 +282,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        var prescriptions = dispense.MutableNode["authorizingPrescription"]?.AsArray();
+        var prescriptions = dispense.MutableNode()["authorizingPrescription"]?.AsArray();
         prescriptions!.Count.ShouldBe(1);
 
         var prescription = prescriptions?[0]?.AsObject();
@@ -304,7 +305,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        var prescriptions = dispense.MutableNode["authorizingPrescription"]?.AsArray();
+        var prescriptions = dispense.MutableNode()["authorizingPrescription"]?.AsArray();
         prescriptions!.Count.ShouldBe(2);
 
         var ref1 = prescriptions?[0]?.AsObject()?["reference"]?.GetValue<string>();
@@ -324,7 +325,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode.TryGetPropertyValue("authorizingPrescription", out _).ShouldBeFalse();
+        dispense.MutableNode().TryGetPropertyValue("authorizingPrescription", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -345,7 +346,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        var performers = dispense.MutableNode["performer"]?.AsArray();
+        var performers = dispense.MutableNode()["performer"]?.AsArray();
         performers!.Count.ShouldBe(1);
 
         var performer = performers?[0]?.AsObject();
@@ -369,7 +370,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        var performers = dispense.MutableNode["performer"]?.AsArray();
+        var performers = dispense.MutableNode()["performer"]?.AsArray();
         performers!.Count.ShouldBe(2);
 
         var actor1 = performers?[0]?.AsObject()?["actor"]?.AsObject()?["reference"]?.GetValue<string>();
@@ -389,7 +390,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode.TryGetPropertyValue("performer", out _).ShouldBeFalse();
+        dispense.MutableNode().TryGetPropertyValue("performer", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -410,7 +411,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode["whenHandedOver"]?.GetValue<string>().ShouldBe(timestamp);
+        dispense.MutableNode()["whenHandedOver"]?.GetValue<string>().ShouldBe(timestamp);
     }
 
     [Fact]
@@ -423,7 +424,7 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode.TryGetPropertyValue("whenHandedOver", out _).ShouldBeFalse();
+        dispense.MutableNode().TryGetPropertyValue("whenHandedOver", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -454,25 +455,25 @@ public class MedicationDispenseBuilderTests
 
         // Assert
         dispense.Id.ShouldBe("dispense-complete");
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe("completed");
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe("completed");
 
-        var subject = dispense.MutableNode["subject"]?.AsObject();
+        var subject = dispense.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
-        var medication = dispense.MutableNode["medicationCodeableConcept"]?.AsObject();
+        var medication = dispense.MutableNode()["medicationCodeableConcept"]?.AsObject();
         var coding = medication?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("197361");
 
-        var prescriptions = dispense.MutableNode["authorizingPrescription"]?.AsArray();
+        var prescriptions = dispense.MutableNode()["authorizingPrescription"]?.AsArray();
         prescriptions?[0]?.AsObject()?["reference"]?.GetValue<string>().ShouldBe($"MedicationRequest/{prescriptionId}");
 
-        var performers = dispense.MutableNode["performer"]?.AsArray();
+        var performers = dispense.MutableNode()["performer"]?.AsArray();
         var actor = performers?[0]?.AsObject()?["actor"]?.AsObject();
         actor?["reference"]?.GetValue<string>().ShouldBe($"Practitioner/{practitionerId}");
 
-        dispense.MutableNode["whenHandedOver"]?.GetValue<string>().ShouldBe(timestamp);
+        dispense.MutableNode()["whenHandedOver"]?.GetValue<string>().ShouldBe(timestamp);
 
-        var tags = dispense.MutableNode["meta"]?["tag"]?.AsArray();
+        var tags = dispense.MutableNode()["meta"]?["tag"]?.AsArray();
         tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
@@ -514,21 +515,21 @@ public class MedicationDispenseBuilderTests
         // Assert
         dispense.ShouldNotBeNull();
         dispense.ResourceType.ShouldBe("MedicationDispense");
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe("in-progress");
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe("in-progress");
 
-        var subject = dispense.MutableNode["subject"]?.AsObject();
+        var subject = dispense.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
-        var medication = dispense.MutableNode["medicationCodeableConcept"]?.AsObject();
+        var medication = dispense.MutableNode()["medicationCodeableConcept"]?.AsObject();
         var coding = medication?["coding"]?.AsArray()?[0]?.AsObject();
         coding?["code"]?.GetValue<string>().ShouldBe("108505002");
         coding?["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
 
-        var prescriptions = dispense.MutableNode["authorizingPrescription"]?.AsArray();
+        var prescriptions = dispense.MutableNode()["authorizingPrescription"]?.AsArray();
         prescriptions?[0]?.AsObject()?["reference"]?.GetValue<string>()
             .ShouldBe($"MedicationRequest/{medicationRequestId}");
 
-        var tags = dispense.MutableNode["meta"]?["tag"]?.AsArray();
+        var tags = dispense.MutableNode()["meta"]?["tag"]?.AsArray();
         tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
@@ -546,8 +547,8 @@ public class MedicationDispenseBuilderTests
             .Build();
 
         // Assert
-        dispense.MutableNode["meta"].ShouldNotBeNull();
-        var meta = dispense.MutableNode["meta"]?.AsObject();
+        dispense.MutableNode()["meta"].ShouldNotBeNull();
+        var meta = dispense.MutableNode()["meta"]?.AsObject();
         meta?["versionId"]?.GetValue<string>().ShouldBe("1");
         meta?["lastUpdated"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
@@ -569,7 +570,7 @@ public class MedicationDispenseBuilderTests
         dispense.ShouldNotBeNull();
         dispense.Id.ShouldNotBeNullOrEmpty();
         dispense.ResourceType.ShouldBe("MedicationDispense");
-        dispense.MutableNode["status"]?.GetValue<string>().ShouldBe("completed");
+        dispense.MutableNode()["status"]?.GetValue<string>().ShouldBe("completed");
     }
 
     #endregion

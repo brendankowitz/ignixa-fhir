@@ -12,7 +12,6 @@ using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization.Models;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.Compartments;
 

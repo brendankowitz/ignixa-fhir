@@ -14,6 +14,7 @@ using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Shouldly;
 using Xunit.Abstractions;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
@@ -63,7 +64,7 @@ public class DepressionScreeningGuardCoverageTests
             var failures = new List<string>();
             foreach (var resource in context.AllResources)
             {
-                var errors = ValidateAndCollectErrors(resource.MutableNode, schemaProvider);
+                var errors = ValidateAndCollectErrors(resource.MutableNode(), schemaProvider);
                 failures.AddRange(errors.Select(e => $"{resource.ResourceType}: {e}"));
             }
 

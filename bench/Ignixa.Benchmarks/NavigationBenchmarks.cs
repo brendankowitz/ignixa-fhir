@@ -76,7 +76,7 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Simple")]
     public string? IgnixaSimpleJsonNode()
     {
-        return _ignixaObservation.MutableNode["status"]?.GetValue<string>();
+        return ((IMutableJsonNode)_ignixaObservation).MutableNode["status"]?.GetValue<string>();
     }
 
     [Benchmark(Description = "Ignixa: Access simple property (IElement)")]
@@ -106,7 +106,7 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Nested")]
     public string? IgnixaNestedJsonNode()
     {
-        return _ignixaObservation.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
+        return ((IMutableJsonNode)_ignixaObservation).MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
     }
 
     [Benchmark(Description = "Ignixa: Access nested object (IElement)")]
@@ -144,7 +144,7 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Array")]
     public decimal? IgnixaArrayJsonNode()
     {
-        var components = _ignixaObservation.MutableNode["component"]?.AsArray();
+        var components = ((IMutableJsonNode)_ignixaObservation).MutableNode["component"]?.AsArray();
         return components?[0]?["valueQuantity"]?["value"]?.GetValue<decimal>();
     }
 

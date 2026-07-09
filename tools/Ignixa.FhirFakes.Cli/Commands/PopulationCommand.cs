@@ -1,9 +1,10 @@
 using Ignixa.Abstractions;
 using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
+using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
@@ -96,11 +97,6 @@ internal static class PopulationCommand
 
             Console.WriteLine($"Generating {count} patients...");
 
-            JsonSerializerOptions options = new()
-            {
-                WriteIndented = true
-            };
-
             var contexts = generator.Generate(state, count).ToList();
 
             if (contexts.Count == 0)
@@ -131,7 +127,7 @@ internal static class PopulationCommand
                     var outputPath = Path.Combine(outFolder, filename);
 
                     var bundle = context.ToBatchBundle();
-                    var json = JsonSerializer.Serialize(bundle.MutableNode, options);
+                    var json = bundle.SerializeToString(pretty: true);
                     await File.WriteAllTextAsync(outputPath, json);
 
                     if ((i + 1) % 10 == 0 || i == contexts.Count - 1)
@@ -156,40 +152,16 @@ internal static class PopulationCommand
                     context.RewriteReferences(schemaProvider.ReferenceMetadataProvider, ReferenceFormat.UrnUuid);
                 }
 
-                // Combine all contexts into a single transaction bundle
-                var entries = new System.Text.Json.Nodes.JsonArray();
-                int totalResources = 0;
+                // Combine all contexts' resources into a single transaction bundle
+                var allResources = contexts.SelectMany(c => c.AllResources).ToList();
+                var combinedBundle = ResourceBundleComposer.ToTransactionBundle(allResources);
+                combinedBundle.Id = id;
 
-                foreach (var context in contexts)
-                {
-                    var bundle = context.ToBundle();
-                    if (bundle.MutableNode["entry"] is System.Text.Json.Nodes.JsonArray bundleEntries)
-                    {
-                        foreach (var entry in bundleEntries)
-                        {
-                            if (entry is not null)
-                            {
-                                entries.Add(entry.DeepClone());
-                                totalResources++;
-                            }
-                        }
-                    }
-                }
-
-                // Create combined bundle
-                var combinedBundle = new System.Text.Json.Nodes.JsonObject
-                {
-                    ["resourceType"] = "Bundle",
-                    ["id"] = id,
-                    ["type"] = "transaction",
-                    ["entry"] = entries
-                };
-
-                var json = JsonSerializer.Serialize(combinedBundle, options);
+                var json = combinedBundle.SerializeToString(pretty: true);
                 await File.WriteAllTextAsync(outputPath, json);
 
                 Console.WriteLine($"✓ Generated population bundle: {outputPath}");
-                Console.WriteLine($"  Total resources: {totalResources}");
+                Console.WriteLine($"  Total resources: {allResources.Count}");
             }
         }
         catch (Exception ex)
@@ -208,11 +180,6 @@ internal static class PopulationCommand
         int count,
         List<ScenarioContext> contexts)
     {
-        JsonSerializerOptions options = new()
-        {
-            WriteIndented = false // ndjson should not be indented
-        };
-
         // Rewrite references for all contexts to resolved format
         foreach (var context in contexts)
         {
@@ -239,7 +206,7 @@ internal static class PopulationCommand
             await using var writer = new StreamWriter(outputPath);
             foreach (var resource in resources)
             {
-                var json = JsonSerializer.Serialize(resource.MutableNode, options);
+                var json = resource.SerializeToString();
                 await writer.WriteLineAsync(json);
                 totalResources++;
             }

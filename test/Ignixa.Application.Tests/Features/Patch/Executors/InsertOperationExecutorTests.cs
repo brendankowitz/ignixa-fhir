@@ -18,6 +18,7 @@ using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Xunit;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.Application.Tests.Features.Patch.Executors;
 
@@ -45,7 +46,7 @@ public class InsertOperationExecutorTests
     public async Task GivenIndex0_WhenInsertingIntoArray_ThenValueIsInsertedAtBeginning()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"": ""Doe""}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"": ""Doe""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -57,7 +58,7 @@ public class InsertOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         Assert.Equal(2, names?.Count);
         Assert.Equal("Smith", names?[0]?.AsObject()?["family"]?.GetValue<string>());
     }
@@ -66,7 +67,7 @@ public class InsertOperationExecutorTests
     public async Task GivenIndexInMiddle_WhenInserting_ThenValueIsInsertedAtIndex()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""given"":[""John"",""William""]}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""given"":[""John"",""William""]}]");
 
         var operation = new FhirPatchOperation
         {
@@ -78,7 +79,7 @@ public class InsertOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var givenNames = result.MutableNode["name"]?.AsArray()?[0]?.AsObject()?["given"]?.AsArray();
+        var givenNames = result.MutableNode()["name"]?.AsArray()?[0]?.AsObject()?["given"]?.AsArray();
         Assert.Equal("Michael", givenNames?[1]?.GetValue<string>());
     }
 
@@ -86,7 +87,7 @@ public class InsertOperationExecutorTests
     public async Task GivenIndexAtEnd_WhenInserting_ThenValueIsAppended()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""given"":[""John""]}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""given"":[""John""]}]");
 
         var operation = new FhirPatchOperation
         {
@@ -98,7 +99,7 @@ public class InsertOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var givenNames = result.MutableNode["name"]?.AsArray()?[0]?.AsObject()?["given"]?.AsArray();
+        var givenNames = result.MutableNode()["name"]?.AsArray()?[0]?.AsObject()?["given"]?.AsArray();
         Assert.Equal(2, givenNames?.Count);
         Assert.Equal("Doe", givenNames?[1]?.GetValue<string>());
     }
@@ -118,7 +119,7 @@ public class InsertOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var names = result.MutableNode["name"]?.AsArray();
+        var names = result.MutableNode()["name"]?.AsArray();
         Assert.Single(names);
     }
 
@@ -142,7 +143,7 @@ public class InsertOperationExecutorTests
     public async Task GivenNullValue_WhenInserting_ThenThrowsException()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -160,7 +161,7 @@ public class InsertOperationExecutorTests
     public async Task GivenNullIndex_WhenInserting_ThenThrowsException()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -178,7 +179,7 @@ public class InsertOperationExecutorTests
     public async Task GivenNegativeIndex_WhenInserting_ThenThrowsException()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -196,7 +197,7 @@ public class InsertOperationExecutorTests
     public async Task GivenIndexOutOfRange_WhenInserting_ThenThrowsException()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
+        resource.MutableNode()["name"] = JsonNode.Parse(@"[{""family"":""Doe""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -214,7 +215,7 @@ public class InsertOperationExecutorTests
     public async Task GivenNonArrayProperty_WhenInserting_ThenThrowsException()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["gender"] = "male";
+        resource.MutableNode()["gender"] = "male";
 
         var operation = new FhirPatchOperation
         {
@@ -232,7 +233,7 @@ public class InsertOperationExecutorTests
     public async Task GivenComplexObject_WhenInsertingAtIndex_ThenObjectIsInserted()
     {
         var resource = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        resource.MutableNode["address"] = JsonNode.Parse(@"[{""city"":""Boston""},{""city"":""New York""}]");
+        resource.MutableNode()["address"] = JsonNode.Parse(@"[{""city"":""Boston""},{""city"":""New York""}]");
 
         var operation = new FhirPatchOperation
         {
@@ -244,7 +245,7 @@ public class InsertOperationExecutorTests
 
         var result = await _executor.ExecuteAsync(resource, operation, CancellationToken.None);
 
-        var addresses = result.MutableNode["address"]?.AsArray();
+        var addresses = result.MutableNode()["address"]?.AsArray();
         Assert.Equal(3, addresses?.Count);
         Assert.Equal("Cambridge", addresses?[1]?.AsObject()?["city"]?.GetValue<string>());
     }

@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
 
@@ -97,7 +98,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"Patient/{patientId}");
     }
 
@@ -118,7 +119,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.UrnUuid);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{patientId}");
     }
 
@@ -144,8 +145,8 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
+        var encounterRef = observation.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"Patient/{patientId}");
         encounterRef.ShouldBe($"Encounter/{encounterId}");
     }
@@ -172,7 +173,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe("#contained-patient");
     }
 
@@ -197,8 +198,8 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
+        var encounterRef = observation.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe("#contained-patient"); // Fragment preserved
         encounterRef.ShouldBe($"Encounter/{encounterId}"); // Rewritten
     }
@@ -222,7 +223,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{unknownId}"); // Unchanged
     }
 
@@ -248,8 +249,8 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
+        var encounterRef = observation.MutableNode()["encounter"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"Patient/{patientId}"); // Rewritten
         encounterRef.ShouldBe($"urn:uuid:{unknownEncounterId}"); // Unchanged
     }
@@ -275,7 +276,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.UrnUuid);
 
         // Assert
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe($"urn:uuid:{patientId}");
     }
 
@@ -302,7 +303,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.UrnUuid);
 
         // Assert - External URL references are preserved unchanged
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe(absoluteUrl);
     }
 
@@ -325,7 +326,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert - External URL references are preserved unchanged
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe(absoluteUrl);
     }
 
@@ -359,8 +360,8 @@ public class ReferenceRewriterServiceTests
 
         // Assert
         Should.NotThrow(act);
-        patient.MutableNode["resourceType"]?.GetValue<string>().ShouldBe("Patient");
-        patient.MutableNode["id"]?.GetValue<string>().ShouldBe(patientId);
+        patient.MutableNode()["resourceType"]?.GetValue<string>().ShouldBe("Patient");
+        patient.MutableNode()["id"]?.GetValue<string>().ShouldBe(patientId);
     }
 
     #endregion
@@ -441,7 +442,7 @@ public class ReferenceRewriterServiceTests
 
         // Assert
         Should.NotThrow(act);
-        var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
+        var subjectRef = observation.MutableNode()["subject"]?["reference"]?.GetValue<string>();
         subjectRef.ShouldBe("");
     }
 
@@ -478,7 +479,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subject = observation.MutableNode["subject"]?.AsObject();
+        var subject = observation.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
         subject?["display"]?.GetValue<string>().ShouldBe("John Smith");
     }
@@ -516,7 +517,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var subject = observation.MutableNode["subject"]?.AsObject();
+        var subject = observation.MutableNode()["subject"]?.AsObject();
         subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
         subject?["type"]?.GetValue<string>().ShouldBe("Patient");
         subject?["identifier"]?["value"]?.GetValue<string>().ShouldBe("12345");
@@ -557,7 +558,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([procedure], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var reasonReferences = procedure.MutableNode["reasonReference"]?.AsArray();
+        var reasonReferences = procedure.MutableNode()["reasonReference"]?.AsArray();
         reasonReferences!.Count.ShouldBe(2);
         reasonReferences[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obsId1}");
         reasonReferences[1]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obsId2}");
@@ -594,7 +595,7 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([procedure], identities, ReferenceFormat.Resolved);
 
         // Assert
-        var reasonReferences = procedure.MutableNode["reasonReference"]?.AsArray();
+        var reasonReferences = procedure.MutableNode()["reasonReference"]?.AsArray();
         reasonReferences?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obsId1}");
         reasonReferences?[1]?["reference"]?.GetValue<string>().ShouldBe($"urn:uuid:{unknownId}");
     }
@@ -625,9 +626,9 @@ public class ReferenceRewriterServiceTests
         service.RewriteReferences([observation1, observation2, encounter], identities, ReferenceFormat.Resolved);
 
         // Assert
-        observation1.MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
-        observation2.MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
-        encounter.MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
+        observation1.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
+        observation2.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
+        encounter.MutableNode()["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]

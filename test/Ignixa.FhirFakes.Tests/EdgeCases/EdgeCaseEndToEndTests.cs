@@ -7,6 +7,7 @@ using Bogus;
 using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.Specification.Generated;
 using Shouldly;
+using Ignixa.Serialization.TestSupport;
 
 namespace Ignixa.FhirFakes.Tests.EdgeCases;
 
@@ -22,9 +23,9 @@ public class EdgeCaseEndToEndTests
 
         var manifest = new EdgeCasePipeline(12345, schemaProvider).Apply(patient, strategies);
 
-        patient.MutableNode["gender"].ShouldNotBeNull();
-        patient.MutableNode["birthDate"].ShouldNotBeNull();
-        patient.MutableNode["name"].ShouldNotBeNull();
+        patient.MutableNode()["gender"].ShouldNotBeNull();
+        patient.MutableNode()["birthDate"].ShouldNotBeNull();
+        patient.MutableNode()["name"].ShouldNotBeNull();
         manifest.Mutations.Count.ShouldBeGreaterThanOrEqualTo(1);
         manifest.ResourceId.ShouldBe(patient.Id);
         manifest.Seed.ShouldBe(12345);
