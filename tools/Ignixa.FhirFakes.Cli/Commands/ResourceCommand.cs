@@ -1,6 +1,5 @@
 using Ignixa.Abstractions;
 using System.CommandLine;
-using System.Text.Json;
 using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.EdgeCases;
@@ -173,15 +172,10 @@ internal static class ResourceCommand
         {
             Directory.CreateDirectory(outFolder);
 
-            JsonSerializerOptions options = new()
-            {
-                WriteIndented = true
-            };
-
             if (density != GenerationDensity.Minimal)
             {
                 await HandleGenericDensity(schemaProvider, fhirVersion, resourceType, outFolder, validate,
-                    edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, theme, options, cancellationToken);
+                    edgeCasesEnabled, selectors, seed, explicitSeed, includeInvalid, density, theme, cancellationToken);
             }
             else if (resourceType.Equals("Patient", StringComparison.OrdinalIgnoreCase))
             {
@@ -204,13 +198,12 @@ internal static class ResourceCommand
 
                 var patient = builder.Build();
                 var manifest = ApplyEdgeCases(schemaProvider, patient, edgeCasesEnabled, selectors, seed, includeInvalid);
-                var patientNode = ((IMutableJsonNode)patient).MutableNode;
 
-                var id = patientNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                var id = string.IsNullOrEmpty(patient.Id) ? Guid.NewGuid().ToString() : patient.Id;
                 var filename = $"{fhirVersion}-patient-{id}.json";
                 var outputPath = Path.Combine(outFolder, filename);
 
-                var json = JsonSerializer.Serialize(patientNode, options);
+                var json = patient.SerializeToString(pretty: true);
                 await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
                 Console.WriteLine($"✓ Generated Patient: {outputPath}");
@@ -218,7 +211,7 @@ internal static class ResourceCommand
                 await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
                 if (validate)
-                    RunValidation(patientNode, schemaProvider, "Patient", fhirVersion, includeInvalid);
+                    RunValidation(patient, schemaProvider, "Patient", fhirVersion, includeInvalid);
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
@@ -244,13 +237,12 @@ internal static class ResourceCommand
                 {
                     var observation = allResources[allResources.Count - 1];
                     var manifest = ApplyEdgeCases(schemaProvider, observation, edgeCasesEnabled, selectors, seed, includeInvalid);
-                    var observationNode = ((IMutableJsonNode)observation).MutableNode;
 
-                    var id = observationNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                    var id = string.IsNullOrEmpty(observation.Id) ? Guid.NewGuid().ToString() : observation.Id;
                     var filename = $"{fhirVersion}-observation-{stateName}-{id}.json";
                     var outputPath = Path.Combine(outFolder, filename);
 
-                    var json = JsonSerializer.Serialize(observationNode, options);
+                    var json = observation.SerializeToString(pretty: true);
                     await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
                     Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
@@ -258,7 +250,7 @@ internal static class ResourceCommand
                     await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
                     if (validate)
-                        RunValidation(observationNode, schemaProvider, "Observation", fhirVersion, includeInvalid);
+                        RunValidation(observation, schemaProvider, "Observation", fhirVersion, includeInvalid);
                 }
             }
             else
@@ -297,7 +289,6 @@ internal static class ResourceCommand
         bool includeInvalid,
         GenerationDensity density,
         ClinicalDomain? theme,
-        JsonSerializerOptions options,
         CancellationToken cancellationToken)
     {
         var faker = explicitSeed is { } s
@@ -306,13 +297,12 @@ internal static class ResourceCommand
 
         var resource = faker.Generate(resourceType);
         var manifest = ApplyEdgeCases(schemaProvider, resource, edgeCasesEnabled, selectors, seed, includeInvalid);
-        var resourceNode = ((IMutableJsonNode)resource).MutableNode;
 
-        var id = resourceNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
+        var id = string.IsNullOrEmpty(resource.Id) ? Guid.NewGuid().ToString() : resource.Id;
         var filename = $"{fhirVersion}-{resourceType.ToLowerInvariant()}-{density.ToString().ToLowerInvariant()}-{id}.json";
         var outputPath = Path.Combine(outFolder, filename);
 
-        var json = JsonSerializer.Serialize(resourceNode, options);
+        var json = resource.SerializeToString(pretty: true);
         await File.WriteAllTextAsync(outputPath, json, cancellationToken);
 
         Console.WriteLine($"✓ Generated {resourceType} ({density}): {outputPath}");
@@ -320,7 +310,7 @@ internal static class ResourceCommand
         await ReportManifestAsync(outputPath, manifest, cancellationToken);
 
         if (validate)
-            RunValidation(resourceNode, schemaProvider, resourceType, fhirVersion, includeInvalid);
+            RunValidation(resource, schemaProvider, resourceType, fhirVersion, includeInvalid);
     }
 
     private static MutationManifest? ApplyEdgeCases(IFhirSchemaProvider schemaProvider, ResourceJsonNode resource, bool enabled, string[] selectors, int seed, bool includeInvalid)
@@ -377,9 +367,9 @@ internal static class ResourceCommand
     /// when validation fails, unless <paramref name="includeInvalid"/> is true
     /// (invalidity was deliberately requested via --include-invalid).
     /// </summary>
-    private static void RunValidation(System.Text.Json.Nodes.JsonNode node, IFhirSchemaProvider schemaProvider, string resourceType, string fhirVersion, bool includeInvalid)
+    private static void RunValidation(ResourceJsonNode resource, IFhirSchemaProvider schemaProvider, string resourceType, string fhirVersion, bool includeInvalid)
     {
-        var validationResult = ValidationHelper.ValidateResource(node, schemaProvider);
+        var validationResult = ValidationHelper.ValidateResource(resource, schemaProvider);
         if (!validationResult.IsValid)
         {
             Console.Error.WriteLine($"\n⚠  Validation Issues Detected:");

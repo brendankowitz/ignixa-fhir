@@ -7,7 +7,7 @@ using Ignixa.Abstractions;
 using System.CommandLine;
 using System.Text.Json;
 using Ignixa.FhirFakes.Workflow;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Cli.Commands;
@@ -141,8 +141,7 @@ internal static class WorkflowCommand
                 : ResourceBundleComposer.ToTransactionBundle(result.Graph.AllResources);
             var bundleFilename = $"{fhirVersion}-workflow-{scenario.Id}-{runId}.json";
             var bundlePath = Path.Combine(outFolder, bundleFilename);
-            var bundleNode = ((IMutableJsonNode)bundle).MutableNode;
-            var bundleJson = JsonSerializer.Serialize(bundleNode, jsonOptions);
+            var bundleJson = bundle.SerializeToString(pretty: true);
             await File.WriteAllTextAsync(bundlePath, bundleJson, cancellationToken);
 
             var bundleType = resolvedReferences ? "batch" : "transaction";
@@ -169,10 +168,9 @@ internal static class WorkflowCommand
                 var invalidCount = 0;
                 foreach (var resource in result.Graph.AllResources)
                 {
-                    var resourceNode = ((IMutableJsonNode)resource).MutableNode;
-                    var resourceType = resourceNode["resourceType"]?.ToString() ?? "Unknown";
-                    var resourceId = resourceNode["id"]?.ToString() ?? "unknown";
-                    var validationResult = ValidationHelper.ValidateResource(resourceNode, schemaProvider);
+                    var resourceType = string.IsNullOrEmpty(resource.ResourceType) ? "Unknown" : resource.ResourceType;
+                    var resourceId = string.IsNullOrEmpty(resource.Id) ? "unknown" : resource.Id;
+                    var validationResult = ValidationHelper.ValidateResource(resource, schemaProvider);
                     if (!validationResult.IsValid)
                     {
                         invalidCount++;

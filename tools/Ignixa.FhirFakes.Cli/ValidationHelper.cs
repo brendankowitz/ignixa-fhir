@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -17,18 +16,16 @@ internal static class ValidationHelper
     /// Validates a FHIR resource against its schema.
     /// </summary>
     public static ValidationResult ValidateResource(
-        JsonNode resourceNode,
+        ResourceJsonNode resource,
         IFhirSchemaProvider schemaProvider,
         ValidationSettings? settings = null)
     {
-        ArgumentNullException.ThrowIfNull(resourceNode);
+        ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(schemaProvider);
 
         try
         {
-            // Extract resource type
-            var sourceNode = JsonNodeSourceNode.Create(resourceNode);
-            var resourceType = sourceNode.ResourceType ?? sourceNode.Name;
+            var resourceType = resource.ResourceType;
 
             if (string.IsNullOrEmpty(resourceType))
             {
@@ -59,7 +56,7 @@ internal static class ValidationHelper
             // Perform validation
             var validationSettings = settings ?? new ValidationSettings { Depth = ValidationDepth.Spec };
             var state = new ValidationState();
-            var element = sourceNode.ToElement(schemaProvider);
+            var element = resource.ToElement(schemaProvider);
             var result = schema.Validate(element, validationSettings, state);
 
             return result;
