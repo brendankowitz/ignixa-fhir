@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\..\src\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
@@ -29,4 +30,3 @@
   </ItemGroup>
 
 </Project>
-

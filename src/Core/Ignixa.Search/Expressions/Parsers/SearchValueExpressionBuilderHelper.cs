@@ -12,7 +12,7 @@ using Ignixa.Search.Indexing.SearchValues;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
-internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
+internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
     private const decimal ApproximateMultiplier = .1M;
     private SearchComparator _comparator;

@@ -30,6 +30,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
     <PackageReference Include="NuGet.Versioning" />
+    <PackageReference Include="Superpower" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,4 +45,3 @@
   </ItemGroup>
 
 </Project>
-
