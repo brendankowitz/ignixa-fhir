@@ -28,6 +28,7 @@ Neither surface gives application developers (or plugin/extension authors) the *
 |--------------|--------|---------|
 | [source-generated-poco-facades](investigations/source-generated-poco-facades.md) | Implemented | Generator emits per-version strongly-typed facades *backed by* the existing `JsonObject`/`IElement` runtime — fidelity without a second source of truth. Built as the tenth `ILanguage` over `DefinitionCollection`; shipped for R4. |
 | [primitive-fidelity](investigations/primitive-fidelity.md) | Complete | Empirical characterization of `decimal`/date round-trip: untouched JSON is byte-exact, `decimal?` is faithful within `System.Decimal`'s range, dates-as-`string` lossless. Resolved by a raw-`JsonNode` escape-hatch accessor for decimals. |
+| [consolidate-handwritten-facades](investigations/consolidate-handwritten-facades.md) | Proposed | Merges the 39 hand-written `*JsonNode` facades into the generated base via `partial class`, one type per resource — no rename-and-flip, no `ResourceTypeRegistry` dual-dispatch window. Phased: datatypes → contained resources → Application-layer facades → load-bearing `Bundle`/`OperationOutcome`/`Parameters` last. |
 
 ### Future investigation candidates
 
