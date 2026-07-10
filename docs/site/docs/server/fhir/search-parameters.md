@@ -49,6 +49,24 @@ Control how package search parameters are loaded:
 GET /Patient?family=Smith&given=John
 ```
 
+## Specification Quirks
+
+### R4 QuestionnaireResponse `item-subject`
+
+The bundled FHIR R4 `QuestionnaireResponse.item-subject` SearchParameter uses this expression:
+
+```fhirpath
+QuestionnaireResponse.item.where(hasExtension('http://hl7.org/fhir/StructureDefinition/questionnaireresponse-isSubject')).answer.value.ofType(Reference)
+```
+
+`hasExtension()` is not a normative FHIRPath function. This is an upstream specification bug, not an
+Ignixa search bug: HAPI FHIR tracked the same issue in
+[hapifhir/hapi-fhir#2419](https://github.com/hapifhir/hapi-fhir/issues/2419), and HL7 tracked the
+spec correction as [FHIR-31479](https://jira.hl7.org/browse/FHIR-31479). Ignixa supports
+`hasExtension(url)` as a compatibility alias for `extension(url).exists()` so the shipped R4
+SearchParameter can still be indexed and evaluated. Later bundled definitions use the corrected
+`extension(...).exists()` form where available.
+
 ## Search Parameter Types
 
 ### String

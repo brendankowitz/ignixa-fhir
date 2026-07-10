@@ -169,6 +169,18 @@ See the [FHIRPath N1 specification](http://hl7.org/fhirpath/N1/) for the complet
 
 **FHIR-specific**: `resolve()`, `extension()`, `memberOf()`
 
+:::note R4 `hasExtension()` compatibility
+Ignixa also accepts `hasExtension(url)` as a compatibility shortcut for `extension(url).exists()`.
+`hasExtension()` is not part of the normative FHIRPath function set; it is supported because the
+bundled FHIR R4 `QuestionnaireResponse.item-subject` SearchParameter shipped with that non-standard
+function. HAPI FHIR tracked the same failure in
+[hapifhir/hapi-fhir#2419](https://github.com/hapifhir/hapi-fhir/issues/2419) and confirmed it as a
+FHIR specification bug, with the fix tracked by HL7 as
+[FHIR-31479](https://jira.hl7.org/browse/FHIR-31479).
+
+Use `extension(url).exists()` for new expressions.
+:::
+
 ## Compilation & Caching
 
 ### Automatic Caching
