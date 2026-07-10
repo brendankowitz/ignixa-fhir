@@ -15,27 +15,18 @@ using Ignixa.Serialization.SourceNodes;
 namespace Ignixa.Models;
 
 /// <summary>
-/// FHIR Reference datatype facade. Zero-copy view over the underlying JsonObject.
+/// FHIR ParametersParameter datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-public sealed partial class Reference : BaseJsonNode
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
+public partial class ParametersParameter : BaseJsonNode
 {
-    public Reference()
+    public ParametersParameter()
     {
     }
 
-    public Reference(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+    public ParametersParameter(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
-    }
-
-    [JsonIgnore]
-    public PrimitiveElement<string> DisplayElement => new(MutableNode, "display");
-
-    [JsonIgnore]
-    public string? Display
-    {
-        get => DisplayElement.Value;
-        set => DisplayElement.Value = value;
     }
 
     [JsonIgnore]
@@ -52,29 +43,31 @@ public sealed partial class Reference : BaseJsonNode
     }
 
     [JsonIgnore]
-    public Identifier? Identifier
+    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
+
+    [JsonIgnore]
+    public PrimitiveElement<string> NameElement => new(MutableNode, "name");
+
+    [JsonIgnore]
+    public string? Name
     {
-        get => GetComplexProperty<Identifier>("identifier");
-        set => SetProperty("identifier", value?.MutableNode);
+        get => NameElement.Value;
+        set => NameElement.Value = value;
     }
 
+    // fallback: Element
     [JsonIgnore]
-    public PrimitiveElement<string> Reference2Element => new(MutableNode, "reference");
-
-    [JsonIgnore]
-    public string? Reference2
+    public JsonArray? Part
     {
-        get => Reference2Element.Value;
-        set => Reference2Element.Value = value;
+        get => MutableNode["part"] as JsonArray;
+        set => SetProperty("part", value);
     }
 
+    // fallback: Resource
     [JsonIgnore]
-    public PrimitiveElement<string> TypeElement => new(MutableNode, "type");
-
-    [JsonIgnore]
-    public string? Type
+    public JsonNode? Resource
     {
-        get => TypeElement.Value;
-        set => TypeElement.Value = value;
+        get => MutableNode["resource"];
+        set => SetProperty("resource", value);
     }
 }

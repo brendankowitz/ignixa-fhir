@@ -55,9 +55,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// </summary>
     private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
     {
-        "Bundle",
-        "OperationOutcome",
-        "Parameters",
         "Provenance",
         "SearchParameter",
         "CapabilityStatement",
@@ -65,6 +62,31 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "StructureMap",
         "ConceptMap",
         "Composition",
+    };
+
+    /// <summary>
+    /// Type names that are structurally identical enough across every targeted FHIR version -- including
+    /// versions this generator does not target yet (STU3, R4B, R6) -- that a version-tagged node should
+    /// be able to reach them via <see cref="Ignixa.Serialization.SourceNodes.ResourceJsonNode.As{T}"/>
+    /// regardless of tag. Empirically determined by a classifier structural-signature probe across
+    /// {R4, R5, STU3, R4B, R6}; see the "Normative contract types" table in
+    /// docs/features/typed-models/investigations/consolidate-handwritten-facades.md. The generator omits
+    /// <see cref="CompatibleFhirVersionsAttribute"/> for these types in <see cref="RenderClass"/>,
+    /// matching the permissive-when-unmarked behavior hand-written facades have always had (see that
+    /// attribute's own doc comment). Types NOT in this set that get consolidated later (e.g.
+    /// <c>Provenance</c>) keep their attribute deliberately -- their divergence from STU3 or between
+    /// R4/R5 is real, so the guard firing for them is correct, not a regression.
+    /// </summary>
+    private static readonly HashSet<string> VersionAgnosticContractTypes = new(StringComparer.Ordinal)
+    {
+        "Bundle",
+        "Parameters",
+        "OperationOutcome",
+        "Extension",
+        "Identifier",
+        "Meta",
+        "Narrative",
+        "Reference",
     };
 
     /// <summary>Gets the language name.</summary>
@@ -805,12 +827,28 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         sb.AppendLine($"/// FHIR {typeName} {kindLabel} facade. Zero-copy view over the underlying JsonObject.");
         sb.AppendLine("/// </summary>");
 
-        // Fully qualified: every generated class inherits the instance property BaseJsonNode.FhirVersion,
-        // which shadows the FhirVersion TYPE name in this attribute-argument position (CS0120) despite
-        // the `using Ignixa.Abstractions;` above -- simple-name lookup here prefers the inherited member.
-        string versionArgs = string.Join(", ", compatibleVersions.Select(v => $"global::Ignixa.Abstractions.FhirVersion.{MapToFhirVersionEnumMember(v)}"));
-        sb.AppendLine($"[CompatibleFhirVersions({versionArgs})]");
-        sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}partial class {typeName} : {baseClass}");
+        // isVersionSubclass is checked first and short-circuits VersionAgnosticContractTypes deliberately:
+        // that set says "the elements common to every classified version are safe to read from any
+        // version," which is a claim about the BASE type only. A per-version subclass exists precisely
+        // because some element genuinely differs between versions (e.g. Bundle.issues is R5-only,
+        // Parameters.parameter.value[x]'s choice-type union differs between R4/R5) -- so a subclass for
+        // typeName "Bundle" must keep its own single-version CompatibleFhirVersionsAttribute even though
+        // the base type doesn't, or a real cross-version misread through that specific subclass (e.g. an
+        // R4-tagged node read via R5.Bundle, silently missing the version-specific shape) would stop
+        // being caught.
+        if (!isVersionSubclass && VersionAgnosticContractTypes.Contains(typeName))
+        {
+            sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}partial class {typeName} : {baseClass}");
+        }
+        else
+        {
+            // Fully qualified: every generated class inherits the instance property BaseJsonNode.FhirVersion,
+            // which shadows the FhirVersion TYPE name in this attribute-argument position (CS0120) despite
+            // the `using Ignixa.Abstractions;` above -- simple-name lookup here prefers the inherited member.
+            string versionArgs = string.Join(", ", compatibleVersions.Select(v => $"global::Ignixa.Abstractions.FhirVersion.{MapToFhirVersionEnumMember(v)}"));
+            sb.AppendLine($"[CompatibleFhirVersions({versionArgs})]");
+            sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}partial class {typeName} : {baseClass}");
+        }
         sb.AppendLine("{");
 
         if (isResource)

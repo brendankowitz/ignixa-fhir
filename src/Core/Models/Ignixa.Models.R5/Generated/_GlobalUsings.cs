@@ -9,6 +9,10 @@
 
 global using Address = Ignixa.Models.Address;
 global using Annotation = Ignixa.Models.Annotation;
+global using BundleEntry = Ignixa.Models.BundleEntry;
+global using BundleEntryRequest = Ignixa.Models.BundleEntryRequest;
+global using BundleEntryResponse = Ignixa.Models.BundleEntryResponse;
+global using BundleEntrySearch = Ignixa.Models.BundleEntrySearch;
 global using CodeableConcept = Ignixa.Models.CodeableConcept;
 global using Coding = Ignixa.Models.Coding;
 global using ContactDetail = Ignixa.Models.ContactDetail;

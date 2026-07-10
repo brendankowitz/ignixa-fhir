@@ -254,7 +254,7 @@ static async Task<int> RunTypedModelMultiVersion(ConfigRoot loaderConfig)
 
     var typedModelConfig = new CSharpTypedModelConfig
     {
-        ResourceAllowList = ["Patient", "Observation"],
+        ResourceAllowList = ["Patient", "Observation", "Bundle", "Parameters", "OperationOutcome"],
         DatatypeAllowList = ["HumanName", "CodeableConcept", "Coding", "Quantity", "Identifier", "Period", "ContactPoint"],
         GenerateAllDatatypes = true,
     };

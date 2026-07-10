@@ -15,21 +15,22 @@ using Ignixa.Serialization.SourceNodes;
 namespace Ignixa.Models;
 
 /// <summary>
-/// FHIR Extension datatype facade. Zero-copy view over the underlying JsonObject.
+/// FHIR BundleLink datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-public partial class Extension : BaseJsonNode
+[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
+public partial class BundleLink : BaseJsonNode
 {
-    public Extension()
+    public BundleLink()
     {
     }
 
-    public Extension(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+    public BundleLink(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension2 => GetListProperty<Extension>("extension");
+    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
 
     [JsonIgnore]
     public PrimitiveElement<string> IdElement => new(MutableNode, "id");
@@ -40,6 +41,9 @@ public partial class Extension : BaseJsonNode
         get => IdElement.Value;
         set => IdElement.Value = value;
     }
+
+    [JsonIgnore]
+    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     [JsonIgnore]
     public PrimitiveElement<string> UrlElement => new(MutableNode, "url");
