@@ -24291,7 +24291,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "use",
@@ -27317,7 +27317,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "value",
@@ -28425,7 +28425,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "author",
@@ -31855,7 +31855,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "contentType",
@@ -33656,7 +33656,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "availableTime",
@@ -33759,7 +33759,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "daysOfWeek",
@@ -33910,7 +33910,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "description",
@@ -34013,7 +34013,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -34092,7 +34092,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -61251,7 +61251,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "coding",
@@ -61354,7 +61354,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "concept",
@@ -63419,7 +63419,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "system",
@@ -73720,7 +73720,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "name",
@@ -73823,7 +73823,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "system",
@@ -78430,7 +78430,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -78557,7 +78557,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "value",
@@ -83051,7 +83051,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -83322,7 +83322,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "path",
@@ -83473,7 +83473,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "path",
@@ -83600,7 +83600,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "path",
@@ -83703,7 +83703,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "path",
@@ -83854,7 +83854,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
         };
     }
@@ -94715,7 +94715,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "value",
@@ -96269,7 +96269,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -96293,7 +96293,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
         };
     }
@@ -96348,7 +96348,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -96763,7 +96763,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -96890,7 +96890,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "value",
@@ -97065,7 +97065,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
         };
     }
@@ -97120,7 +97120,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -98063,7 +98063,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "path",
@@ -98190,7 +98190,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "strength",
@@ -98341,7 +98341,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "purpose",
@@ -98540,7 +98540,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "key",
@@ -98763,7 +98763,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "label",
@@ -98866,7 +98866,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "identity",
@@ -99017,7 +99017,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "discriminator",
@@ -99168,7 +99168,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -99271,7 +99271,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "code",
@@ -121135,7 +121135,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "description",
@@ -121310,7 +121310,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "purpose",
@@ -121509,7 +121509,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "url",
@@ -129340,7 +129340,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "use",
@@ -129642,7 +129642,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "use",
@@ -147985,7 +147985,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -165041,7 +165041,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "versionId",
@@ -166300,7 +166300,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -166451,7 +166451,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "value",
@@ -167720,7 +167720,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "status",
@@ -180220,7 +180220,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "name",
@@ -183729,7 +183729,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "start",
@@ -190590,7 +190590,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
         };
     }
@@ -191818,7 +191818,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -192806,7 +192806,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "value",
@@ -195437,7 +195437,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "low",
@@ -195540,7 +195540,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "numerator",
@@ -195643,7 +195643,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "lowNumerator",
@@ -195770,7 +195770,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "reference",
@@ -196679,7 +196679,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -204637,7 +204637,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "origin",
@@ -207765,7 +207765,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -240589,7 +240589,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "modifierExtension",
@@ -240740,7 +240740,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "bounds",
@@ -242527,7 +242527,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "type",
@@ -242987,7 +242987,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "code",
@@ -247416,7 +247416,7 @@ public sealed partial class R5CoreSchemaProvider : Ignixa.Abstractions.IFhirSche
                 defaultTypeName: Constants.Str_Extension,
                 referenceTargets: null,
                 contentReference: null,
-                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, "Open", false)
+                slicing: new Ignixa.Abstractions.SlicingMetadata(new Ignixa.Abstractions.DiscriminatorDefinition[] { new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.Value, "url") }, Ignixa.Abstractions.SlicingRules.Open, false)
             ),
             new CoreType(
                 name: "channelType",

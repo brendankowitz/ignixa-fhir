@@ -108,4 +108,4 @@ public record BindingMetadata(string ValueSetUrl, string Strength);
 /// <param name="Rules">Slicing rules: Open, Closed, or OpenAtEnd.</param>
 /// <param name="Ordered">Whether slices must appear in a specific order.</param>
 [SuppressMessage("Performance", "CA1819:Properties should not return arrays", Justification = "Array is appropriate for readonly metadata")]
-public record SlicingMetadata(string[] Discriminators, string Rules, bool Ordered);
+public record SlicingMetadata(string[] Discriminators, Ignixa.Abstractions.SlicingRules Rules, bool Ordered);

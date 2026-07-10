@@ -438,16 +438,17 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         {
             var discriminators = element.Slicing.Discriminator?
                 .Where(d => d.Type != null && !string.IsNullOrEmpty(d.Path))
-                .Select(d => $"new Ignixa.Abstractions.DiscriminatorDefinition(Ignixa.Abstractions.DiscriminatorType.{d.Type}, \"{EscapeString(d.Path)}\")")
+                .Select(d => $"{d.Type}:{d.Path}")
                 .ToArray() ?? Array.Empty<string>();
 
             string rules = element.Slicing.Rules?.ToString() ?? "Open";
+            string rulesValue = $"Ignixa.Abstractions.SlicingRules.{rules}";
             bool ordered = element.Slicing.Ordered ?? false;
 
             if (discriminators.Length > 0)
             {
-                string discriminatorArray = $"new Ignixa.Abstractions.DiscriminatorDefinition[] {{ {string.Join(", ", discriminators)} }}";
-                slicing = $"new SlicingMetadata({discriminatorArray}, \"{rules}\", {(ordered ? "true" : "false")})";
+                string discriminatorArray = $"new[] {{ {string.Join(", ", discriminators.Select(d => $"\"{EscapeString(d)}\""))} }}";
+                slicing = $"new Ignixa.Specification.SlicingMetadata({discriminatorArray}, {rulesValue}, {(ordered ? "true" : "false")})";
             }
         }
 
