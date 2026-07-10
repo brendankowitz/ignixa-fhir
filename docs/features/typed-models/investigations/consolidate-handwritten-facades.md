@@ -85,6 +85,77 @@ Consolidating the hand-written facades for those versions is therefore **blocked
 
 Consequence: once `Bundle`/`Parameters`/`OperationOutcome`/`Provenance`/`SearchParameter` are merged into their R4/R5-tagged generated types, `.As<T>()` calls against an STU3/R4B/R6-tagged node **start throwing** where they previously succeeded — a genuine behavior change for those versions, not merely "no generated model to migrate to yet." Phase 2 (`Provenance`, `SearchParameter`) and Phase 4 (`Bundle`, `Parameters`, `OperationOutcome`) must resolve this explicitly before merging — e.g. by leaving those specific merged types unmarked (no `CompatibleFhirVersionsAttribute`) until STU3/R4B/R6 generation exists, trading away the version guard to preserve today's permissive behavior. **Phase 0 and Phase 1 (datatypes) are unaffected**: `ResourceTypeRegistry` only dispatches top-level resources via `JsonNodeConverter`, never nested datatypes, so `Extension`/`Identifier`/`Meta`/`Narrative`/`Reference`/`CodeableConcept`/`Coding` carry no registry or version-guard risk — confirming datatypes as the correct first increment.
 
+## Phase 0b status (implemented): normative contract types
+
+Before merging any load-bearing resource facade, a classifier structural-signature probe (`MergeType`,
+the same logic `TypedModelClassifier` uses for real generation) was run across `{R4, R5, STU3, R4B, R6}`
+for the 15 candidate consolidation types, to separate genuinely version-agnostic types from ones whose
+agnosticism was only ever an accident of staying hand-written. Verdict graded by wire-shape misread
+hazard: enum-literal drift and additive/absent elements are near-identical (read as null, safe); retypes,
+cardinality flips, and object-vs-string changes are hard divergence.
+
+| Type | R4/R5 | +STU3 | +R4B | +R6 (ballot2) | Verdict |
+|---|---|---|---|---|---|
+| Narrative | Identical | Identical | Identical | Identical | NORMATIVE |
+| Reference | Identical | additive only | Identical | Identical | NORMATIVE |
+| Meta | Identical | wire-same | Identical | Identical | NORMATIVE |
+| Identifier | Identical | enum drift only | Identical | Identical | NORMATIVE |
+| Extension | value[x] drift | value[x] drift | value[x] drift | value[x] drift | NORMATIVE |
+| Bundle | enum/additive drift | enum drift | clean (tracks R4) | clean (tracks R5) | NORMATIVE |
+| Parameters | value[x] drift only | value[x] subset | clean | clean | NORMATIVE |
+| OperationOutcome | enum drift only | enum drift only | clean | clean | NORMATIVE |
+| Provenance | R5 additive | **hard**: `agent.who`/`entity.what` choice-type change, `activity` retype | clean | additive | NOT-NORMATIVE |
+| SearchParameter | R5 additive | **hard**: `component.definition` string↔object | clean | clean | NOT-NORMATIVE |
+| StructureDefinition | soft | **hard**: `context` retype | clean | clean | NOT-NORMATIVE |
+| CapabilityStatement | soft | **hard, massive**: 22 incompatible elements, 3 STU3-only backbones | clean | enum drift | NOT-NORMATIVE |
+| StructureMap | **hard within R4/R5**: `source.defaultValue[x]` shape change | worse | tracks R4 | tracks R5 | NOT-NORMATIVE |
+| ConceptMap | **hard within R4/R5**: `equivalence`→`relationship` rename, cardinality/restructure | worse | tracks R4 | tracks R5 | NOT-NORMATIVE |
+| Composition | **hard within R4/R5**: cardinality flips, backbone→type change, `attester.mode` retype | worse | tracks R4 | tracks R5 | NOT-NORMATIVE |
+
+**8 NORMATIVE, 7 NOT-NORMATIVE.** R4B tracked R4 with zero new hard divergence across all 15 types; R6
+(ballot2) tracked R5 the same way — STU3 is the sole gatekeeper, and neither "undetermined" version
+in the original open question turned out to be undetermined.
+
+**Correction found while implementing this phase:** the table above came from a standalone probe that
+linked the classifier's source directly, outside the real `RunTypedModelMultiVersion` pipeline. Running
+the actual generator against the real R4/R5 packages (Task 1) found genuine, not-metadata-only R4/R5
+divergence for `Bundle` (`Bundle.issues` is an R5-only field), `Parameters`
+(`Parameters.parameter.value[x]`'s choice-type union differs: R5 adds `Integer64`/`CodeableReference`/
+`RatioRange`/`Availability`/`ExtendedContactDetail`, R4's `Contributor` variant isn't in R5), and enum
+growth on `BundleType`/`IssueSeverity`/`IssueType`. This does **not** overturn the NORMATIVE verdict for
+these three: FHIR's own multi-version classifier only ever places an element in the shared base when
+every classified version agrees on its exact shape, so `Bundle.issues` and the diverging `value[x]`
+members are excluded from the base and live only in per-version subclasses (`Ignixa.Models.R4.Bundle`,
+`Ignixa.Models.R5.Bundle`, etc.) — the base remains a genuinely safe, conservative common subset for any
+version, subclasses included. What it DID require fixing: `CSharpTypedModelLanguage`'s attribute-gating
+logic must suppress `CompatibleFhirVersionsAttribute` only on the unmarked set's **base** type, never on
+its per-version subclasses — subclasses exist specifically to hold the elements that differ, so they
+must keep enforcing the guard. See Task 1 Step 3 for the corrected implementation and Task 2 for the
+regression test that locks this in (`GivenR4TaggedNode_WhenAsR5Bundle_ThenStillThrows`).
+
+**Shipped (this phase):** `CSharpTypedModelLanguage` un-reserves `Bundle`/`Parameters`/`OperationOutcome`
+from `ReservedBaseTypeNames` and `Program.cs`'s `ResourceAllowList` (they are now generated for the first
+time, still unused) and omits `CompatibleFhirVersionsAttribute` for the base type of all 8 NORMATIVE
+types via a new `VersionAgnosticContractTypes` set — per-version subclasses of these types, where the
+classifier emits any, keep their attribute. This does **not** merge the three hand-written resource
+facades yet — it only makes the generated counterparts exist and stay permissive, so that merge (a
+separate, larger plan — each of `BundleJsonNode`/`ParametersJsonNode`/`OperationOutcomeJsonNode` has
+multiple nested hand-written types and several call sites, comparable in shape to the Phase 1a `Extension`
+merge but larger) doesn't regress `As<T>()` for STU3/R4B/R6-tagged nodes when it happens.
+
+**Decision for the 7 NOT-NORMATIVE types:**
+- `Provenance`, `SearchParameter`, `StructureDefinition`, `StructureMap`, `ConceptMap`, `Composition`:
+  proceed with consolidation in a future phase, but **keep** `CompatibleFhirVersionsAttribute(R4, R5)`
+  on the merged type. Their divergence is real (not an artifact of staying hand-written), so `As<T>()`
+  throwing for an STU3-tagged node reinterpreted through one of these is correct behavior — the same
+  guard ADR-2609 relies on for `Patient`. STU3 typed access to these arrives via ADR-2609's `Stu3.*`
+  types, not a shared base.
+- `CapabilityStatement`: **excluded from consolidation entirely**, not just deferred pending STU3
+  generation. The Application-layer facades (`ResourceComponentJsonNode` and siblings) don't merely
+  tolerate STU3 — they implement STU3-specific structural behavior (STU3-only backbones, retyped
+  elements) the R4/R5-classified scaffolding cannot represent. Revisit only once ADR-2609 ships and a
+  real `Stu3.CapabilityStatement` exists to hold that logic instead.
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.
