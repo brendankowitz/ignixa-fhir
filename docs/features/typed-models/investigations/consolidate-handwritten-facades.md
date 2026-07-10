@@ -44,7 +44,7 @@ This collapses what would otherwise be a two-type migration (generated `Ignixa.M
 
 ### Already-duplicated today (predates PR #319)
 
-`GenerateAllDatatypes = true` shipped earlier and already produces `Ignixa.Models.Extension/Identifier/Meta/Reference/Narrative/CodeableConcept/Coding` alongside their hand-written `*JsonNode` counterparts — the two-sources-of-truth problem PR #319 widens for resources already exists for datatypes. This makes datatypes the natural, lowest-risk starting phase (no `ResourceTypeRegistry` involvement, small surface).
+`GenerateAllDatatypes = true` shipped earlier and already produces `Ignixa.Models.Extension/Identifier/Meta/Reference/Narrative` alongside their hand-written `*JsonNode` counterparts (verified: exactly these 5 datatypes have both a hand-written and a generated facade today — `CodeableConcept`/`Coding` were never hand-written, so they aren't consolidation candidates, just already-generated) — the two-sources-of-truth problem PR #319 widens for resources already exists for datatypes. This makes these 5 the natural, lowest-risk starting phase (no `ResourceTypeRegistry` involvement, small surface).
 
 ### Structural parity (verified against real code)
 
@@ -58,16 +58,16 @@ Hand-written `src/Core/Ignixa.Serialization/Models/BundleJsonNode.cs` (`Ignixa.S
 - `Composition`, `ConceptMap`, `StructureMap` — usage localized to IPS/terminology/FML features, not core request path.
 - `SearchParameter`, `Provenance`, `StructureDefinition` — moderate, contained usage.
 
-### Full hand-written facade inventory (39 files)
+### Full hand-written facade inventory (41 files, verified by direct listing)
 
-- `src/Core/Ignixa.Serialization/Models/` (30 files): the 10 reserved resources' top-level and nested BackboneElement types (`BundleComponentJsonNode`, `BundleLinkJsonNode`, `ConceptMapElementJsonNode`, `StructureMap*JsonNode` ×8, etc.) plus datatypes (`ExtensionJsonNode`, `IdentifierJsonNode`, `MetaJsonNode`, `NarrativeJsonNode`, `ReferenceJsonNode`).
+- `src/Core/Ignixa.Serialization/Models/` (32 files): the 10 reserved resources' top-level and nested BackboneElement types (`BundleComponentJsonNode`, `BundleLinkJsonNode`, `ConceptMapElementJsonNode`, `StructureMap*JsonNode` ×8, etc.) plus 5 datatypes (`ExtensionJsonNode`, `IdentifierJsonNode`, `MetaJsonNode`, `NarrativeJsonNode`, `ReferenceJsonNode`).
 - `src/Application/Ignixa.Application/Features/Metadata/Models/` (9 files): `CapabilityStatementJsonNode` and its nested components — layered in Application today, should live in Core post-migration.
-- Runtime base classes (`BaseJsonNode`, `DomainResourceJsonNode`, `IMutableJsonNode`, `ResourceJsonNode`) are **not** migration candidates — they are what both hand-written and generated facades derive from.
+- Runtime base classes (`BaseJsonNode`, `DomainResourceJsonNode`, `IMutableJsonNode`, `ResourceJsonNode`, 4 files, not counted above) are **not** migration candidates — they are what both hand-written and generated facades derive from.
 
 ## Phased plan
 
 1. **Phase 0**: merge PR #319 with a doc note steering server code to keep using `*JsonNode` until each resource is migrated; generator change to emit `partial`; add round-trip parity tests (hand-written vs. generated output over identical JSON) for the 10 reserved resources before any deletion.
-2. **Phase 1 (low risk)**: datatypes already duplicated — `Extension`, `Identifier`, `Meta`, `Narrative`, `Reference`, `CodeableConcept`, `Coding`. No `ResourceTypeRegistry` involvement.
+2. **Phase 1 (low risk)**: the 5 datatypes already duplicated — `Extension`, `Identifier`, `Meta`, `Narrative`, `Reference`. No `ResourceTypeRegistry` involvement.
 3. **Phase 2 (contained resources)**: `Composition`, `ConceptMap`, `StructureMap`, then `SearchParameter`, `Provenance`, `StructureDefinition`.
 4. **Phase 3 (Application-layer facades)**: replace the 9 `Metadata/Models/*JsonNode` files with generated `Ignixa.Models.CapabilityStatement` and friends — resolves the layering smell simultaneously.
 5. **Phase 4 (load-bearing, last)**: `OperationOutcome`, `Parameters`, `Bundle` — one PR per resource, full E2E run each.
