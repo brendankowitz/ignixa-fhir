@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR DataRequirementDateFilter datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class DataRequirementDateFilter : BaseJsonNode
+public sealed partial class DataRequirementDateFilter : BaseJsonNode
 {
     public DataRequirementDateFilter()
     {

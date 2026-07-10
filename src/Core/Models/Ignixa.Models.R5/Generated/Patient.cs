@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR Patient R5 resource facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Patient : Ignixa.Models.Patient
+public sealed partial class Patient : Ignixa.Models.Patient
 {
     public Patient()
     {

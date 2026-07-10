@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR Duration R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class Duration : Ignixa.Models.Duration
+public sealed partial class Duration : Ignixa.Models.Duration
 {
     public Duration()
     {

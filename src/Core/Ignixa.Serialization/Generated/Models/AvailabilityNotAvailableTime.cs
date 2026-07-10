@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR AvailabilityNotAvailableTime datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class AvailabilityNotAvailableTime : BaseJsonNode
+public partial class AvailabilityNotAvailableTime : BaseJsonNode
 {
     public AvailabilityNotAvailableTime()
     {

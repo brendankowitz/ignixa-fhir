@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Expression datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Expression : BaseJsonNode
+public partial class Expression : BaseJsonNode
 {
     public Expression()
     {

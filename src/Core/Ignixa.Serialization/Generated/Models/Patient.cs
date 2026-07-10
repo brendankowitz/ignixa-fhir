@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Patient resource facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Patient : DomainResourceJsonNode
+public partial class Patient : DomainResourceJsonNode
 {
     public Patient()
     {

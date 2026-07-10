@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR ObservationReferenceRange R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class ObservationReferenceRange : Ignixa.Models.ObservationReferenceRange
+public sealed partial class ObservationReferenceRange : Ignixa.Models.ObservationReferenceRange
 {
     public ObservationReferenceRange()
     {

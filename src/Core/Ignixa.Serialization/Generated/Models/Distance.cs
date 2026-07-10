@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Distance datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Distance : BaseJsonNode
+public partial class Distance : BaseJsonNode
 {
     public Distance()
     {

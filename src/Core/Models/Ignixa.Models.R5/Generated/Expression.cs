@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR Expression R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Expression : Ignixa.Models.Expression
+public sealed partial class Expression : Ignixa.Models.Expression
 {
     public Expression()
     {

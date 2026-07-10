@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR SubstanceAmountReferenceRange datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public class SubstanceAmountReferenceRange : BaseJsonNode
+public partial class SubstanceAmountReferenceRange : BaseJsonNode
 {
     public SubstanceAmountReferenceRange()
     {

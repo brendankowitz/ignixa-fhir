@@ -31,13 +31,13 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     [
         "boolean", "integer", "string", "decimal", "uri", "url", "canonical", "base64Binary",
         "instant", "date", "dateTime", "time", "code", "oid", "id", "markdown", "unsignedInt",
-        "positiveInt", "uuid", "integer64",
+        "positiveInt", "uuid", "integer64", "xhtml",
     ];
 
     private static readonly HashSet<string> StringLikePrimitives =
     [
         "string", "code", "uri", "url", "canonical", "oid", "id", "markdown", "base64Binary",
-        "date", "dateTime", "time", "instant", "uuid",
+        "date", "dateTime", "time", "instant", "uuid", "xhtml",
     ];
 
     /// <summary>
@@ -810,7 +810,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         // the `using Ignixa.Abstractions;` above -- simple-name lookup here prefers the inherited member.
         string versionArgs = string.Join(", ", compatibleVersions.Select(v => $"global::Ignixa.Abstractions.FhirVersion.{MapToFhirVersionEnumMember(v)}"));
         sb.AppendLine($"[CompatibleFhirVersions({versionArgs})]");
-        sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}class {typeName} : {baseClass}");
+        sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}partial class {typeName} : {baseClass}");
         sb.AppendLine("{");
 
         if (isResource)

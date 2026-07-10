@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Extension datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Extension : BaseJsonNode
+public partial class Extension : BaseJsonNode
 {
     public Extension()
     {

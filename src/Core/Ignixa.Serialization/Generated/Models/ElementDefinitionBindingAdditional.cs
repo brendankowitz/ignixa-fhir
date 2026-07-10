@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR ElementDefinitionBindingAdditional datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class ElementDefinitionBindingAdditional : BaseJsonNode
+public partial class ElementDefinitionBindingAdditional : BaseJsonNode
 {
     public ElementDefinitionBindingAdditional()
     {

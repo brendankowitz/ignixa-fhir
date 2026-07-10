@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR Quantity R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class Quantity : Ignixa.Models.Quantity
+public sealed partial class Quantity : Ignixa.Models.Quantity
 {
     public Quantity()
     {

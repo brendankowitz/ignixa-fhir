@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR ObservationTriggeredBy R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class ObservationTriggeredBy : Ignixa.Models.ObservationTriggeredBy
+public sealed partial class ObservationTriggeredBy : Ignixa.Models.ObservationTriggeredBy
 {
     public ObservationTriggeredBy()
     {

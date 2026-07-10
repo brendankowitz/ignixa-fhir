@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR RatioRange R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class RatioRange : Ignixa.Models.RatioRange
+public sealed partial class RatioRange : Ignixa.Models.RatioRange
 {
     public RatioRange()
     {

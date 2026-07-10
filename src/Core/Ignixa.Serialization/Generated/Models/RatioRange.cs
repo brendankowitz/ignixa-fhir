@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR RatioRange datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class RatioRange : BaseJsonNode
+public partial class RatioRange : BaseJsonNode
 {
     public RatioRange()
     {

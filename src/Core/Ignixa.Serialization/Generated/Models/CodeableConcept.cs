@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR CodeableConcept datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class CodeableConcept : BaseJsonNode
+public sealed partial class CodeableConcept : BaseJsonNode
 {
     public CodeableConcept()
     {

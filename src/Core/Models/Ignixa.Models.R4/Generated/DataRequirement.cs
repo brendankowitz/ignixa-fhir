@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR DataRequirement R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class DataRequirement : Ignixa.Models.DataRequirement
+public sealed partial class DataRequirement : Ignixa.Models.DataRequirement
 {
     public DataRequirement()
     {

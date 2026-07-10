@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR Extension R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Extension : Ignixa.Models.Extension
+public sealed partial class Extension : Ignixa.Models.Extension
 {
     public Extension()
     {

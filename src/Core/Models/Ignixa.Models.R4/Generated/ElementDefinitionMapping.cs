@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR ElementDefinitionMapping R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class ElementDefinitionMapping : Ignixa.Models.ElementDefinitionMapping
+public sealed partial class ElementDefinitionMapping : Ignixa.Models.ElementDefinitionMapping
 {
     public ElementDefinitionMapping()
     {

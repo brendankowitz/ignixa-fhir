@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR MonetaryComponent datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class MonetaryComponent : BaseJsonNode
+public partial class MonetaryComponent : BaseJsonNode
 {
     public MonetaryComponent()
     {

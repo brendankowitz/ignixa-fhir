@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR ElementDefinitionExample R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class ElementDefinitionExample : Ignixa.Models.ElementDefinitionExample
+public sealed partial class ElementDefinitionExample : Ignixa.Models.ElementDefinitionExample
 {
     public ElementDefinitionExample()
     {

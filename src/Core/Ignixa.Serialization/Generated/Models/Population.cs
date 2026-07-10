@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Population datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public class Population : BaseJsonNode
+public partial class Population : BaseJsonNode
 {
     public Population()
     {
