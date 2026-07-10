@@ -69,6 +69,27 @@ internal static class FhirSpecificFunctions
     }
 
     /// <summary>
+    /// hasExtension() - Compatibility shortcut for extension(url).exists().
+    /// </summary>
+    [FhirPathFunction("hasExtension",
+        SupportedContexts = "any-boolean",
+        ReturnType = "boolean",
+        SupportsCollections = true,
+        MinArguments = 1,
+        MaxArguments = 1,
+        Category = "FHIR",
+        Description = "Returns whether an extension with the given URL exists")]
+    public static IEnumerable<IElement> HasExtension(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context,
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
+    {
+        bool hasExtension = Extension(focus, arguments, context, evaluateExpression).Any();
+        return [FunctionHelpers.CreateBoolean(hasExtension)];
+    }
+
+    /// <summary>
     /// resolve() - Takes a Reference element and resolves it to the actual resource.
     /// Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
     /// Per FHIR spec: resolve() returns empty on failure (does not throw).
