@@ -65,17 +65,22 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     };
 
     /// <summary>
-    /// Type names that are structurally identical enough across every targeted FHIR version -- including
-    /// versions this generator does not target yet (STU3, R4B, R6) -- that a version-tagged node should
-    /// be able to reach them via <see cref="Ignixa.Serialization.SourceNodes.ResourceJsonNode.As{T}"/>
-    /// regardless of tag. Empirically determined by a classifier structural-signature probe across
-    /// {R4, R5, STU3, R4B, R6}; see the "Normative contract types" table in
-    /// docs/features/typed-models/investigations/consolidate-handwritten-facades.md. The generator omits
-    /// <see cref="CompatibleFhirVersionsAttribute"/> for these types in <see cref="RenderClass"/>,
-    /// matching the permissive-when-unmarked behavior hand-written facades have always had (see that
-    /// attribute's own doc comment). Types NOT in this set that get consolidated later (e.g.
-    /// <c>Provenance</c>) keep their attribute deliberately -- their divergence from STU3 or between
-    /// R4/R5 is real, so the guard firing for them is correct, not a regression.
+    /// Type names whose shared BASE facade is structurally identical enough across every targeted FHIR
+    /// version -- including versions this generator does not target yet (STU3, R4B, R6) -- that a
+    /// version-tagged node should be able to reach the base via
+    /// <see cref="Ignixa.Serialization.SourceNodes.ResourceJsonNode.As{T}"/> regardless of tag. Applies
+    /// only to the base emission, never a per-version subclass (see the <c>isVersionSubclass</c> check at
+    /// the call site) -- a subclass exists precisely because some element differs by version, so it must
+    /// keep enforcing the guard. Empirically determined by a classifier structural-signature probe across
+    /// {R4, R5, STU3, R4B, R6}; see the "Normative contract types" table committed to
+    /// docs/features/typed-models/investigations/consolidate-handwritten-facades.md by this plan's Task 3
+    /// (docs/superpowers/plans/2026-07-10-consolidate-handwritten-facades-phase0b.md carries the same
+    /// table if Task 3 has not landed yet). The generator omits <see cref="CompatibleFhirVersionsAttribute"/>
+    /// for these types' base facade in <see cref="RenderClass"/>, matching the permissive-when-unmarked
+    /// behavior hand-written facades have always had (see that attribute's own doc comment). Types NOT in
+    /// this set that get consolidated later (e.g. <c>Provenance</c>) keep their attribute deliberately --
+    /// their divergence from STU3 or between R4/R5 is real, so the guard firing for them is correct, not
+    /// a regression.
     /// </summary>
     private static readonly HashSet<string> VersionAgnosticContractTypes = new(StringComparer.Ordinal)
     {
