@@ -186,4 +186,23 @@ public sealed class ExtensionFacadeTests
         ext.MutableNode()["valueString"]!.GetValue<string>().ShouldBe("second");
         ext.MutableNode().ContainsKey("_valueString").ShouldBeTrue();
     }
+
+    [Fact]
+    public void GivenValueStringWithPrimitiveExtensionShadow_WhenSetValueChoiceRawCalledWithNullForSameVariant_ThenShadowPreserved()
+    {
+        // Clearing a variant's value while leaving its own extension shadow in place is valid FHIR (an
+        // extension-only primitive with no value) -- mirrors the generated SetValueVariant's
+        // null-preserves-shadow behavior for this independently-implemented raw escape hatch.
+        var ext = new Extension { Url = "http://example.org/ext1" };
+        ext.SetValueChoiceRaw("valueString", "first");
+        ext.MutableNode()["_valueString"] = new JsonObject
+        {
+            ["extension"] = new JsonArray(new JsonObject { ["url"] = "http://example.org/note", ["valueString"] = "flagged" }),
+        };
+
+        ext.SetValueChoiceRaw("valueString", null);
+
+        ext.MutableNode().ContainsKey("valueString").ShouldBeFalse();
+        ext.MutableNode().ContainsKey("_valueString").ShouldBeTrue();
+    }
 }
