@@ -6,11 +6,16 @@
 using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
+using NSubstitute;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
@@ -33,18 +38,18 @@ public class IterateProcessorTests : TestBase
             Context,
             Cache,
             compressor,
-            NullLoggerFactory.Instance.CreateLogger<IncludeProcessor>());
+            NullLogger<IncludeProcessor>.Instance);
 
         _revIncludeProcessor = new RevIncludeProcessor(
             Context,
             Cache,
             compressor,
-            NullLoggerFactory.Instance.CreateLogger<RevIncludeProcessor>());
+            NullLogger<RevIncludeProcessor>.Instance);
 
         _processor = new IterateProcessor(
             _includeProcessor,
             _revIncludeProcessor,
-            NullLoggerFactory.Instance.CreateLogger<IterateProcessor>());
+            NullLogger<IterateProcessor>.Instance);
     }
 
     [Fact]
@@ -65,43 +70,37 @@ public class IterateProcessorTests : TestBase
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Organization" && k.Id == "org-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Organization",
                 ResourceId: "org-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Organization" && k.Id == "parent-org-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Organization",
                 ResourceId: "parent-org-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
-        var mainResults = new List<ResourceWrapper>
+        var mainResults = new List<SearchEntryResult>
         {
-            new ResourceWrapper(
+            new SearchEntryResult(
                 ResourceType: "Patient",
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                ResourceBytes: ReadOnlyMemory<byte>.Empty)
         };
 
         // Create iterate expression: _include:iterate=Patient:organization
         var iterateExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("organization", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Organization" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("organization", "organization", SearchParamType.Reference, targetResourceTypes: new[] { "Organization" }),
             sourceResourceType: "Patient",
             targetResourceType: "Organization",
             referencedTypes: new[] { "Organization" },
@@ -136,43 +135,37 @@ public class IterateProcessorTests : TestBase
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Observation",
                 ResourceId: "obs-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Encounter" && k.Id == "enc-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Encounter",
                 ResourceId: "enc-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
-        var mainResults = new List<ResourceWrapper>
+        var mainResults = new List<SearchEntryResult>
         {
-            new ResourceWrapper(
+            new SearchEntryResult(
                 ResourceType: "Patient",
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                ResourceBytes: ReadOnlyMemory<byte>.Empty)
         };
 
         // Create iterate revinclude: _revinclude:iterate=Observation:patient
         var iterateExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("patient", "patient", SearchParamType.Reference, targetResourceTypes: new[] { "Patient" }),
             sourceResourceType: "Observation",
             targetResourceType: "Patient",
             referencedTypes: new[] { "Patient" },
@@ -193,23 +186,19 @@ public class IterateProcessorTests : TestBase
         // Arrange: Patient with no references
         var patient = CreateResource(resourceTypeId: 1, resourceId: "patient-1");
 
-        var mainResults = new List<ResourceWrapper>
+        var mainResults = new List<SearchEntryResult>
         {
-            new ResourceWrapper(
+            new SearchEntryResult(
                 ResourceType: "Patient",
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                ResourceBytes: ReadOnlyMemory<byte>.Empty)
         };
 
         var iterateExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("organization", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Organization" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("organization", "organization", SearchParamType.Reference, targetResourceTypes: new[] { "Organization" }),
             sourceResourceType: "Patient",
             targetResourceType: "Organization",
             referencedTypes: new[] { "Organization" },

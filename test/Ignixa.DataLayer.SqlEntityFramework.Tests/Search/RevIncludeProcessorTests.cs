@@ -7,11 +7,15 @@ using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using NSubstitute;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
@@ -31,7 +35,7 @@ public class RevIncludeProcessorTests : TestBase
             Context,
             Cache,
             compressor,
-            NullLoggerFactory.Instance.CreateLogger<RevIncludeProcessor>());
+            NullLogger<RevIncludeProcessor>.Instance);
     }
 
     [Fact]
@@ -45,13 +49,12 @@ public class RevIncludeProcessorTests : TestBase
         CreateReference(observation.ResourceSurrogateId, sourceTypeId: 3, targetTypeId: 1, targetResourceId: "patient-1", searchParamId: 3);
 
         // Mock repository to return Observation when requested
-        var obsWrapper = new ResourceWrapper(
+        var obsWrapper = new SearchEntryResult(
             ResourceType: "Observation",
             ResourceId: "obs-1",
             VersionId: "1",
             LastModified: DateTimeOffset.UtcNow,
-            Resource: Substitute.For<ISourceNode>(),
-            Request: new ResourceRequest());
+            ResourceBytes: ReadOnlyMemory<byte>.Empty);
 
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-1"),
@@ -66,17 +69,14 @@ public class RevIncludeProcessorTests : TestBase
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-1"))
         };
 
         // Create revinclude expression: _revinclude=Observation:patient
         var revIncludeExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("patient", "patient", SearchParamType.Reference, targetResourceTypes: new[] { "Patient" }),
             sourceResourceType: "Observation",
             targetResourceType: "Patient",
             referencedTypes: new[] { "Patient" },
@@ -85,7 +85,10 @@ public class RevIncludeProcessorTests : TestBase
             iterate: false);
 
         // Act
-        var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
+        var result = await _processor.ProcessRevIncludesAsync(
+            mainResults.Select(r => (r.ResourceType, r.ResourceId)).ToList(),
+            new[] { revIncludeExpression },
+            CancellationToken.None);
 
         // Assert
         result.ShouldHaveSingleItem();
@@ -109,24 +112,22 @@ public class RevIncludeProcessorTests : TestBase
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Observation",
                 ResourceId: "obs-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-2"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Observation",
                 ResourceId: "obs-2",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         var mainResults = new List<ResourceWrapper>
         {
@@ -135,16 +136,13 @@ public class RevIncludeProcessorTests : TestBase
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-1"))
         };
 
         var revIncludeExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("patient", "patient", SearchParamType.Reference, targetResourceTypes: new[] { "Patient" }),
             sourceResourceType: "Observation",
             targetResourceType: "Patient",
             referencedTypes: new[] { "Patient" },
@@ -153,7 +151,10 @@ public class RevIncludeProcessorTests : TestBase
             iterate: false);
 
         // Act
-        var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
+        var result = await _processor.ProcessRevIncludesAsync(
+            mainResults.Select(r => (r.ResourceType, r.ResourceId)).ToList(),
+            new[] { revIncludeExpression },
+            CancellationToken.None);
 
         // Assert
         result.Count.ShouldBe(2);
@@ -174,16 +175,13 @@ public class RevIncludeProcessorTests : TestBase
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-1"))
         };
 
         var revIncludeExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("patient", "patient", SearchParamType.Reference, targetResourceTypes: new[] { "Patient" }),
             sourceResourceType: "Observation",
             targetResourceType: "Patient",
             referencedTypes: new[] { "Patient" },
@@ -192,7 +190,10 @@ public class RevIncludeProcessorTests : TestBase
             iterate: false);
 
         // Act
-        var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
+        var result = await _processor.ProcessRevIncludesAsync(
+            mainResults.Select(r => (r.ResourceType, r.ResourceId)).ToList(),
+            new[] { revIncludeExpression },
+            CancellationToken.None);
 
         // Assert
         result.ShouldBeEmpty();

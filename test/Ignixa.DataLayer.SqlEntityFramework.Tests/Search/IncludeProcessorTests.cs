@@ -6,11 +6,16 @@
 using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
+using NSubstitute;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
@@ -30,7 +35,7 @@ public class IncludeProcessorTests : TestBase
             Context,
             Cache,
             compressor,
-            NullLoggerFactory.Instance.CreateLogger<IncludeProcessor>());
+            NullLogger<IncludeProcessor>.Instance);
     }
 
     [Fact]
@@ -44,13 +49,12 @@ public class IncludeProcessorTests : TestBase
         CreateReference(patient.ResourceSurrogateId, sourceTypeId: 1, targetTypeId: 2, targetResourceId: "org-1", searchParamId: 2);
 
         // Mock repository to return Organization when requested
-        var orgWrapper = new ResourceWrapper(
+        var orgWrapper = new SearchEntryResult(
             ResourceType: "Organization",
             ResourceId: "org-1",
             VersionId: "1",
             LastModified: DateTimeOffset.UtcNow,
-            Resource: Substitute.For<ISourceNode>(),
-            Request: new ResourceRequest());
+            ResourceBytes: ReadOnlyMemory<byte>.Empty);
 
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Organization" && k.Id == "org-1"),
@@ -65,17 +69,14 @@ public class IncludeProcessorTests : TestBase
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-1"))
         };
 
         // Create include expression: _include=Patient:organization
         var includeExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("organization", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Organization" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("organization", "organization", SearchParamType.Reference, targetResourceTypes: new[] { "Organization" }),
             sourceResourceType: "Patient",
             targetResourceType: "Organization",
             referencedTypes: new[] { "Organization" },
@@ -84,7 +85,10 @@ public class IncludeProcessorTests : TestBase
             iterate: false);
 
         // Act
-        var result = await _processor.ProcessIncludesAsync(mainResults, new[] { includeExpression }, CancellationToken.None);
+        var result = await _processor.ProcessIncludesAsync(
+            mainResults.Select(r => (r.ResourceType, r.ResourceId)).ToList(),
+            new[] { includeExpression },
+            CancellationToken.None);
 
         // Assert
         result.ShouldHaveSingleItem();
@@ -108,24 +112,22 @@ public class IncludeProcessorTests : TestBase
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Organization" && k.Id == "org-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Organization",
                 ResourceId: "org-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Practitioner" && k.Id == "pract-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Practitioner",
                 ResourceId: "pract-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         var mainResults = new List<ResourceWrapper>
         {
@@ -134,8 +136,8 @@ public class IncludeProcessorTests : TestBase
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-1"))
         };
 
         // Create wildcard include: _include=Patient:*
@@ -150,7 +152,10 @@ public class IncludeProcessorTests : TestBase
             iterate: false);
 
         // Act
-        var result = await _processor.ProcessIncludesAsync(mainResults, new[] { includeExpression }, CancellationToken.None);
+        var result = await _processor.ProcessIncludesAsync(
+            mainResults.Select(r => (r.ResourceType, r.ResourceId)).ToList(),
+            new[] { includeExpression },
+            CancellationToken.None);
 
         // Assert
         result.Count.ShouldBe(2);
@@ -172,13 +177,12 @@ public class IncludeProcessorTests : TestBase
         MockRepository.GetAsync(
             Arg.Is<ResourceKey>(k => k.ResourceType == "Organization" && k.Id == "org-1"),
             Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
+            .Returns(new SearchEntryResult(
                 ResourceType: "Organization",
                 ResourceId: "org-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
+                ResourceBytes: ReadOnlyMemory<byte>.Empty));
 
         var mainResults = new List<ResourceWrapper>
         {
@@ -187,23 +191,20 @@ public class IncludeProcessorTests : TestBase
                 ResourceId: "patient-1",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()),
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-1"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-1")),
             new ResourceWrapper(
                 ResourceType: "Patient",
                 ResourceId: "patient-2",
                 VersionId: "1",
                 LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+                Resource: ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"patient-2"}"""),
+                Request: new ResourceRequest("GET", "Patient/patient-2"))
         };
 
         var includeExpression = new IncludeExpression(
             resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("organization", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Organization" }
-            },
+            referenceSearchParameter: new SearchParameterInfo("organization", "organization", SearchParamType.Reference, targetResourceTypes: new[] { "Organization" }),
             sourceResourceType: "Patient",
             targetResourceType: "Organization",
             referencedTypes: new[] { "Organization" },
@@ -212,7 +213,10 @@ public class IncludeProcessorTests : TestBase
             iterate: false);
 
         // Act
-        var result = await _processor.ProcessIncludesAsync(mainResults, new[] { includeExpression }, CancellationToken.None);
+        var result = await _processor.ProcessIncludesAsync(
+            mainResults.Select(r => (r.ResourceType, r.ResourceId)).ToList(),
+            new[] { includeExpression },
+            CancellationToken.None);
 
         // Assert: Should only return Organization once (deduplication)
         result.ShouldHaveSingleItem();
