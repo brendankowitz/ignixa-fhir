@@ -289,7 +289,7 @@
   </data>
   <data name="MalformedSearchSyntax" xml:space="preserve">
     <value>Malformed {0} at line {1}, column {2}: {3}</value>
-    <comment>{0}=syntax subject, {1}=line, {2}=column, {3}=Superpower expectation</comment>
+    <comment>{0}=syntax subject, {1}=line, {2}=column, {3}=positioned syntax detail</comment>
   </data>
   <data name="MalformedSearchValue" xml:space="preserve">
     <value>Malformed search value '{0}'.</value>
