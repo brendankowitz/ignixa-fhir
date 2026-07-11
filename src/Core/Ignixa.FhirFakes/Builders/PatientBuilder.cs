@@ -415,7 +415,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     /// <code>
     /// var patient = CreatePatient()
     ///     .WithExtension("http://example.org/ext1", ext => ext.Extensions.Add(
-    ///         new Extension { Url = "nested", ... }))
+    ///         new Extension { Url = "http://example.org/nested" }))
     ///     .Build();
     /// </code>
     /// </example>

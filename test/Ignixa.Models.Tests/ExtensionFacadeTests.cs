@@ -136,4 +136,16 @@ public sealed class ExtensionFacadeTests
 
         ext.MutableNode().ContainsKey("valueString").ShouldBeFalse();
     }
+
+    [Fact]
+    public void GivenElementNameNotStartingWithValue_WhenSetValueChoiceRawCalled_ThenThrows()
+    {
+        // SetValueChoiceRaw only clears/sets value[x] variants -- it is not a general-purpose property
+        // setter. Without this guard, a typo'd or wrong key (e.g. "url" instead of "valueUrl") would
+        // silently overwrite an unrelated property through a method whose name and doc promise value[x]
+        // semantics.
+        var ext = new Extension { Url = "http://example.org/ext1" };
+
+        Should.Throw<ArgumentException>(() => ext.SetValueChoiceRaw("url", "http://example.org/overwritten"));
+    }
 }

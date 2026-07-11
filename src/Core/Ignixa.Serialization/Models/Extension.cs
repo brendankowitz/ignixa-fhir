@@ -35,6 +35,14 @@ public partial class Extension
     /// </remarks>
     internal void SetValueChoiceRaw(string valueElementName, string? value)
     {
+        if (!valueElementName.StartsWith("value", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"'{valueElementName}' is not a value[x] choice-type key -- it must start with \"value\". " +
+                "This method only clears/sets value[x] variants; it is not a general-purpose property setter.",
+                nameof(valueElementName));
+        }
+
         foreach (string key in MutableNode.Select(property => property.Key)
             .Where(key => key.StartsWith("value", StringComparison.Ordinal) && key != valueElementName)
             .ToList())

@@ -216,13 +216,13 @@ fallbacks, 19 dropped Reference variants, 10 Resource/contentReference fallbacks
 `Narrative` and `Extension` are merged — the first two of the 41 hand-written `*JsonNode` facades this
 investigation set out to consolidate. `Narrative` needed zero hand-written code (fully generator-covered).
 `Extension` needed one small hand-written addition: `Extension.CreateWithRawValueUri(string url, string?
-valueUri, FhirVersion? fhirVersion = null)`, an `internal` factory method for the one call site
+valueUri, FhirVersion? fhirVersion = null)`, an `internal` factory method for the call site
 (`SecurityCapabilitySegment.cs`, core CapabilityStatement generation) that needs to set `value[x]` but can
 neither know its target FHIR version at compile time (it's multi-tenant, stamping `context.FhirVersion` per
 request) nor reference the R4/R5 packages at all (they are deliberately opt-in, not baked into the core
 request path — see this doc's Constraints). Every other call site either doesn't touch `value[x]` at all,
-or (like `PatientBuilder`, test-only infrastructure with no opt-in-package restriction) constructs the
-version-specific subclass directly and uses its typed accessor.
+or (like test-only infrastructure that has no opt-in-package restriction and chooses to reference R4/R5
+directly anyway) constructs the version-specific subclass and uses its typed accessor.
 
 **Revised after PR review (`internal` factory, not `public` instance mutator):** the first shipped version
 was `public void SetValueUriRaw(string? value)`, an instance method a caller invoked on an already-constructed
@@ -233,8 +233,28 @@ silently producing spec-invalid FHIR JSON with two `value[x]` keys. The fix chan
 visibility: `CreateWithRawValueUri` always constructs a brand-new `Extension` and sets `valueUri` exactly
 once as part of construction, so there is no pre-existing state a call could ever conflict with — the
 double-set/dual-variant hazard is structurally unreachable, not just discouraged by a comment. `internal`
-(scoped to `Ignixa.Application` via `InternalsVisibleTo`, see `AssemblyInfo.cs`) additionally shrinks the
-blast radius from "every consumer of `Ignixa.Models`" to the one assembly with the one real caller.
+narrows this from every consumer of `Ignixa.Models` (the previous `public` design) to the assemblies listed
+in `Ignixa.Serialization`'s `InternalsVisibleTo` (see `AssemblyInfo.cs`) — a deliberately curated friend
+list of about a dozen assemblies across `Ignixa.Application`, `Ignixa.Api`, `Ignixa.FhirFakes`, the test
+projects, and the generated `Ignixa.Models.R4`/`R5` themselves, not "the one assembly with the one real
+caller" — `Ignixa.FhirFakes` is a second real caller (see below), and the rest are trusted-but-currently-unused.
+
+**Generalized to `SetValueChoiceRaw`, in a later follow-up (also driven by PR review):**
+`CreateWithRawValueUri`'s one-off logic was lifted into `Extension.SetValueChoiceRaw(string
+valueElementName, string? value)`, an `internal` instance method that clears any *other* `value[x]` JSON
+key before setting the requested one, then `CreateWithRawValueUri` was rewritten to call it. This is safe
+to derive generically at the shared base — without R4/R5's enumerated per-version variant list — because
+FHIR's `value[x]` wire convention names every choice-type key `"value"` + PascalCase(type name) in every
+version, and `Extension` has no other property that begins with `"value"` (only `url`, `id`, `extension`
+do not); "remove every existing property whose name starts with `value`, then set the new one" is exactly
+equivalent to the generated per-version `SetValueVariant`'s enumerated clear. This upgraded
+`CreateWithRawValueUri` from "safe only because it's called once at construction" to "safe because it
+always clears," with no behavior change for its one caller. It also let `Ignixa.FhirFakes` — a stable,
+published NuGet package (`IsPackable=true`) — drop a `ProjectReference` to `Ignixa.Models.R4` that had
+leaked in: `PatientBuilder.WithExtension` previously had to construct `Ignixa.Models.R4.Extension` directly
+to get a typed `ValueString` setter, purely because the base `Extension` had none; it now calls
+`ext.SetValueChoiceRaw("valueString", value)` on the base type instead, with no R4/R5 reference anywhere
+in `Ignixa.FhirFakes`.
 
 **Also renamed in the same review pass:** `Extension`'s nested `extension`-list member was originally
 emitted as `Extension2` (a member can't share its enclosing type's name, so the generator's name allocator
