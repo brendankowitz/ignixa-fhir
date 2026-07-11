@@ -138,11 +138,57 @@ public class SearchExpressionQueryBuilderVisitorTests : TestBase
     [Fact]
     public async Task GivenBareBinaryExpression_WhenApplied_ThenThrowsNotSupported()
     {
-        // Arrange: proves the six unused interface members (Step 4) are wired up, not silently
-        // returning null/default.
+        // Arrange: proves VisitBinary (one of six explicit-interface stub members from Step 4) is
+        // wired up, not silently returning null/default. The other five are covered by the tests below.
         var expression = new BinaryExpression(BinaryOperator.Equal, FieldName.DateTimeStart, null, DateTime.UtcNow);
 
         // Act & Assert
+        await Should.ThrowAsync<NotSupportedException>(async () =>
+            await _builder.ApplySearchExpressionAsync(Context.Resources, resourceTypeId: 1, expression, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenBareMissingFieldExpression_WhenApplied_ThenThrowsNotSupported()
+    {
+        var expression = new MissingFieldExpression(FieldName.TokenCode, null);
+
+        await Should.ThrowAsync<NotSupportedException>(async () =>
+            await _builder.ApplySearchExpressionAsync(Context.Resources, resourceTypeId: 1, expression, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenBareStringExpression_WhenApplied_ThenThrowsNotSupported()
+    {
+        var expression = new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, "Patient", false);
+
+        await Should.ThrowAsync<NotSupportedException>(async () =>
+            await _builder.ApplySearchExpressionAsync(Context.Resources, resourceTypeId: 1, expression, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenIncludeExpression_WhenApplied_ThenThrowsNotSupported()
+    {
+        var expression = new IncludeExpression(
+            new[] { "Patient" }, null, "Patient", null, Array.Empty<string>(), wildCard: true, reversed: false, iterate: false);
+
+        await Should.ThrowAsync<NotSupportedException>(async () =>
+            await _builder.ApplySearchExpressionAsync(Context.Resources, resourceTypeId: 1, expression, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenSortExpression_WhenApplied_ThenThrowsNotSupported()
+    {
+        var expression = new SortExpression(new SearchParameterInfo("name", "name", SearchParamType.String));
+
+        await Should.ThrowAsync<NotSupportedException>(async () =>
+            await _builder.ApplySearchExpressionAsync(Context.Resources, resourceTypeId: 1, expression, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenBareInExpression_WhenApplied_ThenThrowsNotSupported()
+    {
+        var expression = new InExpression<string>(FieldName.TokenCode, null, new[] { "a", "b" });
+
         await Should.ThrowAsync<NotSupportedException>(async () =>
             await _builder.ApplySearchExpressionAsync(Context.Resources, resourceTypeId: 1, expression, CancellationToken.None));
     }

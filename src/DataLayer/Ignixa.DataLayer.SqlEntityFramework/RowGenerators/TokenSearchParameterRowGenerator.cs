@@ -161,7 +161,7 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 var (code, _) = TokenCodeStorage.SplitCode(tokenValue.Code);
 
                 int? systemId = null;
-                if (!string.IsNullOrEmpty(tokenValue.System) &&
+                if (!TokenCodeStorage.IsExplicitNoSystem(tokenValue.System) &&
                     _systemMappings.TryGetValue(tokenValue.System, out var tokenSystemId))
                 {
                     systemId = tokenSystemId;

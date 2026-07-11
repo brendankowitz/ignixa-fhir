@@ -17,8 +17,11 @@ public static class TokenCodeStorage
     /// <summary>
     /// Token codes at or under this length are stored inline in the Code column;
     /// longer codes are truncated to this length with the remainder in CodeOverflow.
+    /// Must match the TokenSearchParam.Code column width and the database's
+    /// CHK_TokenSearchParam_CodeOverflow check constraint (LEN(Code) = 256 OR CodeOverflow IS NULL) —
+    /// a mismatch here means any code longer than this length fails to insert.
     /// </summary>
-    public const int MaxInlineCodeLength = 128;
+    public const int MaxInlineCodeLength = 256;
 
     /// <summary>
     /// An empty or null system string means the token explicitly has no system —

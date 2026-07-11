@@ -82,7 +82,7 @@ public static class ComparisonPredicates
         BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.StartDateTime >= value).Select(sp => sp.ResourceSurrogateId),
         BinaryOperator.LessThan => query.Where(sp => sp.StartDateTime < value).Select(sp => sp.ResourceSurrogateId),
         BinaryOperator.LessThanOrEqual => query.Where(sp => sp.StartDateTime <= value).Select(sp => sp.ResourceSurrogateId),
-        _ => Enumerable.Empty<long>().AsQueryable(),
+        _ => throw new NotSupportedException($"Binary operator {op} is not supported for DateTime start comparison"),
     };
 
     public static IQueryable<long> ApplyDateTimeEndComparison(
@@ -94,7 +94,7 @@ public static class ComparisonPredicates
         BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.EndDateTime >= value).Select(sp => sp.ResourceSurrogateId),
         BinaryOperator.LessThan => query.Where(sp => sp.EndDateTime < value).Select(sp => sp.ResourceSurrogateId),
         BinaryOperator.LessThanOrEqual => query.Where(sp => sp.EndDateTime <= value).Select(sp => sp.ResourceSurrogateId),
-        _ => Enumerable.Empty<long>().AsQueryable(),
+        _ => throw new NotSupportedException($"Binary operator {op} is not supported for DateTime end comparison"),
     };
 
     /// <summary>

@@ -79,6 +79,7 @@ public sealed class SearchExpressionQueryBuilder : IExpressionVisitor<SqlQueryCo
         Expression expression,
         CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(baseQuery);
         ArgumentNullException.ThrowIfNull(expression);
 
         _logger.LogDebug(
