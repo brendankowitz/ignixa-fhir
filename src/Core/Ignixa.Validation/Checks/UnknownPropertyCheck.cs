@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
 
@@ -17,8 +18,14 @@ namespace Ignixa.Validation.Checks;
 /// FHIR resources must only contain properties defined in their StructureDefinition.
 /// Exceptions:
 /// - Shadow properties (_propertyName) for primitive extensions
-/// - Standard extension arrays (extension, modifierExtension)
-/// - Universal resource properties (id, resourceType, meta, implicitRules, language, text, contained)
+/// - "resourceType": the JSON serialization discriminator, not a FHIR element
+/// <para>
+/// Every other Resource-level property - id, meta, implicitRules, language, text, contained,
+/// extension, modifierExtension - is validated against <c>allowedPropertyNames</c> like any other
+/// element, because <c>StructureDefinitionSchemaBuilder</c> already includes them there for every
+/// type whose own StructureDefinition actually declares them (e.g. Patient, a DomainResource, has
+/// text/contained/extension/modifierExtension; Bundle, a bare Resource, does not).
+/// </para>
 /// </remarks>
 public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
 {
@@ -27,7 +34,7 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
     private readonly string? _resourceTypeName;
     private static readonly HashSet<string> UniversalProperties = new(StringComparer.Ordinal)
     {
-        "id", "resourceType", "meta", "implicitRules", "language", "text", "contained"
+        "resourceType"
     };
 
     /// <summary>
@@ -91,10 +98,6 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
                 if (_allowedPropertyNames.Contains(mainProperty) || IsChoiceTypeProperty(mainProperty))
                     continue;
             }
-
-            // Skip standard extension arrays
-            if (property == "extension" || property == "modifierExtension")
-                continue;
 
             // Check if property is in allowed list
             if (!_allowedPropertyNames.Contains(property))
@@ -161,6 +164,22 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
             if (!string.IsNullOrEmpty(child.Name))
             {
                 properties.Add(child.Name);
+            }
+        }
+
+        // Children() omits members whose JSON value is null (JsonNodeSourceNode filters them before
+        // constructing child nodes), so a null-valued unknown member would otherwise be invisible.
+        // Recover only those - a shadow-only property (e.g. "_unknownField" with no "unknownField")
+        // is already represented above under its trimmed base name, and re-adding its literal
+        // underscore-prefixed raw key here would report it twice under two different spellings.
+        if (element.Meta<JsonNode>() is JsonObject raw)
+        {
+            foreach (var (key, value) in raw)
+            {
+                if (value is null)
+                {
+                    properties.Add(key);
+                }
             }
         }
 
