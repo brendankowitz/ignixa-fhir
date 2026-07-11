@@ -116,18 +116,21 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
         SearchModifier? modifier,
         AlternativesValueSyntax syntax)
     {
-        if (syntax.Items
-            .OfType<AtomicValueSyntax>()
-            .Any(item => item.Comparator != SearchComparator.Eq))
+        foreach (SearchValueSyntax item in syntax.Items)
         {
-            throw new InvalidSearchOperationException(
-                Resources.SearchComparatorNotSupported);
+            if (item is AtomicValueSyntax { Comparator: not SearchComparator.Eq })
+            {
+                throw new InvalidSearchOperationException(
+                    Resources.SearchComparatorNotSupported);
+            }
         }
 
         bool isNot = modifier?.SearchModifierCode == SearchModifierCode.Not;
         SearchModifier? itemModifier = isNot ? null : modifier;
-        Expression[] items = syntax.Items
-            .Select(item => item switch
+        var items = new Expression[syntax.Items.Length];
+        for (var index = 0; index < syntax.Items.Length; index++)
+        {
+            items[index] = syntax.Items[index] switch
             {
                 AtomicValueSyntax atomic => BindAtomic(
                     searchParameter,
@@ -142,8 +145,9 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                     searchParameter,
                     ofType),
                 _ => throw new UnreachableException(),
-            })
-            .ToArray();
+            };
+        }
+
         Expression alternatives = Expression.Or(items);
 
         return isNot

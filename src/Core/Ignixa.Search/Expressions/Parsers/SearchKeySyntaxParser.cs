@@ -6,6 +6,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Ignixa.Search.Expressions.Parsers.Syntax;
 using Ignixa.Search.Indexing;
 
@@ -57,8 +58,8 @@ internal static class SearchKeySyntaxParser
 
         internal SearchKeySyntax ParseKey()
         {
-            return ShouldParseReverse()
-                ? ParseReverse()
+            return TryParseReverse(out SearchKeySyntax? syntax)
+                ? syntax
                 : ParseParameterOrForward();
         }
 
@@ -116,17 +117,6 @@ internal static class SearchKeySyntaxParser
             return new ForwardChainKeySyntax(name, qualifier, next);
         }
 
-        private SearchKeySyntax ParseReverse()
-        {
-            ConsumeLiteral("_has:");
-            var sourceResourceType = ParseIdentifier("identifier");
-            Require(':', "':'");
-            var referenceName = ParseIdentifier("identifier");
-            Require(':', "':'");
-            SearchKeySyntax next = ParseKey();
-            return new ReverseChainKeySyntax(sourceResourceType, referenceName, next);
-        }
-
         private string ParseIncludeSource()
         {
             return ConsumeIf('*')
@@ -167,36 +157,52 @@ internal static class SearchKeySyntaxParser
             return _source[start.._offset];
         }
 
-        private bool ShouldParseReverse()
+        private bool TryParseReverse([NotNullWhen(true)] out SearchKeySyntax? syntax)
         {
             var lookaheadOffset = _offset;
 
             if (!ConsumeLiteralIfAt("_has:", ref lookaheadOffset))
             {
+                syntax = null;
                 return false;
             }
 
+            int sourceStart = lookaheadOffset;
             if (!TrySkipIdentifier(ref lookaheadOffset))
             {
+                syntax = null;
                 return false;
             }
 
+            int sourceEnd = lookaheadOffset;
             if (!ConsumeIfAt(':', ref lookaheadOffset))
             {
+                syntax = null;
                 return false;
             }
 
+            int referenceStart = lookaheadOffset;
             if (!TrySkipIdentifier(ref lookaheadOffset))
             {
+                syntax = null;
                 return false;
             }
 
-            return ConsumeIfAt(':', ref lookaheadOffset);
-        }
+            int referenceEnd = lookaheadOffset;
+            if (!ConsumeIfAt(':', ref lookaheadOffset))
+            {
+                syntax = null;
+                return false;
+            }
 
-        private bool RemainingStartsWith(string literal)
-        {
-            return _source.AsSpan(_offset).StartsWith(literal, StringComparison.Ordinal);
+            _offset = lookaheadOffset;
+            string sourceResourceType = _source[sourceStart..sourceEnd];
+            string referenceName = _source[referenceStart..referenceEnd];
+            syntax = new ReverseChainKeySyntax(
+                sourceResourceType,
+                referenceName,
+                ParseKey());
+            return true;
         }
 
         private static bool ConsumeIfAt(char value, ref int offset, string source)
@@ -260,16 +266,6 @@ internal static class SearchKeySyntaxParser
             {
                 throw CreateError(_offset, expectation);
             }
-        }
-
-        private void ConsumeLiteral(string literal)
-        {
-            if (!RemainingStartsWith(literal))
-            {
-                throw CreateError(_offset, $"'{literal}'");
-            }
-
-            _offset += literal.Length;
         }
 
         private InvalidSearchOperationException CreateError(int offset, string expectation)

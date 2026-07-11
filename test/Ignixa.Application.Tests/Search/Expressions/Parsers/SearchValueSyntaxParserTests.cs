@@ -14,7 +14,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
 
-public class SearchValueGrammarTests
+public class SearchValueSyntaxParserTests
 {
     [Theory]
     [InlineData(SearchParamType.String, "gtSmith", SearchComparator.Eq, "gtSmith")]
@@ -27,7 +27,7 @@ public class SearchValueGrammarTests
         SearchComparator comparator,
         string rawText)
     {
-        var result = SearchValueGrammar.Parse(type, null, value);
+        var result = SearchValueSyntaxParser.Parse(type, null, value);
 
         var atomic = result.ShouldBeOfType<AtomicValueSyntax>();
         atomic.Comparator.ShouldBe(comparator);
@@ -37,7 +37,7 @@ public class SearchValueGrammarTests
     [Fact]
     public void GivenEscapedCommaAlternatives_WhenParsing_ThenPreservesEscapedText()
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             null,
             @"system|a\,b,system|c");
@@ -53,7 +53,7 @@ public class SearchValueGrammarTests
     [Fact]
     public void GivenCompositeAlternatives_WhenParsing_ThenBuildsComponentsBeforeAlternatives()
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             null,
             "http://loinc.org|8480-6$gt120,29463-7$lt80");
@@ -71,7 +71,7 @@ public class SearchValueGrammarTests
     [InlineData("TRUE", true)]
     public void GivenMissingModifier_WhenParsing_ThenBuildsBooleanSyntax(string value, bool expected)
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.String,
             new SearchModifier(SearchModifierCode.Missing),
             value);
@@ -83,7 +83,7 @@ public class SearchValueGrammarTests
     public void GivenMissingModifierWithInvalidBoolean_WhenParsing_ThenRejectsSyntax()
     {
         var exception = Should.Throw<InvalidSearchOperationException>(
-            () => SearchValueGrammar.Parse(
+            () => SearchValueSyntaxParser.Parse(
                 SearchParamType.String,
                 new SearchModifier(SearchModifierCode.Missing),
                 "1"));
@@ -94,7 +94,7 @@ public class SearchValueGrammarTests
     [Fact]
     public void GivenOfTypeModifier_WhenParsing_ThenBuildsTripletSyntax()
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             new SearchModifier(SearchModifierCode.OfType),
             "http://terminology.hl7.org|MR|123");
@@ -108,7 +108,7 @@ public class SearchValueGrammarTests
     [Fact]
     public void GivenOfTypeAlternatives_WhenParsing_ThenBuildsAlternativeTriplets()
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             new SearchModifier(SearchModifierCode.OfType),
             "http://terminology.hl7.org|MR|123,http://terminology.hl7.org|SS|456");
@@ -120,7 +120,7 @@ public class SearchValueGrammarTests
     [Fact]
     public void GivenTextModifierWithComma_WhenParsing_ThenPreservesCommaAsText()
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             new SearchModifier(SearchModifierCode.Text),
             "alpha,beta");
@@ -131,7 +131,7 @@ public class SearchValueGrammarTests
     [Fact]
     public void GivenOfTypeModifierWithDollarInSegments_WhenParsing_ThenPreservesDollar()
     {
-        var result = SearchValueGrammar.Parse(
+        var result = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             new SearchModifier(SearchModifierCode.OfType),
             "http://hl7.org/fhir/OperationDefinition/$member-match|MR|123$abc");
@@ -149,7 +149,7 @@ public class SearchValueGrammarTests
     public void GivenOfTypeModifierWithInvalidArity_WhenParsing_ThenRejectsSyntax(string value)
     {
         var exception = Should.Throw<InvalidSearchOperationException>(
-            () => SearchValueGrammar.Parse(
+            () => SearchValueSyntaxParser.Parse(
                 SearchParamType.Token,
                 new SearchModifier(SearchModifierCode.OfType),
                 value));
@@ -165,7 +165,7 @@ public class SearchValueGrammarTests
     public void GivenEmptyValue_WhenParsing_ThenRejectsSyntax(SearchParamType type)
     {
         var exception = Should.Throw<InvalidSearchOperationException>(
-            () => SearchValueGrammar.Parse(type, null, string.Empty));
+            () => SearchValueSyntaxParser.Parse(type, null, string.Empty));
 
         exception.Message.ShouldContain("line 1");
         exception.Message.ShouldContain("column");
@@ -181,9 +181,104 @@ public class SearchValueGrammarTests
         string value)
     {
         var exception = Should.Throw<InvalidSearchOperationException>(
-            () => SearchValueGrammar.Parse(type, null, value));
+            () => SearchValueSyntaxParser.Parse(type, null, value));
 
         exception.Message.ShouldContain("line 1");
         exception.Message.ShouldContain("column");
+    }
+
+    [Theory]
+    [InlineData(@"\", 1)]
+    [InlineData(@"\q", 1)]
+    [InlineData(@"value\", 6)]
+    [InlineData(@"value\q", 6)]
+    public void GivenInvalidEscape_WhenParsingStringValue_ThenRejectsWithExactPosition(
+        string value,
+        int expectedColumn)
+    {
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchValueSyntaxParser.Parse(SearchParamType.String, null, value));
+
+        exception.Message.ShouldContain("Malformed search value");
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain($"column {expectedColumn}:");
+        exception.Message.ShouldContain("valid FHIR escape");
+    }
+
+    [Fact]
+    public void GivenEscapedTokenSeparators_WhenParsing_ThenReturnsSingleAtomicValue()
+    {
+        const string value = @"a\,b\$c\|d\\e";
+
+        var result = SearchValueSyntaxParser.Parse(SearchParamType.Token, null, value);
+
+        var atomic = result.ShouldBeOfType<AtomicValueSyntax>();
+        atomic.RawText.ShouldBe(value);
+        atomic.Comparator.ShouldBe(SearchComparator.Eq);
+    }
+
+    [Fact]
+    public void GivenEscapedCompositeSeparator_WhenParsing_ThenReturnsSingleComponent()
+    {
+        var result = SearchValueSyntaxParser.Parse(SearchParamType.Composite, null, @"code\$value");
+
+        var composite = result.ShouldBeOfType<CompositeValueSyntax>();
+        composite.Components.Length.ShouldBe(1);
+        composite.Components[0].Comparator.ShouldBe(SearchComparator.Eq);
+        composite.Components[0].RawText.ShouldBe(@"code\$value");
+    }
+
+    [Fact]
+    public void GivenTokenStartingWithComparatorText_WhenParsing_ThenTreatsComparatorAsText()
+    {
+        var result = SearchValueSyntaxParser.Parse(SearchParamType.Token, null, "gtcode");
+
+        var atomic = result.ShouldBeOfType<AtomicValueSyntax>();
+        atomic.RawText.ShouldBe("gtcode");
+        atomic.Comparator.ShouldBe(SearchComparator.Eq);
+    }
+
+    [Fact]
+    public void GivenTextModifierWithAllSeparators_WhenParsing_ThenPreservesSeparatorsAsText()
+    {
+        const string value = "alpha,beta$gamma|delta";
+
+        var result = SearchValueSyntaxParser.Parse(
+            SearchParamType.Token,
+            new SearchModifier(SearchModifierCode.Text),
+            value);
+
+        var atomic = result.ShouldBeOfType<AtomicValueSyntax>();
+        atomic.RawText.ShouldBe(value);
+        atomic.Comparator.ShouldBe(SearchComparator.Eq);
+    }
+
+    [Fact]
+    public void GivenOfTypeModifierWithEscapedPipe_WhenParsing_ThenPreservesEscapedSystem()
+    {
+        var result = SearchValueSyntaxParser.Parse(
+            SearchParamType.Token,
+            new SearchModifier(SearchModifierCode.OfType),
+            @"http://example.org\|v2|MR|123");
+
+        result.ShouldBe(new OfTypeValueSyntax(
+            @"http://example.org\|v2",
+            "MR",
+            "123"));
+    }
+
+    [Theory]
+    [InlineData("a$$b", 3)]
+    [InlineData("$a", 1)]
+    [InlineData("a$", 3)]
+    public void GivenEmptyCompositeComponent_WhenParsing_ThenRejectsWithExactPosition(
+        string value,
+        int expectedColumn)
+    {
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchValueSyntaxParser.Parse(SearchParamType.Composite, null, value));
+
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain($"column {expectedColumn}:");
     }
 }

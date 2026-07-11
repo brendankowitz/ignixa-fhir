@@ -27,7 +27,7 @@ public class SearchExpressionBinderTests
         var context = new SearchParserTestContext();
         var parameter = context.Add("Patient", "name", SearchParamType.String);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.String,
             null,
             @"Smith\,Jones");
@@ -46,7 +46,7 @@ public class SearchExpressionBinderTests
         var context = new SearchParserTestContext();
         var parameter = context.Add("Observation", "value-number", SearchParamType.Number);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Number,
             null,
             "gt120");
@@ -66,7 +66,7 @@ public class SearchExpressionBinderTests
         var context = new SearchParserTestContext();
         var parameter = context.Add("Observation", "value-number", SearchParamType.Number);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Number,
             null,
             "not-a-number");
@@ -86,7 +86,7 @@ public class SearchExpressionBinderTests
             targets: PatientTargets);
         var modifier = new SearchModifier(SearchModifierCode.Type, "Patient");
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Reference,
             modifier,
             "123");
@@ -112,7 +112,7 @@ public class SearchExpressionBinderTests
             targets: PatientTargets);
         var modifier = new SearchModifier(SearchModifierCode.Type, "Patient");
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Reference,
             modifier,
             "Observation/123");
@@ -127,7 +127,7 @@ public class SearchExpressionBinderTests
         var context = new SearchParserTestContext();
         var parameter = context.Add("Observation", "code", SearchParamType.Token);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             null,
             "http://loinc.org|a,http://loinc.org|b");
@@ -147,7 +147,7 @@ public class SearchExpressionBinderTests
         var parameter = context.Add("Observation", "code", SearchParamType.Token);
         var modifier = new SearchModifier(SearchModifierCode.Not);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Token,
             modifier,
             "http://loinc.org|a,http://loinc.org|b");
@@ -172,7 +172,7 @@ public class SearchExpressionBinderTests
         var context = new SearchParserTestContext();
         var parameter = context.Add("Observation", "date", SearchParamType.Date);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Date,
             null,
             value);
@@ -190,7 +190,7 @@ public class SearchExpressionBinderTests
         var parameter = context.Add("Patient", "name", SearchParamType.String);
         var modifier = new SearchModifier(SearchModifierCode.Exact);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.String,
             modifier,
             "Smith,Jones");
@@ -228,7 +228,7 @@ public class SearchExpressionBinderTests
             SearchParamType.Composite,
             components: [codeComponent, quantityComponent]);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             null,
             "http://loinc.org|8480-6$gt120,29463-7$lt80");
@@ -259,7 +259,7 @@ public class SearchExpressionBinderTests
             SearchParamType.Composite,
             components: [component]);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             null,
             "code$value");
@@ -283,7 +283,7 @@ public class SearchExpressionBinderTests
             SearchParamType.Composite,
             components: [new SearchParameterComponentInfo(definitionUrl)]);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             null,
             "code");
@@ -311,7 +311,7 @@ public class SearchExpressionBinderTests
             SearchParamType.String);
         var modifier = new SearchModifier(modifierCode);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             modifier,
             value);
@@ -333,7 +333,7 @@ public class SearchExpressionBinderTests
             context,
             SearchParamType.String);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             null,
             "Patient/123");
@@ -357,7 +357,7 @@ public class SearchExpressionBinderTests
             context,
             SearchParamType.String);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.Composite,
             null,
             "gtSmith");
@@ -393,7 +393,7 @@ public class SearchExpressionBinderTests
         var parameter = context.Add("Patient", "name", SearchParamType.String);
         var modifier = new SearchModifier(SearchModifierCode.Missing);
         var binder = CreateBinder(context);
-        var syntax = SearchValueGrammar.Parse(
+        var syntax = SearchValueSyntaxParser.Parse(
             SearchParamType.String,
             modifier,
             "true");

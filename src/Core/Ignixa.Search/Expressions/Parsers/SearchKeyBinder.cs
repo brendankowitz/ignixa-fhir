@@ -111,6 +111,19 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
 
         ImmutableArray<string> candidates = ResolveForwardCandidates(referenceSearchParameter, syntax.TargetResourceType);
         ImmutableArray<string> boundResourceTypes = resourceTypes.ToImmutableArray();
+
+        if (candidates.Length == 1)
+        {
+            string candidate = candidates[0];
+            BoundSearchKey next = BindSingleForwardCandidate(candidate, syntax.Next);
+            return new BoundChainKey(
+                boundResourceTypes,
+                referenceSearchParameter,
+                [candidate],
+                false,
+                next);
+        }
+
         var matches = new List<BoundChainKey>(candidates.Length);
 
         foreach (string candidate in candidates)
@@ -147,6 +160,18 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
                 Resources.ChainedParameterSpecifyType,
                 referenceSearchParameter.Name,
                 string.Join(Resources.OrDelimiter, matches.Select(match => $"{referenceSearchParameter.Code}:{match.TargetResourceTypes[0]}"))));
+    }
+
+    private BoundSearchKey BindSingleForwardCandidate(string candidate, SearchKeySyntax next)
+    {
+        try
+        {
+            return Bind([candidate], next);
+        }
+        catch (SearchParameterNotSupportedException)
+        {
+            throw new InvalidSearchOperationException(Resources.ChainedParameterNotSupported);
+        }
     }
 
     private BoundSearchKey BindReverse(string[] resourceTypes, ReverseChainKeySyntax syntax)
@@ -230,9 +255,35 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             throw new InvalidSearchOperationException(string.Format(Resources.ResourceNotSupported, targetResourceType));
         }
 
-        return referenceSearchParameter.TargetResourceTypes
-            .Where(target => string.Equals(target, targetResourceType, StringComparison.OrdinalIgnoreCase))
-            .ToImmutableArray();
+        string? firstMatch = null;
+        ImmutableArray<string>.Builder? additionalMatches = null;
+
+        foreach (string target in referenceSearchParameter.TargetResourceTypes)
+        {
+            if (!string.Equals(target, targetResourceType, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (firstMatch is null)
+            {
+                firstMatch = target;
+                continue;
+            }
+
+            additionalMatches ??= ImmutableArray.CreateBuilder<string>();
+            if (additionalMatches.Count == 0)
+            {
+                additionalMatches.Add(firstMatch);
+            }
+
+            additionalMatches.Add(target);
+        }
+
+        return additionalMatches?.ToImmutable()
+            ?? (firstMatch is null
+                ? ImmutableArray<string>.Empty
+                : ImmutableArray.Create(firstMatch));
     }
 
     private static void EnsureReferenceSearchParameter(SearchParameterInfo searchParameter)

@@ -48,6 +48,21 @@ public class SearchKeyBinderTests
     }
 
     [Fact]
+    public void GivenTypedForwardChainWithUnsupportedTarget_WhenBinding_ThenThrowsChainedParameterNotSupported()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, targets: SubjectTargets);
+        context.DefinitionManager.GetSearchParameter("Patient", "name")
+            .Returns(_ => throw new SearchParameterNotSupportedException("Patient", "name"));
+        var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
+        var syntax = new ForwardChainKeySyntax("subject", "Patient", new ParameterKeySyntax("name", null));
+
+        var exception = Should.Throw<InvalidSearchOperationException>(() => binder.Bind(ObservationResourceTypes, syntax));
+
+        exception.Message.ShouldBe(Resources.ChainedParameterNotSupported);
+    }
+
+    [Fact]
     public void GivenNonReferenceForwardChain_WhenBinding_ThenThrowsInvalidSearchOperation()
     {
         var context = new SearchParserTestContext();

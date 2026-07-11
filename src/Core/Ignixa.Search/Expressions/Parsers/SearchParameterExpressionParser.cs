@@ -43,7 +43,7 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         EnsureArg.IsNotNullOrWhiteSpace(value, nameof(value));
 
-        SearchValueSyntax syntax = SearchValueGrammar.Parse(
+        SearchValueSyntax syntax = SearchValueSyntaxParser.Parse(
             searchParameter.Type,
             modifier,
             value);
