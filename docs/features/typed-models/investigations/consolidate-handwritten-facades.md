@@ -194,7 +194,7 @@ hand-written `StructureMapJsonNode.Contained`) threw on first access.
 
 `JsonNode fallbacks` in the generator's coverage-downgrade summary is now **0** for the R4/R5 package —
 every complex element in scope has a typed accessor. `Reference` choice variants (Plan A) and this task's
-fixes together account for all 41 downgrades present when this consolidation effort started (22 Reference
+fixes together account for all 51 downgrades present when this consolidation effort started (22 Reference
 fallbacks, 19 dropped Reference variants, 10 Resource/contentReference fallbacks — the remaining
 `value-set enum -> string: 16` downgrades are unrelated: real value-set binding metadata gaps like
 `all-languages`, not element-typing gaps, and out of scope for this effort).
