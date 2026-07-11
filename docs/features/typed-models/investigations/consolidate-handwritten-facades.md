@@ -177,6 +177,28 @@ exactly this gap per this doc's evidence section) and is now resolved — Phase 
 recursive elements (`Parameters.Parameter.Part`, `Bundle.Entry.Link`) still fall back — separate,
 already-scoped generator work, tracked as its own plan.
 
+## Resource-typed and contentReference accessor status (implemented)
+
+The two remaining generator-fidelity gaps are closed. `Resource`-typed elements (`BundleEntry.Resource`,
+`BundleEntryResponse.Outcome`, `Observation.Contained`, `OperationOutcome.Contained`, `Patient.Contained`,
+`ParametersParameter.Resource`, `Bundle.Issues`) now resolve to the hand-written
+`Ignixa.Serialization.SourceNodes.ResourceJsonNode` runtime base — there is no single generated facade for
+"any resource," so this is a deliberate exception to routing through `Ignixa.Models`, not an oversight.
+`contentReference`-based elements (`Bundle.Entry.Link`, `Observation.Component.ReferenceRange`,
+`Parameters.Parameter.Part`) now resolve to the referenced element's own backbone type name, reusing the
+existing backbone-naming rule against a different input rather than inventing a new one.
+
+Required making `ResourceJsonNode`'s `(JsonObject, FhirVersion?)` constructor `public` — this also fixed a
+pre-existing, never-exercised latent bug where `MutableJsonList<ResourceJsonNode>` (used today only by the
+hand-written `StructureMapJsonNode.Contained`) threw on first access.
+
+`JsonNode fallbacks` in the generator's coverage-downgrade summary is now **0** for the R4/R5 package —
+every complex element in scope has a typed accessor. `Reference` choice variants (Plan A) and this task's
+fixes together account for all 41 downgrades present when this consolidation effort started (22 Reference
+fallbacks, 19 dropped Reference variants, 10 Resource/contentReference fallbacks — the remaining
+`value-set enum -> string: 16` downgrades are unrelated: real value-set binding metadata gaps like
+`all-languages`, not element-typing gaps, and out of scope for this effort).
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.
