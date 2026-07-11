@@ -1,8 +1,11 @@
 # Investigation: Staged Adoption of a Compiler-Shaped SQL Pipeline
 
 **Feature**: sql-datalayer-architecture
-**Status**: In Progress
+**Status**: Phase 0-1 Complete (PR #328), Phase 2-3 Recommended (not yet scoped)
 **Created**: 2026-07-11
+**Updated**: 2026-07-11 (PR review pass)
+
+> Phase 0 (test baseline + mechanical dedup) and Phase 1 (visitor adoption) below have shipped — see `docs/superpowers/plans/2026-07-11-sql-datalayer-cleanup-phase-0-1.md` for the executed plan, its ledger, and its Post-Plan section for findings and prerequisites carried forward into Phase 2/3.
 
 ## Approach
 

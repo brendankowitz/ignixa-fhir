@@ -14,8 +14,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
 /// <summary>
 /// Characterization tests pinning down current behavior of CompositeSearchParameterQueryGenerator
-/// across its five supported composite shapes, before Task 4 of the SQL data layer cleanup plan
-/// extracts its token/system encoding logic into a shared helper.
+/// across its five supported composite shapes, locked down around Task 4 of the SQL data layer
+/// cleanup plan extracting its token/system encoding logic into the shared TokenCodeStorage helper.
 /// </summary>
 public class CompositeSearchParameterQueryGeneratorTests : TestBase
 {

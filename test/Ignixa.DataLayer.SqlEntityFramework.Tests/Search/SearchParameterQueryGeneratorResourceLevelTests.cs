@@ -20,8 +20,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
 /// <summary>
 /// Characterization tests pinning down current behavior of SearchParameterQueryGenerator's
-/// resource-level parameter handling (_id, _lastUpdated, _ttl, _type) before Task 3 of the
-/// SQL data layer cleanup plan extracts its duplicated BinaryOperator switches.
+/// resource-level parameter handling (_id, _lastUpdated, _ttl, _type), locked down around Task 3 of
+/// the SQL data layer cleanup plan extracting its duplicated BinaryOperator switches into ComparisonPredicates.
 /// </summary>
 public class SearchParameterQueryGeneratorResourceLevelTests : TestBase
 {
@@ -144,12 +144,9 @@ public class SearchParameterQueryGeneratorResourceLevelTests : TestBase
         var query = await _generator.GenerateQueryAsync(resourceTypeId: 1, expression, CancellationToken.None);
         var results = await query.ToListAsync();
 
-        // Assert: this test's purpose is to CAPTURE current behavior, not assert a spec-correct
-        // expectation. Run it against the pre-refactor code, record the actual pass/fail per
-        // InlineData row in the task report, and use that recorded behavior (not `expectMatch`
-        // as written) as the ground truth if it disagrees — adjust `expectMatch` values to match
-        // observed pre-refactor output before committing, then this test becomes the regression
-        // guard for Task 3/5.
+        // Assert: expectMatch values were derived from observed production behavior (not FHIR spec
+        // intent), so this test characterizes what the code actually does and guards against
+        // accidental behavior changes in future refactors of this comparator dispatch.
         results.Contains(resource.ResourceSurrogateId).ShouldBe(expectMatch);
     }
 
