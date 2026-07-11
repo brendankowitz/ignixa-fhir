@@ -475,46 +475,11 @@ public class SearchParameterQueryGenerator
             var targetId = dateTimeValue.ToId();
 
             // When resourceTypeId is null (system-wide search), don't filter by resource type
-            var query = binaryExpr.BinaryOperator switch
-            {
-                BinaryOperator.Equal =>
-                    _context.Resources
-                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                            && r.ResourceSurrogateId == targetId
-                            && !r.IsHistory
-                            && !r.IsDeleted),
-                BinaryOperator.GreaterThan =>
-                    _context.Resources
-                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                            && r.ResourceSurrogateId > targetId
-                            && !r.IsHistory
-                            && !r.IsDeleted),
-                BinaryOperator.GreaterThanOrEqual =>
-                    _context.Resources
-                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                            && r.ResourceSurrogateId >= targetId
-                            && !r.IsHistory
-                            && !r.IsDeleted),
-                BinaryOperator.LessThan =>
-                    _context.Resources
-                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                            && r.ResourceSurrogateId < targetId
-                            && !r.IsHistory
-                            && !r.IsDeleted),
-                BinaryOperator.LessThanOrEqual =>
-                    _context.Resources
-                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                            && r.ResourceSurrogateId <= targetId
-                            && !r.IsHistory
-                            && !r.IsDeleted),
-                BinaryOperator.NotEqual =>
-                    _context.Resources
-                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                            && r.ResourceSurrogateId != targetId
-                            && !r.IsHistory
-                            && !r.IsDeleted),
-                _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _lastUpdated")
-            };
+            var baseQuery = _context.Resources
+                .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                    && !r.IsHistory
+                    && !r.IsDeleted);
+            var query = ComparisonPredicates.ApplySurrogateIdComparison(baseQuery, binaryExpr.BinaryOperator, targetId);
 
             return await Task.FromResult(query.Select(r => r.ResourceSurrogateId));
         }
@@ -549,46 +514,11 @@ public class SearchParameterQueryGenerator
                 var targetId = dateTimeValue.ToId();
 
                 // When resourceTypeId is null (system-wide search), don't filter by resource type
-                var query = binaryExpr.BinaryOperator switch
-                {
-                    BinaryOperator.Equal =>
-                        _context.Resources
-                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                                && r.ResourceSurrogateId == targetId
-                                && !r.IsHistory
-                                && !r.IsDeleted),
-                    BinaryOperator.GreaterThan =>
-                        _context.Resources
-                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                                && r.ResourceSurrogateId > targetId
-                                && !r.IsHistory
-                                && !r.IsDeleted),
-                    BinaryOperator.GreaterThanOrEqual =>
-                        _context.Resources
-                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                                && r.ResourceSurrogateId >= targetId
-                                && !r.IsHistory
-                                && !r.IsDeleted),
-                    BinaryOperator.LessThan =>
-                        _context.Resources
-                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                                && r.ResourceSurrogateId < targetId
-                                && !r.IsHistory
-                                && !r.IsDeleted),
-                    BinaryOperator.LessThanOrEqual =>
-                        _context.Resources
-                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                                && r.ResourceSurrogateId <= targetId
-                                && !r.IsHistory
-                                && !r.IsDeleted),
-                    BinaryOperator.NotEqual =>
-                        _context.Resources
-                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                                && r.ResourceSurrogateId != targetId
-                                && !r.IsHistory
-                                && !r.IsDeleted),
-                    _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _lastUpdated")
-                };
+                var baseQuery = _context.Resources
+                    .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && !r.IsHistory
+                        && !r.IsDeleted);
+                var query = ComparisonPredicates.ApplySurrogateIdComparison(baseQuery, binaryExpr.BinaryOperator, targetId);
 
                 queries.Add(query.Select(r => r.ResourceSurrogateId));
             }
@@ -626,58 +556,12 @@ public class SearchParameterQueryGenerator
         // Handle binary expressions (comparison operators)
         if (expr is BinaryExpression binaryExpr && binaryExpr.Value is DateTimeOffset dateTimeValue)
         {
-            var query = binaryExpr.BinaryOperator switch
-            {
-                BinaryOperator.Equal =>
-                    from r in _context.Resources
-                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && ttl.ExpiresAt == dateTimeValue
-                        && !r.IsHistory
-                        && !r.IsDeleted
-                    select r,
-                BinaryOperator.GreaterThan =>
-                    from r in _context.Resources
-                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && ttl.ExpiresAt > dateTimeValue
-                        && !r.IsHistory
-                        && !r.IsDeleted
-                    select r,
-                BinaryOperator.GreaterThanOrEqual =>
-                    from r in _context.Resources
-                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && ttl.ExpiresAt >= dateTimeValue
-                        && !r.IsHistory
-                        && !r.IsDeleted
-                    select r,
-                BinaryOperator.LessThan =>
-                    from r in _context.Resources
-                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && ttl.ExpiresAt < dateTimeValue
-                        && !r.IsHistory
-                        && !r.IsDeleted
-                    select r,
-                BinaryOperator.LessThanOrEqual =>
-                    from r in _context.Resources
-                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && ttl.ExpiresAt <= dateTimeValue
-                        && !r.IsHistory
-                        && !r.IsDeleted
-                    select r,
-                BinaryOperator.NotEqual =>
-                    from r in _context.Resources
-                    join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                    where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && ttl.ExpiresAt != dateTimeValue
-                        && !r.IsHistory
-                        && !r.IsDeleted
-                    select r,
-                _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _ttl")
-            };
+            var baseResources = _context.Resources
+                .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                    && !r.IsHistory
+                    && !r.IsDeleted);
+
+            var query = ComparisonPredicates.ApplyTtlComparison(baseResources, _context.ResourceTtls, binaryExpr.BinaryOperator, dateTimeValue);
 
             return await Task.FromResult(query.Select(r => r.ResourceSurrogateId));
         }
@@ -734,58 +618,12 @@ public class SearchParameterQueryGenerator
         {
             if (subExpr is BinaryExpression binaryExpr && binaryExpr.Value is DateTimeOffset dateTimeValue)
             {
-                var query = binaryExpr.BinaryOperator switch
-                {
-                    BinaryOperator.Equal =>
-                        (from r in _context.Resources
-                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                             && ttl.ExpiresAt == dateTimeValue
-                             && !r.IsHistory
-                             && !r.IsDeleted
-                         select r),
-                    BinaryOperator.GreaterThan =>
-                        (from r in _context.Resources
-                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                             && ttl.ExpiresAt > dateTimeValue
-                             && !r.IsHistory
-                             && !r.IsDeleted
-                         select r),
-                    BinaryOperator.GreaterThanOrEqual =>
-                        (from r in _context.Resources
-                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                             && ttl.ExpiresAt >= dateTimeValue
-                             && !r.IsHistory
-                             && !r.IsDeleted
-                         select r),
-                    BinaryOperator.LessThan =>
-                        (from r in _context.Resources
-                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                             && ttl.ExpiresAt < dateTimeValue
-                             && !r.IsHistory
-                             && !r.IsDeleted
-                         select r),
-                    BinaryOperator.LessThanOrEqual =>
-                        (from r in _context.Resources
-                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                             && ttl.ExpiresAt <= dateTimeValue
-                             && !r.IsHistory
-                             && !r.IsDeleted
-                         select r),
-                    BinaryOperator.NotEqual =>
-                        (from r in _context.Resources
-                         join ttl in _context.ResourceTtls on new { r.ResourceTypeId, r.ResourceId } equals new { ttl.ResourceTypeId, ttl.ResourceId }
-                         where (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                             && ttl.ExpiresAt != dateTimeValue
-                             && !r.IsHistory
-                             && !r.IsDeleted
-                         select r),
-                    _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _ttl in multiary expression")
-                };
+                var baseResources = _context.Resources
+                    .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                        && !r.IsHistory
+                        && !r.IsDeleted);
+
+                var query = ComparisonPredicates.ApplyTtlComparison(baseResources, _context.ResourceTtls, binaryExpr.BinaryOperator, dateTimeValue);
 
                 queries.Add(query.Select(r => r.ResourceSurrogateId));
             }
@@ -1161,32 +999,9 @@ public class SearchParameterQueryGenerator
         var (field, op, value) = condition;
 
         // Use explicit conditions based on field and operator to ensure EF Core translation
-        if (field == FieldName.DateTimeStart)
-        {
-            return op switch
-            {
-                BinaryOperator.Equal => baseQuery.Where(sp => sp.StartDateTime == value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.NotEqual => baseQuery.Where(sp => sp.StartDateTime != value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.GreaterThan => baseQuery.Where(sp => sp.StartDateTime > value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.GreaterThanOrEqual => baseQuery.Where(sp => sp.StartDateTime >= value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.LessThan => baseQuery.Where(sp => sp.StartDateTime < value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.LessThanOrEqual => baseQuery.Where(sp => sp.StartDateTime <= value).Select(sp => sp.ResourceSurrogateId),
-                _ => Enumerable.Empty<long>().AsQueryable()
-            };
-        }
-        else // DateTimeEnd
-        {
-            return op switch
-            {
-                BinaryOperator.Equal => baseQuery.Where(sp => sp.EndDateTime == value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.NotEqual => baseQuery.Where(sp => sp.EndDateTime != value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.GreaterThan => baseQuery.Where(sp => sp.EndDateTime > value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.GreaterThanOrEqual => baseQuery.Where(sp => sp.EndDateTime >= value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.LessThan => baseQuery.Where(sp => sp.EndDateTime < value).Select(sp => sp.ResourceSurrogateId),
-                BinaryOperator.LessThanOrEqual => baseQuery.Where(sp => sp.EndDateTime <= value).Select(sp => sp.ResourceSurrogateId),
-                _ => Enumerable.Empty<long>().AsQueryable()
-            };
-        }
+        return field == FieldName.DateTimeStart
+            ? ComparisonPredicates.ApplyDateTimeStartComparison(baseQuery, op, value)
+            : ComparisonPredicates.ApplyDateTimeEndComparison(baseQuery, op, value);
     }
 
     /// <summary>
@@ -1324,16 +1139,7 @@ public class SearchParameterQueryGenerator
                 value,
                 valueExpr.BinaryOperator);
 
-            query = valueExpr.BinaryOperator switch
-            {
-                BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-                BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-                BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-                BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-                BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
-                BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
-                _ => throw new NotSupportedException($"BinaryOperator {valueExpr.BinaryOperator} is not supported for Quantity")
-            };
+            query = ComparisonPredicates.ApplyQuantityRangeComparison(query, valueExpr.BinaryOperator, value);
         }
 
         return query.Select(sp => sp.ResourceSurrogateId);
@@ -1739,16 +1545,7 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        query = binaryExpr.BinaryOperator switch
-        {
-            BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-            BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-            BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-            BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-            BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
-            BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
-            _ => throw new NotSupportedException($"BinaryOperator {binaryExpr.BinaryOperator} is not supported for Number")
-        };
+        query = ComparisonPredicates.ApplyNumberRangeComparison(query, binaryExpr.BinaryOperator, value);
 
         return query.Select(sp => sp.ResourceSurrogateId);
     }
@@ -1826,16 +1623,7 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        query = binaryExpr.BinaryOperator switch
-        {
-            BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-            BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-            BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-            BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-            BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
-            BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
-            _ => throw new NotSupportedException($"BinaryOperator {binaryExpr.BinaryOperator} is not supported for Quantity")
-        };
+        query = ComparisonPredicates.ApplyQuantityRangeComparison(query, binaryExpr.BinaryOperator, value);
 
         return Task.FromResult(query.Select(sp => sp.ResourceSurrogateId));
     }
