@@ -163,6 +163,7 @@ public partial class Observation : DomainResourceJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

@@ -91,6 +91,7 @@ public sealed partial class Dosage : Ignixa.Models.Dosage
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

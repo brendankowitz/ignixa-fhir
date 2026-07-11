@@ -91,6 +91,7 @@ public sealed partial class ProductShelfLife : Ignixa.Models.ProductShelfLife
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

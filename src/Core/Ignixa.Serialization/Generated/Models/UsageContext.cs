@@ -134,6 +134,7 @@ public sealed partial class UsageContext : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

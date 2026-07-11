@@ -667,6 +667,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
@@ -1318,6 +1319,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
@@ -1477,6 +1479,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
@@ -1636,6 +1639,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
@@ -2287,6 +2291,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

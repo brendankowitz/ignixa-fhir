@@ -90,6 +90,7 @@ public sealed partial class Annotation : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

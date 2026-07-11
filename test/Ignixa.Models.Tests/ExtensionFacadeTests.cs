@@ -148,4 +148,42 @@ public sealed class ExtensionFacadeTests
 
         Should.Throw<ArgumentException>(() => ext.SetValueChoiceRaw("url", "http://example.org/overwritten"));
     }
+
+    [Fact]
+    public void GivenValueStringWithPrimitiveExtensionShadow_WhenSetValueChoiceRawSwitchesVariant_ThenShadowCompanionRemoved()
+    {
+        // "_valueString" carries a primitive extension on the valueString variant (FHIR's underscore-
+        // prefixed primitive-extension mechanism, https://hl7.org/fhir/json.html#primitive). Switching to
+        // valueUri must clear that companion too, or it survives as an orphan with no primitive value to
+        // annotate -- invalid FHIR JSON. Regression test for issue #334.
+        var ext = new Extension { Url = "http://example.org/ext1" };
+        ext.SetValueChoiceRaw("valueString", "first");
+        ext.MutableNode()["_valueString"] = new JsonObject
+        {
+            ["extension"] = new JsonArray(new JsonObject { ["url"] = "http://example.org/note", ["valueString"] = "flagged" }),
+        };
+
+        ext.SetValueChoiceRaw("valueUri", "http://example.org/second");
+
+        ext.MutableNode().ContainsKey("valueString").ShouldBeFalse();
+        ext.MutableNode().ContainsKey("_valueString").ShouldBeFalse();
+        ext.MutableNode()["valueUri"]!.GetValue<string>().ShouldBe("http://example.org/second");
+    }
+
+    [Fact]
+    public void GivenValueStringWithPrimitiveExtensionShadow_WhenSetValueChoiceRawCalledForSameVariant_ThenShadowPreserved()
+    {
+        // Re-setting the same variant's value must never disturb its own extension shadow.
+        var ext = new Extension { Url = "http://example.org/ext1" };
+        ext.SetValueChoiceRaw("valueString", "first");
+        ext.MutableNode()["_valueString"] = new JsonObject
+        {
+            ["extension"] = new JsonArray(new JsonObject { ["url"] = "http://example.org/note", ["valueString"] = "flagged" }),
+        };
+
+        ext.SetValueChoiceRaw("valueString", "second");
+
+        ext.MutableNode()["valueString"]!.GetValue<string>().ShouldBe("second");
+        ext.MutableNode().ContainsKey("_valueString").ShouldBeTrue();
+    }
 }

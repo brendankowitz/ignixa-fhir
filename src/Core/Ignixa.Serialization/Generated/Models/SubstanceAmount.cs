@@ -102,6 +102,7 @@ public partial class SubstanceAmount : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
