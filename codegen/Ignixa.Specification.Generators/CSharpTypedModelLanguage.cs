@@ -80,7 +80,9 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// behavior hand-written facades have always had (see that attribute's own doc comment). Types NOT in
     /// this set that get consolidated later (e.g. <c>Provenance</c>) keep their attribute deliberately --
     /// their divergence from STU3 or between R4/R5 is real, so the guard firing for them is correct, not
-    /// a regression.
+    /// a regression. Also covers backbone/nested types owned by an already-exempt resource (e.g.
+    /// <c>BundleEntry</c>, <c>OperationOutcomeIssue</c>, <c>ParametersParameter</c>) whose own base facade
+    /// is equally version-agnostic, for the same reason and by the same probe.
     /// </summary>
     private static readonly HashSet<string> VersionAgnosticContractTypes = new(StringComparer.Ordinal)
     {
@@ -92,6 +94,13 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "Meta",
         "Narrative",
         "Reference",
+        "BundleEntry",
+        "BundleEntryRequest",
+        "BundleEntryResponse",
+        "BundleEntrySearch",
+        "BundleLink",
+        "OperationOutcomeIssue",
+        "ParametersParameter",
     };
 
     /// <summary>Gets the language name.</summary>

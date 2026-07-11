@@ -17,7 +17,6 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR BundleEntryResponse datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
 public sealed partial class BundleEntryResponse : BaseJsonNode
 {
     public BundleEntryResponse()
