@@ -186,9 +186,10 @@ public sealed class TypedFacadeTests
         // Locks in a real bug the Plan A generator fix resolved: Extension.value[x]'s Reference variant
         // was previously dropped entirely (RecordDroppedChoiceVariant), so it was never added to
         // ValueVariantKeys -- meaning Set{Base}Variant, which only clears keys present in that array,
-        // could never clear a stale valueReference when a different variant was set (or vice versa,
-        // as pinned here). Now that Reference is a real variant, it participates in the same clearing
-        // loop as every other variant.
+        // could never clear a stale valueReference when a DIFFERENT variant was set (setting valueString
+        // would leave a pre-existing valueReference behind, producing invalid dual-variant JSON). The
+        // reverse direction (Reference -> String) was never actually broken -- valueString was always in
+        // the array -- so both directions are asserted here to pin the one that mattered.
         var ext = new Ignixa.Models.R4.Extension { Url = "http://example.org/ext" };
 
         ext.ValueString = "hello";
@@ -199,5 +200,12 @@ public sealed class TypedFacadeTests
         ext.ValueType.ShouldBe(Ignixa.Models.R4.ExtensionValueType.Reference);
         ext.ValueString.ShouldBeNull();
         ext.ValueReference!.Reference2.ShouldBe("Patient/123");
+
+        // The critical direction: setting a different variant must clear the now-stale valueReference.
+        ext.ValueString = "again";
+
+        ext.ValueType.ShouldBe(Ignixa.Models.R4.ExtensionValueType.String);
+        ext.ValueString.ShouldBe("again");
+        ext.ValueReference.ShouldBeNull();
     }
 }
