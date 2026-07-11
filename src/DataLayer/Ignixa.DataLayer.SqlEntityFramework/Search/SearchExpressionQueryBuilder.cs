@@ -15,10 +15,19 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 
 /// <summary>
+/// Packs the parameters shared by every <see cref="IExpressionVisitor{TContext,TOutput}"/> visit
+/// method dispatched from <see cref="SearchExpressionQueryBuilder"/>.
+/// </summary>
+public readonly record struct SqlQueryContext(
+    IQueryable<ResourceEntity> BaseQuery,
+    short? ResourceTypeId,
+    CancellationToken CancellationToken);
+
+/// <summary>
 /// Builds EF Core queries from FHIR search expressions.
 /// Translates the search expression tree into LINQ queries against search parameter tables.
 /// </summary>
-public class SearchExpressionQueryBuilder
+public sealed class SearchExpressionQueryBuilder : IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>
 {
     private readonly FhirDbContext _context;
     private readonly SearchParameterQueryGenerator _parameterQueryGenerator;
@@ -64,7 +73,7 @@ public class SearchExpressionQueryBuilder
     /// <param name="expression">The search expression to apply.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A filtered query.</returns>
-    public async Task<IQueryable<ResourceEntity>> ApplySearchExpressionAsync(
+    public Task<IQueryable<ResourceEntity>> ApplySearchExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
         short? resourceTypeId,
         Expression expression,
@@ -77,37 +86,22 @@ public class SearchExpressionQueryBuilder
             expression.GetType().Name,
             resourceTypeId);
 
-        return expression switch
-        {
-            MultiaryExpression multiaryExpr => await ApplyMultiaryExpressionAsync(baseQuery, resourceTypeId, multiaryExpr, ct),
-            SearchParameterExpression searchParamExpr => await ApplySearchParameterExpressionAsync(baseQuery, resourceTypeId, searchParamExpr, ct),
-            ChainedExpression chainedExpr => await ApplyChainedExpressionAsync(baseQuery, resourceTypeId, chainedExpr, ct),
-            CompartmentSearchExpression compartmentExpr => await ApplyCompartmentSearchExpressionAsync(baseQuery, resourceTypeId, compartmentExpr, ct),
-            PatientEverythingExpression everythingExpr => await ApplyPatientEverythingExpressionAsync(baseQuery, resourceTypeId, everythingExpr, ct),
-            UnionExpression unionExpr => await ApplyUnionExpressionAsync(baseQuery, resourceTypeId, unionExpr, ct),
-            NotExpression notExpr => await ApplyNotExpressionAsync(baseQuery, resourceTypeId, notExpr, ct),
-            MissingSearchParameterExpression missingExpr => await ApplyMissingSearchParameterExpressionAsync(baseQuery, resourceTypeId, missingExpr, ct),
-            NotReferencedExpression notReferencedExpr => await ApplyNotReferencedExpressionAsync(baseQuery, resourceTypeId, notReferencedExpr, ct),
-            _ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported")
-        };
+        var context = new SqlQueryContext(baseQuery, resourceTypeId, ct);
+        return expression.AcceptVisitor(this, context);
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyMultiaryExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        MultiaryExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitMultiary(MultiaryExpression expression, SqlQueryContext context)
     {
         if (expression.Expressions.Count == 0)
         {
-            return baseQuery;
+            return context.BaseQuery;
         }
 
         // Process each sub-expression
         var queries = new List<IQueryable<long>>();
         foreach (var subExpr in expression.Expressions)
         {
-            var subQuery = await ApplySearchExpressionAsync(baseQuery, resourceTypeId, subExpr, ct);
+            var subQuery = await subExpr.AcceptVisitor(this, context);
             queries.Add(subQuery.Select(r => r.ResourceSurrogateId));
         }
 
@@ -120,54 +114,42 @@ public class SearchExpressionQueryBuilder
         };
 
         // Filter base query by combined resource IDs
-        return baseQuery.Where(r => combinedQuery.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => combinedQuery.Contains(r.ResourceSurrogateId));
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplySearchParameterExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        SearchParameterExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitSearchParameter(SearchParameterExpression expression, SqlQueryContext context)
     {
         _logger.LogDebug(
             "ApplySearchParameterExpressionAsync: ParameterCode={ParameterCode}, ParameterName={ParameterName}, ResourceTypeId={ResourceTypeId}",
             expression.Parameter?.Code,
             expression.Parameter?.Name,
-            resourceTypeId);
+            context.ResourceTypeId);
 
         // Generate query for this search parameter
         var matchingResourceIds = await _parameterQueryGenerator.GenerateQueryAsync(
-            resourceTypeId,
+            context.ResourceTypeId,
             expression,
-            ct);
+            context.CancellationToken);
 
         _logger.LogDebug("Generated matching resource IDs query, applying to base query");
 
         // Filter base query by matching resource IDs
-        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyChainedExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        ChainedExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitChained(ChainedExpression expression, SqlQueryContext context)
     {
         // Process chained expression to get matching resource IDs
         var matchingResourceIds = await _chainedExpressionProcessor.ProcessChainAsync(
-            resourceTypeId,
+            context.ResourceTypeId,
             expression,
-            ct);
+            context.CancellationToken);
 
         // Filter base query by matching resource IDs
-        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyCompartmentSearchExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        CompartmentSearchExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitCompartment(CompartmentSearchExpression expression, SqlQueryContext context)
     {
         _logger.LogDebug(
             "Processing compartment search: {CompartmentType}/{CompartmentId} with resource types: [{ResourceTypes}]",
@@ -186,17 +168,13 @@ public class SearchExpressionQueryBuilder
             expression.CompartmentType,
             expression.CompartmentId,
             resourceTypesToSearch,
-            ct);
+            context.CancellationToken);
 
         // Filter base query by matching resource IDs
-        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyPatientEverythingExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        PatientEverythingExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitPatientEverything(PatientEverythingExpression expression, SqlQueryContext context)
     {
         _logger.LogDebug(
             "Processing Patient $everything expression for {PatientCount} patient(s)",
@@ -205,24 +183,20 @@ public class SearchExpressionQueryBuilder
         // Use PatientEverythingQueryGenerator to build the optimized query
         var matchingResourceIds = await _patientEverythingQueryGenerator.GeneratePatientEverythingQueryAsync(
             expression,
-            ct);
+            context.CancellationToken);
 
         // Filter base query by matching resource IDs
-        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyUnionExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        UnionExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitUnion(UnionExpression expression, SqlQueryContext context)
     {
         // Build a UNION query from all sub-expressions without materializing
         IQueryable<ResourceEntity>? unionedQuery = null;
 
         foreach (var subExpr in expression.Expressions)
         {
-            var filteredQuery = await ApplySearchExpressionAsync(baseQuery, resourceTypeId, subExpr, ct);
+            var filteredQuery = await subExpr.AcceptVisitor(this, context);
 
             if (unionedQuery == null)
             {
@@ -235,30 +209,22 @@ public class SearchExpressionQueryBuilder
             }
         }
 
-        return unionedQuery ?? baseQuery.Where(r => false); // Return empty if no expressions
+        return unionedQuery ?? context.BaseQuery.Where(r => false); // Return empty if no expressions
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyNotExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        NotExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitNotExpression(NotExpression expression, SqlQueryContext context)
     {
         _logger.LogDebug("Applying NOT expression");
 
         // Get resource IDs matching the inner expression
-        var innerQuery = await ApplySearchExpressionAsync(baseQuery, resourceTypeId, expression.Expression, ct);
+        var innerQuery = await expression.Expression.AcceptVisitor(this, context);
         var matchingResourceIds = innerQuery.Select(r => r.ResourceSurrogateId);
 
         // Return base query excluding the matching IDs (NOT logic)
-        return baseQuery.Where(r => !matchingResourceIds.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => !matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyMissingSearchParameterExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        MissingSearchParameterExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitMissingSearchParameter(MissingSearchParameterExpression expression, SqlQueryContext context)
     {
         _logger.LogDebug("Applying MISSING expression for parameter: {Parameter}, IsMissing: {IsMissing}",
             expression.Parameter?.Code,
@@ -269,7 +235,7 @@ public class SearchExpressionQueryBuilder
         if (searchParamInfo == null)
         {
             _logger.LogWarning("Missing search parameter expression has no parameter info");
-            return baseQuery.Where(r => false); // Return empty
+            return context.BaseQuery.Where(r => false); // Return empty
         }
 
         // Look up the SearchParamId for this specific search parameter
@@ -277,7 +243,7 @@ public class SearchExpressionQueryBuilder
         if (!searchParamId.HasValue)
         {
             _logger.LogWarning("Could not find SearchParamId for parameter {Code}", searchParamInfo.Code);
-            return baseQuery.Where(r => false); // Return empty
+            return context.BaseQuery.Where(r => false); // Return empty
         }
 
         _logger.LogDebug("Found SearchParamId {SearchParamId} for parameter {Code}", searchParamId.Value, searchParamInfo.Code);
@@ -291,7 +257,7 @@ public class SearchExpressionQueryBuilder
         {
             case SearchParamType.String:
                 resourcesWithParameter = _context.StringSearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -299,7 +265,7 @@ public class SearchExpressionQueryBuilder
 
             case SearchParamType.Token:
                 resourcesWithParameter = _context.TokenSearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -307,7 +273,7 @@ public class SearchExpressionQueryBuilder
 
             case SearchParamType.Reference:
                 resourcesWithParameter = _context.ReferenceSearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -315,7 +281,7 @@ public class SearchExpressionQueryBuilder
 
             case SearchParamType.Number:
                 resourcesWithParameter = _context.NumberSearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -323,7 +289,7 @@ public class SearchExpressionQueryBuilder
 
             case SearchParamType.Date:
                 resourcesWithParameter = _context.DateTimeSearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -331,7 +297,7 @@ public class SearchExpressionQueryBuilder
 
             case SearchParamType.Quantity:
                 resourcesWithParameter = _context.QuantitySearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -339,7 +305,7 @@ public class SearchExpressionQueryBuilder
 
             case SearchParamType.Uri:
                 resourcesWithParameter = _context.UriSearchParams
-                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => (!context.ResourceTypeId.HasValue || sp.ResourceTypeId == context.ResourceTypeId.Value)
                         && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
@@ -347,19 +313,19 @@ public class SearchExpressionQueryBuilder
 
             default:
                 _logger.LogWarning("Unsupported search parameter type for missing modifier: {Type}", searchParamInfo.Type);
-                return baseQuery.Where(r => false); // Return empty
+                return context.BaseQuery.Where(r => false); // Return empty
         }
 
         IQueryable<ResourceEntity> result;
         if (expression.IsMissing)
         {
             // Return resources that do NOT have this parameter indexed
-            result = baseQuery.Where(r => !resourcesWithParameter.Contains(r.ResourceSurrogateId));
+            result = context.BaseQuery.Where(r => !resourcesWithParameter.Contains(r.ResourceSurrogateId));
         }
         else
         {
             // Return resources that HAVE this parameter indexed
-            result = baseQuery.Where(r => resourcesWithParameter.Contains(r.ResourceSurrogateId));
+            result = context.BaseQuery.Where(r => resourcesWithParameter.Contains(r.ResourceSurrogateId));
         }
 
         return result;
@@ -400,11 +366,7 @@ public class SearchExpressionQueryBuilder
         return result.Distinct();
     }
 
-    private async Task<IQueryable<ResourceEntity>> ApplyNotReferencedExpressionAsync(
-        IQueryable<ResourceEntity> baseQuery,
-        short? resourceTypeId,
-        NotReferencedExpression expression,
-        CancellationToken ct)
+    async Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitNotReferenced(NotReferencedExpression expression, SqlQueryContext context)
     {
         _logger.LogDebug(
             "Processing _not-referenced expression: SourceType={SourceType}, Path={Path}",
@@ -443,11 +405,29 @@ public class SearchExpressionQueryBuilder
         }
 
         var matchingResourceIds = await _parameterQueryGenerator.GenerateNotReferencedQueryAsync(
-            resourceTypeId,
+            context.ResourceTypeId,
             expression,
             searchParamInfo,
-            ct);
+            context.CancellationToken);
 
-        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+        return context.BaseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitBinary(BinaryExpression expression, SqlQueryContext context) =>
+        throw new NotSupportedException($"{nameof(SearchExpressionQueryBuilder)} does not handle bare {nameof(BinaryExpression)} — field-level expressions are only valid nested inside a {nameof(SearchParameterExpression)}.");
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitMissingField(MissingFieldExpression expression, SqlQueryContext context) =>
+        throw new NotSupportedException($"{nameof(SearchExpressionQueryBuilder)} does not handle bare {nameof(MissingFieldExpression)} — field-level expressions are only valid nested inside a {nameof(SearchParameterExpression)}.");
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitString(StringExpression expression, SqlQueryContext context) =>
+        throw new NotSupportedException($"{nameof(SearchExpressionQueryBuilder)} does not handle bare {nameof(StringExpression)} — field-level expressions are only valid nested inside a {nameof(SearchParameterExpression)}.");
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitInclude(IncludeExpression expression, SqlQueryContext context) =>
+        throw new NotSupportedException($"{nameof(IncludeExpression)} is handled by {nameof(IncludeProcessor)}/{nameof(RevIncludeProcessor)}, not by {nameof(SearchExpressionQueryBuilder)}.");
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitSortParameter(SortExpression expression, SqlQueryContext context) =>
+        throw new NotSupportedException($"{nameof(SortExpression)} is applied to sort order separately, not through {nameof(SearchExpressionQueryBuilder)}.");
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitIn<T>(InExpression<T> expression, SqlQueryContext context) =>
+        throw new NotSupportedException($"{nameof(SearchExpressionQueryBuilder)} does not handle bare {nameof(InExpression<T>)} — field-level expressions are only valid nested inside a {nameof(SearchParameterExpression)}.");
 }
