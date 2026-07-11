@@ -17,9 +17,11 @@ public static class TokenCodeStorage
     /// <summary>
     /// Token codes at or under this length are stored inline in the Code column;
     /// longer codes are truncated to this length with the remainder in CodeOverflow.
-    /// Must match the TokenSearchParam.Code column width and the database's
-    /// CHK_TokenSearchParam_CodeOverflow check constraint (LEN(Code) = 256 OR CodeOverflow IS NULL) —
-    /// a mismatch here means any code longer than this length fails to insert.
+    /// Must match the TokenSearchParam.Code column's VARCHAR(256) width (FhirDbContext also declares
+    /// a CHK_TokenSearchParam_CodeOverflow constraint requiring LEN(Code) = 256 when CodeOverflow is
+    /// set, but no migration currently materializes it in a real database — it exists only in the EF
+    /// model). A mismatch here doesn't fail at write time; it silently desyncs the write and read
+    /// paths, causing codes near the threshold to stop matching search.
     /// </summary>
     public const int MaxInlineCodeLength = 256;
 

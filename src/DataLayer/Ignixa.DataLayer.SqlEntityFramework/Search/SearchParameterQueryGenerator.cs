@@ -5,7 +5,6 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Expressions;

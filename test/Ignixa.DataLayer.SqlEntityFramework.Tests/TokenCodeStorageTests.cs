@@ -8,13 +8,22 @@ using Shouldly;
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
 
 /// <summary>
-/// Locks down TokenCodeStorage's split threshold against the database's own constraint
-/// (CHK_TokenSearchParam_CodeOverflow: LEN(Code) = 256 OR CodeOverflow IS NULL) — a mismatch
-/// between MaxInlineCodeLength and that constraint previously went undetected because this
-/// class had zero test coverage.
+/// Locks down TokenCodeStorage's split threshold against TokenSearchParam.Code's actual VARCHAR(256)
+/// column width. A mismatch here previously went undetected because this class had zero test coverage —
+/// MaxInlineCodeLength was 128 for years while the column was 256 wide, silently desyncing write and
+/// read for codes in that band.
 /// </summary>
 public class TokenCodeStorageTests
 {
+    [Fact]
+    public void GivenMaxInlineCodeLength_WhenChecked_ThenMatchesTokenSearchParamCodeColumnWidth()
+    {
+        // Pins the value itself, not just behavior relative to it - the other tests below all
+        // derive their inputs from MaxInlineCodeLength, so they'd stay green even if this constant
+        // regressed back to 128 (or anything else) without this explicit assertion.
+        TokenCodeStorage.MaxInlineCodeLength.ShouldBe(256);
+    }
+
     [Fact]
     public void GivenCodeAtMaxInlineLength_WhenSplit_ThenStoredInlineWithNoOverflow()
     {
@@ -34,7 +43,6 @@ public class TokenCodeStorageTests
 
         var (storedCode, overflow) = TokenCodeStorage.SplitCode(code);
 
-        // CHK_TokenSearchParam_CodeOverflow requires LEN(Code) = 256 whenever CodeOverflow is set.
         storedCode.Length.ShouldBe(TokenCodeStorage.MaxInlineCodeLength);
         overflow.ShouldBe("a");
     }
