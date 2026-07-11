@@ -139,7 +139,8 @@ public sealed class ValidationSchema
     /// Depth.Minimal: Run universal checks only.
     /// Depth.Spec: Run universal + spec checks.
     /// Depth.Full: Run universal + spec + profile checks.
-    /// Depth.Compatibility: Run universal + spec checks (same as Spec, no profile checks).
+    /// Depth.Compatibility: Run universal + spec checks, plus the subset of profile checks marked
+    /// <see cref="ICompatibilityConformanceCheck"/> (all other profile checks stay Full-only).
     /// </summary>
     /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings (including depth).</param>
@@ -165,12 +166,23 @@ public sealed class ValidationSchema
             }
         }
 
-        // Profile checks: run ONLY for Full depth (not Compatibility)
+        // Profile checks: run for Full depth. Compatibility depth runs only the checks marked
+        // ICompatibilityConformanceCheck (see that interface for why the boundary is drawn there).
         if (settings.Depth == ValidationDepth.Full)
         {
             foreach (var check in _profileChecks)
             {
                 results.Add(check.Validate(element, settings, state));
+            }
+        }
+        else if (settings.Depth == ValidationDepth.Compatibility)
+        {
+            foreach (var check in _profileChecks)
+            {
+                if (check is ICompatibilityConformanceCheck)
+                {
+                    results.Add(check.Validate(element, settings, state));
+                }
             }
         }
 

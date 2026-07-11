@@ -18,7 +18,7 @@ namespace Ignixa.Validation.Checks;
 /// 'notSelectable' must be either 'true' or 'false', not '1'." Only the FHIR-defined boolean
 /// concept-properties are consulted, so no code-system knowledge is required.
 /// </summary>
-public sealed class ValueSetFilterCheck : IValidationCheck, ISingletonCheck
+public sealed class ValueSetFilterCheck : IValidationCheck, ISingletonCheck, ICompatibilityConformanceCheck
 {
     // FHIR-standard concept-properties (http://hl7.org/fhir/concept-properties) whose type is
     // boolean. Their filter values are constrained regardless of the target code system.

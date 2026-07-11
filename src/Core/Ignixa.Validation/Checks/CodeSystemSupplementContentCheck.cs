@@ -16,7 +16,7 @@ namespace Ignixa.Validation.Checks;
 /// 'supplement'." Closed-world — depends only on the resource's own <c>supplements</c> and
 /// <c>content</c> elements.
 /// </summary>
-public sealed class CodeSystemSupplementContentCheck : IValidationCheck, ISingletonCheck
+public sealed class CodeSystemSupplementContentCheck : IValidationCheck, ISingletonCheck, ICompatibilityConformanceCheck
 {
     /// <inheritdoc />
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
