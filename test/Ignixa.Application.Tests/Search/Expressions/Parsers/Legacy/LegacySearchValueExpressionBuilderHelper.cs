@@ -1,0 +1,347 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+// Frozen snapshot of Ignixa.Search.Expressions.Parsers.SearchValueExpressionBuilderHelper as it
+// existed on `main` before PR #332. See LegacyStringExtensions.cs for why this exists.
+
+using System.Diagnostics;
+using EnsureThat;
+using Ignixa.Search;
+using Ignixa.Search.Extensions;
+using Ignixa.Specification.ValueSets.Normative;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Expressions;
+
+namespace Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
+
+internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVisitor
+{
+    private const decimal ApproximateMultiplier = .1M;
+    private SearchComparator _comparator;
+    private int? _componentIndex;
+    private SearchModifier _modifier;
+
+    private Expression _outputExpression;
+
+    private string _searchParameterName;
+
+    void ISearchValueVisitor.Visit(CompositeSearchValue composite)
+    {
+        throw new InvalidOperationException("The composite search value should have been broken down into components and handled individually.");
+    }
+
+    void ISearchValueVisitor.Visit(DateTimeSearchValue dateTime)
+    {
+        EnsureArg.IsNotNull(dateTime, nameof(dateTime));
+
+        if (_modifier != null) ThrowModifierNotSupported();
+
+        switch (_comparator)
+        {
+            case SearchComparator.Eq:
+                _outputExpression = Expression.And(
+                    Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
+                    Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
+                break;
+            case SearchComparator.Ne:
+                _outputExpression = Expression.Or(
+                    Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
+                    Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
+                break;
+            case SearchComparator.Lt:
+                _outputExpression = Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start);
+                break;
+            case SearchComparator.Gt:
+                _outputExpression = Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End);
+                break;
+            case SearchComparator.Le:
+                _outputExpression = Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End);
+                break;
+            case SearchComparator.Ge:
+                _outputExpression = Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
+                break;
+            case SearchComparator.Sa:
+                _outputExpression = Expression.GreaterThan(FieldName.DateTimeStart, _componentIndex, dateTime.End);
+                break;
+            case SearchComparator.Eb:
+                _outputExpression = Expression.LessThan(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
+                break;
+            case SearchComparator.Ap:
+                long startTicks = dateTime.Start.UtcTicks;
+                long endTicks = dateTime.End.UtcTicks;
+
+                long differenceTicks = (long)((DateTimeOffset.UtcNow.Ticks - Math.Max(startTicks, endTicks)) * ApproximateMultiplier);
+
+                DateTimeOffset approximateStart = dateTime.Start.AddTicks(-differenceTicks);
+                DateTimeOffset approximateEnd = dateTime.End.AddTicks(differenceTicks);
+
+                _outputExpression = Expression.And(
+                    Expression.GreaterThanOrEqual(FieldName.DateTimeStart, _componentIndex, approximateStart),
+                    Expression.LessThanOrEqual(FieldName.DateTimeEnd, _componentIndex, approximateEnd));
+                break;
+            default:
+                ThrowComparatorNotSupported();
+                break;
+        }
+    }
+
+    void ISearchValueVisitor.Visit(NumberSearchValue number)
+    {
+        EnsureArg.IsNotNull(number, nameof(number));
+
+        if (_modifier != null) ThrowModifierNotSupported();
+
+        Debug.Assert(number.Low.HasValue && number.Low == number.High, "number low and high should be the same and not null");
+        _outputExpression = GenerateNumberExpression(FieldName.Number, number.Low.Value);
+    }
+
+    void ISearchValueVisitor.Visit(QuantitySearchValue quantity)
+    {
+        EnsureArg.IsNotNull(quantity, nameof(quantity));
+
+        if (_modifier != null) ThrowModifierNotSupported();
+
+        var expressions = new List<Expression>(3);
+
+        if (!string.IsNullOrWhiteSpace(quantity.System))
+            expressions.Add(
+                Expression.StringEquals(FieldName.QuantitySystem, _componentIndex, quantity.System, false));
+
+        if (!string.IsNullOrWhiteSpace(quantity.Code))
+            expressions.Add(
+                Expression.StringEquals(FieldName.QuantityCode, _componentIndex, quantity.Code, false));
+
+        Debug.Assert(quantity.Low.HasValue && quantity.Low == quantity.High, "quantity low and high should be the same and not null");
+        expressions.Add(GenerateNumberExpression(FieldName.Quantity, quantity.Low.Value));
+
+        if (expressions.Count == 1)
+            _outputExpression = expressions[0];
+        else
+            _outputExpression = Expression.And(expressions.ToArray());
+    }
+
+    void ISearchValueVisitor.Visit(ReferenceSearchValue reference)
+    {
+        EnsureArg.IsNotNull(reference, nameof(reference));
+
+        if (_modifier != null && _modifier.SearchModifierCode != SearchModifierCode.Type) ThrowModifierNotSupported();
+
+        EnsureOnlyEqualComparatorIsSupported();
+
+        if (reference.BaseUri != null)
+            _outputExpression = Expression.And(
+                Expression.StringEquals(FieldName.ReferenceBaseUri, _componentIndex, reference.BaseUri.ToString(), false),
+                Expression.StringEquals(FieldName.ReferenceResourceType, _componentIndex, reference.ResourceType, false),
+                Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false));
+        else if (reference.ResourceType == null)
+            _outputExpression = Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false);
+        else if (reference.Kind == ReferenceKind.Internal)
+            _outputExpression = Expression.And(
+                Expression.Missing(FieldName.ReferenceBaseUri, _componentIndex),
+                Expression.StringEquals(FieldName.ReferenceResourceType, _componentIndex, reference.ResourceType, false),
+                Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false));
+        else
+            _outputExpression = Expression.And(
+                Expression.StringEquals(FieldName.ReferenceResourceType, _componentIndex, reference.ResourceType, false),
+                Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false));
+    }
+
+    void ISearchValueVisitor.Visit(StringSearchValue s)
+    {
+        EnsureArg.IsNotNull(s, nameof(s));
+
+        EnsureOnlyEqualComparatorIsSupported();
+
+        if (_modifier == null)
+            _outputExpression = Expression.StartsWith(FieldName.String, _componentIndex, s.String, true);
+        else if (_modifier.SearchModifierCode == SearchModifierCode.Exact)
+            _outputExpression = Expression.StringEquals(FieldName.String, _componentIndex, s.String, false);
+        else if (_modifier.SearchModifierCode == SearchModifierCode.Contains)
+            _outputExpression = Expression.Contains(FieldName.String, _componentIndex, s.String, true);
+        else
+            ThrowModifierNotSupported();
+    }
+
+    void ISearchValueVisitor.Visit(TokenSearchValue token)
+    {
+        EnsureArg.IsNotNull(token, nameof(token));
+
+        EnsureOnlyEqualComparatorIsSupported();
+
+        if (_modifier == null)
+            _outputExpression = BuildEqualityExpression();
+        else if (_modifier.SearchModifierCode == SearchModifierCode.Not)
+            _outputExpression = Expression.Not(BuildEqualityExpression());
+        else if (_modifier.SearchModifierCode == SearchModifierCode.Above ||
+                 _modifier.SearchModifierCode == SearchModifierCode.Below ||
+                 _modifier.SearchModifierCode == SearchModifierCode.In ||
+                 _modifier.SearchModifierCode == SearchModifierCode.NotIn)
+            ThrowModifierNotSupported();
+        else
+            ThrowModifierNotSupported();
+
+        Expression BuildEqualityExpression()
+        {
+            if (token.System == null)
+                return Expression.StringEquals(FieldName.TokenCode, _componentIndex, token.Code, false);
+            else if (token.System.Length == 0)
+                return Expression.And(
+                    Expression.Missing(FieldName.TokenSystem, _componentIndex),
+                    Expression.StringEquals(FieldName.TokenCode, _componentIndex, token.Code, false));
+            else if (string.IsNullOrWhiteSpace(token.Code))
+                return Expression.StringEquals(FieldName.TokenSystem, _componentIndex, token.System, false);
+            else
+                return Expression.And(
+                    Expression.StringEquals(FieldName.TokenSystem, _componentIndex, token.System, false),
+                    Expression.StringEquals(FieldName.TokenCode, _componentIndex, token.Code, false));
+        }
+    }
+
+    void ISearchValueVisitor.Visit(OfTypeTokenSearchValue ofTypeToken)
+    {
+        EnsureArg.IsNotNull(ofTypeToken, nameof(ofTypeToken));
+
+        EnsureOnlyEqualComparatorIsSupported();
+
+        var expressions = new List<Expression>();
+
+        if (ofTypeToken.TypeSystem != null)
+        {
+            expressions.Add(Expression.StringEquals(FieldName.IdentifierTypeSystem, _componentIndex, ofTypeToken.TypeSystem, false));
+        }
+
+        expressions.Add(Expression.StringEquals(FieldName.IdentifierTypeCode, _componentIndex, ofTypeToken.TypeCode, false));
+        expressions.Add(Expression.StringEquals(FieldName.TokenCode, _componentIndex, ofTypeToken.IdentifierValue, false));
+
+        _outputExpression = Expression.And(expressions.ToArray());
+    }
+
+    void ISearchValueVisitor.Visit(UriSearchValue uri)
+    {
+        EnsureArg.IsNotNull(uri, nameof(uri));
+
+        switch (_modifier?.SearchModifierCode)
+        {
+            case null:
+                _outputExpression = BuildCanonicalExpression(uri);
+                break;
+            case SearchModifierCode.Above:
+                _outputExpression = Expression.And(
+                    Expression.LeftSideStartsWith(FieldName.Uri, _componentIndex, uri.Uri, false),
+                    Expression.NotStartsWith(FieldName.Uri, _componentIndex, KnownUriSchemes.Urn, false));
+                break;
+            case SearchModifierCode.Below:
+                _outputExpression = Expression.StartsWith(FieldName.Uri, _componentIndex, uri.Uri, false);
+                break;
+            default:
+                ThrowModifierNotSupported();
+                break;
+        }
+
+        Expression BuildCanonicalExpression(UriSearchValue uriValue)
+        {
+            var expressions = new List<Expression>
+            {
+                Expression.StringEquals(FieldName.Uri, _componentIndex, uriValue.Uri, false)
+            };
+
+            if (!string.IsNullOrWhiteSpace(uriValue.Version))
+            {
+                expressions.Add(Expression.StringEquals(FieldName.UriVersion, _componentIndex, uriValue.Version, false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(uriValue.Fragment))
+            {
+                expressions.Add(Expression.StringEquals(FieldName.UriFragment, _componentIndex, uriValue.Fragment, false));
+            }
+
+            if (expressions.Count == 1)
+                return expressions[0];
+            else
+                return Expression.And(expressions.ToArray());
+        }
+    }
+
+    public Expression Build(
+        string searchParameterName,
+        SearchModifier modifier,
+        SearchComparator comparator,
+        int? componentIndex,
+        ISearchValue searchValue)
+    {
+        EnsureArg.IsNotNullOrWhiteSpace(searchParameterName, nameof(searchParameterName));
+        Debug.Assert(
+            Enum.IsDefined(typeof(SearchComparator), comparator),
+            "Invalid comparator.");
+        EnsureArg.IsNotNull(searchValue, nameof(searchValue));
+
+        _searchParameterName = searchParameterName;
+        _modifier = modifier;
+        _comparator = comparator;
+        _componentIndex = componentIndex;
+
+        searchValue.AcceptVisitor(this);
+
+        return _outputExpression;
+    }
+
+    private void EnsureOnlyEqualComparatorIsSupported()
+    {
+        if (_comparator != SearchComparator.Eq) throw new InvalidSearchOperationException(Resources.OnlyEqualComparatorIsSupported);
+    }
+
+    private void ThrowModifierNotSupported()
+    {
+        throw new InvalidSearchOperationException(
+            string.Format(Resources.ModifierNotSupported, _modifier, _searchParameterName));
+    }
+
+    private void ThrowComparatorNotSupported()
+    {
+        throw new InvalidSearchOperationException(
+            string.Format(Resources.ComparatorNotSupported, _comparator, _searchParameterName));
+    }
+
+    private Expression GenerateNumberExpression(FieldName fieldName, decimal number)
+    {
+        decimal modifierDecimal = number.GetPrescisionModifier();
+
+        decimal lowerBound = number - modifierDecimal;
+        decimal upperBound = number + modifierDecimal;
+
+        switch (_comparator)
+        {
+            case SearchComparator.Ap:
+                decimal approximateModifier = Math.Abs(number * ApproximateMultiplier);
+                lowerBound -= approximateModifier;
+                upperBound += approximateModifier;
+                goto case SearchComparator.Eq;
+            case SearchComparator.Eq:
+                return Expression.And(
+                    Expression.GreaterThanOrEqual(fieldName, _componentIndex, lowerBound),
+                    Expression.LessThanOrEqual(fieldName, _componentIndex, upperBound));
+            case SearchComparator.Ne:
+                return Expression.Or(
+                    Expression.LessThan(fieldName, _componentIndex, lowerBound),
+                    Expression.GreaterThan(fieldName, _componentIndex, upperBound));
+            case SearchComparator.Ge:
+                return Expression.GreaterThanOrEqual(fieldName, _componentIndex, number);
+            case SearchComparator.Gt:
+            case SearchComparator.Sa:
+                return Expression.GreaterThan(fieldName, _componentIndex, number);
+            case SearchComparator.Le:
+                return Expression.LessThanOrEqual(fieldName, _componentIndex, number);
+            case SearchComparator.Lt:
+            case SearchComparator.Eb:
+                return Expression.LessThan(fieldName, _componentIndex, number);
+            default:
+                ThrowComparatorNotSupported();
+                break;
+        }
+
+        return null;
+    }
+}
