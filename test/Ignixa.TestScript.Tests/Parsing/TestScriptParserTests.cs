@@ -790,4 +790,229 @@ public class TestScriptParserTests
             && e.Path.Contains("variable[0]")
             && e.Message.Contains("name"));
     }
+
+    [Fact]
+    public void GivenTwoAssertsWithSameAnyOfGroup_WhenParsing_ThenBothCarryTheGroupId()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"OrGroup","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone","warningOnly":true}},
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"notFound","warningOnly":true}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var actions = result.Value!.Tests[0].Actions;
+        actions[0].ShouldBeOfType<AssertExpression>().AnyOfGroupId.ShouldBe("g1");
+        actions[1].ShouldBeOfType<AssertExpression>().AnyOfGroupId.ShouldBe("g1");
+    }
+
+    [Fact]
+    public void GivenAnyOfGroupWithOnlyOneMember_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"OrGroup","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("at least 2"));
+    }
+
+    [Fact]
+    public void GivenAnyOfGroupMembersWithDifferentSourceId_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"OrGroup","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{"sourceId":"r1","extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone"}},
+                {"assert":{"sourceId":"r2","extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"notFound"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("different sourceId"));
+    }
+
+    [Fact]
+    public void GivenAnyOfGroupMembersWithDifferentDirection_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"OrGroup","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{"direction":"request","extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "requestMethod":"GET"}},
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"notFound"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("direction"));
+    }
+
+    [Fact]
+    public void GivenAnyOfGroupInSetup_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"OrGroup","status":"active",
+              "setup":{"action":[
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone"}},
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"notFound"}}
+              ]},
+              "test":[{"name":"t","action":[{"assert":{"response":"okay"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("only supported within test actions"));
+    }
+
+    [Fact]
+    public void GivenAssertionWhenResponseStatusExtension_WhenParsing_ThenPopulatesCondition()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"Conditional","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{
+                  "sourceId":"readback-response",
+                  "extension":[
+                    {"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"},
+                    {"url":"http://ignixa.io/testscript/assertionWhenResponseStatus","extension":[
+                      {"url":"sourceId","valueString":"delete-response"},
+                      {"url":"status","valueInteger":202}
+                    ]}
+                  ],
+                  "responseCode":"200"}},
+                {"assert":{"sourceId":"readback-response",
+                  "extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"notFound"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var conditional = result.Value!.Tests[0].Actions[0].ShouldBeOfType<AssertExpression>();
+        conditional.WhenResponseStatus.ShouldNotBeNull();
+        conditional.WhenResponseStatus!.SourceId.ShouldBe("delete-response");
+        conditional.WhenResponseStatus.Statuses.ShouldBe([202]);
+    }
+
+    [Fact]
+    public void GivenAssertionWhenResponseStatusWithRepeatedStatusChildren_WhenParsing_ThenAllStatusesRecorded()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"Conditional","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{
+                  "extension":[
+                    {"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"},
+                    {"url":"http://ignixa.io/testscript/assertionWhenResponseStatus","extension":[
+                      {"url":"sourceId","valueString":"delete-response"},
+                      {"url":"status","valueInteger":200},
+                      {"url":"status","valueInteger":202},
+                      {"url":"status","valueInteger":204}
+                    ]}
+                  ],
+                  "response":"okay"}},
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].Actions[0].ShouldBeOfType<AssertExpression>()
+            .WhenResponseStatus!.Statuses.ShouldBe([200, 202, 204]);
+    }
+
+    [Fact]
+    public void GivenAssertionWhenResponseStatusWithoutSourceId_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"Conditional","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{
+                  "extension":[
+                    {"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"},
+                    {"url":"http://ignixa.io/testscript/assertionWhenResponseStatus","extension":[
+                      {"url":"status","valueInteger":202}
+                    ]}
+                  ],
+                  "response":"okay"}},
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("sourceId"));
+    }
+
+    [Fact]
+    public void GivenAssertionWhenResponseStatusWithOutOfRangeStatus_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"Conditional","status":"active",
+              "test":[{"name":"t","action":[
+                {"assert":{
+                  "extension":[
+                    {"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"},
+                    {"url":"http://ignixa.io/testscript/assertionWhenResponseStatus","extension":[
+                      {"url":"sourceId","valueString":"delete-response"},
+                      {"url":"status","valueInteger":999}
+                    ]}
+                  ],
+                  "response":"okay"}},
+                {"assert":{"extension":[{"url":"http://ignixa.io/testscript/assertionAnyOfGroup","valueString":"g1"}],
+                  "response":"gone"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("100") && e.Message.Contains("599"));
+    }
 }

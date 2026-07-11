@@ -53,6 +53,7 @@ public static class TestScriptParser
         var variables = ParseVariables(obj["variable"]?.AsArray(), errors);
         var profiles = ParseProfiles(obj["profile"]?.AsArray(), errors);
         var setup = ParseSetupActions(obj["setup"]?["action"]?.AsArray(), errors);
+        ValidateNoAssertionGroupsOutsideTests(setup, "setup", errors);
         var tests = ParseTests(obj["test"]?.AsArray(), errors);
         var teardown = ParseTeardownActions(obj["teardown"]?["action"]?.AsArray(), errors);
 
@@ -220,11 +221,14 @@ public static class TestScriptParser
 
             var extensions = test["extension"]?.AsArray();
             var name = JsonFieldReader.GetString(test, "name", path, errors) ?? "Unnamed";
+            var actions = ParseActions(test["action"]?.AsArray(), path, errors);
+            ValidateAssertionGroups(actions, path, errors);
+
             result.Add(new TestPhaseDefinition
             {
                 Name = name,
                 Description = JsonFieldReader.GetString(test, "description", path, errors),
-                Actions = ParseActions(test["action"]?.AsArray(), path, errors),
+                Actions = actions,
                 Parameters = ParseParametrize(extensions, name, errors),
                 FhirVersions = ParseFhirVersions(extensions),
                 RequiresCapability = ParseRequiresCapability(extensions)
@@ -235,6 +239,8 @@ public static class TestScriptParser
 
     private const string ParametrizeUrl = "http://ignixa.io/testscript/parametrize";
     private const string FhirVersionsUrl = "http://ignixa.io/testscript/fhirVersions";
+    private const string AssertionAnyOfGroupUrl = "http://ignixa.io/testscript/assertionAnyOfGroup";
+    private const string AssertionWhenResponseStatusUrl = "http://ignixa.io/testscript/assertionWhenResponseStatus";
     private const string RequiresCapabilityUrl = "http://ignixa.io/testscript/requiresCapability";
 
     private static string? ParseRequiresCapability(JsonArray? extensions)
@@ -417,6 +423,7 @@ public static class TestScriptParser
     {
         var operatorVal = ParseOperator(JsonFieldReader.GetString(a, "operator", path, errors), path, errors);
         var criteria = BuildAssertCriteria(a, operatorVal, path, errors);
+        var (anyOfGroupId, whenResponseStatus) = ParseAssertionAlternativeExtensions(a["extension"]?.AsArray(), path, errors);
 
         return new AssertExpression
         {
@@ -425,8 +432,122 @@ public static class TestScriptParser
             WarningOnly = JsonFieldReader.GetBool(a, "warningOnly", path, errors) ?? false,
             Label = JsonFieldReader.GetString(a, "label", path, errors),
             Description = JsonFieldReader.GetString(a, "description", path, errors),
-            Direction = ParseDirection(JsonFieldReader.GetString(a, "direction", path, errors))
+            Direction = ParseDirection(JsonFieldReader.GetString(a, "direction", path, errors)),
+            AnyOfGroupId = anyOfGroupId,
+            WhenResponseStatus = whenResponseStatus
         };
+    }
+
+    private static (string? AnyOfGroupId, ResponseStatusCondition? WhenResponseStatus) ParseAssertionAlternativeExtensions(
+        JsonArray? extensions, string path, List<ParseError> errors)
+    {
+        if (extensions is null) return (null, null);
+
+        string? groupId = null;
+        ResponseStatusCondition? condition = null;
+        var sawCondition = false;
+
+        foreach (var ext in extensions)
+        {
+            if (ext is not JsonObject obj) continue;
+            var url = obj["url"]?.GetValue<string>();
+
+            if (url == AssertionAnyOfGroupUrl)
+            {
+                var value = obj["valueString"]?.GetValue<string>();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    errors.Add(new ParseError(ParseSeverity.Error,
+                        "assertionAnyOfGroup extension must have a non-empty valueString group identifier", path));
+                    continue;
+                }
+                if (groupId is not null && groupId != value)
+                {
+                    errors.Add(new ParseError(ParseSeverity.Error,
+                        $"Assert has conflicting assertionAnyOfGroup values '{groupId}' and '{value}'", path));
+                    continue;
+                }
+                groupId = value;
+            }
+            else if (url == AssertionWhenResponseStatusUrl)
+            {
+                if (sawCondition)
+                {
+                    errors.Add(new ParseError(ParseSeverity.Error,
+                        "Assert has more than one assertionWhenResponseStatus extension", path));
+                    continue;
+                }
+                sawCondition = true;
+                condition = ParseResponseStatusCondition(obj, path, errors);
+            }
+        }
+
+        return (groupId, condition);
+    }
+
+    private static ResponseStatusCondition? ParseResponseStatusCondition(JsonObject ext, string path, List<ParseError> errors)
+    {
+        var children = ext["extension"]?.AsArray();
+        if (children is null)
+        {
+            errors.Add(new ParseError(ParseSeverity.Error,
+                "assertionWhenResponseStatus extension must declare sourceId and status children", path));
+            return null;
+        }
+
+        string? sourceId = null;
+        var statuses = new List<int>();
+
+        foreach (var child in children)
+        {
+            if (child is not JsonObject c) continue;
+            var childUrl = c["url"]?.GetValue<string>();
+
+            if (childUrl == "sourceId")
+            {
+                if (sourceId is not null)
+                {
+                    errors.Add(new ParseError(ParseSeverity.Error,
+                        "assertionWhenResponseStatus must declare exactly one sourceId child", path));
+                    continue;
+                }
+                sourceId = c["valueString"]?.GetValue<string>();
+            }
+            else if (childUrl == "status")
+            {
+                if (c["valueInteger"] is JsonValue v && v.TryGetValue<int>(out var status))
+                {
+                    if (status is < 100 or > 599)
+                    {
+                        errors.Add(new ParseError(ParseSeverity.Error,
+                            $"assertionWhenResponseStatus status {status} is outside the valid HTTP status range 100-599", path));
+                        continue;
+                    }
+                    statuses.Add(status);
+                }
+                else
+                {
+                    errors.Add(new ParseError(ParseSeverity.Error,
+                        "assertionWhenResponseStatus status child must declare valueInteger", path));
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            errors.Add(new ParseError(ParseSeverity.Error,
+                "assertionWhenResponseStatus must declare a non-empty sourceId", path));
+            return null;
+        }
+
+        if (statuses.Count == 0)
+        {
+            errors.Add(new ParseError(ParseSeverity.Error,
+                "assertionWhenResponseStatus must declare at least one status", path));
+            return null;
+        }
+
+        return new ResponseStatusCondition(sourceId, statuses);
     }
 
     private static readonly string[] KnownCriteriaFields =
@@ -543,6 +664,47 @@ public static class TestScriptParser
                 errors.Add(new ParseError(ParseSeverity.Error,
                     $"Unknown assert operator '{op}'{suffix}", $"{path}.operator"));
                 return null;
+        }
+    }
+
+    private static void ValidateAssertionGroups(IReadOnlyList<ActionExpression> actions, string testPath, List<ParseError> errors)
+    {
+        var groups = actions.OfType<AssertExpression>()
+            .Where(a => a.AnyOfGroupId is not null)
+            .GroupBy(a => a.AnyOfGroupId!, StringComparer.Ordinal);
+
+        foreach (var group in groups)
+        {
+            var members = group.ToList();
+            if (members.Count < 2)
+            {
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    $"assertionAnyOfGroup '{group.Key}' in {testPath} has {members.Count} member(s); at least 2 are required", testPath));
+                continue;
+            }
+
+            var sourceIds = members.Select(m => m.SourceId).Distinct(StringComparer.Ordinal).ToList();
+            if (sourceIds.Count > 1)
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    $"assertionAnyOfGroup '{group.Key}' in {testPath} has members targeting different sourceId " +
+                    $"values ({string.Join(", ", sourceIds.Select(s => s ?? "(last response)"))}); all members must target the same response",
+                    testPath));
+
+            var directions = members.Select(m => m.Direction).Distinct().ToList();
+            if (directions.Count > 1)
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    $"assertionAnyOfGroup '{group.Key}' in {testPath} mixes request and response direction; all members must use the same direction",
+                    testPath));
+        }
+    }
+
+    private static void ValidateNoAssertionGroupsOutsideTests(IReadOnlyList<ActionExpression> actions, string scopeName, List<ParseError> errors)
+    {
+        foreach (var assertion in actions.OfType<AssertExpression>())
+        {
+            if (assertion.AnyOfGroupId is not null)
+                errors.Add(new ParseError(ParseSeverity.Error,
+                    $"assertionAnyOfGroup is only supported within test actions, not {scopeName}", scopeName));
         }
     }
 
