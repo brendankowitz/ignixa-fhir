@@ -31,7 +31,7 @@ public class UnknownPropertyCheckTests
             ""name"": [{""family"": ""Doe""}]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "gender", "birthDate" };
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -84,7 +84,7 @@ public class UnknownPropertyCheckTests
             }]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name" };
+        var allowedProperties = new[] { "active", "name", "extension" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -93,7 +93,7 @@ public class UnknownPropertyCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid); // extension is always allowed
+        Assert.True(result.IsValid); // extension is allowed because it's in the StructureDefinition's own element list
         Assert.Empty(result.Issues);
     }
 
@@ -109,7 +109,7 @@ public class UnknownPropertyCheckTests
             }]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name" };
+        var allowedProperties = new[] { "active", "name", "modifierExtension" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -118,7 +118,7 @@ public class UnknownPropertyCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid); // modifierExtension is always allowed
+        Assert.True(result.IsValid); // modifierExtension is allowed because it's in the StructureDefinition's own element list
         Assert.Empty(result.Issues);
     }
 
@@ -141,7 +141,8 @@ public class UnknownPropertyCheckTests
             ""contained"": []
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name" };
+        // A DomainResource's own StructureDefinition includes id/meta/implicitRules/language/text/contained.
+        var allowedProperties = new[] { "id", "meta", "implicitRules", "language", "text", "contained", "active", "name" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -150,7 +151,7 @@ public class UnknownPropertyCheckTests
         var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
-        Assert.True(result.IsValid); // all universal properties allowed
+        Assert.True(result.IsValid); // all universal properties allowed because they're in the DomainResource's own element list
         Assert.Empty(result.Issues);
     }
 
@@ -169,7 +170,7 @@ public class UnknownPropertyCheckTests
             ""modifierExtension"": []
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "birthDate", "gender" };
+        var allowedProperties = new[] { "id", "meta", "active", "name", "birthDate", "gender", "extension", "modifierExtension" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -196,7 +197,7 @@ public class UnknownPropertyCheckTests
             ""unknownField"": ""value""
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "gender", "birthDate" };
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -223,7 +224,7 @@ public class UnknownPropertyCheckTests
             }]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "gender", "birthDate" };
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -248,7 +249,7 @@ public class UnknownPropertyCheckTests
             }
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "gender", "birthDate" };
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -275,7 +276,7 @@ public class UnknownPropertyCheckTests
             ""unknownField3"": ""value3""
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "gender", "birthDate" };
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -315,6 +316,79 @@ public class UnknownPropertyCheckTests
         // Assert
         Assert.True(result.IsValid); // _birthDate is allowed because birthDate is allowed
         Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenPatientWithNullValuedUnknownProperty_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - GH #323: a null-valued unknown member is dropped by JsonNodeSourceNode before
+        // it ever becomes an IElement child, so it must be recovered from the raw JSON directly.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""p1"",
+            ""bogus"": null
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
+        var check = new UnknownPropertyCheck(allowedProperties);
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "unknown-property" && i.Message.Contains("bogus"));
+    }
+
+    [Fact]
+    public void GivenNullValuedAllowedProperty_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - the null-recovery path must not flag a property that's actually allowed.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""p1"",
+            ""active"": null
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
+        var check = new UnknownPropertyCheck(allowedProperties);
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenUnknownPropertyWithNullValuedShadow_WhenValidating_ThenReturnsSingleError()
+    {
+        // Arrange - an unknown property carrying a null-valued shadow (e.g. a primitive-extension
+        // placeholder) is one bad element under two spellings ("bogus" and "_bogus"), not two.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""p1"",
+            ""bogus"": ""value"",
+            ""_bogus"": null
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
+        var check = new UnknownPropertyCheck(allowedProperties);
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Single(result.Issues);
+        Assert.Contains("bogus", result.Issues[0].Message);
     }
 
     [Fact]
@@ -369,9 +443,11 @@ public class UnknownPropertyCheckTests
     }
 
     [Fact]
-    public void GivenEmptyAllowedList_WhenValidating_ThenAllNonUniversalPropertiesFail()
+    public void GivenEmptyAllowedList_WhenValidating_ThenAllPropertiesExceptResourceTypeFail()
     {
-        // Arrange
+        // Arrange - "resourceType" is the only property this check tolerates unconditionally (it's
+        // the JSON serialization discriminator, not a FHIR element); everything else, including base
+        // Resource properties like "id", must come from the caller-supplied allowed list.
         var json = JsonNode.Parse(@"{
             ""resourceType"": ""Patient"",
             ""id"": ""123"",
@@ -388,7 +464,8 @@ public class UnknownPropertyCheckTests
 
         // Assert
         Assert.False(result.IsValid);
-        Assert.Single(result.Issues);
+        Assert.Equal(2, result.Issues.Count);
+        Assert.Contains(result.Issues, i => i.Code == "unknown-property" && i.Message.Contains("id"));
         Assert.Contains(result.Issues, i => i.Code == "unknown-property" && i.Message.Contains("active"));
     }
 
@@ -433,7 +510,7 @@ public class UnknownPropertyCheckTests
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
         // Include "value[x]" as a choice type element
-        var allowedProperties = new[] { "status", "code", "subject", "value[x]", "effective[x]" };
+        var allowedProperties = new[] { "id", "status", "code", "subject", "value[x]", "effective[x]" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
@@ -457,7 +534,7 @@ public class UnknownPropertyCheckTests
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
         // Include "effective[x]" as a choice type element
-        var allowedProperties = new[] { "status", "code", "subject", "value[x]", "effective[x]" };
+        var allowedProperties = new[] { "id", "status", "code", "subject", "value[x]", "effective[x]" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
