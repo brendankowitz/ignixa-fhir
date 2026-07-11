@@ -7,11 +7,12 @@
 
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Expressions.Parsers.Syntax;
+using Ignixa.Search.Indexing;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
 
-public class SearchKeyGrammarTests
+public class SearchKeySyntaxParserTests
 {
     [Theory]
     [InlineData("name", "name", null)]
@@ -22,7 +23,7 @@ public class SearchKeyGrammarTests
         string expectedName,
         string? expectedModifier)
     {
-        var syntax = SearchKeyGrammar.ParseParameter(key);
+        var syntax = SearchKeySyntaxParser.ParseParameter(key);
 
         var parameter = syntax.ShouldBeOfType<ParameterKeySyntax>();
         parameter.Name.ShouldBe(expectedName);
@@ -38,7 +39,7 @@ public class SearchKeyGrammarTests
         string? expectedTargetResourceType,
         string expectedNextName)
     {
-        var syntax = SearchKeyGrammar.ParseParameter(key);
+        var syntax = SearchKeySyntaxParser.ParseParameter(key);
 
         var chain = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
         chain.ReferenceName.ShouldBe(expectedReferenceName);
@@ -52,7 +53,7 @@ public class SearchKeyGrammarTests
     [Fact]
     public void GivenReverseKey_WhenParsing_ThenReturnsReverseChainKeySyntax()
     {
-        var syntax = SearchKeyGrammar.ParseParameter("_has:Observation:subject:code");
+        var syntax = SearchKeySyntaxParser.ParseParameter("_has:Observation:subject:code");
 
         var chain = syntax.ShouldBeOfType<ReverseChainKeySyntax>();
         chain.SourceResourceType.ShouldBe("Observation");
@@ -64,9 +65,45 @@ public class SearchKeyGrammarTests
     }
 
     [Fact]
+    public void GivenReverseLikeForwardChain_WhenParsing_ThenBacktracksToOrdinaryForwardSyntax()
+    {
+        var syntax = SearchKeySyntaxParser.ParseParameter("_has:foo.bar:baz.qux:quux");
+
+        var outer = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
+        outer.ReferenceName.ShouldBe("_has");
+        outer.TargetResourceType.ShouldBe("foo");
+
+        var next = outer.Next.ShouldBeOfType<ForwardChainKeySyntax>();
+        next.ReferenceName.ShouldBe("bar");
+        next.TargetResourceType.ShouldBe("baz");
+
+        var terminal = next.Next.ShouldBeOfType<ParameterKeySyntax>();
+        terminal.Name.ShouldBe("qux");
+        terminal.Modifier.ShouldBe("quux");
+    }
+
+    [Fact]
+    public void GivenRecursiveReverseKey_WhenParsing_ThenReturnsNestedReverseChainKeySyntax()
+    {
+        var syntax = SearchKeySyntaxParser.ParseParameter("_has:Observation:subject:_has:Group:member:_tag");
+
+        var outer = syntax.ShouldBeOfType<ReverseChainKeySyntax>();
+        outer.SourceResourceType.ShouldBe("Observation");
+        outer.ReferenceName.ShouldBe("subject");
+
+        var next = outer.Next.ShouldBeOfType<ReverseChainKeySyntax>();
+        next.SourceResourceType.ShouldBe("Group");
+        next.ReferenceName.ShouldBe("member");
+
+        var terminal = next.Next.ShouldBeOfType<ParameterKeySyntax>();
+        terminal.Name.ShouldBe("_tag");
+        terminal.Modifier.ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenMixedChain_WhenParsing_ThenReturnsNestedForwardAndReverseChains()
     {
-        var syntax = SearchKeyGrammar.ParseParameter("patient:Patient._has:Group:member:_tag");
+        var syntax = SearchKeySyntaxParser.ParseParameter("patient:Patient._has:Group:member:_tag");
 
         var forward = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
         forward.ReferenceName.ShouldBe("patient");
@@ -79,5 +116,22 @@ public class SearchKeyGrammarTests
         var terminal = reverse.Next.ShouldBeOfType<ParameterKeySyntax>();
         terminal.Name.ShouldBe("_tag");
         terminal.Modifier.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(".name")]
+    [InlineData("patient..name")]
+    [InlineData("name:exact:contains")]
+    [InlineData("_has:Observation:subject")]
+    [InlineData("_has::subject:code")]
+    public void GivenMalformedParameterKey_WhenParsing_ThenThrowsPositionedSyntaxError(string key)
+    {
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchKeySyntaxParser.ParseParameter(key));
+
+        exception.Message.ShouldContain("Malformed search key");
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain("column");
     }
 }
