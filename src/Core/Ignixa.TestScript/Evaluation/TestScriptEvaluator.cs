@@ -334,9 +334,36 @@ public sealed class TestScriptEvaluator(
                         "encodeRequestUrl=false is not supported; URL was encoded"));
 
             request = BuildRequest(expression, context);
-
             context = context.WithRequest(expression.RequestId, request);
+
             var response = await _provider.ExecuteAsync(request, cancellationToken);
+
+            if (expression.WaitFor is { } waitFor)
+            {
+                var attempts = 1;
+                while (response.StatusCode == waitFor.PollingStatusCode && attempts < waitFor.MaxAttempts)
+                {
+                    await Task.Delay(waitFor.IntervalMs, cancellationToken);
+                    response = await _provider.ExecuteAsync(request, cancellationToken);
+                    attempts++;
+                }
+
+                if (response.StatusCode == waitFor.PollingStatusCode)
+                {
+                    context = context.WithResponse(expression.ResponseId, response);
+                    sw.Stop();
+                    context.Recorder.RecordOperationResult(expression.Label, expression.Description,
+                        new OperationOutcome(
+                            false,
+                            response.StatusCode,
+                            ErrorMessage: $"Timed out waiting for job completion after {attempts} attempts (last status: {response.StatusCode})",
+                            Duration: sw.Elapsed,
+                            Request: request,
+                            Response: response));
+                    return context;
+                }
+            }
+
             context = context.WithResponse(expression.ResponseId, response);
 
             sw.Stop();
