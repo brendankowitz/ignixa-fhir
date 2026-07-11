@@ -16,6 +16,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Models;
 using Ignixa.NarrativeGenerator;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
@@ -315,18 +316,18 @@ public class IpsGeneratorService(
                 sectionComponent.Entry.Add(ReferenceJsonNode.FromResourceTypeAndId(resource.ResourceType, resource.Id));
             }
 
-            sectionComponent.Text = new NarrativeJsonNode
+            sectionComponent.Text = new Narrative
             {
-                Status = NarrativeJsonNode.NarrativeStatus.Generated,
+                Status = NarrativeStatus.Generated,
                 Div = GenerateSectionNarrative(section, resources)
             };
         }
         else
         {
             sectionComponent.EmptyReason = CreateEmptyReason();
-            sectionComponent.Text = new NarrativeJsonNode
+            sectionComponent.Text = new Narrative
             {
-                Status = NarrativeJsonNode.NarrativeStatus.Generated,
+                Status = NarrativeStatus.Generated,
                 Div = $"<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>No {section.Title.ToLower(CultureInfo.InvariantCulture)} information available.</p></div>"
             };
         }

@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -399,9 +400,9 @@ public class CompositionJsonNode : ResourceJsonNode
         /// Text summary of the section for human interpretation.
         /// </summary>
         [JsonIgnore]
-        public NarrativeJsonNode? Text
+        public Narrative? Text
         {
-            get => GetComplexProperty<NarrativeJsonNode>("text");
+            get => GetComplexProperty<Narrative>("text");
             set
             {
                 if (value is null)
