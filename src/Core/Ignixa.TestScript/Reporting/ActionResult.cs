@@ -7,4 +7,6 @@ public sealed record ActionResult(
     string? Message = null,
     TimeSpan Duration = default,
     TestActionKind Kind = TestActionKind.Assertion,
-    HttpExchange? Exchange = null);
+    HttpExchange? Exchange = null,
+    string? GroupId = null,
+    IReadOnlyList<AssertionGroupMemberResult>? Members = null);

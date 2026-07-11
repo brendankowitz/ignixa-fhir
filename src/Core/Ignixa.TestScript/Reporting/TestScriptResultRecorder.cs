@@ -57,17 +57,37 @@ public sealed class TestScriptResultRecorder : ITestScriptResultRecorder
         if (!_inPhase)
             throw new InvalidOperationException("RecordAssertionResult called without an open phase. Call BeginPhase first.");
 
-        TestScriptOutcome resultOutcome;
-        if (outcome.IsError)
-            resultOutcome = TestScriptOutcome.Error;
-        else if (outcome.Passed)
-            resultOutcome = TestScriptOutcome.Pass;
-        else if (outcome.WarningOnly)
-            resultOutcome = TestScriptOutcome.Warning;
-        else
-            resultOutcome = TestScriptOutcome.Fail;
+        _currentActions.Add(new ActionResult(label, description, DetermineOutcome(outcome), outcome.Message));
+    }
 
-        _currentActions.Add(new ActionResult(label, description, resultOutcome, outcome.Message));
+    public void RecordAssertionGroupResult(
+        string groupId,
+        string? label,
+        string? description,
+        AssertionOutcome outcome,
+        IReadOnlyList<AssertionGroupMemberResult> members)
+    {
+        if (_isBuilt)
+            throw new InvalidOperationException("Cannot record results after Build() has been called.");
+        if (!_inPhase)
+            throw new InvalidOperationException("RecordAssertionGroupResult called without an open phase. Call BeginPhase first.");
+
+        _currentActions.Add(new ActionResult(
+            label, description, DetermineOutcome(outcome), outcome.Message,
+            GroupId: groupId, Members: members));
+    }
+
+    private static TestScriptOutcome DetermineOutcome(AssertionOutcome outcome)
+    {
+        if (!outcome.Applicable)
+            return TestScriptOutcome.Skip;
+        if (outcome.IsError)
+            return TestScriptOutcome.Error;
+        if (outcome.Passed)
+            return TestScriptOutcome.Pass;
+        if (outcome.WarningOnly)
+            return TestScriptOutcome.Warning;
+        return TestScriptOutcome.Fail;
     }
 
     public void EndPhase()
