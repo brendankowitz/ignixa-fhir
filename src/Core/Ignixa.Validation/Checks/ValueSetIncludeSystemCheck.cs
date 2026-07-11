@@ -16,7 +16,7 @@ namespace Ignixa.Validation.Checks;
 /// must be absolute." Closed-world and terminology-independent — a single raw-JSON walk of the
 /// ValueSet root, so it is registered only for the ValueSet resource type.
 /// </summary>
-public sealed class ValueSetIncludeSystemCheck : IValidationCheck, ISingletonCheck
+public sealed class ValueSetIncludeSystemCheck : IValidationCheck, ISingletonCheck, ICompatibilityConformanceCheck
 {
     /// <inheritdoc />
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)

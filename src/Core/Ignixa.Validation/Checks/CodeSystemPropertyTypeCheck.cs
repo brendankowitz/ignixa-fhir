@@ -17,7 +17,7 @@ namespace Ignixa.Validation.Checks;
 /// only the resource's own property declarations and concept values are consulted; undeclared
 /// properties are ignored here (they draw a separate "unknown property" warning upstream).
 /// </summary>
-public sealed class CodeSystemPropertyTypeCheck : IValidationCheck, ISingletonCheck
+public sealed class CodeSystemPropertyTypeCheck : IValidationCheck, ISingletonCheck, ICompatibilityConformanceCheck
 {
     /// <inheritdoc />
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
