@@ -431,6 +431,199 @@ public class TestScriptParserTests
     }
 
     [Fact]
+    public void GivenTestWithRequiresCapabilityShorthand_WhenParsed_ThenNormalizedSameAsCanonicalExtension()
+    {
+        const string expression = "rest.resource.where(type='Patient').operation.where(name='everything').exists()";
+        var shorthandJson = """
+            {
+              "resourceType":"TestScript",
+              "name":"CapabilityGated",
+              "status":"active",
+              "test":[{
+                "name":"everything op",
+                "requiresCapability":"__EXPR__",
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient","params":"/123/$everything"}}]
+              }]
+            }
+            """.Replace("__EXPR__", expression, StringComparison.Ordinal);
+        var canonicalJson = """
+            {
+              "resourceType":"TestScript",
+              "name":"CapabilityGated",
+              "status":"active",
+              "test":[{
+                "name":"everything op",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"__EXPR__"}],
+                "action":[{"operation":{"type":{"code":"read"},"resource":"Patient","params":"/123/$everything"}}]
+              }]
+            }
+            """.Replace("__EXPR__", expression, StringComparison.Ordinal);
+
+        var shorthandResult = TestScriptParser.Parse(shorthandJson);
+        var canonicalResult = TestScriptParser.Parse(canonicalJson);
+
+        shorthandResult.IsSuccess.ShouldBeTrue();
+        canonicalResult.IsSuccess.ShouldBeTrue();
+        shorthandResult.Value!.Tests[0].RequiresCapability.ShouldBe(expression);
+        shorthandResult.Value.Tests[0].RequiresCapability.ShouldBe(canonicalResult.Value!.Tests[0].RequiresCapability);
+    }
+
+    [Fact]
+    public void GivenTestScriptWithRequiresCapabilityShorthandOnRoot_WhenParsed_ThenSameAsCanonicalExtension()
+    {
+        const string expression = "rest.operation.where(name='reindex').exists()";
+        var shorthandJson = """
+            {
+              "resourceType":"TestScript",
+              "name":"SuiteGated",
+              "status":"active",
+              "requiresCapability":"__EXPR__",
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """.Replace("__EXPR__", expression, StringComparison.Ordinal);
+
+        var result = TestScriptParser.Parse(shorthandJson);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Metadata.RequiresCapability.ShouldBe(expression);
+    }
+
+    [Fact]
+    public void GivenTestWithIdenticalRequiresCapabilityShorthandAndCanonicalExtension_WhenParsed_ThenAccepted()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BothIdentical",
+              "status":"active",
+              "test":[{
+                "name":"t",
+                "requiresCapability":"Patient.exists()",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"Patient.exists()"}],
+                "action":[{"assert":{"expression":"Patient.id.exists()"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Tests[0].RequiresCapability.ShouldBe("Patient.exists()");
+    }
+
+    [Fact]
+    public void GivenTestWithConflictingRequiresCapabilityShorthandAndCanonicalExtension_WhenParsed_ThenFailsWithError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"BothConflicting",
+              "status":"active",
+              "test":[{
+                "name":"t",
+                "requiresCapability":"Patient.exists()",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueString":"Observation.exists()"}],
+                "action":[{"assert":{"expression":"Patient.id.exists()"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Severity == ParseSeverity.Error && e.Message.Contains("conflicting"));
+    }
+
+    [Fact]
+    public void GivenTestScriptWithMalformedRequiresCapabilityShorthand_WhenParsed_ThenFailsWithError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"Malformed",
+              "status":"active",
+              "requiresCapability":123,
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Severity == ParseSeverity.Error && e.Message.Contains("requiresCapability"));
+    }
+
+    [Fact]
+    public void GivenTestScriptWithUnrelatedUnknownProperty_WhenParsed_ThenIgnoredAndParsingSucceeds()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"UnknownProps",
+              "status":"active",
+              "someUnknownRootField":{"anything":true},
+              "test":[{"name":"t","someUnknownTestField":"x","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Metadata.RequiresCapability.ShouldBeNull();
+        result.Value.Tests[0].RequiresCapability.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenExtensionWithNonStringUrlAlongsideCanonicalRequiresCapability_WhenParsed_ThenIgnoredAndCapabilityParsed()
+    {
+        // A malformed, unrelated extension entry with a non-string 'url' must not crash parsing;
+        // it should simply be treated as a non-match while the canonical requiresCapability extension
+        // is still recognized.
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"NonStringUrl",
+              "status":"active",
+              "extension":[
+                {"url":123,"valueString":"irrelevant"},
+                {"url":"http://ignixa.io/testscript/requiresCapability","valueString":"Patient.exists()"}
+              ],
+              "test":[{"name":"t","action":[{"assert":{"expression":"Patient.id.exists()"}}]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Metadata.RequiresCapability.ShouldBe("Patient.exists()");
+    }
+
+    [Fact]
+    public void GivenTestWithShorthandAndCanonicalExtensionUsingWrongValueType_WhenParsed_ThenFailsWithErrorNoDuplicate()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript",
+              "name":"WrongCanonicalType",
+              "status":"active",
+              "test":[{
+                "name":"t",
+                "requiresCapability":"Patient.exists()",
+                "extension":[{"url":"http://ignixa.io/testscript/requiresCapability","valueBoolean":true}],
+                "action":[{"assert":{"expression":"Patient.id.exists()"}}]
+              }]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e =>
+            e.Severity == ParseSeverity.Error &&
+            e.Message.Contains(TestScriptContentNormalizer.RequiresCapabilityUrl, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GivenVariableWithExpression_WhenParsing_ThenCreatesExpressionExtraction()
     {
         var json = """

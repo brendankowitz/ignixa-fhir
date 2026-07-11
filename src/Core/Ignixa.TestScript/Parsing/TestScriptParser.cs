@@ -22,9 +22,20 @@ public static class TestScriptParser
                 new ParseError(ParseSeverity.Error, $"Invalid JSON: {ex.Message}"));
         }
 
-        if (root is not JsonObject obj)
+        if (root is not JsonObject rawObj)
             return ParseResult<TestScriptDefinition>.Failure(
                 new ParseError(ParseSeverity.Error, "Expected JSON object"));
+
+        JsonObject obj;
+        try
+        {
+            obj = TestScriptContentNormalizer.Normalize(rawObj);
+        }
+        catch (TestScriptNormalizationException ex)
+        {
+            return ParseResult<TestScriptDefinition>.Failure(
+                new ParseError(ParseSeverity.Error, ex.Message));
+        }
 
         var errors = new List<ParseError>();
 
@@ -235,7 +246,6 @@ public static class TestScriptParser
 
     private const string ParametrizeUrl = "http://ignixa.io/testscript/parametrize";
     private const string FhirVersionsUrl = "http://ignixa.io/testscript/fhirVersions";
-    private const string RequiresCapabilityUrl = "http://ignixa.io/testscript/requiresCapability";
 
     private static string? ParseRequiresCapability(JsonArray? extensions)
     {
@@ -243,9 +253,13 @@ public static class TestScriptParser
         foreach (var ext in extensions)
         {
             if (ext is not JsonObject obj) continue;
-            if (obj["url"]?.GetValue<string>() != RequiresCapabilityUrl) continue;
+            if (obj["url"] is not JsonValue urlValue || !urlValue.TryGetValue<string>(out var url) ||
+                url != TestScriptContentNormalizer.RequiresCapabilityUrl)
+                continue;
 
-            return obj["valueString"]?.GetValue<string>();
+            return obj["valueString"] is JsonValue valueStringValue && valueStringValue.TryGetValue<string>(out var value)
+                ? value
+                : null;
         }
         return null;
     }

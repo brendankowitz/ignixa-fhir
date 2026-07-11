@@ -4,7 +4,7 @@
 
 Accepted
 
-> `parametrize`, `fhirVersions`, and `fhirfakes` shipped with the TestScript engine and conformance matrix. `requiresCapability` lands with PR #292.
+> `parametrize`, `fhirVersions`, and `fhirfakes` shipped with the TestScript engine and conformance matrix. `requiresCapability` lands with PR #292. Upstream normalization of the recognized `requiresCapability` shorthand (see "Shorthand normalization" below) is part of the follow-up work tracked in #324.
 
 ## Context
 
@@ -80,6 +80,19 @@ No shipped conformance suite uses it yet; worked examples from `test/Ignixa.Test
   "valueString":"rest.operation.where(name='reindex').exists()"}]
 ```
 
+**Shorthand normalization (issue #324 follow-up):** `ignixa-lab` authoring source used a direct
+`requiresCapability` string property instead of the extension form; because parsing is permissive,
+that shorthand was silently inert, and `ignixa-lab` compensated with a host-side
+`TestScriptContentNormalizer` preprocessor. That normalization is now upstream:
+`TestScriptContentNormalizer` (`src/Core/Ignixa.TestScript/Parsing/TestScriptContentNormalizer.cs`) is
+applied automatically by `TestScriptParser.Parse`/`ParseFile` and rewrites `requiresCapability` (root
+and per-`test[]`) into the canonical extension before typed parsing runs. Both forms are accepted only
+when they carry the identical expression; a non-string shorthand value or a shorthand/extension
+disagreement is a parse error (`TestScriptNormalizationException`, surfaced as a
+`ParseSeverity.Error`), and unrelated unrecognized properties still pass through untouched. The
+normalizer is public so hosts with their own JSON pipeline can apply the same rewrite without
+reimplementing it.
+
 Compared point-by-point with native `TestScript.metadata.capability`: `capabilities` (canonical, 1..1) requires authoring a standalone CapabilityStatement per gate and an unspecified conformance-subsumption algorithm; `required`/`validated` are descriptive booleans with no evaluable predicate; `origin`/`destination`/`link` address multi-server topology and documentation, not gating logic; and the backbone exists only at script level. The extension replaces all of that with one inline expression over the live `/metadata` payload, at both granularities.
 
 ### 4. `http://ignixa.io/testscript/fhirfakes` — synthesized fixtures
@@ -141,6 +154,7 @@ Publish a small FHIR package, **`ignixa.fhir.testscript-extensions`** (canonical
 ## References
 
 - Engine: `src/Core/Ignixa.TestScript/Parsing/TestScriptParser.cs`, `src/Core/Ignixa.TestScript/Evaluation/TestScriptEvaluator.cs`
+- Shorthand normalization: `src/Core/Ignixa.TestScript/Parsing/TestScriptContentNormalizer.cs`, `src/Core/Ignixa.TestScript/Parsing/TestScriptNormalizationException.cs`
 - FhirFakes: `src/Core/Ignixa.TestScript.FhirFakes/FhirFakesFixtureProvider.cs`
 - CLI wiring: `tools/Ignixa.ConformanceMatrix.Cli/Commands/RunCommand.cs`
 - Docs: [TestScript Engine](https://brendankowitz.github.io/ignixa-fhir/docs/core-sdk/testscript)

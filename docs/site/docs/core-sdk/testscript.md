@@ -60,6 +60,34 @@ type-mismatched fields all produce `ParseSeverity.Error` entries rather than sil
 semantics. Always check `IsSuccess` and surface `Errors` — a script that fails to parse never reaches
 the evaluator.
 
+### Shorthand Normalization
+
+`TestScriptParser.Parse`/`ParseFile` automatically run `TestScriptContentNormalizer.Normalize` on the
+JSON before typed parsing, rewriting recognized Ignixa authoring shorthands into their canonical
+`http://ignixa.io/testscript/*` extension form. Today the only recognized shorthand is a direct
+`requiresCapability` string property (valid on the `TestScript` root and on each `test[]` entry) as an
+alternative to authoring the `http://ignixa.io/testscript/requiresCapability` extension by hand:
+
+```json
+{ "name": "everything op", "requiresCapability": "rest.resource.where(type='Patient').operation.where(name='everything').exists()" }
+```
+
+normalizes to the same typed `TestPhaseDefinition.RequiresCapability` value as:
+
+```json
+{
+  "name": "everything op",
+  "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').operation.where(name='everything').exists()" }]
+}
+```
+
+Supplying both forms is only valid when they carry the identical expression; a non-string shorthand
+value, or a shorthand that disagrees with an existing canonical extension, is a `ParseSeverity.Error`
+(surfaced as a normalization failure) rather than a silently-ignored or silently-overridden field.
+Unrelated unrecognized properties are left untouched, preserving permissive parsing. The normalizer is
+public (`Ignixa.TestScript.Parsing.TestScriptContentNormalizer`) for hosts that build their own JSON
+pipeline ahead of the parser.
+
 ## Building TestScripts in Code
 
 JSON is only one front-end. `TestScriptEvaluator.ExecuteAsync` takes the `TestScriptDefinition`
