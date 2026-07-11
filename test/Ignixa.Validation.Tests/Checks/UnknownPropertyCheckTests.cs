@@ -329,7 +329,7 @@ public class UnknownPropertyCheckTests
             ""bogus"": null
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var allowedProperties = new[] { "active", "name", "gender", "birthDate" };
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
         var check = new UnknownPropertyCheck(allowedProperties);
         var settings = new ValidationSettings();
         var state = new ValidationState();
