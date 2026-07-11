@@ -5,10 +5,11 @@
 
 using Shouldly;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
@@ -26,7 +27,11 @@ public class ChainedExpressionProcessorTests : TestBase
         _parameterQueryGenerator = new SearchParameterQueryGenerator(
             Context,
             Cache,
-            LoggerFactory.CreateLogger<SearchParameterQueryGenerator>());
+            LoggerFactory.CreateLogger<SearchParameterQueryGenerator>(),
+            new CompositeSearchParameterQueryGenerator(
+                Context,
+                Cache,
+                LoggerFactory.CreateLogger<CompositeSearchParameterQueryGenerator>()));
 
         _processor = new ChainedExpressionProcessor(
             Context,
@@ -50,13 +55,10 @@ public class ChainedExpressionProcessorTests : TestBase
 
         // Create chain expression: Patient?organization.name=Acme
         var targetExpression = new SearchParameterExpression(
-            new SearchParameterInfo("name", SearchParamType.String),
-            new StringExpression(StringOperator.Equals, "Acme", false));
+            new SearchParameterInfo("name", "name", SearchParamType.String),
+            new StringExpression(StringOperator.Equals, FieldName.String, null, "Acme", false));
 
-        var referenceSearchParam = new SearchParameterInfo("organization", SearchParamType.Reference)
-        {
-            TargetResourceTypes = new[] { "Organization" }
-        };
+        var referenceSearchParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, targetResourceTypes: new[] { "Organization" });
 
         var chainedExpression = new ChainedExpression(
             resourceTypes: new[] { "Patient" },
@@ -66,7 +68,7 @@ public class ChainedExpressionProcessorTests : TestBase
             expression: targetExpression);
 
         // Act
-        var result = await _processor.ProcessChainAsync(resourceTypeId: 1, chainedExpression, CancellationToken.None);
+        var result = await _processor.ProcessChainAsync(sourceResourceTypeId: 1, chainedExpression, CancellationToken.None);
         var surrogateIds = await result.ToListAsync();
 
         // Assert
@@ -87,13 +89,10 @@ public class ChainedExpressionProcessorTests : TestBase
 
         // Create chain expression looking for "Acme"
         var targetExpression = new SearchParameterExpression(
-            new SearchParameterInfo("name", SearchParamType.String),
-            new StringExpression(StringOperator.Equals, "Acme", false));
+            new SearchParameterInfo("name", "name", SearchParamType.String),
+            new StringExpression(StringOperator.Equals, FieldName.String, null, "Acme", false));
 
-        var referenceSearchParam = new SearchParameterInfo("organization", SearchParamType.Reference)
-        {
-            TargetResourceTypes = new[] { "Organization" }
-        };
+        var referenceSearchParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, targetResourceTypes: new[] { "Organization" });
 
         var chainedExpression = new ChainedExpression(
             resourceTypes: new[] { "Patient" },
@@ -103,7 +102,7 @@ public class ChainedExpressionProcessorTests : TestBase
             expression: targetExpression);
 
         // Act
-        var result = await _processor.ProcessChainAsync(resourceTypeId: 1, chainedExpression, CancellationToken.None);
+        var result = await _processor.ProcessChainAsync(sourceResourceTypeId: 1, chainedExpression, CancellationToken.None);
         var surrogateIds = await result.ToListAsync();
 
         // Assert
@@ -127,13 +126,10 @@ public class ChainedExpressionProcessorTests : TestBase
 
         // Create reverse chain: Patient?_has:Observation:patient:code=12345
         var targetExpression = new SearchParameterExpression(
-            new SearchParameterInfo("code", SearchParamType.String),
-            new StringExpression(StringOperator.Equals, "12345", false));
+            new SearchParameterInfo("code", "code", SearchParamType.String),
+            new StringExpression(StringOperator.Equals, FieldName.String, null, "12345", false));
 
-        var referenceSearchParam = new SearchParameterInfo("patient", SearchParamType.Reference)
-        {
-            TargetResourceTypes = new[] { "Patient" }
-        };
+        var referenceSearchParam = new SearchParameterInfo("patient", "patient", SearchParamType.Reference, targetResourceTypes: new[] { "Patient" });
 
         var chainedExpression = new ChainedExpression(
             resourceTypes: new[] { "Observation" },
@@ -143,7 +139,7 @@ public class ChainedExpressionProcessorTests : TestBase
             expression: targetExpression);
 
         // Act
-        var result = await _processor.ProcessChainAsync(resourceTypeId: 1, chainedExpression, CancellationToken.None);
+        var result = await _processor.ProcessChainAsync(sourceResourceTypeId: 1, chainedExpression, CancellationToken.None);
         var surrogateIds = await result.ToListAsync();
 
         // Assert
@@ -164,13 +160,10 @@ public class ChainedExpressionProcessorTests : TestBase
 
         // Create reverse chain looking for code "12345"
         var targetExpression = new SearchParameterExpression(
-            new SearchParameterInfo("code", SearchParamType.String),
-            new StringExpression(StringOperator.Equals, "12345", false));
+            new SearchParameterInfo("code", "code", SearchParamType.String),
+            new StringExpression(StringOperator.Equals, FieldName.String, null, "12345", false));
 
-        var referenceSearchParam = new SearchParameterInfo("patient", SearchParamType.Reference)
-        {
-            TargetResourceTypes = new[] { "Patient" }
-        };
+        var referenceSearchParam = new SearchParameterInfo("patient", "patient", SearchParamType.Reference, targetResourceTypes: new[] { "Patient" });
 
         var chainedExpression = new ChainedExpression(
             resourceTypes: new[] { "Observation" },
@@ -180,7 +173,7 @@ public class ChainedExpressionProcessorTests : TestBase
             expression: targetExpression);
 
         // Act
-        var result = await _processor.ProcessChainAsync(resourceTypeId: 1, chainedExpression, CancellationToken.None);
+        var result = await _processor.ProcessChainAsync(sourceResourceTypeId: 1, chainedExpression, CancellationToken.None);
         var surrogateIds = await result.ToListAsync();
 
         // Assert

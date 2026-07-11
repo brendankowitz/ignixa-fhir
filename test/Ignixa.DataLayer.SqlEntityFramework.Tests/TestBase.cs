@@ -6,11 +6,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IO;
 using NSubstitute;
+using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
 
@@ -24,6 +27,7 @@ public abstract class TestBase : IDisposable
     protected IFhirRepository MockRepository { get; private set; }
     protected ILoggerFactory LoggerFactory { get; private set; }
 
+    private readonly GzipResourceCompressor _resourceCompressor;
     private bool _disposed;
 
     protected TestBase()
@@ -37,6 +41,7 @@ public abstract class TestBase : IDisposable
         LoggerFactory = new NullLoggerFactory();
         Cache = new SearchIndexReferenceDataCache(Context, LoggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
         MockRepository = Substitute.For<IFhirRepository>();
+        _resourceCompressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
 
         // Seed common reference data
         SeedReferenceData();
@@ -55,12 +60,12 @@ public abstract class TestBase : IDisposable
 
         // Add common search parameters
         Context.SearchParams.AddRange(
-            new SearchParamEntity { SearchParamId = 1, Uri = "http://hl7.org/fhir/SearchParameter/Patient-name" },
-            new SearchParamEntity { SearchParamId = 2, Uri = "http://hl7.org/fhir/SearchParameter/Patient-organization" },
-            new SearchParamEntity { SearchParamId = 3, Uri = "http://hl7.org/fhir/SearchParameter/Observation-patient" },
-            new SearchParamEntity { SearchParamId = 4, Uri = "http://hl7.org/fhir/SearchParameter/Observation-code" },
-            new SearchParamEntity { SearchParamId = 5, Uri = "http://hl7.org/fhir/SearchParameter/Organization-name" },
-            new SearchParamEntity { SearchParamId = 6, Uri = "http://hl7.org/fhir/SearchParameter/Encounter-subject" }
+            new SearchParamEntity { SearchParamId = 1, Uri = "http://hl7.org/fhir/SearchParameter/Patient-name", Status = "Enabled", LastUpdated = DateTimeOffset.UtcNow },
+            new SearchParamEntity { SearchParamId = 2, Uri = "http://hl7.org/fhir/SearchParameter/Patient-organization", Status = "Enabled", LastUpdated = DateTimeOffset.UtcNow },
+            new SearchParamEntity { SearchParamId = 3, Uri = "http://hl7.org/fhir/SearchParameter/Observation-patient", Status = "Enabled", LastUpdated = DateTimeOffset.UtcNow },
+            new SearchParamEntity { SearchParamId = 4, Uri = "http://hl7.org/fhir/SearchParameter/Observation-code", Status = "Enabled", LastUpdated = DateTimeOffset.UtcNow },
+            new SearchParamEntity { SearchParamId = 5, Uri = "http://hl7.org/fhir/SearchParameter/Organization-name", Status = "Enabled", LastUpdated = DateTimeOffset.UtcNow },
+            new SearchParamEntity { SearchParamId = 6, Uri = "http://hl7.org/fhir/SearchParameter/Encounter-subject", Status = "Enabled", LastUpdated = DateTimeOffset.UtcNow }
         );
 
         Context.SaveChanges();
@@ -72,10 +77,8 @@ public abstract class TestBase : IDisposable
     protected ResourceEntity CreateResource(short resourceTypeId, string resourceId, int version = 1, bool isHistory = false, bool isDeleted = false)
     {
         // Create minimal RawResource JSON
-        var compressor = new Ignixa.DataLayer.SqlEntityFramework.Compression.GzipResourceCompressor();
         var minimalJson = @"{""resourceType"":""Resource"",""id"":""" + resourceId + @"""}";
-        var jsonBytes = System.Text.Encoding.UTF8.GetBytes(minimalJson);
-        var compressedBytes = compressor.CompressBytes(jsonBytes);
+        var compressedBytes = _resourceCompressor.SerializeAndCompress(ResourceJsonNode.Parse(minimalJson));
 
         var resource = new ResourceEntity
         {

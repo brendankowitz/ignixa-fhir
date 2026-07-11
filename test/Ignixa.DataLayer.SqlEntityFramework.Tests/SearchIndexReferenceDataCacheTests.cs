@@ -59,8 +59,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
 
         // Assert: Should lazy-load and return the ID
         result.ShouldBeTrue("lazy-loading should populate cache on miss");
-        resourceTypeId.ShouldBeGreaterThan(0, "loaded ID should be valid");
-        resourceTypeId.ShouldBe(1, "Patient should have ResourceTypeId 1");
+        ((int)resourceTypeId).ShouldBeGreaterThan(0, "loaded ID should be valid");
+        ((int)resourceTypeId).ShouldBe(1, "Patient should have ResourceTypeId 1");
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
 
         // Assert: Should lazy-load and return the ID
         result.ShouldBeTrue("lazy-loading should populate cache on miss");
-        searchParamId.ShouldBeGreaterThan(0, "loaded ID should be valid");
-        searchParamId.ShouldBe(1, "Patient-name should have SearchParamId 1");
+        ((int)searchParamId).ShouldBeGreaterThan(0, "loaded ID should be valid");
+        ((int)searchParamId).ShouldBe(1, "Patient-name should have SearchParamId 1");
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class SearchIndexReferenceDataCacheTests : TestBase
 
         // Assert: Should return false and default value
         result.ShouldBeFalse("non-existent entries should return false");
-        resourceTypeId.ShouldBe(0, "default value should be returned");
+        ((int)resourceTypeId).ShouldBe(0, "default value should be returned");
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class SearchIndexReferenceDataCacheTests : TestBase
 
         // Assert: Should return false and default value
         result.ShouldBeFalse("non-existent entries should return false");
-        searchParamId.ShouldBe(0, "default value should be returned");
+        ((int)searchParamId).ShouldBe(0, "default value should be returned");
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class SearchIndexReferenceDataCacheTests : TestBase
 
         // Assert: Should still return false (sentinel filtered)
         result.ShouldBeFalse("sentinel values should be filtered");
-        id.ShouldBe(0, "default value returned for sentinel");
+        ((int)id).ShouldBe(0, "default value returned for sentinel");
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public class SearchIndexReferenceDataCacheTests : TestBase
 
         // Assert: All threads should get same ID (thread-safe)
         results.ShouldAllBe(id => id > 0, "all threads should get valid ID");
-        results.Distinct().Count.ShouldBe(1, "all threads should get same ID");
+        results.Distinct().Count().ShouldBe(1, "all threads should get same ID");
 
         // Verify only one entry was created in database
         var dbEntries = Context.Systems.Where(s => s.Value == systemUri).ToList();

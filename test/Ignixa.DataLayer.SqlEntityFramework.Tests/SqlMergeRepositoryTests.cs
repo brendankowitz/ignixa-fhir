@@ -13,6 +13,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
 
@@ -61,69 +62,11 @@ public class SqlMergeRepositoryTests : TestBase
         Context.SaveChanges();
     }
 
-    #region Lookup Table Tests
-
-    [Fact]
-    public async Task GetResourceTypeIdMapAsync_ReturnsCorrectMapping()
-    {
-        // Act
-        var result = await _repository.GetResourceTypeIdMapAsync(CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("Patient"));
-        Assert.True(result.ContainsKey("Organization"));
-        Assert.True(result.ContainsKey("Observation"));
-        Assert.Equal(1, result["Patient"]);
-        Assert.Equal(2, result["Organization"]);
-        Assert.Equal(3, result["Observation"]);
-    }
-
-    [Fact]
-    public async Task GetSearchParameterIdMapAsync_ExtractsCodeFromUri()
-    {
-        // Act
-        var result = await _repository.GetSearchParameterIdMapAsync(CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("name"));
-        Assert.True(result.ContainsKey("organization"));
-        Assert.True(result.ContainsKey("patient"));
-        Assert.True(result.ContainsKey("code"));
-        Assert.Equal(1, result["name"]);
-        Assert.Equal(4, result["code"]);
-    }
-
-    [Fact]
-    public async Task GetSystemIdMapAsync_ReturnsSystemUriMapping()
-    {
-        // Act
-        var result = await _repository.GetSystemIdMapAsync(CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("http://loinc.org"));
-        Assert.True(result.ContainsKey("http://snomed.info/sct"));
-        Assert.Equal(1, result["http://loinc.org"]);
-        Assert.Equal(2, result["http://snomed.info/sct"]);
-    }
-
-    [Fact]
-    public async Task GetQuantityCodeIdMapAsync_ReturnsQuantityCodeMapping()
-    {
-        // Act
-        var result = await _repository.GetQuantityCodeIdMapAsync(CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("mg"));
-        Assert.True(result.ContainsKey("kg"));
-        Assert.Equal(1, result["mg"]);
-        Assert.Equal(2, result["kg"]);
-    }
-
-    #endregion
+    // NOTE: GetResourceTypeIdMapAsync/GetSearchParameterIdMapAsync/GetSystemIdMapAsync/GetQuantityCodeIdMapAsync
+    // no longer exist on SqlMergeRepository - ID lookups now happen via SearchIndexReferenceDataCache's
+    // ResourceTypeMappings/SearchParameterMappings/SystemMappings/QuantityCodeMappings properties, which are
+    // covered by SearchIndexReferenceDataCacheTests.cs. The four tests that exercised this capability directly
+    // on SqlMergeRepository were removed rather than rewritten (see task-0b-report.md for details).
 
     #region Integration Tests
 
@@ -136,26 +79,33 @@ public class SqlMergeRepositoryTests : TestBase
         var patient2 = new ResourceJsonNode { ResourceType = "Patient", Id = "p2" };
 
         var wrapper1 = new ResourceWrapper(
-            resourceType: "Patient",
-            resourceId: "p1",
-            resource: patient1,
-            searchIndices: new List<object>(),
-            request: new ResourceRequest("POST", "Patient"),
-            isDeleted: false,
-            versionId: "1",
-            tenantId: null);
+            ResourceType: "Patient",
+            ResourceId: "p1",
+            VersionId: "1",
+            LastModified: DateTimeOffset.UtcNow,
+            Resource: patient1,
+            Request: new ResourceRequest("POST", "Patient"),
+            IsDeleted: false)
+        {
+            SearchIndices = new List<object>(),
+            TenantId = null
+        };
 
         var wrapper2 = new ResourceWrapper(
-            resourceType: "Patient",
-            resourceId: "p2",
-            resource: patient2,
-            searchIndices: new List<object>(),
-            request: new ResourceRequest("POST", "Patient"),
-            isDeleted: false,
-            versionId: "1",
-            tenantId: null);
+            ResourceType: "Patient",
+            ResourceId: "p2",
+            VersionId: "1",
+            LastModified: DateTimeOffset.UtcNow,
+            Resource: patient2,
+            Request: new ResourceRequest("POST", "Patient"),
+            IsDeleted: false)
+        {
+            SearchIndices = new List<object>(),
+            TenantId = null
+        };
 
         var resources = new[] { wrapper1, wrapper2 };
+        var entryIndices = new[] { 0, 1 };
 
         // Act
         // This will fail with actual SQL Server but validates the TVP marshaling logic
@@ -165,9 +115,10 @@ public class SqlMergeRepositoryTests : TestBase
                 transactionId,
                 singleTransaction: true,
                 resources,
+                entryIndices,
                 CancellationToken.None);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No database provider"))
+        catch (InvalidOperationException ex) when (ex.Message.Contains("relational database provider", StringComparison.Ordinal))
         {
             // Expected for in-memory database - this validates structure only
         }
@@ -185,14 +136,17 @@ public class SqlMergeRepositoryTests : TestBase
         var patient = new ResourceJsonNode { ResourceType = "Patient", Id = "p-empty" };
 
         var wrapper = new ResourceWrapper(
-            resourceType: "Patient",
-            resourceId: "p-empty",
-            resource: patient,
-            searchIndices: new List<object>(),  // No search indices - validates empty TVP handling
-            request: new ResourceRequest("POST", "Patient"),
-            isDeleted: false,
-            versionId: "1",
-            tenantId: null);
+            ResourceType: "Patient",
+            ResourceId: "p-empty",
+            VersionId: "1",
+            LastModified: DateTimeOffset.UtcNow,
+            Resource: patient,
+            Request: new ResourceRequest("POST", "Patient"),
+            IsDeleted: false)
+        {
+            SearchIndices = new List<object>(),  // No search indices - validates empty TVP handling
+            TenantId = null
+        };
 
         var resources = new[] { wrapper };
         var entryIndices = new[] { 0 };
@@ -209,7 +163,7 @@ public class SqlMergeRepositoryTests : TestBase
                 entryIndices,
                 CancellationToken.None);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No database provider"))
+        catch (InvalidOperationException ex) when (ex.Message.Contains("relational database provider", StringComparison.Ordinal))
         {
             // Expected for in-memory database - validates structure only
         }

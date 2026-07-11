@@ -5,7 +5,7 @@
 
 using Shouldly;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Search.Expressions;
 using Xunit;
@@ -25,11 +25,11 @@ public class NotReferencedSearchParameterTests : TestBase
         _queryGenerator = new SearchParameterQueryGenerator(
             Context,
             Cache,
-            NullLoggerFactory.Instance.CreateLogger<SearchParameterQueryGenerator>(),
+            LoggerFactory.CreateLogger<SearchParameterQueryGenerator>(),
             new CompositeSearchParameterQueryGenerator(
                 Context,
                 Cache,
-                NullLoggerFactory.Instance.CreateLogger<CompositeSearchParameterQueryGenerator>()));
+                LoggerFactory.CreateLogger<CompositeSearchParameterQueryGenerator>()));
     }
 
     [Fact]
