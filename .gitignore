@@ -367,3 +367,6 @@ claude-kimi.ps1
 
 # Scratch samples/exploration, not part of the shipped solution
 /samples/
+
+# subagent-driven-development scratch (progress ledger, task briefs/reports)
+.superpowers/
