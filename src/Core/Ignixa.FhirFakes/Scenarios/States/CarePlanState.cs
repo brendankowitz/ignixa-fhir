@@ -234,14 +234,14 @@ public sealed class CarePlanState : ScenarioState
         }
 
         // Set addresses (related conditions)
-        // R4: Reference(Condition)[]. R5+: CodeableReference(Condition)[], whose reference value
-        // moves under "reference" - a Reference object, not a bare reference string.
+        // R4/R4B/STU3: Reference(Condition)[]. R5+: CodeableReference(Condition)[], whose reference
+        // value moves under "reference" - a Reference object, not a bare reference string.
         if (!string.IsNullOrEmpty(RelatedConditionAttribute) &&
             context.HasAttribute(RelatedConditionAttribute))
         {
             var conditionId = context.GetAttribute<string>(RelatedConditionAttribute);
             var conditionReference = new JsonObject { ["reference"] = $"Condition/{conditionId}" };
-            var isR5Plus = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R5;
+            var isR5Plus = faker.SchemaProvider.IsR5OrLater();
             node["addresses"] = new JsonArray
             {
                 isR5Plus ? new JsonObject { ["reference"] = conditionReference } : conditionReference

@@ -12,6 +12,9 @@ using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
+using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 using Xunit.Abstractions;
 using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 using Ignixa.Serialization.TestSupport;
@@ -382,7 +385,8 @@ public class R5R6ShapeRegressionTests
                 })
                 .Build();
 
-            var complication = scenario.Procedures[0].MutableNode()["complication"]?[0];
+            var procedureNode = scenario.Procedures[0].MutableNode();
+            var complication = procedureNode["complication"]?[0];
             complication.ShouldNotBeNull($"complication should exist in {schema.Version}");
 
             // R5 changed Procedure.complication from CodeableConcept to CodeableReference: the
@@ -399,6 +403,58 @@ public class R5R6ShapeRegressionTests
                 complication!["text"]?.GetValue<string>()
                     .ShouldBe("Post-operative bleeding", $"complication text should be direct in {schema.Version}");
             }
+
+            AssertNoValidationErrors(procedureNode, schema);
+        }
+    }
+
+    [Fact]
+    public void GivenProcedureWithOutcomeAndFollowUp_WhenGeneratedAcrossAllVersions_ThenUsesVersionCorrectShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing Procedure.outcome/followUp with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddEncounter("Surgery")
+                .AddProcedure(new ProcedureState
+                {
+                    Name = "Outcome_Procedure",
+                    Code = Procedures.CABG,
+                    Outcome = "Successful",
+                    FollowUp = "Return in 2 weeks"
+                })
+                .Build();
+
+            var procedureNode = scenario.Procedures[0].MutableNode();
+            // Pre-R6, outcome is 0..1 (a single object, not an array); followUp has always been 0..*.
+            var outcome = schema.Version >= FhirVersion.R6 ? procedureNode["outcome"]?[0] : procedureNode["outcome"];
+            var followUp = procedureNode["followUp"]?[0];
+            outcome.ShouldNotBeNull($"outcome should exist in {schema.Version}");
+            followUp.ShouldNotBeNull($"followUp should exist in {schema.Version}");
+
+            // R6 changed both Procedure.outcome and Procedure.followUp from CodeableConcept to
+            // CodeableReference: the coded value moves from .text directly to .concept.text. Note
+            // this boundary is R6, unlike Procedure.complication which switches at R5.
+            if (schema.Version >= FhirVersion.R6)
+            {
+                outcome!["text"].ShouldBeNull($"{schema.Version} CodeableReference has no direct '.text'");
+                outcome["concept"]?["text"]?.GetValue<string>()
+                    .ShouldBe("Successful", $"outcome text should be under concept.text in {schema.Version}");
+                followUp!["text"].ShouldBeNull($"{schema.Version} CodeableReference has no direct '.text'");
+                followUp["concept"]?["text"]?.GetValue<string>()
+                    .ShouldBe("Return in 2 weeks", $"followUp text should be under concept.text in {schema.Version}");
+            }
+            else
+            {
+                outcome!["text"]?.GetValue<string>()
+                    .ShouldBe("Successful", $"outcome text should be direct in {schema.Version}");
+                followUp!["text"]?.GetValue<string>()
+                    .ShouldBe("Return in 2 weeks", $"followUp text should be direct in {schema.Version}");
+            }
+
+            AssertNoValidationErrors(procedureNode, schema);
         }
     }
 
@@ -421,7 +477,8 @@ public class R5R6ShapeRegressionTests
                 .Build();
 
             var conditionId = scenario.Conditions[0].Id;
-            var addresses = scenario.CarePlans[0].MutableNode()["addresses"]?[0];
+            var carePlanNode = scenario.CarePlans[0].MutableNode();
+            var addresses = carePlanNode["addresses"]?[0];
             addresses.ShouldNotBeNull($"addresses should exist in {schema.Version}");
 
             // R5 changed CarePlan.addresses from Reference to CodeableReference: the reference
@@ -432,15 +489,25 @@ public class R5R6ShapeRegressionTests
                 addresses!["reference"].ShouldNotBeNull($"{schema.Version} CodeableReference wraps 'reference'");
                 var reference = addresses["reference"]?["reference"]?.GetValue<string>();
                 // KNOWN GAP (see the MedicationRequest/Procedure reason tests above): the generated
-                // reference metadata has no entry for R5+'s CodeableReference-typed fields, so
-                // ReferenceRewriterService never rewrites this nested reference to urn:uuid. This
-                // asserts the current, unrewritten value rather than papering over the inconsistency.
+                // reference metadata has a "CarePlan.addresses" entry in STU3/R4/R4B, but it was
+                // dropped entirely in R5/R6 (verified against *ReferenceMetadata.g.cs) rather than
+                // updated for the new CodeableReference nesting, so ReferenceRewriterService never
+                // rewrites this nested reference to urn:uuid in R5+. This asserts the current,
+                // unrewritten value rather than papering over the inconsistency.
                 reference.ShouldBe($"Condition/{conditionId}", $"addresses.reference.reference in {schema.Version} (unrewritten — see comment above)");
             }
             else
             {
                 var reference = addresses!["reference"]?.GetValue<string>();
                 reference.ShouldBe($"urn:uuid:{conditionId}", $"addresses.reference should point at the condition in {schema.Version}");
+            }
+
+            // Only validated for R5+, where this PR's fix applies. Pre-R5 CarePlan generation has
+            // an unrelated, pre-existing issue (CarePlan.created isn't defined in STU3) that's out
+            // of scope here.
+            if (schema.Version >= FhirVersion.R5)
+            {
+                AssertNoValidationErrors(carePlanNode, schema);
             }
         }
     }
@@ -493,5 +560,25 @@ public class R5R6ShapeRegressionTests
             var expected = schema.Version >= FhirVersion.R5 ? "on-hold" : "onleave";
             status.ShouldBe(expected, $"status should be '{expected}' in {schema.Version}");
         }
+    }
+
+    private static void AssertNoValidationErrors(JsonNode resourceNode, IFhirSchemaProvider schemaProvider)
+    {
+        var sourceNode = JsonNodeSourceNode.Create(resourceNode);
+        var resourceType = sourceNode.ResourceType ?? sourceNode.Name;
+        var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
+        var resolver = new CachedValidationSchemaResolver(new StructureDefinitionSchemaResolver(schemaProvider));
+        var schema = resolver.GetSchema(canonicalUrl);
+        schema.ShouldNotBeNull($"no schema found for resource type '{resourceType}' in {schemaProvider.Version}");
+
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(schemaProvider);
+        var result = schema!.Validate(element, settings, new ValidationState());
+
+        var errors = result.Issues
+            .Where(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal)
+            .Select(i => $"@{i.Path}: {i.Message}")
+            .ToList();
+        errors.ShouldBeEmpty($"{resourceType} should pass schema validation in {schemaProvider.Version}, but got: {string.Join("; ", errors)}");
     }
 }
