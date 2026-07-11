@@ -196,8 +196,10 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
         // (CompositeSearchParameterQueryGenerator.cs:318-346) where FHIR's spec-defined component
         // order is inconsistent and the generator must detect the swap at runtime.
         var resource = CreateResource(resourceTypeId: 3, resourceId: "docref-1");
+        var decoyResource = CreateResource(resourceTypeId: 3, resourceId: "docref-decoy");
         const short searchParamId = 105;
 
+        // Add the expected row
         Context.ReferenceTokenCompositeSearchParams.Add(new ReferenceTokenCompositeSearchParamEntity
         {
             ResourceTypeId = 3,
@@ -207,6 +209,19 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
             Code2 = "replaces",
             SystemId2 = null,
         });
+
+        // Add a decoy row with same SearchParamId and ResourceTypeId but different component values
+        // to ensure the test actually discriminates when swap detection is working.
+        Context.ReferenceTokenCompositeSearchParams.Add(new ReferenceTokenCompositeSearchParamEntity
+        {
+            ResourceTypeId = 3,
+            ResourceSurrogateId = decoyResource.ResourceSurrogateId,
+            SearchParamId = searchParamId,
+            ReferenceResourceId1 = "docref-99",
+            Code2 = "unrelated",
+            SystemId2 = null,
+        });
+
         await Context.SaveChangesAsync();
 
         var tokenComponent = new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, "replaces", false);
@@ -216,7 +231,7 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
         var query = await _generator.GenerateReferenceTokenQueryAsync(resourceTypeId: 3, searchParamId, tokenComponent, referenceComponent, CancellationToken.None);
         var results = await query.ToListAsync();
 
-        // Assert
+        // Assert: Should only match the resource with docref-2/replaces, not the decoy
         results.ShouldHaveSingleItem();
         results[0].ShouldBe(resource.ResourceSurrogateId);
     }
