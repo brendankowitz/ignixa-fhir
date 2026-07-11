@@ -62,11 +62,6 @@ public partial class ObservationComponent : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Element
     [JsonIgnore]
-    public JsonArray? ReferenceRange
-    {
-        get => MutableNode["referenceRange"] as JsonArray;
-        set => SetProperty("referenceRange", value);
-    }
+    public MutableJsonList<ObservationReferenceRange> ReferenceRange => GetListProperty<ObservationReferenceRange>("referenceRange");
 }

@@ -61,13 +61,8 @@ public partial class Patient : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<PatientContact> Contact => GetListProperty<PatientContact>("contact");
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonArray? Contained
-    {
-        get => MutableNode["contained"] as JsonArray;
-        set => SetProperty("contained", value);
-    }
+    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
 
     private static readonly string[] DeceasedVariantKeys =
         ["deceasedBoolean", "deceasedDateTime"];

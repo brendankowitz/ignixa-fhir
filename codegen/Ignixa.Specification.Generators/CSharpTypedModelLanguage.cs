@@ -464,6 +464,22 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         MemberNameAllocator memberNames)
     {
         bool isArray = element.cgIsArray();
+
+        if (!string.IsNullOrEmpty(element.ContentReference))
+        {
+            // FHIR's contentReference mechanism: this element reuses another element's own shape
+            // (e.g. Parameters.parameter.part reuses Parameters.parameter itself, recursively; checked
+            // first because a contentReference element always has an empty Type list, so IsBackbone and
+            // ResolveTypeCode below would otherwise treat it as an untyped Element fallback). The
+            // referenced path resolves to the exact type name that path's own element would get if
+            // walked directly -- same naming rule as the backbone branch below (parentType +
+            // PascalCase(segment), folded over every segment after the root).
+            string referencedTypeName = ResolveContentReferenceTypeName(element.ContentReference);
+            string refComplexName = memberNames.Allocate(ToPascalCase(jsonName));
+            EmitComplexProperty(body, referencedTypeName, refComplexName, jsonName, isArray);
+            return;
+        }
+
         string fhirTypeCode = ResolveTypeCode(element);
 
         if (IsBackbone(element, sd))
@@ -472,6 +488,17 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             string backboneTypeName = typeName + ToPascalCase(jsonName);
             string complexName = memberNames.Allocate(ToPascalCase(jsonName));
             EmitComplexProperty(body, backboneTypeName, complexName, jsonName, isArray);
+            return;
+        }
+
+        if (fhirTypeCode == "Resource")
+        {
+            // Resource is a hand-written runtime base (Ignixa.Serialization.SourceNodes.ResourceJsonNode),
+            // not a generated Ignixa.Models facade -- there is no single concrete type an "any resource"
+            // element could name. ResourceJsonNode is concrete with a public (JsonObject, FhirVersion?)
+            // constructor, so GetComplexProperty<ResourceJsonNode>/MutableJsonList<ResourceJsonNode>
+            // resolve via the same generic constructor lookup every other complex property already uses.
+            EmitComplexProperty(body, "ResourceJsonNode", memberNames.Allocate(ToPascalCase(jsonName)), jsonName, isArray);
             return;
         }
 
@@ -499,6 +526,29 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         context.RecordJsonNodeFallback($"{typeName}.{jsonName}", fhirTypeCode);
         EmitFallback(body, memberNames.Allocate(ToPascalCase(jsonName)), jsonName, fhirTypeCode, isArray);
+    }
+
+    /// <summary>
+    /// Resolves a <c>contentReference</c> value (e.g. <c>#Parameters.parameter</c>) to the CLR type name
+    /// the referenced element's own path would produce. Folds the backbone-naming rule (parentType +
+    /// PascalCase(segment)) over every path segment after the root, so a multi-level reference resolves
+    /// the same way a multi-level backbone walk would -- verified against the three references present in
+    /// the current R4/R5 package, all exactly two segments (root resource + one field): <c>#Bundle.link</c>
+    /// -> <c>BundleLink</c>, <c>#Observation.referenceRange</c> -> <c>ObservationReferenceRange</c>,
+    /// <c>#Parameters.parameter</c> -> <c>ParametersParameter</c> (self-referential).
+    /// </summary>
+    private static string ResolveContentReferenceTypeName(string contentReference)
+    {
+        string path = contentReference.StartsWith('#') ? contentReference[1..] : contentReference;
+        string[] segments = path.Split('.');
+
+        var typeName = new StringBuilder(segments[0]);
+        for (int i = 1; i < segments.Length; i++)
+        {
+            typeName.Append(ToPascalCase(segments[i]));
+        }
+
+        return typeName.ToString();
     }
 
     /// <summary>

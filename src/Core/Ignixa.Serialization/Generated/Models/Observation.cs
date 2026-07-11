@@ -58,13 +58,8 @@ public partial class Observation : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<ObservationComponent> Component => GetListProperty<ObservationComponent>("component");
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonArray? Contained
-    {
-        get => MutableNode["contained"] as JsonArray;
-        set => SetProperty("contained", value);
-    }
+    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
 
     [JsonIgnore]
     public CodeableConcept? DataAbsentReason

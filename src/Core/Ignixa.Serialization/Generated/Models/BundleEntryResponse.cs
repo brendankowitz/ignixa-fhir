@@ -74,12 +74,11 @@ public sealed partial class BundleEntryResponse : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonNode? Outcome
+    public ResourceJsonNode? Outcome
     {
-        get => MutableNode["outcome"];
-        set => SetProperty("outcome", value);
+        get => GetComplexProperty<ResourceJsonNode>("outcome");
+        set => SetProperty("outcome", value?.MutableNode);
     }
 
     [JsonIgnore]

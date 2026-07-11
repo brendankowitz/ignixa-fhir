@@ -54,19 +54,13 @@ public partial class ParametersParameter : BaseJsonNode
         set => NameElement.Value = value;
     }
 
-    // fallback: Element
     [JsonIgnore]
-    public JsonArray? Part
-    {
-        get => MutableNode["part"] as JsonArray;
-        set => SetProperty("part", value);
-    }
+    public MutableJsonList<ParametersParameter> Part => GetListProperty<ParametersParameter>("part");
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonNode? Resource
+    public ResourceJsonNode? Resource
     {
-        get => MutableNode["resource"];
-        set => SetProperty("resource", value);
+        get => GetComplexProperty<ResourceJsonNode>("resource");
+        set => SetProperty("resource", value?.MutableNode);
     }
 }

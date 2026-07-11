@@ -36,12 +36,11 @@ public sealed partial class Bundle : Ignixa.Models.Bundle
     {
     }
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonNode? Issues
+    public ResourceJsonNode? Issues
     {
-        get => MutableNode["issues"];
-        set => SetProperty("issues", value);
+        get => GetComplexProperty<ResourceJsonNode>("issues");
+        set => SetProperty("issues", value?.MutableNode);
     }
 
     [JsonIgnore]
