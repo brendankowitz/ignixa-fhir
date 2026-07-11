@@ -850,6 +850,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         body.AppendLine("            if (variant != key)");
         body.AppendLine("            {");
         body.AppendLine("                MutableNode.Remove(variant);");
+        body.AppendLine("                MutableNode.Remove(\"_\" + variant);");
         body.AppendLine("            }");
         body.AppendLine("        }");
         body.AppendLine();

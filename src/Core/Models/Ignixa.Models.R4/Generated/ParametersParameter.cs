@@ -667,6 +667,7 @@ public sealed partial class ParametersParameter : Ignixa.Models.ParametersParame
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

@@ -102,6 +102,7 @@ public sealed partial class TimingRepeat : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

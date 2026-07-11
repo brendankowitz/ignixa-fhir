@@ -135,6 +135,7 @@ public sealed partial class DataRequirementDateFilter : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

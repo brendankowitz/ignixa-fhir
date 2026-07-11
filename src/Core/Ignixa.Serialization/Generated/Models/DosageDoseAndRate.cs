@@ -90,6 +90,7 @@ public sealed partial class DosageDoseAndRate : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
@@ -190,6 +191,7 @@ public sealed partial class DosageDoseAndRate : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

@@ -39,6 +39,17 @@ public sealed class ChoiceTypeTests
         }
         """;
 
+    private const string ObservationStringWithShadowJson =
+        """
+        {
+          "resourceType": "Observation",
+          "id": "obs-s",
+          "status": "final",
+          "valueString": "borderline",
+          "_valueString": { "extension": [ { "url": "http://example.org/note", "valueString": "flagged" } ] }
+        }
+        """;
+
     [Fact]
     public void GivenValueQuantity_WhenRead_ThenVariantAndDiscriminatorReportQuantity()
     {
@@ -110,5 +121,36 @@ public sealed class ChoiceTypeTests
         obs.MutableNode()["valueString"].ShouldBeNull();
         obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.CodeableConcept);
         obs.ValueCodeableConcept!.Text.ShouldBe("elevated");
+    }
+
+    [Fact]
+    public void GivenValueStringWithPrimitiveExtensionShadow_WhenSwitchingToValueQuantity_ThenShadowCompanionRemoved()
+    {
+        // valueString's sibling "_valueString" carries a primitive extension (FHIR's underscore-prefixed
+        // primitive-extension mechanism, https://hl7.org/fhir/json.html#primitive). Switching variants must
+        // clear that companion too, or it survives as an orphan with no primitive value to annotate --
+        // invalid FHIR JSON. Regression test for issue #334.
+        var obs = ResourceJsonNode.Parse(ObservationStringWithShadowJson).As<Ignixa.Models.R4.Observation>();
+
+        obs.ValueQuantity = new Ignixa.Models.R4.Quantity { Value = 185 };
+
+        obs.MutableNode()["valueString"].ShouldBeNull();
+        obs.MutableNode()["_valueString"].ShouldBeNull();
+        obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.Quantity);
+    }
+
+    [Fact]
+    public void GivenValueStringWithPrimitiveExtensionShadow_WhenSetToNull_ThenShadowPreserved()
+    {
+        // Clearing a choice variant's value while leaving its extension shadow in place is valid FHIR (an
+        // extension-only primitive with no value). Setting the variant to null must remove only the value
+        // key, never its "_"-prefixed companion.
+        var obs = ResourceJsonNode.Parse(ObservationStringWithShadowJson).As<Ignixa.Models.R4.Observation>();
+
+        obs.ValueString = null;
+
+        obs.MutableNode()["valueString"].ShouldBeNull();
+        obs.MutableNode()["_valueString"].ShouldNotBeNull();
+        obs.ValueType.ShouldBe(Ignixa.Models.R4.ObservationValueType.None);
     }
 }

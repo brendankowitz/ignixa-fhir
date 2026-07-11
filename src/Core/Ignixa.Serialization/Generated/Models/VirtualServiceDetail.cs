@@ -117,6 +117,7 @@ public partial class VirtualServiceDetail : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

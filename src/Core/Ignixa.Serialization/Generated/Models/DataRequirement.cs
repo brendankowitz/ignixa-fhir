@@ -125,6 +125,7 @@ public partial class DataRequirement : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

@@ -145,6 +145,7 @@ public partial class DataRequirementValueFilter : BaseJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

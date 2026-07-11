@@ -25,13 +25,15 @@ public partial class Extension
     /// FHIR's <c>value[x]</c> wire convention names every choice-type key <c>"value"</c> + PascalCase(type
     /// name) in every version, and <see cref="Extension"/> has no other property that begins with
     /// <c>"value"</c> (only <c>url</c>, <c>id</c>, <c>extension</c> do not) -- so "remove every existing
-    /// property whose name starts with <c>value</c>, then set the new one" is exactly equivalent to the
-    /// generated per-version <c>SetValueVariant</c>'s enumerated clear, without needing to know which
-    /// variants exist for a given FHIR version. That means this method is safe to call more than once, or
-    /// after a different <c>value[x]</c> variant is already present -- unlike a bare low-level property set,
-    /// it can never leave two <c>value[x]</c> keys behind. If you can reference the R4/R5 packages and need
-    /// the ergonomics of a typed property (not just clearing correctness), construct the version-specific
-    /// subclass directly and use its typed accessor instead.
+    /// property whose name starts with <c>value</c> or <c>_value</c> (its primitive-extension shadow, per
+    /// FHIR's underscore-prefixed sibling mechanism, https://hl7.org/fhir/json.html#primitive), then set
+    /// the new one" is exactly equivalent to the generated per-version <c>SetValueVariant</c>'s enumerated
+    /// clear (including its shadow), without needing to know which variants exist for a given FHIR version.
+    /// That means this method is safe to call more than once, or after a different <c>value[x]</c> variant
+    /// is already present -- unlike a bare low-level property set, it can never leave two <c>value[x]</c>
+    /// keys (or an orphaned <c>_value[x]</c> shadow) behind. If you can reference the R4/R5 packages and
+    /// need the ergonomics of a typed property (not just clearing correctness), construct the
+    /// version-specific subclass directly and use its typed accessor instead.
     /// </remarks>
     internal void SetValueChoiceRaw(string valueElementName, string? value)
     {
@@ -43,8 +45,11 @@ public partial class Extension
                 nameof(valueElementName));
         }
 
+        string shadowElementName = "_" + valueElementName;
+
         foreach (string key in MutableNode.Select(property => property.Key)
-            .Where(key => key.StartsWith("value", StringComparison.Ordinal) && key != valueElementName)
+            .Where(key => (key.StartsWith("value", StringComparison.Ordinal) && key != valueElementName)
+                || (key.StartsWith("_value", StringComparison.Ordinal) && key != shadowElementName))
             .ToList())
         {
             MutableNode.Remove(key);

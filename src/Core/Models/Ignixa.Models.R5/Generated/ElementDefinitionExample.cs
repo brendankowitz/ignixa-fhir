@@ -715,6 +715,7 @@ public sealed partial class ElementDefinitionExample : Ignixa.Models.ElementDefi
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

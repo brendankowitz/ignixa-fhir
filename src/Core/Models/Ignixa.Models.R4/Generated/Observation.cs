@@ -215,6 +215,7 @@ public sealed partial class Observation : Ignixa.Models.Observation
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

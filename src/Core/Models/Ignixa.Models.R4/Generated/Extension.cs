@@ -667,6 +667,7 @@ public sealed partial class Extension : Ignixa.Models.Extension
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 

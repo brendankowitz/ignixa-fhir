@@ -125,6 +125,7 @@ public partial class Patient : DomainResourceJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
@@ -246,6 +247,7 @@ public partial class Patient : DomainResourceJsonNode
             if (variant != key)
             {
                 MutableNode.Remove(variant);
+                MutableNode.Remove("_" + variant);
             }
         }
 
