@@ -258,13 +258,15 @@ public sealed class ProcedureState : ScenarioState
         }
 
         // Set outcome if provided
-        // R4/R4B/STU3/R5: 0..1 CodeableConcept (single object). R6: 0..* CodeableConcept (JSON array).
+        // R4/R4B/STU3/R5: 0..1 CodeableConcept (single object). R6: 0..* CodeableReference, whose
+        // coded value moves under "concept" (CodeableReference has no "text" of its own).
         if (!string.IsNullOrEmpty(Outcome))
         {
-            var outcomeCodeableConcept = new JsonObject { ["text"] = Outcome };
-            node["outcome"] = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R6
-                ? new JsonArray { outcomeCodeableConcept }
-                : outcomeCodeableConcept;
+            var isR6Plus = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R6;
+            var outcomeConcept = new JsonObject { ["text"] = Outcome };
+            node["outcome"] = isR6Plus
+                ? new JsonArray { new JsonObject { ["concept"] = outcomeConcept } }
+                : outcomeConcept;
         }
 
         // Set complication if provided
@@ -280,14 +282,15 @@ public sealed class ProcedureState : ScenarioState
         }
 
         // Set follow-up if provided
+        // R4/R4B/STU3/R5: CodeableConcept[]. R6: CodeableReference[], whose coded value moves
+        // under "concept" (CodeableReference has no "text" of its own).
         if (!string.IsNullOrEmpty(FollowUp))
         {
+            var isR6Plus = faker.SchemaProvider.Version >= Ignixa.Abstractions.FhirVersion.R6;
+            var followUpConcept = new JsonObject { ["text"] = FollowUp };
             node["followUp"] = new JsonArray
             {
-                new JsonObject
-                {
-                    ["text"] = FollowUp
-                }
+                isR6Plus ? new JsonObject { ["concept"] = followUpConcept } : followUpConcept
             };
         }
 
