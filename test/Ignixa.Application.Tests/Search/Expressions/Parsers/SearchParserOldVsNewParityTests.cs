@@ -6,11 +6,14 @@
 #nullable enable
 
 using Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
+using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
+using NSubstitute;
 using Shouldly;
 using Xunit;
 
@@ -599,6 +602,127 @@ public class SearchParserOldVsNewParityTests
         newError.ShouldNotBeNull();
         newError.ShouldBeOfType<Ignixa.Search.Indexing.InvalidSearchOperationException>();
         newError!.Message.ShouldBe(Ignixa.Search.Resources.SearchComparatorNotSupported);
+    }
+
+    #endregion
+
+    #region Documented divergences: chain/include error-shape changes
+
+    /// <summary>
+    /// Reverse chain (_has) with an inner search parameter that's unsupported for the _has type.
+    /// Old parser's ParseChainedExpression wraps BOTH forward and reverse chain resolution in the
+    /// same try/catch that converts SearchParameterNotSupportedException to
+    /// InvalidSearchOperationException(ChainedParameterNotSupported) - symmetric. New parser's
+    /// BindForward does the equivalent conversion, but BindReverse's call to bind the inner key
+    /// (SearchKeyBinder.cs, `BoundSearchKey next = Bind([syntax.SourceResourceType], syntax.Next);`)
+    /// has no such try/catch, so SearchParameterNotSupportedException propagates raw - asymmetric
+    /// between forward and reverse. Both are legitimate error signals (both 400-class exceptions
+    /// upstream), but the exception TYPE differs, so this is a documented divergence.
+    /// </summary>
+    [Fact]
+    public void GivenReverseChainWithUnsupportedInnerParameter_WhenParsing_ThenExceptionTypeDivergesFromOldParser()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "patient", SearchParamType.Reference, targets: Patient);
+        context.DefinitionManager
+            .GetSearchParameter("Observation", "unsupported-code")
+            .Returns(_ => throw new SearchParameterNotSupportedException("Observation", "unsupported-code"));
+        var oldParser = BuildOldParser(context);
+
+        var (_, oldError) = TryParse(oldParser, Patient, "_has:Observation:patient:unsupported-code", "value");
+        oldError.ShouldNotBeNull("documenting old (pre-PR) behavior");
+        oldError.ShouldBeOfType<InvalidSearchOperationException>();
+        oldError!.Message.ShouldBe(Ignixa.Search.Resources.ChainedParameterNotSupported);
+
+        var (_, newError) = TryParse(context.Parser, Patient, "_has:Observation:patient:unsupported-code", "value");
+        newError.ShouldNotBeNull();
+        newError.ShouldBeOfType<SearchParameterNotSupportedException>("new parser's reverse-chain binding doesn't wrap the inner SearchParameterNotSupportedException the way forward-chain binding does - documented asymmetry, not a regression in either direction");
+    }
+
+    /// <summary>
+    /// Forward-chain ambiguity across multiple candidate target types, where one candidate's inner
+    /// parameter is itself unsupported. Old parser's ambiguity message
+    /// (Resources.ChainedParameterSpecifyType) lists ALL of the reference search parameter's
+    /// declared TargetResourceTypes, including ones that would themselves fail to resolve. New
+    /// parser's BindForward only lists the candidates that successfully bound (`matches`), excluding
+    /// ones filtered out by an inner SearchParameterNotSupportedException. The new message is more
+    /// accurate (it doesn't offer a choice that itself errors), but the exact text differs, so this
+    /// is a documented divergence rather than an AssertIdenticalBehavior case.
+    /// </summary>
+    [Fact]
+    public void GivenForwardChainAmbiguityWithPartiallyUnsupportedCandidate_WhenParsing_ThenMessageDivergesFromOldParser()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, targets: [.. Patient, "Group", "Device"]);
+        context.Add("Patient", "name", SearchParamType.String);
+        context.Add("Group", "name", SearchParamType.String);
+        context.DefinitionManager
+            .GetSearchParameter("Device", "name")
+            .Returns(_ => throw new SearchParameterNotSupportedException("Device", "name"));
+        var oldParser = BuildOldParser(context);
+
+        var (_, oldError) = TryParse(oldParser, Observation, "subject.name", "Smith");
+        oldError.ShouldNotBeNull("documenting old (pre-PR) behavior");
+        oldError!.Message.ShouldContain("Device"); // old parser lists ALL declared target types, including ones that don't actually resolve
+
+        var (_, newError) = TryParse(context.Parser, Observation, "subject.name", "Smith");
+        newError.ShouldNotBeNull();
+        newError!.Message.ShouldNotContain("Device"); // new parser only lists candidates that actually bound successfully
+        newError.Message.ShouldContain("Patient");
+        newError.Message.ShouldContain("Group");
+    }
+
+    /// <summary>
+    /// Malformed include value with an empty segment between two colons ("Patient::name"). Old
+    /// parser's ExpressionParser.ParseInclude has a bespoke pre-check only for a *trailing* colon
+    /// (see PR description); this shape isn't a trailing colon, so it falls through to
+    /// GetSearchParameter("Patient", "") which produces a specific IncludeInvalidTargetResourceType
+    /// message. New parser's SearchKeySyntaxParser.ParseInclude scans the segment as an identifier
+    /// and fails with a generic positioned syntax error at the empty segment. Both
+    /// InvalidSearchOperationException; message differs.
+    /// </summary>
+    [Fact]
+    public void GivenIncludeWithEmptySegmentBetweenColons_WhenParsing_ThenMessageDivergesFromOldParser()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, targets: Patient);
+        var oldParser = BuildOldParser(context);
+
+        var (_, oldError) = TryParseInclude(oldParser, Observation, "Patient::name", isReversed: false, iterate: false);
+        oldError.ShouldNotBeNull("documenting old (pre-PR) behavior");
+        oldError.ShouldBeOfType<InvalidSearchOperationException>();
+
+        var (_, newError) = TryParseInclude(context.Parser, Observation, "Patient::name", isReversed: false, iterate: false);
+        newError.ShouldNotBeNull();
+        newError.ShouldBeOfType<InvalidSearchOperationException>();
+        newError!.Message.ShouldNotBe(oldError.Message, "message shape has changed (positioned syntax error, not the old resource string) - documented, not a regression");
+    }
+
+    /// <summary>
+    /// Malformed include value using the "ResourceType:*:TargetType" shape (wildcard search-param
+    /// segment combined with an explicit target type - not a supported combination in either
+    /// parser). This isn't just a message-shape change: the OLD parser crashes with a raw, unhandled
+    /// ArgumentNullException (GetSearchParameter("Patient", "*") presumably resolves oddly and a
+    /// downstream null reference search parameter reaches a non-null-checked call) instead of
+    /// producing any kind of client-facing 400. The new parser's scanner correctly rejects this as a
+    /// positioned syntax error. This is a genuine robustness IMPROVEMENT the differential harness
+    /// surfaced that wasn't part of the PR description's documented behavior changes - found by
+    /// actually running the legacy parser, not by reading the diff.
+    /// </summary>
+    [Fact]
+    public void GivenIncludeWithWildcardSegmentFollowedByTargetType_WhenParsing_ThenNewParserRejectsGracefullyWhereOldParserCrashed()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, targets: Patient);
+        var oldParser = BuildOldParser(context);
+
+        var (_, oldError) = TryParseInclude(oldParser, Observation, "Patient:*:Group", isReversed: false, iterate: false);
+        oldError.ShouldNotBeNull("documenting old (pre-PR) behavior: this malformed input crashes the old parser");
+        oldError.ShouldBeOfType<ArgumentNullException>("old parser doesn't handle this shape gracefully - it throws a raw, unhandled framework exception rather than any client-facing 400");
+
+        var (_, newError) = TryParseInclude(context.Parser, Observation, "Patient:*:Group", isReversed: false, iterate: false);
+        newError.ShouldNotBeNull("new parser must reject this malformed shape");
+        newError.ShouldBeOfType<InvalidSearchOperationException>("new parser must produce a proper client-facing error, not a crash");
     }
 
     #endregion
