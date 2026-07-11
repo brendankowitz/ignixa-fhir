@@ -364,6 +364,87 @@ public class R5R6ShapeRegressionTests
         }
     }
 
+    [Fact]
+    public void GivenProcedureWithComplication_WhenGeneratedAcrossAllVersions_ThenUsesVersionCorrectComplicationShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing Procedure.complication with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddEncounter("Surgery")
+                .AddProcedure(new ProcedureState
+                {
+                    Name = "Complicated_Procedure",
+                    Code = Procedures.CABG,
+                    Complication = "Post-operative bleeding"
+                })
+                .Build();
+
+            var complication = scenario.Procedures[0].MutableNode()["complication"]?[0];
+            complication.ShouldNotBeNull($"complication should exist in {schema.Version}");
+
+            // R5 changed Procedure.complication from CodeableConcept to CodeableReference: the
+            // coded value moves from .text directly to .concept.text. Note this boundary is R5,
+            // unlike Procedure.outcome/followUp which don't switch until R6.
+            if (schema.Version >= FhirVersion.R5)
+            {
+                complication!["text"].ShouldBeNull($"{schema.Version} CodeableReference has no direct '.text'");
+                complication["concept"]?["text"]?.GetValue<string>()
+                    .ShouldBe("Post-operative bleeding", $"complication text should be under concept.text in {schema.Version}");
+            }
+            else
+            {
+                complication!["text"]?.GetValue<string>()
+                    .ShouldBe("Post-operative bleeding", $"complication text should be direct in {schema.Version}");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenCarePlanWithRelatedCondition_WhenGeneratedAcrossAllVersions_ThenUsesVersionCorrectAddressesShape()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing CarePlan.addresses with {schema.Version}");
+
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddConditionOnset(FhirCode.Conditions.DiabetesType2, assignToAttribute: "care_plan_condition")
+                .AddCarePlan(new CarePlanState
+                {
+                    Name = "Conditioned_CarePlan",
+                    Title = "Diabetes Management",
+                    RelatedConditionAttribute = "care_plan_condition"
+                })
+                .Build();
+
+            var conditionId = scenario.Conditions[0].Id;
+            var addresses = scenario.CarePlans[0].MutableNode()["addresses"]?[0];
+            addresses.ShouldNotBeNull($"addresses should exist in {schema.Version}");
+
+            // R5 changed CarePlan.addresses from Reference to CodeableReference: the reference
+            // value moves under a nested "reference" object rather than sitting directly on the
+            // array entry.
+            if (schema.Version >= FhirVersion.R5)
+            {
+                addresses!["reference"].ShouldNotBeNull($"{schema.Version} CodeableReference wraps 'reference'");
+                var reference = addresses["reference"]?["reference"]?.GetValue<string>();
+                // KNOWN GAP (see the MedicationRequest/Procedure reason tests above): the generated
+                // reference metadata has no entry for R5+'s CodeableReference-typed fields, so
+                // ReferenceRewriterService never rewrites this nested reference to urn:uuid. This
+                // asserts the current, unrewritten value rather than papering over the inconsistency.
+                reference.ShouldBe($"Condition/{conditionId}", $"addresses.reference.reference in {schema.Version} (unrewritten — see comment above)");
+            }
+            else
+            {
+                var reference = addresses!["reference"]?.GetValue<string>();
+                reference.ShouldBe($"urn:uuid:{conditionId}", $"addresses.reference should point at the condition in {schema.Version}");
+            }
+        }
+    }
+
     [Theory]
     [InlineData("arrived")]
     [InlineData("triaged")]
