@@ -169,14 +169,14 @@ public class UnknownPropertyCheck : IValidationCheck, ISingletonCheck
 
         // Children() omits members whose JSON value is null (JsonNodeSourceNode filters them before
         // constructing child nodes), so a null-valued unknown member would otherwise be invisible.
-        // Recover only those - a shadow-only property (e.g. "_unknownField" with no "unknownField")
-        // is already represented above under its trimmed base name, and re-adding its literal
-        // underscore-prefixed raw key here would report it twice under two different spellings.
+        // Recover only those - but skip a null-valued shadow (e.g. "_unknownField") whose base name
+        // ("unknownField") is already in the set from Children(), since that's one bad property
+        // reported under two spellings, not two bad properties.
         if (element.Meta<JsonNode>() is JsonObject raw)
         {
             foreach (var (key, value) in raw)
             {
-                if (value is null)
+                if (value is null && !properties.Contains(key.TrimStart('_')))
                 {
                     properties.Add(key);
                 }

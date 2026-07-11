@@ -51,6 +51,32 @@ public class ResourceOnlyUniversalPropertyTests
     }
 
     [Trait("Category", "Regression")]
+    [Theory]
+    [InlineData("contained", "[{\"resourceType\": \"Patient\", \"id\": \"contained1\"}]")]
+    [InlineData("extension", "[{\"url\": \"http://example.org/ext\", \"valueString\": \"x\"}]")]
+    [InlineData("modifierExtension", "[{\"url\": \"http://example.org/ext\", \"valueString\": \"x\"}]")]
+    public void GivenBundleWithDomainResourceOnlyProperty_WhenValidating_ThenReportsUnknownProperty(string propertyName, string propertyValueJson)
+    {
+        var typeDefinition = _schema.GetTypeDefinition("Bundle");
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
+
+        var json = JsonNode.Parse($$"""
+            {
+                "resourceType": "Bundle",
+                "id": "b1",
+                "type": "collection",
+                "{{propertyName}}": {{propertyValueJson}}
+            }
+            """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+
+        var result = schema.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec });
+
+        result.Issues.ShouldContain(i => i.Code == "unknown-property" && i.Message.Contains(propertyName));
+    }
+
+    [Trait("Category", "Regression")]
     [Fact]
     public void GivenPatientWithText_WhenValidating_ThenAllowed()
     {

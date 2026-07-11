@@ -343,6 +343,55 @@ public class UnknownPropertyCheckTests
     }
 
     [Fact]
+    public void GivenNullValuedAllowedProperty_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - the null-recovery path must not flag a property that's actually allowed.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""p1"",
+            ""active"": null
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
+        var check = new UnknownPropertyCheck(allowedProperties);
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenUnknownPropertyWithNullValuedShadow_WhenValidating_ThenReturnsSingleError()
+    {
+        // Arrange - an unknown property carrying a null-valued shadow (e.g. a primitive-extension
+        // placeholder) is one bad element under two spellings ("bogus" and "_bogus"), not two.
+        var json = JsonNode.Parse(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""p1"",
+            ""bogus"": ""value"",
+            ""_bogus"": null
+        }");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var allowedProperties = new[] { "id", "active", "name", "gender", "birthDate" };
+        var check = new UnknownPropertyCheck(allowedProperties);
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Single(result.Issues);
+        Assert.Contains("bogus", result.Issues[0].Message);
+    }
+
+    [Fact]
     public void GivenPatientWithInvalidShadowProperty_WhenValidating_ThenReturnsError()
     {
         // Arrange
