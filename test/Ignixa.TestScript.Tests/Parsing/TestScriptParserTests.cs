@@ -1015,4 +1015,135 @@ public class TestScriptParserTests
         result.IsSuccess.ShouldBeFalse();
         result.Errors.ShouldContain(e => e.Message.Contains("100") && e.Message.Contains("599"));
     }
+
+    [Fact]
+    public void GivenWaitForExtensionWithNoChildren_WhenParsing_ThenDefaultsApply()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"WaitForDefaults","status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient","params":"/1",
+                  "extension":[{"url":"http://ignixa.io/testscript/waitFor"}]}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var op = result.Value!.Tests[0].Actions[0].ShouldBeOfType<OperationExpression>();
+        op.WaitFor.ShouldNotBeNull();
+        op.WaitFor!.PollingStatusCode.ShouldBe(202);
+        op.WaitFor.MaxAttempts.ShouldBe(60);
+        op.WaitFor.IntervalMs.ShouldBe(1000);
+    }
+
+    [Fact]
+    public void GivenWaitForExtensionWithExplicitChildren_WhenParsing_ThenValuesOverrideDefaults()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"WaitForExplicit","status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient","params":"/1",
+                  "extension":[{"url":"http://ignixa.io/testscript/waitFor","extension":[
+                    {"url":"pollingStatusCode","valueInteger":404},
+                    {"url":"maxAttempts","valueInteger":5},
+                    {"url":"intervalMs","valueInteger":250}
+                  ]}]}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var op = result.Value!.Tests[0].Actions[0].ShouldBeOfType<OperationExpression>();
+        op.WaitFor!.PollingStatusCode.ShouldBe(404);
+        op.WaitFor.MaxAttempts.ShouldBe(5);
+        op.WaitFor.IntervalMs.ShouldBe(250);
+    }
+
+    [Fact]
+    public void GivenWaitForPollingStatusCodeOutOfRange_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"WaitForInvalidStatus","status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient","params":"/1",
+                  "extension":[{"url":"http://ignixa.io/testscript/waitFor","extension":[
+                    {"url":"pollingStatusCode","valueInteger":999}
+                  ]}]}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("100") && e.Message.Contains("599"));
+    }
+
+    [Fact]
+    public void GivenWaitForMaxAttemptsLessThanOne_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"WaitForInvalidMaxAttempts","status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient","params":"/1",
+                  "extension":[{"url":"http://ignixa.io/testscript/waitFor","extension":[
+                    {"url":"maxAttempts","valueInteger":0}
+                  ]}]}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("at least 1"));
+    }
+
+    [Fact]
+    public void GivenWaitForIntervalMsNegative_WhenParsing_ThenReturnsParseError()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"WaitForInvalidInterval","status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient","params":"/1",
+                  "extension":[{"url":"http://ignixa.io/testscript/waitFor","extension":[
+                    {"url":"intervalMs","valueInteger":-1}
+                  ]}]}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Message.Contains("non-negative"));
+    }
+
+    [Fact]
+    public void GivenOperationWithNoWaitForExtension_WhenParsing_ThenWaitForIsNull()
+    {
+        var json = """
+            {
+              "resourceType":"TestScript","name":"NoWaitFor","status":"active",
+              "test":[{"name":"t","action":[
+                {"operation":{"type":{"code":"read"},"resource":"Patient","params":"/1"}}
+              ]}]
+            }
+            """;
+
+        var result = TestScriptParser.Parse(json);
+
+        result.IsSuccess.ShouldBeTrue();
+        var op = result.Value!.Tests[0].Actions[0].ShouldBeOfType<OperationExpression>();
+        op.WaitFor.ShouldBeNull();
+    }
 }

@@ -242,6 +242,7 @@ public static class TestScriptParser
     private const string AssertionAnyOfGroupUrl = "http://ignixa.io/testscript/assertionAnyOfGroup";
     private const string AssertionWhenResponseStatusUrl = "http://ignixa.io/testscript/assertionWhenResponseStatus";
     private const string RequiresCapabilityUrl = "http://ignixa.io/testscript/requiresCapability";
+    private const string WaitForUrl = "http://ignixa.io/testscript/waitFor";
 
     private static string? ParseRequiresCapability(JsonArray? extensions)
     {
@@ -268,6 +269,39 @@ public static class TestScriptParser
                 return versions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
         return [];
+    }
+
+    private static WaitForCondition? ParseWaitForCondition(JsonArray? extensions, string path, List<ParseError> errors)
+    {
+        var ext = extensions?.OfType<JsonObject>().FirstOrDefault(e => e["url"]?.GetValue<string>() == WaitForUrl);
+        if (ext is null) return null;
+
+        var pollingStatusCode = ReadWaitForIntChild(ext, "pollingStatusCode", 202);
+        var maxAttempts = ReadWaitForIntChild(ext, "maxAttempts", 60);
+        var intervalMs = ReadWaitForIntChild(ext, "intervalMs", 1000);
+
+        if (pollingStatusCode is < 100 or > 599)
+            errors.Add(new ParseError(ParseSeverity.Error,
+                $"waitFor pollingStatusCode {pollingStatusCode} is outside the valid HTTP status range 100-599", path));
+
+        if (maxAttempts < 1)
+            errors.Add(new ParseError(ParseSeverity.Error,
+                $"waitFor maxAttempts must be at least 1, was {maxAttempts}", path));
+
+        if (intervalMs < 0)
+            errors.Add(new ParseError(ParseSeverity.Error,
+                $"waitFor intervalMs must be non-negative, was {intervalMs}", path));
+
+        return new WaitForCondition(pollingStatusCode, maxAttempts, intervalMs);
+    }
+
+    private static int ReadWaitForIntChild(JsonObject waitForExtension, string childUrl, int defaultValue)
+    {
+        var child = waitForExtension["extension"]?.AsArray()?.OfType<JsonObject>()
+            .FirstOrDefault(c => c["url"]?.GetValue<string>() == childUrl);
+        if (child?["valueInteger"] is JsonValue v && v.TryGetValue<int>(out var value))
+            return value;
+        return defaultValue;
     }
 
     private static ParametrizeDefinition? ParseParametrize(JsonArray? extensions, string testName, List<ParseError> errors)
@@ -415,7 +449,8 @@ public static class TestScriptParser
             Destination = op["destination"] is JsonValue dv && dv.TryGetValue<int>(out var dest) ? dest : null,
             Origin = op["origin"] is JsonValue ov && ov.TryGetValue<int>(out var orig) ? orig : null,
             EncodeRequestUrl = JsonFieldReader.GetBool(op, "encodeRequestUrl", path, errors) ?? true,
-            Headers = ParseHeaders(op["requestHeader"]?.AsArray(), path, errors)
+            Headers = ParseHeaders(op["requestHeader"]?.AsArray(), path, errors),
+            WaitFor = ParseWaitForCondition(op["extension"]?.AsArray(), path, errors)
         };
     }
 

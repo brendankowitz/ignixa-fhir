@@ -27,3 +27,5 @@ A pure C# / Ignixa-native TestScript execution engine to parse and execute FHIR 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
 | [execution-engine](investigations/execution-engine.md) | Viable | Architecture, ecosystem analysis, implementation plan |
+| [async-job-polling](investigations/async-job-polling.md) | In Progress | Custom `waitFor` operation extension to poll `$export`/`$import`/`$reindex`-style 202+Content-Location jobs to a terminal state, mirroring `microsoft/fhir-server`'s `WaitForJobCompletionAsync` pattern |
+| [subscription-callback-verification](investigations/subscription-callback-verification.md) | In Progress | Mock rest-hook receiver fixture + `assertionCallbackReceived` extension to verify subscription delivery from within a TestScript; recommends deferring build until Subscriptions has an ADR |

@@ -157,6 +157,76 @@ The FhirFakes extension must be declared inside the `resource` object in the fix
 
 `IFhirSchemaProvider` must be supplied to `TestScriptEvaluator` — the schema is passed through `FixtureResolutionContext` and is required by `SchemaBasedFhirResourceFaker` to generate valid fake resources.
 
+## Polling Long-Running Operations (waitFor)
+
+FHIR TestScript has no native way to express polling a long-running job (`$export`, `$import`, and
+similar operations that return `202 Accepted` immediately and require polling a status endpoint until
+the job completes). The `http://ignixa.io/testscript/waitFor` extension fills this gap: place it on an
+`operation` action's `extension` array, and that operation is retried — the same request, resent —
+while the response's HTTP status code matches a configurable "still working" code, up to a configurable
+number of attempts, sleeping a configurable interval between attempts. Once the status stops matching,
+or the attempt ceiling is reached, execution proceeds as normal — to whatever action comes next (typically
+an `assert`), or, if the ceiling was reached while still polling, the operation is recorded as a failed
+outcome instead.
+
+The extension has three optional child extensions, all `valueInteger`, each with a default:
+
+| Child extension | Meaning | Default |
+|---|---|---|
+| `pollingStatusCode` | HTTP status that means "still working" — keep retrying while the response matches it | `202` |
+| `maxAttempts` | Maximum number of attempts (including the first) before giving up | `60` |
+| `intervalMs` | Delay between attempts, in milliseconds | `1000` |
+
+Values are validated at parse time, not clamped: `pollingStatusCode` must be in the 100-599 range,
+`maxAttempts` must be at least 1, and `intervalMs` must be non-negative. Out-of-range values are parse
+errors — the script never reaches the evaluator.
+
+If the attempt ceiling is reached while the response still matches `pollingStatusCode`, the operation is
+recorded as a failed outcome with a message like `Timed out waiting for job completion after 60 attempts
+(last status: 202)`, rather than silently proceeding to the next action.
+
+`waitFor` does not resolve a status URL for you — it only controls *retry* behavior for whatever request
+the operation already builds. To poll a kickoff job's status endpoint, pair it with TestScript's existing
+header-extraction `variable` mechanism: extract the kickoff response's `Content-Location` (or `Location`)
+header into a variable, then target the polling operation's `url` at that variable.
+
+```json
+{
+  "test": [{
+    "name": "export completes",
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "url": "$export",
+          "responseId": "export-kickoff"
+        }
+      },
+      {
+        "operation": {
+          "url": "${statusUrl}",
+          "extension": [{
+            "url": "http://ignixa.io/testscript/waitFor",
+            "extension": [
+              { "url": "pollingStatusCode", "valueInteger": 202 },
+              { "url": "maxAttempts", "valueInteger": 30 },
+              { "url": "intervalMs", "valueInteger": 2000 }
+            ]
+          }]
+        }
+      },
+      { "assert": { "response": "okay" } }
+    ]
+  }],
+  "variable": [
+    { "name": "statusUrl", "sourceId": "export-kickoff", "headerField": "Content-Location" }
+  ]
+}
+```
+
+The `variable` extraction runs after every `operation` action, so `${statusUrl}` is populated by the
+time the polling operation executes.
+
 ## xUnit Integration
 
 Discover and run TestScript files as xUnit theories:

@@ -1701,4 +1701,109 @@ public class TestScriptEvaluatorTests
 
         report.TestResults[0].Actions[1].Outcome.ShouldBe(TestScriptOutcome.Pass);
     }
+
+    [Fact]
+    public async Task GivenWaitForOperation_WhenStatusLeavesPollingCode_ThenStopsPollingAndRecordsSuccess()
+    {
+        var responses = new Queue<TestResponse>(new[]
+        {
+            new TestResponse { StatusCode = 202 },
+            new TestResponse { StatusCode = 202 },
+            new TestResponse { StatusCode = 200 }
+        });
+        var callCount = 0;
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call => { callCount++; return responses.Dequeue(); });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "WaitForSuccess" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PollUntilDone",
+                    Actions =
+                    [
+                        new OperationExpression
+                        {
+                            Type = "read",
+                            Url = "_export/job-1",
+                            WaitFor = new WaitForCondition(PollingStatusCode: 202, MaxAttempts: 10, IntervalMs: 0)
+                        },
+                        new AssertExpression { Criteria = new ResponseStatusCriteria("okay") }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        callCount.ShouldBe(3);
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenWaitForOperation_WhenNeverLeavesPollingCode_ThenFailsAfterMaxAttempts()
+    {
+        var callCount = 0;
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call => { callCount++; return new TestResponse { StatusCode = 202 }; });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "WaitForTimeout" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PollForever",
+                    Actions =
+                    [
+                        new OperationExpression
+                        {
+                            Type = "read",
+                            Url = "_export/job-1",
+                            WaitFor = new WaitForCondition(PollingStatusCode: 202, MaxAttempts: 3, IntervalMs: 0)
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        callCount.ShouldBe(3);
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Error);
+        report.TestResults[0].Actions[0].Message!.ShouldContain("Timed out waiting for job completion after 3 attempts");
+    }
+
+    [Fact]
+    public async Task GivenOperationWithNoWaitFor_WhenExecuting_ThenSendsExactlyOnce()
+    {
+        var callCount = 0;
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call => { callCount++; return new TestResponse { StatusCode = 200 }; });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "NoWaitForRegression" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "PlainRead",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient", Params = "/1" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        callCount.ShouldBe(1);
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Pass);
+    }
 }
