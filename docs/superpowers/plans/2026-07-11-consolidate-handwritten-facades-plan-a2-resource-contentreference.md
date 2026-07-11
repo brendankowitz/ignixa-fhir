@@ -330,7 +330,8 @@ initializer could never find a matching public constructor."
 - Create: `test/Ignixa.Models.R4.Tests/ResourceAndContentReferenceFacadeTests.cs`
 
 **Interfaces:**
-- Consumes: `Ignixa.Models.BundleEntry` (base only — verified this type has NO R4/R5 subclass, use the base directly, not `Ignixa.Models.R4.BundleEntry`, which does not exist), `Ignixa.Models.BundleLink` (base only, same reason), `Ignixa.Models.R4.OperationOutcome` (verified this DOES have an R4 subclass), `Ignixa.Models.R4.ParametersParameter` (verified this DOES have an R4 subclass, with `ValueString`/`Part` members confirmed present), `Ignixa.Models.Patient`, `Ignixa.Serialization.SourceNodes.ResourceJsonNode`, `Ignixa.Serialization.Models.StructureMapJsonNode` (existing hand-written type, unmodified — used only to prove the runtime constructor fix, per Task 1's interface note).
+- Consumes: `Ignixa.Models.BundleEntry` (base only — this type has NO R4/R5 subclass, use the base directly, not `Ignixa.Models.R4.BundleEntry`, which does not exist), `Ignixa.Models.BundleLink` (HAS an R4/R5 subclass — `.Relation` is subclass-only, real R4/R5 divergence, correctly excluded from the base; `.Url` does not diverge and stays on the base — `BundleEntry.Link` resolves to `MutableJsonList<Ignixa.Models.BundleLink>`, the BASE type, so only `.Url` is usable through it), `Ignixa.Models.R4.OperationOutcome` (verified this DOES have an R4 subclass), `Ignixa.Models.ParametersParameter` (base — `.Name` is on the base; `.ValueString`/the rest of `value[x]` is subclass-only, same divergence pattern as `BundleLink.Relation` — `ParametersParameter.Part` resolves to `MutableJsonList<Ignixa.Models.ParametersParameter>`, the BASE type, so only `.Name` is usable through it), `Ignixa.Models.Patient`, `Ignixa.Serialization.SourceNodes.ResourceJsonNode`, `Ignixa.Serialization.Models.StructureMapJsonNode` (existing hand-written type, unmodified — used only to prove the runtime constructor fix, per Task 1's interface note).
+- **Why this matters generally, not just for these two tests:** any `contentReference`-resolved property (this task) or backbone property lands on the referenced/backbone type's BASE — never a specific version's subclass, because the resolution has no way to know which version's shape to prefer. If the referenced type has real cross-version divergence (its own `MergeType` classification excluded some element from its base), that element is invisible through this path, by design — not a bug in this task's fix. Verify a type's actual base-vs-subclass member split directly (`grep` the base file vs. the R4/R5 subclass files) before writing an assertion against a property reached this way; don't assume a property exists on the base just because it exists somewhere on that type name.
 
 - [ ] **Step 1: Write the tests**
 
@@ -380,24 +381,33 @@ public sealed class ResourceAndContentReferenceFacadeTests
     [Fact]
     public void GivenParametersParameterWithNestedParts_WhenAdded_ThenPartIsSelfTyped()
     {
-        var outer = new Ignixa.Models.R4.ParametersParameter { Name = "outer" };
+        // ParametersParameter.Part resolves (via contentReference #Parameters.parameter) to
+        // MutableJsonList<Ignixa.Models.ParametersParameter> -- the BASE type. .Name doesn't diverge
+        // between R4/R5 and stays on the base; .ValueString (and the rest of value[x]) is real
+        // per-version divergence, correctly excluded from the base, so it isn't asserted here -- reading
+        // it back would require going through Ignixa.Models.R4.ParametersParameter specifically, which
+        // this list's element type (the base) doesn't give you. That's expected, not a gap in this fix.
+        var outer = new Ignixa.Models.ParametersParameter { Name = "outer" };
 
-        outer.Part.Add(new Ignixa.Models.R4.ParametersParameter { Name = "inner", ValueString = "hello" });
+        outer.Part.Add(new Ignixa.Models.ParametersParameter { Name = "inner" });
 
         outer.Part.Count.ShouldBe(1);
         outer.Part[0].Name.ShouldBe("inner");
-        outer.Part[0].ValueString.ShouldBe("hello");
     }
 
     [Fact]
     public void GivenBundleEntryWithLink_WhenAdded_ThenLinkIsTypedBundleLink()
     {
+        // BundleEntry.Link resolves (via contentReference #Bundle.link) to
+        // MutableJsonList<Ignixa.Models.BundleLink> -- the BASE type. .Url doesn't diverge between R4/R5
+        // and stays on the base; .Relation is real per-version divergence (R4 is a plain string, R5 is a
+        // code bound to a value set), correctly excluded from the base, so it isn't asserted here -- same
+        // reasoning as ParametersParameter.ValueString above.
         var entry = new Ignixa.Models.BundleEntry();
 
-        entry.Link.Add(new Ignixa.Models.BundleLink { Relation = "self", Url = "http://example.org/next" });
+        entry.Link.Add(new Ignixa.Models.BundleLink { Url = "http://example.org/next" });
 
         entry.Link.Count.ShouldBe(1);
-        entry.Link[0].Relation.ShouldBe("self");
         entry.Link[0].Url.ShouldBe("http://example.org/next");
     }
 
@@ -427,7 +437,7 @@ public sealed class ResourceAndContentReferenceFacadeTests
 ```bash
 dotnet test test/Ignixa.Models.R4.Tests/Ignixa.Models.R4.Tests.csproj
 ```
-Expected: all pass, including the 5 new tests (61 total: 56 + 5). If `ValueString` doesn't exist on `Ignixa.Models.R4.ParametersParameter` as written, check the actual generated member name via `grep "public string? Value" src/Core/Models/Ignixa.Models.R4/Generated/ParametersParameter.cs` and use the real name — do not delete the assertion.
+Expected: all pass, including the 5 new tests (61 total: 56 + 5).
 
 - [ ] **Step 3: Commit**
 

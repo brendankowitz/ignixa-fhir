@@ -4,7 +4,7 @@
 
 **Goal:** Perform the first two real hand-facade merges of this consolidation effort — delete the hand-written `NarrativeJsonNode`/`ExtensionJsonNode` classes and repoint every call site at the generated, `partial`-mergeable `Ignixa.Models.Narrative`/`Ignixa.Models.Extension` types — proving the merge pattern end-to-end (delete, repoint, verify) on the two lowest-risk types in the investigation's own phased plan.
 
-**Architecture:** `Narrative` needs zero hand-written code: the generator's `partial class Narrative` already covers every member the hand-written version had (`Status`, `Div`, the nested enum — now backed by a proper `string` accessor after Plan A/A2's `xhtml` and fallback fixes from the original Phase 0 work). It is a pure deletion + repoint. `Extension` is more interesting: two of its members (`ValueString`, `ValueUri`) only exist on the R4/R5 *subclasses* (the classifier excludes `value[x]` from the shared base because the choice-type union genuinely differs by version — verified empirically in Plan A2). Per an explicit decision this session: **no hand-written partial re-adds these to the base.** A base-level hand-written `ValueString`/`ValueUri` would need a C# `new` modifier to avoid a build error, and `new` is compile-time-dispatched — any code holding a base-typed `Extension` reference (the common case) would silently get a simpler, non-choice-clearing implementation instead of the correct one the generated subclass provides. Instead, callers construct a **version-specific** `Extension` when they need `value[x]` access. One call site (`SecurityCapabilitySegment.cs`) determines its FHIR version only at runtime (multi-tenant), so it can't hardcode `Ignixa.Models.R4.Extension` at compile time — for that case, this plan adds one small, genuinely-necessary piece of hand-written functionality: a **static factory method** on the `Extension` partial (`Extension.CreateWithValueUri(FhirVersion?, url, valueUri)`), which dispatches to the right subclass by version. This is safe from the `new`-shadowing trap entirely — it's a new static method, not an instance property shadowing anything generated.
+**Architecture:** `Narrative` needs zero hand-written code: the generator's `partial class Narrative` already covers every member the hand-written version had (`Status`, `Div`, the nested enum — now backed by a proper `string` accessor after Plan A/A2's `xhtml` and fallback fixes from the original Phase 0 work). It is a pure deletion + repoint. `Extension` is more interesting: two of its members (`ValueString`, `ValueUri`) only exist on the R4/R5 *subclasses* (the classifier excludes `value[x]` from the shared base because the choice-type union genuinely differs by version — verified empirically in Plan A2). Per an explicit decision this session: **no hand-written partial re-adds these to the base as a same-named instance property.** A base-level hand-written `ValueString`/`ValueUri` would need a C# `new` modifier to avoid a build error, and `new` is compile-time-dispatched — any code holding a base-typed `Extension` reference (the common case) would silently get a simpler, non-choice-clearing implementation instead of the correct one the generated subclass provides. Instead, callers that know their target version at compile time construct the **version-specific** `Extension` directly and use its typed accessor. One call site (`SecurityCapabilitySegment.cs`, core CapabilityStatement generation) determines its FHIR version only at runtime *and* cannot reference the R4/R5 packages at all — they are deliberately opt-in, not baked into the core request path, per this project's own typed-models constraints. For that case, this plan adds one small, differently-named, genuinely-necessary piece of hand-written functionality: `Extension.SetValueUriRaw(string?)`, an instance method that sets the property directly via the low-level JSON mechanism, bypassing the typed accessor (and its choice-clearing) entirely. This is safe here specifically because every current caller sets `valueUri` exactly once, at construction, and never touches a different `value[x]` variant afterward — there is nothing to clear. It's also safe from the `new`-shadowing trap: it's a differently-named method, not an instance property shadowing anything generated.
 
 **Tech Stack:** .NET 10 / C#, xunit + Shouldly, the in-repo `Ignixa.Specification.Generators` codegen tool (read-only in this plan — no generator changes).
 
@@ -209,7 +209,7 @@ type left behind."
 
 **Files:**
 - Delete: `src/Core/Ignixa.Serialization/Models/ExtensionJsonNode.cs`
-- Create: `src/Core/Ignixa.Serialization/Models/Extension.cs` (hand-written partial: the `CreateWithValueUri` static factory only)
+- Create: `src/Core/Ignixa.Serialization/Models/Extension.cs` (hand-written partial: the `SetValueUriRaw` instance method only)
 - Modify: `src/Application/Ignixa.Application/Features/Metadata/Models/SecurityComponentJsonNode.cs:11,49`
 - Modify: `src/Application/Ignixa.Application/Features/Metadata/Segments/SecurityCapabilitySegment.cs:10,88-132`
 - Modify: `src/Core/Ignixa.FhirFakes/Builders/PatientBuilder.cs:14,90,417-449`
@@ -218,9 +218,11 @@ type left behind."
 
 **Interfaces:**
 - Consumes: `Ignixa.Models.Extension` (generated base — `Url`/`UrlElement`, `Id`/`IdElement`, `Extension2` (nested list, renamed per the Global Constraints note)), `Ignixa.Models.R4.Extension`/`Ignixa.Models.R5.Extension` (generated subclasses — `ValueString`, `ValueUri`, `ValueType`, and the rest of the `value[x]` union, both get/set, verified directly against the generated source; no `SuppressMessage` attribute on the generated `ValueUri` — generated files carry `// <auto-generated/>`, which exempts them from CA1056 by default Roslyn analyzer behavior, so none is needed).
-- Produces: `Extension.CreateWithValueUri(FhirVersion? version, string url, string valueUri)` — a static factory on the base `Extension` partial. Task 2's own call sites depend on this exact signature.
+- Produces: `Extension.SetValueUriRaw(string? value)` — an instance method on the base `Extension` partial. `SecurityCapabilitySegment.cs` depends on this exact name/signature.
 
-- [ ] **Step 1: Delete the hand-written file, create its replacement (factory method only)**
+**Correction to an earlier draft of this task, found during dispatch:** the original design was a static factory (`Extension.CreateWithValueUri(FhirVersion?, url, value)`) living in `src/Core/Ignixa.Serialization/Models/Extension.cs`, dispatching to `Ignixa.Models.R4.Extension`/`R5.Extension` by name. **This does not compile** — `Ignixa.Serialization` (where the base `Extension` partial lives) cannot reference `Ignixa.Models.R4`/`R5` by name, because those two projects `ProjectReference` *into* `Ignixa.Serialization`, not the other way around; naming them from the base would be a circular project reference. Worse, even fixing the circularity wouldn't help: `SecurityCapabilitySegment.cs` lives in `Ignixa.Application`, which does not reference `Ignixa.Models.R4`/`R5` at all today — and per this project's own typed-models constraints (`docs/features/typed-models/readme.md`), those packages are explicitly "opt-in... not baked into the core request path," and CapabilityStatement generation (what this file does) is core, always-on server behavior, not opt-in. Adding that ProjectReference would violate a real, deliberate architectural constraint. The fix below (a low-level "raw" setter on the base `Extension`, bypassing the typed R4/R5 accessor entirely) keeps `Ignixa.Application` free of any R4/R5 dependency. This is safe specifically because every current call site sets `valueUri` exactly once, at construction, and never touches a different `value[x]` variant afterward — the choice-clearing correctness Plan A fixed is genuinely not at stake here (there is nothing to clear). `PatientBuilder.cs`/`Ignixa.FhirFakes` is unaffected by this correction: it's test-only infrastructure (verified: only `test/`/`tools/` projects reference it, never the production server), so its direct use of `Ignixa.Models.R4.Extension` in Step 4 below remains correct as originally designed.
+
+- [ ] **Step 1: Delete the hand-written file, create its replacement (raw setter only)**
 
 Delete `src/Core/Ignixa.Serialization/Models/ExtensionJsonNode.cs`.
 
@@ -232,34 +234,26 @@ Create `src/Core/Ignixa.Serialization/Models/Extension.cs`:
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Abstractions;
-
 namespace Ignixa.Models;
 
 public partial class Extension
 {
     /// <summary>
-    /// Creates a version-appropriate <see cref="Extension"/> with <c>url</c> and a string-valued
-    /// <c>valueUri</c> already set. <c>value[x]</c> (including <c>valueUri</c>) is only generated on
-    /// the R4/R5 subclasses -- it genuinely differs by version, so it's excluded from this shared base
-    /// (see docs/features/typed-models/investigations/consolidate-handwritten-facades.md). Callers that
-    /// know their target version at compile time should just use
-    /// <c>new Ignixa.Models.R4.Extension { ValueUri = ... }</c> directly; this factory exists only for
-    /// callers (like tenant-driven CapabilityStatement generation) that only know the version at
-    /// runtime.
+    /// Sets <c>valueUri</c> directly via the low-level JSON property mechanism, bypassing the typed
+    /// R4/R5-specific <c>ValueUri</c> accessor. <c>value[x]</c> (including <c>valueUri</c>) is only
+    /// generated on the R4/R5 subclasses -- it genuinely differs by version, so it's excluded from this
+    /// shared base (see docs/features/typed-models/investigations/consolidate-handwritten-facades.md).
+    /// This method exists for callers that cannot reference the R4/R5 packages at all -- those packages
+    /// are deliberately opt-in, not baked into the core request path (see
+    /// docs/features/typed-models/readme.md's Constraints section) -- and so cannot construct
+    /// <c>Ignixa.Models.R4.Extension</c>/<c>R5.Extension</c> directly. Unlike the typed accessor, this
+    /// does NOT participate in choice-variant clearing (no other <c>value[x]</c> key is removed) -- safe
+    /// only for an extension that sets exactly one variant, once, and never sets a different variant
+    /// afterward. If you can reference the R4/R5 packages and need full choice-clearing correctness,
+    /// construct the version-specific subclass directly and use its typed <c>ValueUri</c> property
+    /// instead of this method.
     /// </summary>
-    /// <exception cref="NotSupportedException">
-    /// No generated <see cref="Extension"/> subclass exists yet for <paramref name="version"/> (anything
-    /// other than R4/R5 -- STU3/R4B/R6 have no generated typed models in this codebase yet).
-    /// </exception>
-    public static Extension CreateWithValueUri(FhirVersion? version, string url, string valueUri) => version switch
-    {
-        FhirVersion.R4 => new Ignixa.Models.R4.Extension { FhirVersion = version, Url = url, ValueUri = valueUri },
-        FhirVersion.R5 => new Ignixa.Models.R5.Extension { FhirVersion = version, Url = url, ValueUri = valueUri },
-        _ => throw new NotSupportedException(
-            $"No generated Extension facade exists for FHIR version '{version}' yet -- only R4 and R5 are supported. " +
-            "See docs/features/typed-models/investigations/consolidate-handwritten-facades.md."),
-    };
+    public void SetValueUriRaw(string? value) => SetProperty("valueUri", value);
 }
 ```
 
@@ -312,7 +306,7 @@ to:
                 Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
             };
 ```
-(`oauthExtension` never reads/writes `.ValueUri`/`.ValueString` itself — only `.Url` and the nested `.Extension2` list, both on the base — so it does NOT need the version-specific factory. Only the four nested extensions below do.)
+(`oauthExtension` never reads/writes `.ValueUri`/`.ValueString` itself — only `.Url` and the nested `.Extension2` list, both on the base — so it needs no special handling. Only the four nested extensions below need `SetValueUriRaw`, since `Ignixa.Application` cannot reference the R4/R5 packages to use their typed `ValueUri` accessor directly — see this task's Interfaces note above.)
 
 Change (lines 94-100):
 ```csharp
@@ -327,7 +321,9 @@ Change (lines 94-100):
 to:
 ```csharp
             // Add authorize endpoint
-            oauthExtension.Extension2.Add(Extension.CreateWithValueUri(context.FhirVersion, "authorize", smartOptions.AuthorizeUrl));
+            var authorizeExtension = new Extension { FhirVersion = context.FhirVersion, Url = "authorize" };
+            authorizeExtension.SetValueUriRaw(smartOptions.AuthorizeUrl);
+            oauthExtension.Extension2.Add(authorizeExtension);
 ```
 
 Change (lines 102-108) the same way:
@@ -343,7 +339,9 @@ Change (lines 102-108) the same way:
 to:
 ```csharp
             // Add token endpoint
-            oauthExtension.Extension2.Add(Extension.CreateWithValueUri(context.FhirVersion, "token", smartOptions.TokenUrl));
+            var tokenExtension = new Extension { FhirVersion = context.FhirVersion, Url = "token" };
+            tokenExtension.SetValueUriRaw(smartOptions.TokenUrl);
+            oauthExtension.Extension2.Add(tokenExtension);
 ```
 
 Change (lines 111-119):
@@ -362,7 +360,9 @@ to:
 ```csharp
             if (!string.IsNullOrEmpty(smartOptions.IntrospectUrl))
             {
-                oauthExtension.Extension2.Add(Extension.CreateWithValueUri(context.FhirVersion, "introspect", smartOptions.IntrospectUrl));
+                var introspectExtension = new Extension { FhirVersion = context.FhirVersion, Url = "introspect" };
+                introspectExtension.SetValueUriRaw(smartOptions.IntrospectUrl);
+                oauthExtension.Extension2.Add(introspectExtension);
             }
 ```
 
@@ -382,7 +382,9 @@ to:
 ```csharp
             if (!string.IsNullOrEmpty(smartOptions.RevokeUrl))
             {
-                oauthExtension.Extension2.Add(Extension.CreateWithValueUri(context.FhirVersion, "revoke", smartOptions.RevokeUrl));
+                var revokeExtension = new Extension { FhirVersion = context.FhirVersion, Url = "revoke" };
+                revokeExtension.SetValueUriRaw(smartOptions.RevokeUrl);
+                oauthExtension.Extension2.Add(revokeExtension);
             }
 ```
 
@@ -421,7 +423,6 @@ Create `test/Ignixa.Models.Tests/ExtensionFacadeTests.cs`:
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using Ignixa.Abstractions;
 using Shouldly;
 using Xunit;
 
@@ -465,28 +466,40 @@ public sealed class ExtensionFacadeTests
     }
 
     [Fact]
-    public void GivenR4Version_WhenCreateWithValueUriCalled_ThenReturnsR4ExtensionWithValueSet()
+    public void GivenExtension_WhenValueUriSetViaRawSetter_ThenReadableViaRawJson()
     {
-        var ext = Extension.CreateWithValueUri(FhirVersion.R4, "http://example.org/authorize", "http://example.org/auth-endpoint");
+        var ext = new Extension { Url = "http://example.org/authorize" };
 
-        ext.ShouldBeOfType<Ignixa.Models.R4.Extension>();
-        ext.Url.ShouldBe("http://example.org/authorize");
-        ((Ignixa.Models.R4.Extension)ext).ValueUri.ShouldBe("http://example.org/auth-endpoint");
+        ext.SetValueUriRaw("http://example.org/auth-endpoint");
+
+        ext.MutableNode()["valueUri"]!.GetValue<string>().ShouldBe("http://example.org/auth-endpoint");
     }
 
     [Fact]
-    public void GivenR5Version_WhenCreateWithValueUriCalled_ThenReturnsR5ExtensionWithValueSet()
+    public void GivenExtension_WhenValueUriSetViaRawSetter_ThenInteropsWithTypedR4Accessor()
     {
-        var ext = Extension.CreateWithValueUri(FhirVersion.R5, "http://example.org/authorize", "http://example.org/auth-endpoint");
+        // Proves the raw setter and the generated typed accessor both target the same underlying JSON
+        // key ("valueUri") -- a value written via the low-level escape hatch is readable through the
+        // normal typed R4/R5 accessor by any caller that CAN reference those packages.
+        var ext = new Extension { Url = "http://example.org/authorize" };
+        ext.SetValueUriRaw("http://example.org/auth-endpoint");
 
-        ext.ShouldBeOfType<Ignixa.Models.R5.Extension>();
-        ((Ignixa.Models.R5.Extension)ext).ValueUri.ShouldBe("http://example.org/auth-endpoint");
+        var r4View = new Ignixa.Models.R4.Extension(ext.MutableNode());
+
+        r4View.ValueUri.ShouldBe("http://example.org/auth-endpoint");
     }
 
     [Fact]
-    public void GivenUnsupportedVersion_WhenCreateWithValueUriCalled_ThenThrowsNotSupportedException()
+    public void GivenValueUriAlreadySet_WhenSetValueUriRawCalledAgain_ThenOverwritesWithoutClearingOtherKeys()
     {
-        Should.Throw<NotSupportedException>(() => Extension.CreateWithValueUri(FhirVersion.Stu3, "url", "value"));
+        // SetValueUriRaw does NOT do choice-variant clearing -- documents the limitation directly rather
+        // than leaving it as an unverified claim in a comment. Safe only because no current caller sets
+        // a different value[x] variant on the same Extension afterward.
+        var ext = new Extension { Url = "http://example.org/authorize" };
+        ext.SetValueUriRaw("http://example.org/first");
+        ext.SetValueUriRaw("http://example.org/second");
+
+        ext.MutableNode()["valueUri"]!.GetValue<string>().ShouldBe("http://example.org/second");
     }
 }
 ```
@@ -527,18 +540,23 @@ git commit -m "refactor(typed-models): merge ExtensionJsonNode into Ignixa.Model
 
 Single partial-class type per docs/features/typed-models/investigations/consolidate-handwritten-facades.md.
 ValueString/ValueUri are deliberately NOT re-added as a hand-written
-base partial -- they only exist on the R4/R5 subclasses (real value[x]
-divergence by version), and a base-level hand-written version would need
-a `new` modifier that silently gives base-typed callers the wrong
-(non-choice-clearing) behavior. SecurityCapabilitySegment's runtime-
-version-dynamic construction gets a small static factory,
-Extension.CreateWithValueUri(FhirVersion?, url, value), instead --
-compile-time-known-version callers should construct the specific
-subclass directly. The recursive nested-extension-list member is
+same-named instance property on the base -- they only exist on the R4/R5
+subclasses (real value[x] divergence by version), and a base-level
+hand-written version would need a `new` modifier that silently gives
+base-typed callers the wrong (non-choice-clearing) behavior.
+SecurityCapabilitySegment.cs (core CapabilityStatement generation,
+cannot reference the opt-in R4/R5 packages, and only knows its FHIR
+version at runtime) gets Extension.SetValueUriRaw(string?) instead -- a
+differently-named low-level escape hatch, safe here because no current
+caller sets a different value[x] variant on the same Extension
+afterward. Compile-time-known-version callers with access to the R4/R5
+packages should still construct the specific subclass directly and use
+its typed accessor. The recursive nested-extension-list member is
 Extension2 (a member cannot share its enclosing type's name); all call
 sites updated. PatientBuilder.WithExtension's Action<T> delegate now
 targets Ignixa.Models.R4.Extension (a public signature change, sole
-external caller updated in the same commit)."
+external caller updated in the same commit) -- FhirFakes is test-only
+infrastructure, so this doesn't touch the opt-in-packages constraint."
 ```
 
 ---
@@ -586,24 +604,38 @@ Insert a new `##`-level section immediately after `## Resource-typed and content
 
 `Narrative` and `Extension` are merged — the first two of the 41 hand-written `*JsonNode` facades this
 investigation set out to consolidate. `Narrative` needed zero hand-written code (fully generator-covered).
-`Extension` needed one small hand-written addition: a static factory method,
-`Extension.CreateWithValueUri(FhirVersion?, url, value)`, for the one call site
-(`SecurityCapabilitySegment.cs`) that only knows its target FHIR version at runtime (multi-tenant
-CapabilityStatement generation) — every other call site constructs the version-specific subclass
-directly at compile time.
+`Extension` needed one small hand-written addition: `Extension.SetValueUriRaw(string?)`, a low-level
+instance method for the one call site (`SecurityCapabilitySegment.cs`, core CapabilityStatement
+generation) that needs to set `value[x]` but can neither know its target FHIR version at compile time
+(it's multi-tenant, stamping `context.FhirVersion` per request) nor reference the R4/R5 packages at all
+(they are deliberately opt-in, not baked into the core request path — see this doc's Constraints).
+Every other call site either doesn't touch `value[x]` at all, or (like `PatientBuilder`, test-only
+infrastructure with no opt-in-package restriction) constructs the version-specific subclass directly and
+uses its typed accessor.
 
-**Decision recorded:** `ValueString`/`ValueUri` are deliberately *not* re-added as hand-written instance
-members on `Extension`'s shared base, even though the old hand-written `ExtensionJsonNode` had them. They
-only exist on the R4/R5 subclasses today (the classifier excludes `value[x]` from the base — its
-choice-type union genuinely differs by version, confirmed empirically during Plan A2). A base-level
-hand-written version would need a `new` modifier to avoid a build error, and `new` is
-compile-time-dispatched: any code holding a base-typed `Extension` reference — the common case after a
-merge — would silently get a simpler, non-choice-clearing implementation instead of the version-correct
-one the generated subclass already provides. This establishes the pattern for every future merge in this
-effort: **when a hand-written member's semantics only make sense for a specific version, express that as
-a version-specific accessor (or a version-dispatching static factory, if the caller doesn't know its
-version until runtime) — never as a same-named hand-written member on the shared base that could silently
-shadow the correct generated behavior.**
+**Decision recorded:** `ValueString`/`ValueUri` are deliberately *not* re-added as a same-named
+hand-written instance property on `Extension`'s shared base, even though the old hand-written
+`ExtensionJsonNode` had them. They only exist on the R4/R5 subclasses today (the classifier excludes
+`value[x]` from the base — its choice-type union genuinely differs by version, confirmed empirically
+during Plan A2). A base-level hand-written version would need a `new` modifier to avoid a build error,
+and `new` is compile-time-dispatched: any code holding a base-typed `Extension` reference — the common
+case after a merge — would silently get a simpler, non-choice-clearing implementation instead of the
+version-correct one the generated subclass already provides. This establishes the pattern for every
+future merge in this effort: **when a hand-written member's semantics only make sense for a specific
+version, express that as a version-specific accessor on the subclass — never as a same-named hand-written
+member on the shared base that could silently shadow the correct generated behavior.**
+
+**A second lesson, found the hard way during this task:** a hand-written member that *dispatches* by
+version (rather than shadowing a specific version) cannot simply live on the shared base type either, if
+it needs to name the R4/R5 types by identifier — `Ignixa.Serialization` (where the base partial lives) is
+a dependency *of* `Ignixa.Models.R4`/`R5`, not the reverse, so referencing them by name from the base is a
+circular project reference. And even resolving that wouldn't have been enough here: the actual caller
+(`Ignixa.Application`) doesn't reference the R4/R5 packages at all, deliberately, per the "opt-in, not
+baked into the core request path" constraint — a hand-written helper that only compiles by depending on
+opt-in packages can't be added to a core call site regardless of which project it lives in. The general
+resolution: when a core (non-opt-in) call site needs version-specific typed-model behavior it structurally
+cannot obtain, add a narrowly-scoped, differently-named, low-level escape hatch on the shared base instead
+of trying to give the base type version-dispatch knowledge it isn't allowed to have.
 
 Remaining Phase 1 datatypes: `Identifier`, `Reference`, `Meta` (see the Phased plan section above).
 `Identifier`/`Reference` were previously blocked on the generator's `Reference`-typed-element fallback gap
