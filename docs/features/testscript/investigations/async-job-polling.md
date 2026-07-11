@@ -1,7 +1,7 @@
 # Investigation: Async Job Polling Assertions
 
 **Feature**: testscript
-**Status**: In Progress
+**Status**: Superseded
 **Created**: 2026-07-11
 
 ## Approach
@@ -63,5 +63,7 @@ the existing recorder — no new reporting plumbing needed.
 - No existing async-job polling test helper anywhere in `test/` (checked `WaitForJob*`, `PollUntil*`, `_export/`, `_import/`, `GetExportStatus`, `GetImportStatus` — zero hits); `test/Ignixa.Api.E2ETests` has no export/import tests yet either.
 
 ## Verdict
+
+**Superseded** — the actual implementation (see [design spec](../../../superpowers/specs/2026-07-11-testscript-waitfor-operation-design.md)) took a simpler approach: polling keys off the response's HTTP status code directly rather than a body `statusPath`, and the polling URL comes from TestScript's existing header-extraction `variable` mechanism rather than a new `sourceId`-based lookup. Both simplifications avoid problems this investigation raised (the non-FHIR-resource body, and duplicating existing variable-extraction logic). The rest of this document is retained as historical record of the alternatives considered.
 
 *Pending evaluation.* Viable pattern, consistent with the recently-merged extension precedent, but two things should be resolved before committing to an ADR: (1) how `statusPath` extracts from a non-FHIR-resource JSON body without a parallel raw-JSON evaluator, and (2) whether this is worth building against `$export`/`$import` now or should wait until `$reindex` actually exists, since reindex was the motivating example.
