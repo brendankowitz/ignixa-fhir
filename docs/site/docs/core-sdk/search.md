@@ -201,6 +201,16 @@ var winner = resolver.ResolveConflict(
 2. **Semantic versioning** - Highest version wins when no priority configured
 3. **Alphabetical** - Package ID sort for deterministic ordering when versions equal
 
+## Search expression parsing
+
+`IExpressionParser` remains the entry point used by `SearchOptionsBuilder`. Parser instances are created per tenant and FHIR version, so `SearchParameterInfo` lookup and reference-target validation use the active definition manager and schema.
+
+Handwritten syntax scanners parse ordinary parameters, modifiers, typed forward chains, nested `_has`, include/revinclude forms, `_not-referenced`, escaped separators (`\,`, `\$`, `\|`, `\\`), comma alternatives, dollar composites, comparator prefixes, `:missing`, `:text`, and `:of-type`. The scanners emit immutable syntax records; semantic binders remain the only schema-aware layer.
+
+Malformed key or value syntax raises `InvalidSearchOperationException` with a positioned line/column diagnostic. Semantic failures retain the existing `SearchParameterNotSupportedException`, `BadSearchRequestException`, and resource-backed `InvalidSearchOperationException` messages. Atomic date, number, quantity, reference, string, token, and URI conversion continues to use the existing `*SearchValue.Parse` implementations.
+
+The mandatory BenchmarkDotNet result and acceptance decision are recorded in [the handwritten syntax parser comparison](../../../features/search/benchmarks/2026-07-11-handwritten-syntax-parser-comparison.md). The comparison uses the unchanged public-facade harness and six inputs against the original handwritten baseline. The replacement was classified as **Mixed**, with a -6.31% geometric-mean time change, and all ratified performance limits passed. It was not classified as **Faster**; no speedup is claimed.
+
 ## Related Documentation
 
 - [Search Parameters](/docs/server/fhir/search-parameters)

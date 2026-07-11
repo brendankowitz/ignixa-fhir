@@ -13,6 +13,42 @@ param(
     [Parameter(Mandatory)]
     [string] $OutputPath,
 
+    [ValidateScript({
+        if ([double]::IsNaN($_) -or [double]::IsInfinity($_) -or $_ -lt 0.0) {
+            throw 'MaximumGeometricMeanRegressionPercent must be a finite number greater than or equal to 0.'
+        }
+
+        $true
+    })]
+    [double] $MaximumGeometricMeanRegressionPercent = 10.0,
+
+    [ValidateScript({
+        if ([double]::IsNaN($_) -or [double]::IsInfinity($_) -or $_ -lt 0.0) {
+            throw 'MaximumMeanRegressionPercent must be a finite number greater than or equal to 0.'
+        }
+
+        $true
+    })]
+    [double] $MaximumMeanRegressionPercent = 20.0,
+
+    [ValidateScript({
+        if ([double]::IsNaN($_) -or [double]::IsInfinity($_) -or $_ -lt 0.0) {
+            throw 'MaximumAllocationRegressionPercent must be a finite number greater than or equal to 0.'
+        }
+
+        $true
+    })]
+    [double] $MaximumAllocationRegressionPercent = 25.0,
+
+    [ValidateScript({
+        if ([double]::IsNaN($_) -or [double]::IsInfinity($_) -or $_ -lt 0.0) {
+            throw 'MaximumGen0RegressionPercent must be a finite number greater than or equal to 0.'
+        }
+
+        $true
+    })]
+    [double] $MaximumGen0RegressionPercent = 25.0,
+
     [switch] $AcceptBlockingRegression
 )
 
@@ -54,18 +90,81 @@ function Get-RequiredValue {
     return $value
 }
 
+function Parse-InvariantDoubleLiteral {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Value,
+
+        [Parameter(Mandatory)]
+        [string] $Case,
+
+        [Parameter(Mandatory)]
+        [string] $SourceLabel,
+
+        [Parameter(Mandatory)]
+        [string] $Metric
+    )
+
+    try {
+        return [double]::Parse($Value, $culture)
+    }
+    catch {
+        throw "Case '$Case' $SourceLabel $Metric value '$Value' is not a valid numeric literal."
+    }
+}
+
+function Assert-ValidMetricValue {
+    param(
+        [double] $Value,
+        [Parameter(Mandatory)]
+        [string] $Case,
+        [Parameter(Mandatory)]
+        [string] $SourceLabel,
+        [Parameter(Mandatory)]
+        [string] $Metric,
+        [double] $Minimum = 0.0,
+        [switch] $ExclusiveMinimum
+    )
+
+    $requirementText = if ($ExclusiveMinimum) {
+        "finite and greater than $($Minimum.ToString('G17', $culture))"
+    } else {
+        "finite and greater than or equal to $($Minimum.ToString('G17', $culture))"
+    }
+
+    if ([double]::IsNaN($Value) -or [double]::IsInfinity($Value)) {
+        throw "Case '$Case' $SourceLabel $Metric must be $requirementText."
+    }
+
+    if ($ExclusiveMinimum) {
+        if ($Value -le $Minimum) {
+            throw "Case '$Case' $SourceLabel $Metric must be $requirementText."
+        }
+    } elseif ($Value -lt $Minimum) {
+        throw "Case '$Case' $SourceLabel $Metric must be $requirementText."
+    }
+
+    return $Value
+}
+
 function Convert-DurationToNanoseconds {
     param(
         [Parameter(Mandatory)]
-        [string] $Value
+        [string] $Value,
+
+        [Parameter(Mandatory)]
+        [string] $Case,
+
+        [Parameter(Mandatory)]
+        [string] $SourceLabel
     )
 
     $normalized = $Value.Trim().Replace(',', '')
-    if ($normalized -notmatch '^([0-9]+(?:\.[0-9]+)?)\s*(ns|us|μs|µs|ms|s)$') {
-        throw "Unsupported duration '$Value'."
+    if ($normalized -notmatch '^([+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*(ns|us|μs|µs|ms|s)$') {
+        throw "Case '$Case' $SourceLabel Mean value '$Value' is not a supported duration."
     }
 
-    $number = [double]::Parse($Matches[1], $culture)
+    $number = Parse-InvariantDoubleLiteral -Value $Matches[1] -Case $Case -SourceLabel $SourceLabel -Metric 'Mean'
     $multiplier = switch ($Matches[2]) {
         'ns' { 1.0; break }
         'us' { 1e3; break }
@@ -76,13 +175,19 @@ function Convert-DurationToNanoseconds {
         default { throw "Unsupported duration unit '$($Matches[2])'." }
     }
 
-    return $number * $multiplier
+    return Assert-ValidMetricValue -Value ($number * $multiplier) -Case $Case -SourceLabel $SourceLabel -Metric 'Mean' -Minimum 0.0 -ExclusiveMinimum
 }
 
 function Convert-Bytes {
     param(
         [Parameter(Mandatory)]
-        [string] $Value
+        [string] $Value,
+
+        [Parameter(Mandatory)]
+        [string] $Case,
+
+        [Parameter(Mandatory)]
+        [string] $SourceLabel
     )
 
     $normalized = $Value.Trim().Replace(',', '')
@@ -90,11 +195,11 @@ function Convert-Bytes {
         return 0.0
     }
 
-    if ($normalized -notmatch '^([0-9]+(?:\.[0-9]+)?)\s*(B|KB|MB|GB)$') {
-        throw "Unsupported allocation '$Value'."
+    if ($normalized -notmatch '^([+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*(B|KB|MB|GB)$') {
+        throw "Case '$Case' $SourceLabel Allocated value '$Value' is not a supported allocation."
     }
 
-    $number = [double]::Parse($Matches[1], $culture)
+    $number = Parse-InvariantDoubleLiteral -Value $Matches[1] -Case $Case -SourceLabel $SourceLabel -Metric 'Allocated'
     $multiplier = switch ($Matches[2]) {
         'B' { 1.0; break }
         'KB' { 1024.0; break }
@@ -103,13 +208,19 @@ function Convert-Bytes {
         default { throw "Unsupported allocation unit '$($Matches[2])'." }
     }
 
-    return $number * $multiplier
+    return Assert-ValidMetricValue -Value ($number * $multiplier) -Case $Case -SourceLabel $SourceLabel -Metric 'Allocated'
 }
 
 function Convert-Gen0 {
     param(
         [Parameter(Mandatory)]
-        [string] $Value
+        [string] $Value,
+
+        [Parameter(Mandatory)]
+        [string] $Case,
+
+        [Parameter(Mandatory)]
+        [string] $SourceLabel
     )
 
     $normalized = $Value.Trim().Replace(',', '')
@@ -117,7 +228,8 @@ function Convert-Gen0 {
         return 0.0
     }
 
-    return [double]::Parse($normalized, $culture)
+    $parsed = Parse-InvariantDoubleLiteral -Value $normalized -Case $Case -SourceLabel $SourceLabel -Metric 'Gen0'
+    return Assert-ValidMetricValue -Value $parsed -Case $Case -SourceLabel $SourceLabel -Metric 'Gen0'
 }
 
 function Get-PercentChange {
@@ -167,6 +279,28 @@ function Format-Percent {
     }
 
     return "$($Value.ToString('+0.00;-0.00;0.00', $culture))%"
+}
+
+function Format-LimitPercentValue {
+    param(
+        [double] $Value
+    )
+
+    return $Value.ToString('G17', $culture)
+}
+
+function Test-PercentExceedsLimit {
+    param(
+        [double] $Value,
+        [double] $Limit,
+        [string] $Label = 'Comparison metric'
+    )
+
+    if ([double]::IsNaN($Value)) {
+        throw "$Label is NaN."
+    }
+
+    return ($Value - $Limit) -gt 1e-9
 }
 
 function Get-CaseMap {
@@ -239,19 +373,15 @@ $comparisons = foreach ($caseName in $requiredCases) {
     $baseline = $baselineByCase[$caseName]
     $replacement = $replacementByCase[$caseName]
 
-    $baselineMeanNs = Convert-DurationToNanoseconds (Get-RequiredValue -Row $baseline -Column 'Mean' -Case $caseName)
-    $replacementMeanNs = Convert-DurationToNanoseconds (Get-RequiredValue -Row $replacement -Column 'Mean' -Case $caseName)
+    $baselineMeanNs = Convert-DurationToNanoseconds -Value (Get-RequiredValue -Row $baseline -Column 'Mean' -Case $caseName) -Case $caseName -SourceLabel 'baseline'
+    $replacementMeanNs = Convert-DurationToNanoseconds -Value (Get-RequiredValue -Row $replacement -Column 'Mean' -Case $caseName) -Case $caseName -SourceLabel 'replacement'
 
-    if ($baselineMeanNs -le 0.0 -or $replacementMeanNs -le 0.0) {
-        throw "Case '$caseName' has a non-positive mean duration."
-    }
-
-    $baselineOpsPerSecond = 1e9 / $baselineMeanNs
-    $replacementOpsPerSecond = 1e9 / $replacementMeanNs
-    $baselineAllocatedBytes = Convert-Bytes (Get-RequiredValue -Row $baseline -Column 'Allocated' -Case $caseName)
-    $replacementAllocatedBytes = Convert-Bytes (Get-RequiredValue -Row $replacement -Column 'Allocated' -Case $caseName)
-    $baselineGen0 = Convert-Gen0 (Get-RequiredValue -Row $baseline -Column 'Gen0' -Case $caseName)
-    $replacementGen0 = Convert-Gen0 (Get-RequiredValue -Row $replacement -Column 'Gen0' -Case $caseName)
+    $baselineOpsPerSecond = Assert-ValidMetricValue -Value (1e9 / $baselineMeanNs) -Case $caseName -SourceLabel 'baseline' -Metric 'operations per second' -Minimum 0.0 -ExclusiveMinimum
+    $replacementOpsPerSecond = Assert-ValidMetricValue -Value (1e9 / $replacementMeanNs) -Case $caseName -SourceLabel 'replacement' -Metric 'operations per second' -Minimum 0.0 -ExclusiveMinimum
+    $baselineAllocatedBytes = Convert-Bytes -Value (Get-RequiredValue -Row $baseline -Column 'Allocated' -Case $caseName) -Case $caseName -SourceLabel 'baseline'
+    $replacementAllocatedBytes = Convert-Bytes -Value (Get-RequiredValue -Row $replacement -Column 'Allocated' -Case $caseName) -Case $caseName -SourceLabel 'replacement'
+    $baselineGen0 = Convert-Gen0 -Value (Get-RequiredValue -Row $baseline -Column 'Gen0' -Case $caseName) -Case $caseName -SourceLabel 'baseline'
+    $replacementGen0 = Convert-Gen0 -Value (Get-RequiredValue -Row $replacement -Column 'Gen0' -Case $caseName) -Case $caseName -SourceLabel 'replacement'
 
     [pscustomobject]@{
         Case = $caseName
@@ -272,16 +402,18 @@ $comparisons = foreach ($caseName in $requiredCases) {
 
 $geometricMeanRatio = [Math]::Exp(
     ($comparisons |
-        ForEach-Object { [Math]::Log($_.ReplacementMeanNs / $_.BaselineMeanNs) } |
+        ForEach-Object { [Math]::Log($_.ReplacementMeanNs) - [Math]::Log($_.BaselineMeanNs) } |
         Measure-Object -Average).Average)
 
 $geometricMeanChangePercent = ($geometricMeanRatio - 1.0) * 100.0
 
-$blockingRegression = @($comparisons | Where-Object {
-        $_.MeanDeltaPercent -gt 10.0 -or
-        $_.AllocationDeltaPercent -gt 10.0 -or
-        $_.Gen0DeltaPercent -gt 10.0
-    }).Count -gt 0
+$blockingRegression =
+    (Test-PercentExceedsLimit -Value $geometricMeanChangePercent -Limit $MaximumGeometricMeanRegressionPercent -Label 'Geometric mean time change') -or
+    @($comparisons | Where-Object {
+            (Test-PercentExceedsLimit -Value $_.MeanDeltaPercent -Limit $MaximumMeanRegressionPercent -Label "Case '$($_.Case)' Mean Δ") -or
+            (Test-PercentExceedsLimit -Value $_.AllocationDeltaPercent -Limit $MaximumAllocationRegressionPercent -Label "Case '$($_.Case)' Allocation Δ") -or
+            (Test-PercentExceedsLimit -Value $_.Gen0DeltaPercent -Limit $MaximumGen0RegressionPercent -Label "Case '$($_.Case)' Gen0 Δ")
+        }).Count -gt 0
 
 $faster = $geometricMeanChangePercent -le -5.0 -and
     !($comparisons | Where-Object { $_.MeanDeltaPercent -gt 5.0 }) -and
@@ -301,7 +433,7 @@ $classification = if ($faster) {
 $acceptance = if ($CorrectnessStatus -eq 'Failed') {
     'Rejected: correctness failed.'
 } elseif ($blockingRegression -and -not $AcceptBlockingRegression) {
-    'Blocked: regression exceeds the 10% blocking threshold. Investigate and obtain explicit user acceptance.'
+    'Blocked: one or more ratified performance limits were exceeded. Investigate and obtain explicit user acceptance.'
 } elseif ($blockingRegression) {
     'Accepted only because -AcceptBlockingRegression was explicitly provided after investigation.'
 } else {
@@ -330,7 +462,8 @@ foreach ($comparison in $comparisons) {
 }
 
 $lines.Add('')
-$lines.Add('Thresholds: Faster requires geometric mean time <= -5%, no per-case mean > +5%, and no allocation or Gen0 increase. Slower is geometric mean >= +5%. Equivalent within 5% requires |geometric mean| < 5% and no blocking regression. Any per-case mean/allocation/Gen0 increase > +10% is a blocking regression.')
+$lines.Add("Acceptance limits: geometric-mean mean-time regression <= $(Format-LimitPercentValue -Value $MaximumGeometricMeanRegressionPercent)%; each individual case mean regression <= $(Format-LimitPercentValue -Value $MaximumMeanRegressionPercent)%; each individual case allocated-byte regression <= $(Format-LimitPercentValue -Value $MaximumAllocationRegressionPercent)%; each individual case Gen0 regression <= $(Format-LimitPercentValue -Value $MaximumGen0RegressionPercent)%.")
+$lines.Add('Faster remains stricter: geometric mean time <= -5%, no per-case mean > +5%, and no allocation or Gen0 increase.')
 $lines.Add('')
 $lines.Add('Zero-denominator handling: percent change is 0% for 0->0, +∞% for 0->nonzero, and otherwise ((replacement-baseline)/baseline)*100.')
 

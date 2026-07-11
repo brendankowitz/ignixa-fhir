@@ -1,35 +1,81 @@
 # Investigation: Superpower Search Expression Parser
 
 **Feature**: search
-**Status**: Viable - Selected for Implementation
+**Status**: Implemented - Revised Option 3 Accepted 2026-07-11
 **Created**: 2026-07-10
+**Updated**: 2026-07-11
 
 ## Executive Summary
 
-The Ignixa search expression parser can be reimplemented with Superpower without changing the public parser contracts, the existing `Ignixa.Search.Expressions` model, or downstream query execution.
+The Superpower search expression parser was implemented without changing public parser contracts, but its measured per-request cost was unacceptable. The tokenizer/grammar layer was therefore replaced with direct handwritten syntax scanners.
 
-The selected approach is a production-ready replacement of both handwritten parser layers:
+The implemented design retains:
 
-- `ExpressionParser` key parsing for parameters, modifiers, forward chains, reverse chains, includes, and `_not-referenced`
-- `SearchParameterExpressionParser` value syntax for comparators, alternatives, composites, escaping, and modifier-specific values
+- immutable `SearchKeySyntax` and `SearchValueSyntax` records;
+- schema-aware semantic binders;
+- the existing `IExpressionParser` and `ISearchParameterExpressionParser` facades;
+- canonical atomic search value parsers and the parity/binder test suite.
 
-Superpower will own syntactic parsing. Tenant- and FHIR-version-specific search parameter resolution will remain a separate semantic binding step. Existing atomic search value parsers will remain the canonical implementation for date, number, quantity, reference, string, token, and URI conversion.
-
-Estimated effort is **7-10 engineering days** for one engineer familiar with the search subsystem. The largest uncertainties are escaped value tokenization and compatibility with existing error behavior.
+Handwritten scanners now own key and value syntax parsing without a token-list intermediate. Tenant- and FHIR-version-specific lookup remains isolated in the semantic binders.
 
 This parser concerns `Ignixa.Search.Expressions`. It is separate from the FHIRPath expression parser; the FHIRPath and Mapping Language parsers are relevant only as established in-repository Superpower patterns.
 
+## Benchmark Outcome and Revised Decision (2026-07-11)
+
+The full Superpower grammar described below was implemented (commit `02eb4a5 Reimplement search parser with Superpower`) and benchmarked against the handwritten baseline exactly as this document's Testing Strategy required. It failed the document's own acceptance bar and is **rejected as specified**. This section is the record of that outcome; the rest of the document is retained as the design rationale for the parts that are kept (see below), not as the adopted plan.
+
+### Measured results
+
+`bench/Ignixa.Benchmarks/SearchExpressionParserBenchmarks.cs`, BenchmarkDotNet, .NET 10.0, 15 iterations:
+
+| Case | Baseline (handwritten) | Superpower replacement | Slowdown | Allocation increase |
+|---|---:|---:|---:|---:|
+| Simple | 142.2 ns / 544 B | 1.774 μs / 4.49 KB | ~12.5x | ~8.5x |
+| Modified | 157.5 ns / 608 B | 2.100 μs / 5.25 KB | ~13.3x | ~8.6x |
+| TypedChain | 277.7 ns / 1152 B | 2.949 μs / 7.26 KB | ~10.6x | ~6.3x |
+| NestedReverseChain | 560.0 ns / 2208 B | 6.886 μs / 13.19 KB | ~12.3x | ~6.0x |
+| EscapedAlternative | 522.0 ns / 1904 B | 3.485 μs / 8.07 KB | ~6.7x | ~4.2x |
+| Composite | 922.6 ns / 3736 B | 4.859 μs / 11.76 KB | ~5.3x | ~3.1x |
+
+This is not a marginal regression within the document's "no material throughput or allocation regression" bar — it is 5-13x slower and 3-9x more allocation across every case, with no case exempt.
+
+### Why: inherent workload mismatch, not an implementation defect
+
+The implementation was reviewed against the actual code (not just the benchmark numbers) and judged mostly **inherent** to the approach for this workload. Regex-based key tokenization, substring-heavy value segment joining, and a per-parse token-list allocation are identifiable optimization opportunities, but no measured improvement factor is available and no estimate is treated as fact.
+
+The measurements and implementation-phase probe show a workload mismatch this document's "consistency with the existing FHIRPath/Mapping Language Superpower pattern" argument did not account for. FHIRPath expressions are low-cardinality and cached — parsed once, evaluated many times, so tokenizer/combinator cost amortizes toward zero. Search key and value strings are parsed **fresh on every HTTP request** with unbounded value cardinality (arbitrary names, dates, quantities), so this implementation paid tokenizer, token-list, and grammar overhead on every short input. That observed overhead dominated the six measured cases and justifies a direct scanner as the next experiment. The benchmark does not establish that every possible Superpower implementation must lose to every scanner.
+
+### What is kept vs. rejected
+
+The rewrite produced two separable things, and only one of them failed:
+
+- **Kept**: the syntax-node model (`Syntax/` types), `SearchKeyBinder`, `SearchExpressionBinder`, and the new characterization/parity/binder test suite (~1,600 lines). This is the durable value of the migration — it fixes the actual problem this document opened with (parsing, schema resolution, validation, and expression construction interleaved across ~66 branches, untestable independent of schema mocks). None of this is Superpower-specific; the facade (`ExpressionParser`) already isolates the grammar layer from everything downstream.
+- **Rejected**: the Superpower tokenizers and grammars (`SearchKeyTokenizer`, `SearchKeyGrammar`, `SearchValueTokenizer`, `SearchValueGrammar`, `SearchParseExceptionMapper` — under 500 lines total). This is the thin, replaceable surface actually responsible for the regression.
+
+The "Key syntax plus semantic binder" hybrid (Superpower for key parsing only, handwritten value parsing) considered in Approaches Considered below was evaluated and **rejected**. The *Simple* case (`name=Smith`, no chains/modifiers/composites) regressed 142ns→1.77μs, but that public-facade benchmark parses both the key and value and therefore does not isolate key-parser cost. The end-to-end result, the per-request workload mismatch, and the added complexity of two parsing strategies do not justify retaining Superpower for either side.
+
+### Revised plan
+
+Adopt **Option 3** from Approaches Considered ("Handwritten parser with extracted syntax model"), which this document originally rejected only because it "does not meet the parser consistency objective" — an objective this benchmark result invalidates for this specific hot path. Concretely: replace the Superpower tokenizer/grammar layer with handwritten recursive-descent/span scanners that emit the same `SearchKeySyntax`/`SearchValueSyntax` nodes the binders already consume, so nothing downstream of the grammar layer changes. The binders and parity/characterization test suite from the rejected implementation are reused. The unchanged six-case harness must be rerun after key cutover for diagnosis and after final cutover for acceptance against the original handwritten baseline; no near-baseline outcome is assumed. Remove the `Superpower` package reference from `Ignixa.Search.csproj` only after no search-parser use remains.
+
+**Ratified by the feature owner on 2026-07-11**: retain the syntax-node/binder separation, replace the Superpower tokenizer/grammar layer with allocation-conscious handwritten scanners, and drop "parsing-library consistency with FHIRPath/Mapping Language" as a design goal for the search expression parser specifically. Performance acceptance remains measurement-driven; any threshold violation requires investigation and separate explicit user acceptance.
+
+The feature owner ratified revised Option 3 on 2026-07-11. The Superpower tokenizer/grammar layer remains rejected; the immutable syntax records, binders, facades, canonical atomic parsing, and characterization/parity/binder tests are retained. The replacement uses direct handwritten source scanners with positioned diagnostics and no token-list intermediate.
+
+The [final locked comparison](../benchmarks/2026-07-11-handwritten-syntax-parser-comparison.md) classified the replacement as **Mixed**, with a geometric-mean time change of -6.31%. Correctness passed, no blocking regression was detected, and all ratified per-case time, allocation, and Gen0 limits passed. The replacement was not classified as **Faster** under the stricter criteria, so no speedup is claimed.
+
 ## Current State
 
-Search parsing is split across three handwritten components:
+Search parsing uses a syntax-scanner and semantic-binder pipeline:
 
-| Component | Responsibility | Size |
-|---|---|---:|
-| `ExpressionParser` | Search keys, modifiers, chains, includes, `_not-referenced`, schema-aware expression construction | Approximately 380 lines |
-| `SearchParameterExpressionParser` | Comparators, comma alternatives, composites, special modifiers, typed value dispatch | Approximately 400 lines |
-| `StringExtensions` | Escaped splitting for `,`, `$`, and `|` | 175 lines |
+| Component | Responsibility |
+|---|---|
+| `SearchKeySyntaxParser` | Ordinary parameters, modifiers, forward/reverse chains, includes, and `_not-referenced` syntax |
+| `SearchValueSyntaxParser` | Comparators, alternatives, composites, escaping, and modifier-specific value syntax |
+| `SearchKeyBinder` / `SearchExpressionBinder` | Tenant- and FHIR-version-specific semantic validation and expression construction |
+| `ExpressionParser` / `SearchParameterExpressionParser` | Stable public parser facades |
 
-The parser code contains approximately 66 conditional or loop branches. Parsing, schema resolution, validation, and expression construction are interleaved. This makes the accepted grammar difficult to inspect independently and produces manually authored errors without source positions.
+Malformed syntax now reports positioned line/column diagnostics. Schema lookup and atomic value conversion remain outside the scanners.
 
 The public integration surface is small:
 
@@ -156,11 +202,11 @@ OR
 
 | Option | Superpower Scope | Effort | Advantages | Disadvantages |
 |---|---|---:|---|---|
-| Key syntax plus semantic binder | Parameters, modifiers, chains, includes, `_not-referenced` | 4-6 days | Lower migration risk; clear grammar/semantic boundary | Retains handwritten value delimiter parsing |
-| **Full search expression grammar** | Key syntax plus comparators, alternatives, composites, escaping, and modifier-specific value forms | **7-10 days** | Consistent parsing architecture across the complete search expression pipeline | Larger parity surface; context-sensitive value grammar |
-| Handwritten parser with extracted syntax model | No Superpower parsing | 2-3 days | Lowest-risk structural cleanup | Does not meet the parser consistency objective |
+| Key syntax plus semantic binder | Parameters, modifiers, chains, includes, `_not-referenced` | 4-6 days | Lower migration risk; clear grammar/semantic boundary | Retains handwritten value delimiter parsing. **Evaluated post-benchmark and rejected**: the end-to-end `Simple` case, which parses both key and value, regressed ~12.5x; it does not isolate key-parser cost, and a mixed parsing strategy is not justified by the overall workload result. |
+| ~~Full search expression grammar~~ | Key syntax plus comparators, alternatives, composites, escaping, and modifier-specific value forms | 7-10 days | Consistent parsing architecture across the complete search expression pipeline | Larger parity surface; context-sensitive value grammar. **Implemented and benchmarked; rejected** — 5-13x slower and 3-9x more allocation than baseline across all cases, failing this document's own performance acceptance bar. See "Benchmark Outcome and Revised Decision" above. |
+| **Handwritten parser with extracted syntax model** | No Superpower parsing | Historical estimate: ~~2-3 days~~. Follow-up effort is governed by the detailed implementation plan and measured acceptance gates. | Lowest-risk structural cleanup | ~~Does not meet the parser consistency objective~~ **Selected**: the parser-library-consistency objective is invalidated by the benchmark data for this per-request, unbounded-cardinality hot path (see above). Structural/testability goals are retained via the kept syntax-node and binder layers. |
 
-The full search expression grammar was selected because the goal is to replace handwritten delimiter parsing across the complete search expression pipeline rather than only reorganize the existing implementation.
+The full search expression grammar was originally selected because the goal was to replace handwritten delimiter parsing across the complete search expression pipeline rather than only reorganize the existing implementation. That goal is retained for the syntax-node/binder structure; the Superpower-specific tokenizer/grammar layer used to reach it is not, per the benchmark outcome above.
 
 ## Proposed Architecture
 
@@ -407,7 +453,7 @@ The estimate assumes:
 
 | Pros | Cons |
 |---|---|
-| Declarative grammar makes accepted syntax inspectable | Larger migration than key-only parsing |
+| Declarative grammar makes accepted syntax inspectable | Larger migration than parsing only the key |
 | Consistent tokenizer/grammar architecture with other Ignixa parsers | Value syntax requires a custom tokenizer |
 | Better malformed-input diagnostics | Exact error compatibility requires deliberate mapping |
 | Syntax can be tested without schema mocks | Semantic binding remains a separate complex phase |
@@ -437,6 +483,9 @@ The estimate assumes:
 
 ## Verdict
 
-The full Superpower search expression grammar is viable and selected for production implementation.
+**Superseded 2026-07-11 — see "Benchmark Outcome and Revised Decision" above for the current status.**
 
-Proceed with a compatibility-preserving rewrite behind the existing parser interfaces. Treat escaped value tokenization and error parity as first-class deliverables, not follow-up cleanup.
+~~The full Superpower search expression grammar is viable and selected for production implementation.~~
+~~Proceed with a compatibility-preserving rewrite behind the existing parser interfaces. Treat escaped value tokenization and error parity as first-class deliverables, not follow-up cleanup.~~
+
+This verdict was implemented and benchmarked as required by this document's own Testing Strategy. The full Superpower grammar measured 5-13x slower and 3-9x more allocation than the handwritten baseline across every representative case, failing the stated "no material throughput or allocation regression" acceptance bar. The grammar/tokenizer layer is rejected; the syntax-node model, semantic binders, and test suite it produced are retained. Current direction: replace the Superpower tokenizer/grammar layer with handwritten recursive-descent/span scanners emitting the same syntax nodes (Approaches Considered, Option 3). Follow-up effort and completion are governed by the focused implementation plan and measured acceptance gates, not a shortened estimate. Compatibility-preserving behavior behind the existing `IExpressionParser`/`ISearchParameterExpressionParser` interfaces remains the goal; escaped value tokenization and error parity remain first-class deliverables for the replacement scanner, proven against the parity tests already written for this migration.

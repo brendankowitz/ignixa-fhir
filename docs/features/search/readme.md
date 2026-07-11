@@ -19,7 +19,7 @@ FHIR search is a complex domain requiring support for compartment searches, wild
 |--------------|--------|---------|
 | [compartment-wildcard-search](investigations/compartment-wildcard-search.md) | Merged | Implements `GET /Patient/123/*` to search all resource types in a compartment |
 | [query-parsing](investigations/query-parsing.md) | Complete | FHIR search query parsing into expression trees, simplifies legacy SearchOptionsFactory |
-| [superpower-search-expression-parser](investigations/superpower-search-expression-parser.md) | Viable | Production rewrite of search key and value parsing using Superpower with semantic binding |
+| [superpower-search-expression-parser](investigations/superpower-search-expression-parser.md) | Implemented (revised Option 3) | Handwritten syntax scanners emit the retained immutable syntax model; semantic binders and public parser facades remain unchanged, with measured results recorded against the original baseline |
 | [codegen-parameters](investigations/codegen-parameters.md) | Viable | Code-generated search parameter definitions for 70% faster cold start (50-200ms → <5ms) |
 | [index-serialization](investigations/index-serialization.md) | Complete | Compact JSON serialization reduces search index storage by 25-35% |
 | [custom-parameters](investigations/custom-parameters.md) | Viable | Lifecycle management for FHIR SearchParameters from base spec, IGs, and custom definitions |

@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Superseded for future work (2026-07-11):** Tasks 1-15 and their benchmark evidence remain the historical record of commit `02eb4a5`. The feature owner ratified handwritten syntax-parser Option 3 after the Superpower result failed its performance gate. Do not execute this plan's future Task 16; continue with [the focused handwritten search syntax parser plan](2026-07-11-handwritten-search-syntax-parser.md).
+
 **Goal:** Replace the handwritten FHIR search key and value parsing in `Ignixa.Search` with a positioned Superpower parser while preserving public parser contracts, semantic exception behavior, atomic value parsing, and the existing expression AST.
 
 **Architecture:** Stable key punctuation is tokenized with `TokenizerBuilder<SearchKeyTokenKind>` and parsed into immutable recursive key syntax records; a schema-aware `SearchKeyBinder` then resolves tenant/version-specific `SearchParameterInfo`, reference targets, common parameters, includes, and `_not-referenced`. A custom `Tokenizer<SearchValueTokenKind>` preserves FHIR escapes while exposing only unescaped separators, type-selected value grammars create immutable value syntax records, and `SearchExpressionBinder` delegates atomic conversion to the existing `*SearchValue.Parse` methods before constructing the current expression model. `ExpressionParser` and `SearchParameterExpressionParser` remain the only public facades, with no fallback or second production path.
@@ -4325,7 +4327,9 @@ git add docs/features/search/benchmarks/2026-07-10-superpower-parser.csv docs/fe
 git commit -m "Compare Superpower search parser performance" -m "Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 ```
 
-### Task 16: Run full verification and perform the final no-legacy audit
+### Task 16: Superseded — use the handwritten search syntax parser plan
+
+> This future completion task is retained for historical context but is superseded by [the 2026-07-11 handwritten search syntax parser implementation plan](2026-07-11-handwritten-search-syntax-parser.md). Do not execute the Superpower completion criteria below.
 
 **Files:**
 - Verify: `src/Core/Ignixa.Search/Expressions/Parsers/`
