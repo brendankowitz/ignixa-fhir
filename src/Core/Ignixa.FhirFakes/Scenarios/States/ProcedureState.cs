@@ -270,14 +270,15 @@ public sealed class ProcedureState : ScenarioState
         }
 
         // Set complication if provided
+        // R4/R4B/STU3: CodeableConcept[]. R5+: CodeableReference[], whose coded value moves under
+        // "concept" (CodeableReference has no "text" of its own). Note this boundary is R5, not R6.
         if (!string.IsNullOrEmpty(Complication))
         {
+            var isR5Plus = faker.SchemaProvider.IsR5OrLater();
+            var complicationConcept = new JsonObject { ["text"] = Complication };
             node["complication"] = new JsonArray
             {
-                new JsonObject
-                {
-                    ["text"] = Complication
-                }
+                isR5Plus ? new JsonObject { ["concept"] = complicationConcept } : complicationConcept
             };
         }
 
