@@ -11,7 +11,7 @@ using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -87,7 +87,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     private readonly List<AdditionalName> _additionalNames = [];
 
     // Custom extensions
-    private readonly List<ExtensionJsonNode> _extensions = [];
+    private readonly List<Extension> _extensions = [];
 
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
@@ -418,12 +418,12 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     ///     .Build();
     /// </code>
     /// </example>
-    public PatientBuilder WithExtension(string url, Action<ExtensionJsonNode> configure)
+    public PatientBuilder WithExtension(string url, Action<Ignixa.Models.R4.Extension> configure)
     {
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(configure);
 
-        var ext = new ExtensionJsonNode();
+        var ext = new Ignixa.Models.R4.Extension();
         ext.Url = url;
         configure(ext);
         _extensions.Add(ext);
@@ -441,7 +441,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(valueString);
 
-        var ext = new ExtensionJsonNode();
+        var ext = new Ignixa.Models.R4.Extension();
         ext.Url = url;
         ext.ValueString = valueString;
         _extensions.Add(ext);

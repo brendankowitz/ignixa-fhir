@@ -28,6 +28,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Models\Ignixa.Models.R4\Ignixa.Models.R4.csproj" />
   </ItemGroup>
 
 </Project>

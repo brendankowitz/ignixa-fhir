@@ -12,7 +12,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Operations.GraphQl;
@@ -469,12 +469,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .WithFamilyName("NestedExt")
                 .WithExtension("http://example.org/complex", ext =>
                 {
-                    ext.Extension.Add(new ExtensionJsonNode(new JsonObject
+                    ext.Extension2.Add(new Extension(new JsonObject
                     {
                         ["url"] = "http://example.org/nested1",
                         ["valueString"] = "NestedValue1"
                     }));
-                    ext.Extension.Add(new ExtensionJsonNode(new JsonObject
+                    ext.Extension2.Add(new Extension(new JsonObject
                     {
                         ["url"] = "http://example.org/nested2",
                         ["valueString"] = "NestedValue2"
