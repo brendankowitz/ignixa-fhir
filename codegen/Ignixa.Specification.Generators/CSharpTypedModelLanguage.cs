@@ -493,7 +493,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             // walked directly -- same naming rule as the backbone branch below (parentType +
             // PascalCase(segment), folded over every segment after the root).
             string referencedTypeName = ResolveContentReferenceTypeName(element.ContentReference);
-            string refComplexName = memberNames.Allocate(ToPascalCase(jsonName));
+            string refComplexName = memberNames.Allocate(ToPascalCase(jsonName), isArray);
             EmitComplexProperty(body, referencedTypeName, refComplexName, jsonName, isArray);
             return;
         }
@@ -504,7 +504,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         {
             // Backbone type name mirrors the classifier: parentType + PascalCase(jsonName).
             string backboneTypeName = typeName + ToPascalCase(jsonName);
-            string complexName = memberNames.Allocate(ToPascalCase(jsonName));
+            string complexName = memberNames.Allocate(ToPascalCase(jsonName), isArray);
             EmitComplexProperty(body, backboneTypeName, complexName, jsonName, isArray);
             return;
         }
@@ -516,7 +516,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             // element could name. ResourceJsonNode is concrete with a public (JsonObject, FhirVersion?)
             // constructor, so GetComplexProperty<ResourceJsonNode>/MutableJsonList<ResourceJsonNode>
             // resolve via the same generic constructor lookup every other complex property already uses.
-            EmitComplexProperty(body, "ResourceJsonNode", memberNames.Allocate(ToPascalCase(jsonName)), jsonName, isArray);
+            EmitComplexProperty(body, "ResourceJsonNode", memberNames.Allocate(ToPascalCase(jsonName), isArray), jsonName, isArray);
             return;
         }
 
@@ -538,12 +538,12 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         if (IsTypedComplex(fhirTypeCode))
         {
-            EmitComplexProperty(body, fhirTypeCode, memberNames.Allocate(ToPascalCase(jsonName)), jsonName, isArray);
+            EmitComplexProperty(body, fhirTypeCode, memberNames.Allocate(ToPascalCase(jsonName), isArray), jsonName, isArray);
             return;
         }
 
         context.RecordJsonNodeFallback($"{typeName}.{jsonName}", fhirTypeCode);
-        EmitFallback(body, memberNames.Allocate(ToPascalCase(jsonName)), jsonName, fhirTypeCode, isArray);
+        EmitFallback(body, memberNames.Allocate(ToPascalCase(jsonName), isArray), jsonName, fhirTypeCode, isArray);
     }
 
     /// <summary>
@@ -1377,8 +1377,28 @@ public sealed class PrimitiveElement<T>
             _used.Add(name + "Type");
         }
 
-        public string Allocate(string preferred)
+        public string Allocate(string preferred, bool isArray = false)
         {
+            if (_used.Add(preferred))
+            {
+                return preferred;
+            }
+
+            // A list-typed member whose preferred name collides -- almost always with its own containing
+            // type, e.g. Extension's nested "extension" list on the Extension class itself -- reads better
+            // pluralized (Extensions) than suffixed with a bare digit (Extension2). Only taken on an actual
+            // collision, so every non-colliding list property (BundleEntry.Link, Patient.Identifier, ...)
+            // keeps the FHIR wire name unchanged and singular, exactly as before.
+            if (isArray)
+            {
+                string plural = Pluralize(preferred);
+                if (!string.Equals(plural, preferred, StringComparison.Ordinal) && _used.Add(plural))
+                {
+                    _context.RecordMemberNameCollision(_typeName, preferred, plural);
+                    return plural;
+                }
+            }
+
             string candidate = preferred;
             int suffix = 2;
             while (!_used.Add(candidate))
@@ -1387,12 +1407,30 @@ public sealed class PrimitiveElement<T>
                 suffix++;
             }
 
-            if (!string.Equals(candidate, preferred, StringComparison.Ordinal))
+            _context.RecordMemberNameCollision(_typeName, preferred, candidate);
+            return candidate;
+        }
+
+        /// <summary>
+        /// Minimal English pluralizer for the collision-fallback case above -- not a general-purpose
+        /// pluralizer, just enough for FHIR PascalCase type/element names.
+        /// </summary>
+        private static string Pluralize(string name)
+        {
+            if (name.EndsWith("s", StringComparison.Ordinal) ||
+                name.EndsWith("x", StringComparison.Ordinal) ||
+                name.EndsWith("ch", StringComparison.Ordinal) ||
+                name.EndsWith("sh", StringComparison.Ordinal))
             {
-                _context.RecordMemberNameCollision(_typeName, preferred, candidate);
+                return name + "es";
             }
 
-            return candidate;
+            if (name.EndsWith("y", StringComparison.Ordinal) && name.Length > 1 && !"aeiouAEIOU".Contains(name[^2]))
+            {
+                return name[..^1] + "ies";
+            }
+
+            return name + "s";
         }
 
         public string AllocatePrimitive(string preferred, string fhirTypeCode, bool isArray)

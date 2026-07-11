@@ -143,7 +143,8 @@ public sealed class TypedFacadeTests
     {
         // Observation.subject is one of the most heavily-used Reference-typed elements in FHIR.
         // Reference2 is the `reference` field's accessor -- named Reference2 because a property cannot
-        // share its enclosing type's name (the same collision guard that produces Extension.Extension2).
+        // share its enclosing type's name. Unlike Extension's collision (a list, pluralized to
+        // Extensions), this one is a scalar string, so the allocator falls back to a numeric suffix.
         var obs = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""")
             .As<Ignixa.Models.R4.Observation>();
 

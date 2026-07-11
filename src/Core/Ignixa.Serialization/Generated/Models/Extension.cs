@@ -29,7 +29,7 @@ public partial class Extension : BaseJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension2 => GetListProperty<Extension>("extension");
+    public MutableJsonList<Extension> Extensions => GetListProperty<Extension>("extension");
 
     [JsonIgnore]
     public PrimitiveElement<string> IdElement => new(MutableNode, "id");

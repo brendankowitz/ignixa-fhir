@@ -469,12 +469,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
                 .WithFamilyName("NestedExt")
                 .WithExtension("http://example.org/complex", ext =>
                 {
-                    ext.Extension2.Add(new Extension(new JsonObject
+                    ext.Extensions.Add(new Extension(new JsonObject
                     {
                         ["url"] = "http://example.org/nested1",
                         ["valueString"] = "NestedValue1"
                     }));
-                    ext.Extension2.Add(new Extension(new JsonObject
+                    ext.Extensions.Add(new Extension(new JsonObject
                     {
                         ["url"] = "http://example.org/nested2",
                         ["valueString"] = "NestedValue2"

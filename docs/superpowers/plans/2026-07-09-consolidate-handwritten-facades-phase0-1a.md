@@ -165,6 +165,14 @@ a typed string accessor -- xhtml only appears in this one FHIR element."
 - Consumes: `Ignixa.Models.Extension` (generated, from Task 1 — `partial class Extension : BaseJsonNode`, members `Extension2` (nested list, renamed by the generator's collision guard since a member can't share its enclosing type's name), `Id`/`IdElement`, `Url`/`UrlElement`).
 - Produces: `Ignixa.Models.Extension` now also carries `ValueUri` (`string?`) and `ValueString` (`string?`) — the two `value[x]` variants this codebase actually uses. Any other code that needs `Extension` (there is none yet outside the files listed above) references `Ignixa.Models.Extension`.
 
+**Renamed in a later follow-up (post-PR-review):** `Extension2` reads badly for a first-class FHIR
+concept used everywhere. The generator's collision-fallback (`MemberNameAllocator.Allocate` in
+`CSharpTypedModelLanguage.cs`) now pluralizes a colliding **list**-typed member instead of appending a
+numeral, so this property is `Extensions`, not `Extension2`, in shipped code — every `Extension2`
+reference in the code blocks below (and in `docs/superpowers/plans/2026-07-11-...-plan-a-reference-unfallback.md`)
+is superseded. Non-list collisions (e.g. `Reference.Reference` -> `Reference2`, a scalar string) are
+unaffected — pluralizing a scalar wouldn't make sense, so those keep the numeric fallback.
+
 - [ ] **Step 1: Delete the hand-written file and create its replacement**
 
 Delete `src/Core/Ignixa.Serialization/Models/ExtensionJsonNode.cs`.

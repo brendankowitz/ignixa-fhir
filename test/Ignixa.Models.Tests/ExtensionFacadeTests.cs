@@ -23,16 +23,16 @@ public sealed class ExtensionFacadeTests
     }
 
     [Fact]
-    public void GivenExtensionWithNestedExtensions_WhenAddedViaExtension2_ThenBothAreReadable()
+    public void GivenExtensionWithNestedExtensions_WhenAddedViaExtensions_ThenBothAreReadable()
     {
         var outer = new Extension { Url = "http://example.org/complex" };
 
-        outer.Extension2.Add(new Ignixa.Models.R4.Extension { Url = "nested1", ValueString = "a" });
-        outer.Extension2.Add(new Ignixa.Models.R4.Extension { Url = "nested2", ValueString = "b" });
+        outer.Extensions.Add(new Ignixa.Models.R4.Extension { Url = "nested1", ValueString = "a" });
+        outer.Extensions.Add(new Ignixa.Models.R4.Extension { Url = "nested2", ValueString = "b" });
 
-        outer.Extension2.Count.ShouldBe(2);
-        outer.Extension2[0].Url.ShouldBe("nested1");
-        outer.Extension2[1].Url.ShouldBe("nested2");
+        outer.Extensions.Count.ShouldBe(2);
+        outer.Extensions[0].Url.ShouldBe("nested1");
+        outer.Extensions[1].Url.ShouldBe("nested2");
     }
 
     [Fact]

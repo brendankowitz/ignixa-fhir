@@ -91,26 +91,22 @@ public class SecurityCapabilitySegment(
                 Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
             };
 
-            // "Extension2" is the generator's name for the nested extension list -- FHIR's Extension.extension
-            // element can't be named "Extension" on the Extension class itself (collides with the class name),
-            // so the generator's allocator falls back to a numeric suffix. Not version-specific.
-
             // Add authorize endpoint
-            oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("authorize", smartOptions.AuthorizeUrl, context.FhirVersion));
+            oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("authorize", smartOptions.AuthorizeUrl, context.FhirVersion));
 
             // Add token endpoint
-            oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("token", smartOptions.TokenUrl, context.FhirVersion));
+            oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("token", smartOptions.TokenUrl, context.FhirVersion));
 
             // Add introspect endpoint if configured
             if (!string.IsNullOrEmpty(smartOptions.IntrospectUrl))
             {
-                oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("introspect", smartOptions.IntrospectUrl, context.FhirVersion));
+                oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("introspect", smartOptions.IntrospectUrl, context.FhirVersion));
             }
 
             // Add revoke endpoint if configured
             if (!string.IsNullOrEmpty(smartOptions.RevokeUrl))
             {
-                oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("revoke", smartOptions.RevokeUrl, context.FhirVersion));
+                oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("revoke", smartOptions.RevokeUrl, context.FhirVersion));
             }
 
             security.Extension.Add(oauthExtension);

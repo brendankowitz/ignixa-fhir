@@ -236,6 +236,18 @@ double-set/dual-variant hazard is structurally unreachable, not just discouraged
 (scoped to `Ignixa.Application` via `InternalsVisibleTo`, see `AssemblyInfo.cs`) additionally shrinks the
 blast radius from "every consumer of `Ignixa.Models`" to the one assembly with the one real caller.
 
+**Also renamed in the same review pass:** `Extension`'s nested `extension`-list member was originally
+emitted as `Extension2` (a member can't share its enclosing type's name, so the generator's name allocator
+fell back to a bare numeral). Extensions are a first-class, heavily-used FHIR concept, not a one-off, so
+`Extension2` was a poor consuming experience specifically here. The generator's collision fallback
+(`CSharpTypedModelLanguage.MemberNameAllocator.Allocate`) now pluralizes a **list**-typed member on
+collision instead of numbering it, so this member is `Extensions`. This is collision-triggered only: every
+other (non-colliding) list property in the generated model set — `BundleEntry.Link`, `Patient.Identifier`,
+and the rest — is untouched, still singular, still matching its FHIR wire name exactly, so this doesn't
+introduce a codebase-wide pluralization convention. Scalar-string collisions (`Reference.Reference` ->
+`Reference2`, `Expression.Expression` -> `Expression2`) are unaffected for the same reason a scalar
+can't sensibly be pluralized — they keep the numeric fallback.
+
 **Decision recorded:** `ValueString`/`ValueUri` are deliberately *not* re-added as a same-named
 hand-written instance property on `Extension`'s shared base, even though the old hand-written
 `ExtensionJsonNode` had them. They only exist on the R4/R5 subclasses today (the classifier excludes

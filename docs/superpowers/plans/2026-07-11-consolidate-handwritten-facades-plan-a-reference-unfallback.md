@@ -276,7 +276,7 @@ test/Ignixa.Models.R4.Tests/TypedFacadeTests.cs
 - Modify: `test/Ignixa.Models.R4.Tests/TypedFacadeTests.cs:139-181`
 
 **Interfaces:**
-- Consumes: `Ignixa.Models.Reference` (existing type, unchanged by this plan — `Display`, `Reference2` (the `reference` field's accessor; named `Reference2` because a property cannot share its enclosing type's name — the generator's existing collision guard, same pattern as `Extension.Extension2`), `Type`, `Identifier`). `Ignixa.Models.R4.Observation.Subject` (now `Reference?`, from Task 1). `Ignixa.Models.R4.Extension.ValueReference`/`ValueString`/`ValueType` and `ExtensionValueType` (now exist, from Task 1).
+- Consumes: `Ignixa.Models.Reference` (existing type, unchanged by this plan — `Display`, `Reference2` (the `reference` field's accessor; named `Reference2` because a property cannot share its enclosing type's name — the generator's existing collision guard; `Reference2` is a scalar-string collision and keeps its numeric suffix, unlike `Extension`'s list collision, later renamed to `Extensions` — see the addendum in `docs/superpowers/plans/2026-07-09-consolidate-handwritten-facades-phase0-1a.md`), `Type`, `Identifier`). `Ignixa.Models.R4.Observation.Subject` (now `Reference?`, from Task 1). `Ignixa.Models.R4.Extension.ValueReference`/`ValueString`/`ValueType` and `ExtensionValueType` (now exist, from Task 1).
 
 - [ ] **Step 1: Replace the two broken tests and their section comment**
 
