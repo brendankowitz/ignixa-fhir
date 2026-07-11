@@ -156,6 +156,27 @@ merge but larger) doesn't regress `As<T>()` for STU3/R4B/R6-tagged nodes when it
   elements) the R4/R5-classified scaffolding cannot represent. Revisit only once ADR-2609 ships and a
   real `Stu3.CapabilityStatement` exists to hold that logic instead.
 
+## Reference un-fallback status (implemented)
+
+`Reference`-typed elements previously fell back to a raw `JsonNode`/`JsonArray` accessor (`Reference`
+was hard-coded into the generator's `AbstractOrFallbackTypes` set alongside genuinely abstract bases
+like `Resource`/`Element`, even though it's a normal concrete datatype with its own generated facade).
+Fixed by removing that one entry: every `Reference`-typed element (22 in the current R4/R5 package,
+including `Identifier.Assigner`, `Observation.Subject`, `Patient.GeneralPractitioner`) now gets a typed
+`Reference?`/`MutableJsonList<Reference>` accessor, and every previously-dropped `Reference` choice
+variant (19, including `Extension.value[x]`, `ElementDefinition`'s `default/fixed/pattern[x]`,
+`Parameters.parameter.value[x]`) now gets a real `Value{X}Reference` property — which also fixed a
+latent bug where switching a choice element's variant never cleared a stale `valueReference` key, since
+a dropped variant was never added to the choice's key-clearing list.
+
+This was a hard prerequisite for the Phase 1 `Identifier`/`Reference` hand-facade merge (blocked on
+exactly this gap per this doc's evidence section) and is now resolved — Phase 1 is unblocked.
+
+**Not in scope for this fix, still open:** `Resource`-typed elements (`Bundle.Entry.Resource`,
+`Parameters.Parameter.Resource`, `OperationOutcome.Contained`, etc.) and `contentReference`-based
+recursive elements (`Parameters.Parameter.Part`, `Bundle.Entry.Link`) still fall back — separate,
+already-scoped generator work, tracked as its own plan.
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.
