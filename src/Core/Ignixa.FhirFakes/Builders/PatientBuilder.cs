@@ -414,17 +414,17 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     /// <example>
     /// <code>
     /// var patient = CreatePatient()
-    ///     .WithExtension("http://example.org/ext1", ext => ext.ValueString = "value1")
+    ///     .WithExtension("http://example.org/ext1", ext => ext.Extensions.Add(
+    ///         new Extension { Url = "nested", ... }))
     ///     .Build();
     /// </code>
     /// </example>
-    public PatientBuilder WithExtension(string url, Action<Ignixa.Models.R4.Extension> configure)
+    public PatientBuilder WithExtension(string url, Action<Extension> configure)
     {
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(configure);
 
-        var ext = new Ignixa.Models.R4.Extension();
-        ext.Url = url;
+        var ext = new Extension { Url = url };
         configure(ext);
         _extensions.Add(ext);
         return this;
@@ -441,9 +441,8 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(valueString);
 
-        var ext = new Ignixa.Models.R4.Extension();
-        ext.Url = url;
-        ext.ValueString = valueString;
+        var ext = new Extension { Url = url };
+        ext.SetValueChoiceRaw("valueString", valueString);
         _extensions.Add(ext);
         return this;
     }

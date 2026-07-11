@@ -98,4 +98,42 @@ public sealed class ExtensionFacadeTests
 
         ext.FhirVersion.ShouldBe(FhirVersion.R4);
     }
+
+    [Fact]
+    public void GivenExtensionWithUrl_WhenValueStringSetViaChoiceRaw_ThenReadableViaRawJson()
+    {
+        var ext = new Extension { Url = "http://example.org/ext1" };
+
+        ext.SetValueChoiceRaw("valueString", "hello");
+
+        ext.MutableNode()["valueString"]!.GetValue<string>().ShouldBe("hello");
+    }
+
+    [Fact]
+    public void GivenDifferentValueChoiceAlreadySet_WhenSetValueChoiceRawCalled_ThenPriorChoiceKeyIsCleared()
+    {
+        // This is the exact safety property CreateWithRawValueUri's predecessor design (SetValueUriRaw,
+        // a non-clearing instance mutator) could not provide: SetValueChoiceRaw derives clearing
+        // structurally from FHIR's "value" + PascalCase(type) wire convention, without needing R4/R5's
+        // enumerated per-version variant list, so it is safe to call more than once with a different
+        // variant -- unlike the predecessor, which would have left both keys present.
+        var ext = new Extension { Url = "http://example.org/ext1" };
+        ext.SetValueChoiceRaw("valueString", "first");
+
+        ext.SetValueChoiceRaw("valueUri", "http://example.org/second");
+
+        ext.MutableNode().ContainsKey("valueString").ShouldBeFalse();
+        ext.MutableNode()["valueUri"]!.GetValue<string>().ShouldBe("http://example.org/second");
+    }
+
+    [Fact]
+    public void GivenValueChoiceAlreadySet_WhenSetValueChoiceRawCalledWithNull_ThenKeyIsRemoved()
+    {
+        var ext = new Extension { Url = "http://example.org/ext1" };
+        ext.SetValueChoiceRaw("valueString", "hello");
+
+        ext.SetValueChoiceRaw("valueString", null);
+
+        ext.MutableNode().ContainsKey("valueString").ShouldBeFalse();
+    }
 }
