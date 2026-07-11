@@ -31,7 +31,7 @@ public sealed partial class ObservationComponent : Ignixa.Models.ObservationComp
     }
 
     private static readonly string[] ValueVariantKeys =
-        ["valueQuantity", "valueCodeableConcept", "valueString", "valueBoolean", "valueInteger", "valueRange", "valueRatio", "valueSampledData", "valueTime", "valueDateTime", "valuePeriod", "valueAttachment"];
+        ["valueQuantity", "valueCodeableConcept", "valueString", "valueBoolean", "valueInteger", "valueRange", "valueRatio", "valueSampledData", "valueTime", "valueDateTime", "valuePeriod", "valueAttachment", "valueReference"];
 
     [JsonIgnore]
     public ObservationComponentValueType ValueType
@@ -96,6 +96,11 @@ public sealed partial class ObservationComponent : Ignixa.Models.ObservationComp
             if (MutableNode["valueAttachment"] is not null)
             {
                 return ObservationComponentValueType.Attachment;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return ObservationComponentValueType.Reference;
             }
 
             return ObservationComponentValueType.None;
@@ -184,6 +189,13 @@ public sealed partial class ObservationComponent : Ignixa.Models.ObservationComp
     {
         get => GetComplexProperty<Attachment>("valueAttachment");
         set => SetValueVariant("valueAttachment", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     /// <summary>The raw node of whichever <c>value*</c> variant is present, or null.</summary>

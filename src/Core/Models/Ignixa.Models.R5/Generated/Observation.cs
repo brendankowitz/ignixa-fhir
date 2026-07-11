@@ -36,16 +36,15 @@ public sealed partial class Observation : Ignixa.Models.Observation
     {
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? BodyStructure
+    public Reference? BodyStructure
     {
-        get => MutableNode["bodyStructure"];
-        set => SetProperty("bodyStructure", value);
+        get => GetComplexProperty<Reference>("bodyStructure");
+        set => SetProperty("bodyStructure", value?.MutableNode);
     }
 
     private static readonly string[] InstantiatesVariantKeys =
-        ["instantiatesCanonical"];
+        ["instantiatesCanonical", "instantiatesReference"];
 
     [JsonIgnore]
     public ObservationInstantiatesType InstantiatesType
@@ -57,6 +56,11 @@ public sealed partial class Observation : Ignixa.Models.Observation
                 return ObservationInstantiatesType.Canonical;
             }
 
+            if (MutableNode["instantiatesReference"] is not null)
+            {
+                return ObservationInstantiatesType.Reference;
+            }
+
             return ObservationInstantiatesType.None;
         }
     }
@@ -66,6 +70,13 @@ public sealed partial class Observation : Ignixa.Models.Observation
     {
         get => GetProperty<string?>("instantiatesCanonical");
         set => SetInstantiatesVariant("instantiatesCanonical", value is null ? null : JsonValue.Create(value));
+    }
+
+    [JsonIgnore]
+    public Reference? InstantiatesReference
+    {
+        get => GetComplexProperty<Reference>("instantiatesReference");
+        set => SetInstantiatesVariant("instantiatesReference", value?.MutableNode);
     }
 
     /// <summary>The raw node of whichever <c>instantiates*</c> variant is present, or null.</summary>
@@ -121,7 +132,7 @@ public sealed partial class Observation : Ignixa.Models.Observation
     public MutableJsonList<ObservationTriggeredBy> TriggeredBy => GetListProperty<ObservationTriggeredBy>("triggeredBy");
 
     private static readonly string[] ValueVariantKeys =
-        ["valueQuantity", "valueCodeableConcept", "valueString", "valueBoolean", "valueInteger", "valueRange", "valueRatio", "valueSampledData", "valueTime", "valueDateTime", "valuePeriod", "valueAttachment"];
+        ["valueQuantity", "valueCodeableConcept", "valueString", "valueBoolean", "valueInteger", "valueRange", "valueRatio", "valueSampledData", "valueTime", "valueDateTime", "valuePeriod", "valueAttachment", "valueReference"];
 
     [JsonIgnore]
     public ObservationValueType ValueType
@@ -186,6 +197,11 @@ public sealed partial class Observation : Ignixa.Models.Observation
             if (MutableNode["valueAttachment"] is not null)
             {
                 return ObservationValueType.Attachment;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return ObservationValueType.Reference;
             }
 
             return ObservationValueType.None;
@@ -274,6 +290,13 @@ public sealed partial class Observation : Ignixa.Models.Observation
     {
         get => GetComplexProperty<Attachment>("valueAttachment");
         set => SetValueVariant("valueAttachment", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     /// <summary>The raw node of whichever <c>value*</c> variant is present, or null.</summary>

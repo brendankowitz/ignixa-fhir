@@ -66,12 +66,11 @@ public sealed partial class PatientContact : BaseJsonNode
         set => SetProperty("name", value?.MutableNode);
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Organization
+    public Reference? Organization
     {
-        get => MutableNode["organization"];
-        set => SetProperty("organization", value);
+        get => GetComplexProperty<Reference>("organization");
+        set => SetProperty("organization", value?.MutableNode);
     }
 
     [JsonIgnore]

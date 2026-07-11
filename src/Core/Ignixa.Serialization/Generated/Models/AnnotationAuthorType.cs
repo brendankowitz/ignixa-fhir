@@ -23,5 +23,6 @@ namespace Ignixa.Models;
 public enum AnnotationAuthorType
 {
     None,
+    Reference,
     String,
 }

@@ -24,6 +24,7 @@ public enum TriggerDefinitionTimingType
 {
     None,
     Timing,
+    Reference,
     Date,
     DateTime,
 }

@@ -50,12 +50,11 @@ public sealed partial class RelatedArtifact : Ignixa.Models.RelatedArtifact
         set => SetProperty("publicationStatus", value?.GetLiteral());
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? ResourceReference
+    public Reference? ResourceReference
     {
-        get => MutableNode["resourceReference"];
-        set => SetProperty("resourceReference", value);
+        get => GetComplexProperty<Reference>("resourceReference");
+        set => SetProperty("resourceReference", value?.MutableNode);
     }
 
     [JsonIgnore]

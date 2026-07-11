@@ -59,6 +59,7 @@ public enum ElementDefinitionPatternType
     Quantity,
     Range,
     Ratio,
+    Reference,
     SampledData,
     Signature,
     Timing,

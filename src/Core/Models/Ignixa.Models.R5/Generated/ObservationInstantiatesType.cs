@@ -24,4 +24,5 @@ public enum ObservationInstantiatesType
 {
     None,
     Canonical,
+    Reference,
 }

@@ -31,7 +31,7 @@ public sealed partial class ParametersParameter : Ignixa.Models.ParametersParame
     }
 
     private static readonly string[] ValueVariantKeys =
-        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueContributor", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueDosage", "valueMeta"];
+        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueReference", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueContributor", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueDosage", "valueMeta"];
 
     [JsonIgnore]
     public ParametersParameterValueType ValueType
@@ -216,6 +216,11 @@ public sealed partial class ParametersParameter : Ignixa.Models.ParametersParame
             if (MutableNode["valueRatio"] is not null)
             {
                 return ParametersParameterValueType.Ratio;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return ParametersParameterValueType.Reference;
             }
 
             if (MutableNode["valueSampledData"] is not null)
@@ -537,6 +542,13 @@ public sealed partial class ParametersParameter : Ignixa.Models.ParametersParame
     {
         get => GetComplexProperty<Ratio>("valueRatio");
         set => SetValueVariant("valueRatio", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     [JsonIgnore]

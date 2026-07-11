@@ -52,12 +52,11 @@ public sealed partial class Signature : BaseJsonNode
         set => IdElement.Value = value;
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? OnBehalfOf
+    public Reference? OnBehalfOf
     {
-        get => MutableNode["onBehalfOf"];
-        set => SetProperty("onBehalfOf", value);
+        get => GetComplexProperty<Reference>("onBehalfOf");
+        set => SetProperty("onBehalfOf", value?.MutableNode);
     }
 
     [JsonIgnore]
@@ -93,11 +92,10 @@ public sealed partial class Signature : BaseJsonNode
         set => WhenElement.Value = value;
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Who
+    public Reference? Who
     {
-        get => MutableNode["who"];
-        set => SetProperty("who", value);
+        get => GetComplexProperty<Reference>("who");
+        set => SetProperty("who", value?.MutableNode);
     }
 }

@@ -45,12 +45,11 @@ public partial class ObservationTriggeredBy : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Observation
+    public Reference? Observation
     {
-        get => MutableNode["observation"];
-        set => SetProperty("observation", value);
+        get => GetComplexProperty<Reference>("observation");
+        set => SetProperty("observation", value?.MutableNode);
     }
 
     [JsonIgnore]

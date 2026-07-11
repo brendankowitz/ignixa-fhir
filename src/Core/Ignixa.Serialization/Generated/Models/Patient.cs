@@ -154,13 +154,8 @@ public partial class Patient : DomainResourceJsonNode
         set => SetProperty("gender", value?.GetLiteral());
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? GeneralPractitioner
-    {
-        get => MutableNode["generalPractitioner"] as JsonArray;
-        set => SetProperty("generalPractitioner", value);
-    }
+    public MutableJsonList<Reference> GeneralPractitioner => GetListProperty<Reference>("generalPractitioner");
 
     [JsonIgnore]
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
@@ -178,12 +173,11 @@ public partial class Patient : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<PatientLink> Link => GetListProperty<PatientLink>("link");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? ManagingOrganization
+    public Reference? ManagingOrganization
     {
-        get => MutableNode["managingOrganization"];
-        set => SetProperty("managingOrganization", value);
+        get => GetComplexProperty<Reference>("managingOrganization");
+        set => SetProperty("managingOrganization", value?.MutableNode);
     }
 
     [JsonIgnore]

@@ -507,7 +507,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// property is emitted as the unqualified type name in both layers and resolves to the base type.
     /// Concrete FHIR datatypes/backbones are PascalCase; primitives and abstract bases are excluded by
     /// the caller's primitive check. We treat any non-primitive PascalCase code as typed-complex except
-    /// the known abstract bases and <c>Reference</c>-style fallbacks handled below.
+    /// the known abstract bases.
     /// </summary>
     private static bool IsTypedComplex(string typeCode)
     {
@@ -522,14 +522,13 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             return false;
         }
 
-        // Reference is intentionally a fallback (it has no generated facade in this cut).
         return char.IsUpper(typeCode[0]);
     }
 
     private static readonly HashSet<string> AbstractOrFallbackTypes = new(StringComparer.Ordinal)
     {
         "Base", "Element", "BackboneElement", "BackboneType", "DataType",
-        "PrimitiveType", "Resource", "DomainResource", "Reference",
+        "PrimitiveType", "Resource", "DomainResource",
     };
 
     private void EmitComplexProperty(StringBuilder body, string clrTypeName, string propertyName, string jsonName, bool isArray)

@@ -59,6 +59,7 @@ public enum ExtensionValueType
     Quantity,
     Range,
     Ratio,
+    Reference,
     SampledData,
     Signature,
     Timing,

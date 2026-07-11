@@ -59,6 +59,7 @@ public enum ParametersParameterValueType
     Quantity,
     Range,
     Ratio,
+    Reference,
     SampledData,
     Signature,
     Timing,

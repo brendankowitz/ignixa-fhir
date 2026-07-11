@@ -65,7 +65,7 @@ public partial class DataRequirement : BaseJsonNode
     public MutableJsonList<DataRequirementSort> Sort => GetListProperty<DataRequirementSort>("sort");
 
     private static readonly string[] SubjectVariantKeys =
-        ["subjectCodeableConcept"];
+        ["subjectCodeableConcept", "subjectReference"];
 
     [JsonIgnore]
     public DataRequirementSubjectType SubjectType
@@ -77,6 +77,11 @@ public partial class DataRequirement : BaseJsonNode
                 return DataRequirementSubjectType.CodeableConcept;
             }
 
+            if (MutableNode["subjectReference"] is not null)
+            {
+                return DataRequirementSubjectType.Reference;
+            }
+
             return DataRequirementSubjectType.None;
         }
     }
@@ -86,6 +91,13 @@ public partial class DataRequirement : BaseJsonNode
     {
         get => GetComplexProperty<CodeableConcept>("subjectCodeableConcept");
         set => SetSubjectVariant("subjectCodeableConcept", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? SubjectReference
+    {
+        get => GetComplexProperty<Reference>("subjectReference");
+        set => SetSubjectVariant("subjectReference", value?.MutableNode);
     }
 
     /// <summary>The raw node of whichever <c>subject*</c> variant is present, or null.</summary>

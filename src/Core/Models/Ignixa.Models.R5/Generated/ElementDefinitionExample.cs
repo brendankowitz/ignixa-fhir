@@ -31,7 +31,7 @@ public sealed partial class ElementDefinitionExample : Ignixa.Models.ElementDefi
     }
 
     private static readonly string[] ValueVariantKeys =
-        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueInteger64", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCodeableReference", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueRatioRange", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueAvailability", "valueExtendedContactDetail", "valueDosage", "valueMeta"];
+        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueInteger64", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCodeableReference", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueRatioRange", "valueReference", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueAvailability", "valueExtendedContactDetail", "valueDosage", "valueMeta"];
 
     [JsonIgnore]
     public ElementDefinitionExampleValueType ValueType
@@ -231,6 +231,11 @@ public sealed partial class ElementDefinitionExample : Ignixa.Models.ElementDefi
             if (MutableNode["valueRatioRange"] is not null)
             {
                 return ElementDefinitionExampleValueType.RatioRange;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return ElementDefinitionExampleValueType.Reference;
             }
 
             if (MutableNode["valueSampledData"] is not null)
@@ -578,6 +583,13 @@ public sealed partial class ElementDefinitionExample : Ignixa.Models.ElementDefi
     {
         get => GetComplexProperty<RatioRange>("valueRatioRange");
         set => SetValueVariant("valueRatioRange", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     [JsonIgnore]

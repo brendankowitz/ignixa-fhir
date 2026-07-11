@@ -28,12 +28,11 @@ public sealed partial class Identifier : BaseJsonNode
     {
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Assigner
+    public Reference? Assigner
     {
-        get => MutableNode["assigner"];
-        set => SetProperty("assigner", value);
+        get => GetComplexProperty<Reference>("assigner");
+        set => SetProperty("assigner", value?.MutableNode);
     }
 
     [JsonIgnore]

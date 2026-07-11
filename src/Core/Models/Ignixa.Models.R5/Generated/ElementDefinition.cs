@@ -31,7 +31,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
     }
 
     private static readonly string[] DefaultValueVariantKeys =
-        ["defaultValueBase64Binary", "defaultValueBoolean", "defaultValueCanonical", "defaultValueCode", "defaultValueDate", "defaultValueDateTime", "defaultValueDecimal", "defaultValueId", "defaultValueInstant", "defaultValueInteger", "defaultValueInteger64", "defaultValueMarkdown", "defaultValueOid", "defaultValuePositiveInt", "defaultValueString", "defaultValueTime", "defaultValueUnsignedInt", "defaultValueUri", "defaultValueUrl", "defaultValueUuid", "defaultValueAddress", "defaultValueAge", "defaultValueAnnotation", "defaultValueAttachment", "defaultValueCodeableConcept", "defaultValueCodeableReference", "defaultValueCoding", "defaultValueContactPoint", "defaultValueCount", "defaultValueDistance", "defaultValueDuration", "defaultValueHumanName", "defaultValueIdentifier", "defaultValueMoney", "defaultValuePeriod", "defaultValueQuantity", "defaultValueRange", "defaultValueRatio", "defaultValueRatioRange", "defaultValueSampledData", "defaultValueSignature", "defaultValueTiming", "defaultValueContactDetail", "defaultValueDataRequirement", "defaultValueExpression", "defaultValueParameterDefinition", "defaultValueRelatedArtifact", "defaultValueTriggerDefinition", "defaultValueUsageContext", "defaultValueAvailability", "defaultValueExtendedContactDetail", "defaultValueDosage", "defaultValueMeta"];
+        ["defaultValueBase64Binary", "defaultValueBoolean", "defaultValueCanonical", "defaultValueCode", "defaultValueDate", "defaultValueDateTime", "defaultValueDecimal", "defaultValueId", "defaultValueInstant", "defaultValueInteger", "defaultValueInteger64", "defaultValueMarkdown", "defaultValueOid", "defaultValuePositiveInt", "defaultValueString", "defaultValueTime", "defaultValueUnsignedInt", "defaultValueUri", "defaultValueUrl", "defaultValueUuid", "defaultValueAddress", "defaultValueAge", "defaultValueAnnotation", "defaultValueAttachment", "defaultValueCodeableConcept", "defaultValueCodeableReference", "defaultValueCoding", "defaultValueContactPoint", "defaultValueCount", "defaultValueDistance", "defaultValueDuration", "defaultValueHumanName", "defaultValueIdentifier", "defaultValueMoney", "defaultValuePeriod", "defaultValueQuantity", "defaultValueRange", "defaultValueRatio", "defaultValueRatioRange", "defaultValueReference", "defaultValueSampledData", "defaultValueSignature", "defaultValueTiming", "defaultValueContactDetail", "defaultValueDataRequirement", "defaultValueExpression", "defaultValueParameterDefinition", "defaultValueRelatedArtifact", "defaultValueTriggerDefinition", "defaultValueUsageContext", "defaultValueAvailability", "defaultValueExtendedContactDetail", "defaultValueDosage", "defaultValueMeta"];
 
     [JsonIgnore]
     public ElementDefinitionDefaultValueType DefaultValueType
@@ -231,6 +231,11 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (MutableNode["defaultValueRatioRange"] is not null)
             {
                 return ElementDefinitionDefaultValueType.RatioRange;
+            }
+
+            if (MutableNode["defaultValueReference"] is not null)
+            {
+                return ElementDefinitionDefaultValueType.Reference;
             }
 
             if (MutableNode["defaultValueSampledData"] is not null)
@@ -581,6 +586,13 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
     }
 
     [JsonIgnore]
+    public Reference? DefaultValueReference
+    {
+        get => GetComplexProperty<Reference>("defaultValueReference");
+        set => SetDefaultValueVariant("defaultValueReference", value?.MutableNode);
+    }
+
+    [JsonIgnore]
     public SampledData? DefaultValueSampledData
     {
         get => GetComplexProperty<SampledData>("defaultValueSampledData");
@@ -718,7 +730,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
     }
 
     private static readonly string[] FixedVariantKeys =
-        ["fixedBase64Binary", "fixedBoolean", "fixedCanonical", "fixedCode", "fixedDate", "fixedDateTime", "fixedDecimal", "fixedId", "fixedInstant", "fixedInteger", "fixedInteger64", "fixedMarkdown", "fixedOid", "fixedPositiveInt", "fixedString", "fixedTime", "fixedUnsignedInt", "fixedUri", "fixedUrl", "fixedUuid", "fixedAddress", "fixedAge", "fixedAnnotation", "fixedAttachment", "fixedCodeableConcept", "fixedCodeableReference", "fixedCoding", "fixedContactPoint", "fixedCount", "fixedDistance", "fixedDuration", "fixedHumanName", "fixedIdentifier", "fixedMoney", "fixedPeriod", "fixedQuantity", "fixedRange", "fixedRatio", "fixedRatioRange", "fixedSampledData", "fixedSignature", "fixedTiming", "fixedContactDetail", "fixedDataRequirement", "fixedExpression", "fixedParameterDefinition", "fixedRelatedArtifact", "fixedTriggerDefinition", "fixedUsageContext", "fixedAvailability", "fixedExtendedContactDetail", "fixedDosage", "fixedMeta"];
+        ["fixedBase64Binary", "fixedBoolean", "fixedCanonical", "fixedCode", "fixedDate", "fixedDateTime", "fixedDecimal", "fixedId", "fixedInstant", "fixedInteger", "fixedInteger64", "fixedMarkdown", "fixedOid", "fixedPositiveInt", "fixedString", "fixedTime", "fixedUnsignedInt", "fixedUri", "fixedUrl", "fixedUuid", "fixedAddress", "fixedAge", "fixedAnnotation", "fixedAttachment", "fixedCodeableConcept", "fixedCodeableReference", "fixedCoding", "fixedContactPoint", "fixedCount", "fixedDistance", "fixedDuration", "fixedHumanName", "fixedIdentifier", "fixedMoney", "fixedPeriod", "fixedQuantity", "fixedRange", "fixedRatio", "fixedRatioRange", "fixedReference", "fixedSampledData", "fixedSignature", "fixedTiming", "fixedContactDetail", "fixedDataRequirement", "fixedExpression", "fixedParameterDefinition", "fixedRelatedArtifact", "fixedTriggerDefinition", "fixedUsageContext", "fixedAvailability", "fixedExtendedContactDetail", "fixedDosage", "fixedMeta"];
 
     [JsonIgnore]
     public ElementDefinitionFixedType FixedType
@@ -918,6 +930,11 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (MutableNode["fixedRatioRange"] is not null)
             {
                 return ElementDefinitionFixedType.RatioRange;
+            }
+
+            if (MutableNode["fixedReference"] is not null)
+            {
+                return ElementDefinitionFixedType.Reference;
             }
 
             if (MutableNode["fixedSampledData"] is not null)
@@ -1265,6 +1282,13 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
     {
         get => GetComplexProperty<RatioRange>("fixedRatioRange");
         set => SetFixedVariant("fixedRatioRange", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? FixedReference
+    {
+        get => GetComplexProperty<Reference>("fixedReference");
+        set => SetFixedVariant("fixedReference", value?.MutableNode);
     }
 
     [JsonIgnore]
@@ -1754,7 +1778,7 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
     }
 
     private static readonly string[] PatternVariantKeys =
-        ["patternBase64Binary", "patternBoolean", "patternCanonical", "patternCode", "patternDate", "patternDateTime", "patternDecimal", "patternId", "patternInstant", "patternInteger", "patternInteger64", "patternMarkdown", "patternOid", "patternPositiveInt", "patternString", "patternTime", "patternUnsignedInt", "patternUri", "patternUrl", "patternUuid", "patternAddress", "patternAge", "patternAnnotation", "patternAttachment", "patternCodeableConcept", "patternCodeableReference", "patternCoding", "patternContactPoint", "patternCount", "patternDistance", "patternDuration", "patternHumanName", "patternIdentifier", "patternMoney", "patternPeriod", "patternQuantity", "patternRange", "patternRatio", "patternRatioRange", "patternSampledData", "patternSignature", "patternTiming", "patternContactDetail", "patternDataRequirement", "patternExpression", "patternParameterDefinition", "patternRelatedArtifact", "patternTriggerDefinition", "patternUsageContext", "patternAvailability", "patternExtendedContactDetail", "patternDosage", "patternMeta"];
+        ["patternBase64Binary", "patternBoolean", "patternCanonical", "patternCode", "patternDate", "patternDateTime", "patternDecimal", "patternId", "patternInstant", "patternInteger", "patternInteger64", "patternMarkdown", "patternOid", "patternPositiveInt", "patternString", "patternTime", "patternUnsignedInt", "patternUri", "patternUrl", "patternUuid", "patternAddress", "patternAge", "patternAnnotation", "patternAttachment", "patternCodeableConcept", "patternCodeableReference", "patternCoding", "patternContactPoint", "patternCount", "patternDistance", "patternDuration", "patternHumanName", "patternIdentifier", "patternMoney", "patternPeriod", "patternQuantity", "patternRange", "patternRatio", "patternRatioRange", "patternReference", "patternSampledData", "patternSignature", "patternTiming", "patternContactDetail", "patternDataRequirement", "patternExpression", "patternParameterDefinition", "patternRelatedArtifact", "patternTriggerDefinition", "patternUsageContext", "patternAvailability", "patternExtendedContactDetail", "patternDosage", "patternMeta"];
 
     [JsonIgnore]
     public ElementDefinitionPatternType PatternType
@@ -1954,6 +1978,11 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
             if (MutableNode["patternRatioRange"] is not null)
             {
                 return ElementDefinitionPatternType.RatioRange;
+            }
+
+            if (MutableNode["patternReference"] is not null)
+            {
+                return ElementDefinitionPatternType.Reference;
             }
 
             if (MutableNode["patternSampledData"] is not null)
@@ -2301,6 +2330,13 @@ public sealed partial class ElementDefinition : Ignixa.Models.ElementDefinition
     {
         get => GetComplexProperty<RatioRange>("patternRatioRange");
         set => SetPatternVariant("patternRatioRange", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? PatternReference
+    {
+        get => GetComplexProperty<Reference>("patternReference");
+        set => SetPatternVariant("patternReference", value?.MutableNode);
     }
 
     [JsonIgnore]

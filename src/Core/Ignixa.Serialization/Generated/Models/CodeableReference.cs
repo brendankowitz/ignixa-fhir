@@ -49,11 +49,10 @@ public partial class CodeableReference : BaseJsonNode
         set => IdElement.Value = value;
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Reference
+    public Reference? Reference
     {
-        get => MutableNode["reference"];
-        set => SetProperty("reference", value);
+        get => GetComplexProperty<Reference>("reference");
+        set => SetProperty("reference", value?.MutableNode);
     }
 }

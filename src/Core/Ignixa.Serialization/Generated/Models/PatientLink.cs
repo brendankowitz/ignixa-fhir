@@ -45,12 +45,11 @@ public sealed partial class PatientLink : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Other
+    public Reference? Other
     {
-        get => MutableNode["other"];
-        set => SetProperty("other", value);
+        get => GetComplexProperty<Reference>("other");
+        set => SetProperty("other", value?.MutableNode);
     }
 
     [JsonIgnore]

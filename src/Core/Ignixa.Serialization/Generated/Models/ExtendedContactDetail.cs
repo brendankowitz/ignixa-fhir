@@ -52,12 +52,11 @@ public partial class ExtendedContactDetail : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<HumanName> Name => GetListProperty<HumanName>("name");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Organization
+    public Reference? Organization
     {
-        get => MutableNode["organization"];
-        set => SetProperty("organization", value);
+        get => GetComplexProperty<Reference>("organization");
+        set => SetProperty("organization", value?.MutableNode);
     }
 
     [JsonIgnore]

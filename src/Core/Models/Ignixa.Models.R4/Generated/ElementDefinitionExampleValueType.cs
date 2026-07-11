@@ -59,6 +59,7 @@ public enum ElementDefinitionExampleValueType
     Quantity,
     Range,
     Ratio,
+    Reference,
     SampledData,
     Signature,
     Timing,

@@ -63,7 +63,7 @@ public partial class TriggerDefinition : BaseJsonNode
     }
 
     private static readonly string[] TimingVariantKeys =
-        ["timingTiming", "timingDate", "timingDateTime"];
+        ["timingTiming", "timingReference", "timingDate", "timingDateTime"];
 
     [JsonIgnore]
     public TriggerDefinitionTimingType TimingType
@@ -73,6 +73,11 @@ public partial class TriggerDefinition : BaseJsonNode
             if (MutableNode["timingTiming"] is not null)
             {
                 return TriggerDefinitionTimingType.Timing;
+            }
+
+            if (MutableNode["timingReference"] is not null)
+            {
+                return TriggerDefinitionTimingType.Reference;
             }
 
             if (MutableNode["timingDate"] is not null)
@@ -94,6 +99,13 @@ public partial class TriggerDefinition : BaseJsonNode
     {
         get => GetComplexProperty<Timing>("timingTiming");
         set => SetTimingVariant("timingTiming", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? TimingReference
+    {
+        get => GetComplexProperty<Reference>("timingReference");
+        set => SetTimingVariant("timingReference", value?.MutableNode);
     }
 
     [JsonIgnore]
