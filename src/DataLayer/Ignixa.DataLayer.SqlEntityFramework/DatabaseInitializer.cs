@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -52,19 +53,14 @@ public class DatabaseInitializer
         {
             _logger.LogInformation("Verifying database connection and schema...");
 
-            // Check if database exists
-            // Note: CanConnectAsync() throws exception if database doesn't exist, not just returns false
-            bool canConnect;
-            try
-            {
-                canConnect = await _context.Database.CanConnectAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                // Database doesn't exist (common exceptions: SqlException with "Cannot open database", "Login failed")
-                _logger.LogDebug(ex, "Cannot connect to database (expected if database doesn't exist)");
-                canConnect = false;
-            }
+            // Check if database exists. Uses a dedicated, non-pooled connection rather than
+            // _context.Database.CanConnectAsync(): on a brand-new database this attempt is *expected*
+            // to fail, and a failed attempt trips SqlClient's connection-pool blocking period for that
+            // connection string - if that were the pool the rest of this method (and the app) shares,
+            // every subsequent connection would replay the same cached failure for several seconds,
+            // even after the database is created immediately below. Probing on an isolated, non-pooled
+            // connection means an expected failure here never poisons the pool anything else relies on.
+            bool canConnect = await CanConnectNonPooledAsync(cancellationToken);
 
             if (!canConnect)
             {
@@ -144,36 +140,28 @@ public class DatabaseInitializer
     /// <returns>True if database has no tables, false otherwise.</returns>
     private async Task<bool> IsDatabaseEmptyAsync(CancellationToken cancellationToken)
     {
+        var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync(cancellationToken);
+
         try
         {
-            var connection = _context.Database.GetDbConnection();
-            await connection.OpenAsync(cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT CASE
+                    WHEN EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Resource')
+                    THEN 0
+                    ELSE 1
+                END AS IsEmpty";
 
-            try
-            {
-                using var command = connection.CreateCommand();
-                command.CommandText = @"
-                    SELECT CASE
-                        WHEN EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Resource')
-                        THEN 0
-                        ELSE 1
-                    END AS IsEmpty";
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            var isEmpty = result != null && (int)result == 1;
 
-                var result = await command.ExecuteScalarAsync(cancellationToken);
-                var isEmpty = result != null && (int)result == 1;
-
-                _logger.LogDebug("Database empty check result: {IsEmpty}", isEmpty);
-                return isEmpty;
-            }
-            finally
-            {
-                await connection.CloseAsync();
-            }
+            _logger.LogDebug("Database empty check result: {IsEmpty}", isEmpty);
+            return isEmpty;
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogError(ex, "Failed to check if database is empty. Assuming not empty to avoid schema recreation.");
-            return false;
+            await connection.CloseAsync();
         }
     }
 
@@ -301,6 +289,40 @@ public class DatabaseInitializer
     {
         return string.Equals(_environment, "Development", StringComparison.OrdinalIgnoreCase)
             || string.Equals(_environment, "Debug", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Probes whether the database is reachable, on a connection dedicated to this one check.
+    /// </summary>
+    /// <remarks>
+    /// SqlConnection.ClearPool() does not reset SqlClient's connection-pool blocking-period tracker
+    /// (verified empirically against a real SQL Server instance) - once a pool has recorded a
+    /// connection failure, calling ClearPool before retrying still replays the cached failure for the
+    /// remainder of the blocking period. Using a non-pooled connection for this expected-to-sometimes-fail
+    /// probe avoids the problem at its source instead of trying to recover from it afterward.
+    /// </remarks>
+    private async Task<bool> CanConnectNonPooledAsync(CancellationToken cancellationToken)
+    {
+        var connectionString = _context.Database.GetConnectionString();
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            return false;
+        }
+
+        var nonPooledConnectionString = new SqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString;
+
+        try
+        {
+            await using var connection = new SqlConnection(nonPooledConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Database doesn't exist (common exceptions: SqlException with "Cannot open database", "Login failed")
+            _logger.LogDebug(ex, "Cannot connect to database (expected if database doesn't exist)");
+            return false;
+        }
     }
 
     /// <summary>
