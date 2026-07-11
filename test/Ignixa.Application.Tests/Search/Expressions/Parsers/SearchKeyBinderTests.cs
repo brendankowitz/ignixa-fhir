@@ -102,7 +102,10 @@ public class SearchKeyBinderTests
         var member = context.Add("Group", "member", SearchParamType.Reference, targets: PatientResourceTypes);
         var groupTag = context.Add("Group", "_tag", SearchParamType.Token);
         var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
-        var syntax = SearchKeyGrammar.ParseParameter("_has:Group:member:_tag");
+        var syntax = new ReverseChainKeySyntax(
+            "Group",
+            "member",
+            new ParameterKeySyntax("_tag", null));
 
         var bound = binder.Bind(PatientResourceTypes, syntax);
 

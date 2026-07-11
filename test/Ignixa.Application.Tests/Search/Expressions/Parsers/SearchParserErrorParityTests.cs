@@ -19,7 +19,7 @@ public class SearchParserErrorParityTests
     [Theory]
     [InlineData("patient..name", "search key", 9)]
     [InlineData("name:exact:contains", "search key", 11)]
-    public void GivenMalformedKey_WhenParsing_ThenReportsSuperpowerPosition(
+    public void GivenMalformedKey_WhenParsing_ThenReportsSyntaxPosition(
         string key,
         string subject,
         int column)

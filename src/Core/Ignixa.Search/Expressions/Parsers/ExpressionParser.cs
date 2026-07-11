@@ -63,12 +63,12 @@ public class ExpressionParser : IExpressionParser
         if (key.Equals("_not-referenced", StringComparison.OrdinalIgnoreCase))
         {
             NotReferencedKeySyntax syntax =
-                SearchKeyGrammar.ParseNotReferenced(value);
+                SearchKeySyntaxParser.ParseNotReferenced(value);
             return SearchExpressionBinder.BindNotReferenced(
                 _keyBinder.BindNotReferenced(syntax));
         }
 
-        SearchKeySyntax keySyntax = SearchKeyGrammar.ParseParameter(key);
+        SearchKeySyntax keySyntax = SearchKeySyntaxParser.ParseParameter(key);
         BoundSearchKey bound = _keyBinder.Bind(resourceTypes, keySyntax);
         return SearchExpressionBinder.BindKey(
             bound,
@@ -106,7 +106,7 @@ public class ExpressionParser : IExpressionParser
                 "<empty>"));
         }
 
-        IncludeKeySyntax syntax = SearchKeyGrammar.ParseInclude(includeValue);
+        IncludeKeySyntax syntax = SearchKeySyntaxParser.ParseInclude(includeValue);
         BoundIncludeKey bound = _keyBinder.BindInclude(
             resourceTypes,
             syntax,
