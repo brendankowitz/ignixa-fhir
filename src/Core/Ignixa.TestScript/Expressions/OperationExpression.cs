@@ -25,6 +25,7 @@ public sealed record OperationExpression : ActionExpression
     public int? Origin { get; init; }
     public IReadOnlyList<HeaderExpression> Headers { get; init; } = [];
     public bool EncodeRequestUrl { get; init; } = true;
+    public WaitForCondition? WaitFor { get; init; }
 
     public override ValueTask<TestScriptContext> AcceptAsync(
         ITestScriptActionVisitor visitor,
