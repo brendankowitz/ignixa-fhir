@@ -199,6 +199,51 @@ fallbacks, 19 dropped Reference variants, 10 Resource/contentReference fallbacks
 `value-set enum -> string: 16` downgrades are unrelated: real value-set binding metadata gaps like
 `all-languages`, not element-typing gaps, and out of scope for this effort).
 
+## Phase 1 status (in progress): first real merges
+
+`Narrative` and `Extension` are merged — the first two of the 41 hand-written `*JsonNode` facades this
+investigation set out to consolidate. `Narrative` needed zero hand-written code (fully generator-covered).
+`Extension` needed one small hand-written addition: `Extension.SetValueUriRaw(string?)`, a low-level
+instance method for the one call site (`SecurityCapabilitySegment.cs`, core CapabilityStatement
+generation) that needs to set `value[x]` but can neither know its target FHIR version at compile time
+(it's multi-tenant, stamping `context.FhirVersion` per request) nor reference the R4/R5 packages at all
+(they are deliberately opt-in, not baked into the core request path — see this doc's Constraints).
+Every other call site either doesn't touch `value[x]` at all, or (like `PatientBuilder`, test-only
+infrastructure with no opt-in-package restriction) constructs the version-specific subclass directly and
+uses its typed accessor.
+
+**Decision recorded:** `ValueString`/`ValueUri` are deliberately *not* re-added as a same-named
+hand-written instance property on `Extension`'s shared base, even though the old hand-written
+`ExtensionJsonNode` had them. They only exist on the R4/R5 subclasses today (the classifier excludes
+`value[x]` from the base — its choice-type union genuinely differs by version, confirmed empirically
+during Plan A2). A base-level hand-written version would need a `new` modifier to avoid a build error,
+and `new` is compile-time-dispatched: any code holding a base-typed `Extension` reference — the common
+case after a merge — would silently get a simpler, non-choice-clearing implementation instead of the
+version-correct one the generated subclass already provides. This establishes the pattern for every
+future merge in this effort: **when a hand-written member's semantics only make sense for a specific
+version, express that as a version-specific accessor on the subclass — never as a same-named hand-written
+member on the shared base that could silently shadow the correct generated behavior.**
+
+**A second lesson, found the hard way during this task:** a hand-written member that *dispatches* by
+version (rather than shadowing a specific version) cannot simply live on the shared base type either, if
+it needs to name the R4/R5 types by identifier — `Ignixa.Serialization` (where the base partial lives) is
+a dependency *of* `Ignixa.Models.R4`/`R5`, not the reverse, so referencing them by name from the base is a
+circular project reference. And even resolving that wouldn't have been enough here: the actual caller
+(`Ignixa.Application`) doesn't reference the R4/R5 packages at all, deliberately, per the "opt-in, not
+baked into the core request path" constraint — a hand-written helper that only compiles by depending on
+opt-in packages can't be added to a core call site regardless of which project it lives in. The general
+resolution: when a core (non-opt-in) call site needs version-specific typed-model behavior it structurally
+cannot obtain, add a narrowly-scoped, differently-named, low-level escape hatch on the shared base instead
+of trying to give the base type version-dispatch knowledge it isn't allowed to have.
+
+Remaining Phase 1 datatypes: `Identifier`, `Reference`, `Meta` (see the Phased plan section above).
+`Identifier`/`Reference` were previously blocked on the generator's `Reference`-typed-element fallback gap
+— resolved by Plan A. `Meta` needs its own plan: its deltas are semantic, not structural (hand
+`LastUpdated` is `DateTimeOffset?` vs. generated `string?`; hand `Tags`/`Security` are spec-incorrect
+`MutablePrimitiveList<string>` vs. generated spec-correct `Coding`-typed lists) — plus `ResourceJsonNode.Meta`
+being the `Meta` property on every resource in the codebase makes this a full-suite-regression-review
+change, not a contained one.
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.
