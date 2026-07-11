@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR ProdCharacteristic datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public class ProdCharacteristic : BaseJsonNode
+public partial class ProdCharacteristic : BaseJsonNode
 {
     public ProdCharacteristic()
     {

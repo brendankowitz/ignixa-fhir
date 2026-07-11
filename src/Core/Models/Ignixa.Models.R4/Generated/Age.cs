@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR Age R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class Age : Ignixa.Models.Age
+public sealed partial class Age : Ignixa.Models.Age
 {
     public Age()
     {

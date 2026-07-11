@@ -31,23 +31,23 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     [
         "boolean", "integer", "string", "decimal", "uri", "url", "canonical", "base64Binary",
         "instant", "date", "dateTime", "time", "code", "oid", "id", "markdown", "unsignedInt",
-        "positiveInt", "uuid", "integer64",
+        "positiveInt", "uuid", "integer64", "xhtml",
     ];
 
     private static readonly HashSet<string> StringLikePrimitives =
     [
         "string", "code", "uri", "url", "canonical", "oid", "id", "markdown", "base64Binary",
-        "date", "dateTime", "time", "instant", "uuid",
+        "date", "dateTime", "time", "instant", "uuid", "xhtml",
     ];
 
     /// <summary>
     /// Resource types that already have a hand-written facade in <c>Ignixa.Serialization</c> or
     /// <c>Ignixa.Application</c> (the <c>*JsonNode</c> classes the request pipeline depends on). The
     /// generated base layer (namespace <c>Ignixa.Models</c>) emits a facade named exactly after the
-    /// resource (<c>Bundle</c>), so it would NOT collide with the hand-written <c>BundleJsonNode</c> at
+    /// resource (<c>Provenance</c>), so it would NOT collide with the hand-written <c>ProvenanceJsonNode</c> at
     /// the CLR level. This guard is nonetheless ACTIVE: it stops the generator from emitting a base
     /// facade for any resource the server already models by hand, so the two never diverge and a
-    /// consumer reaching for, say, <c>Bundle</c> handling is steered to the single server-critical
+    /// consumer reaching for, say, <c>Provenance</c> handling is steered to the single server-critical
     /// implementation rather than a parallel generated one. The skip logs and continues (see
     /// <see cref="ExportMultiVersion"/>). Sourced from the hand-written resource facades under
     /// <c>src/Core/Ignixa.Serialization/Models/*JsonNode.cs</c> and
@@ -55,9 +55,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// </summary>
     private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
     {
-        "Bundle",
-        "OperationOutcome",
-        "Parameters",
         "Provenance",
         "SearchParameter",
         "CapabilityStatement",
@@ -66,6 +63,63 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "ConceptMap",
         "Composition",
     };
+
+    /// <summary>
+    /// Type names whose shared BASE facade is structurally identical enough across every targeted FHIR
+    /// version -- including versions this generator does not target yet (STU3, R4B, R6) -- that a
+    /// version-tagged node should be able to reach the base via
+    /// <see cref="Ignixa.Serialization.SourceNodes.ResourceJsonNode.As{T}"/> regardless of tag. Applies
+    /// only to the base emission, never a per-version subclass (see the <c>isVersionSubclass</c> check at
+    /// the call site) -- a subclass exists precisely because some element differs by version, so it must
+    /// keep enforcing the guard. Empirically determined by a classifier structural-signature probe across
+    /// {R4, R5, STU3, R4B, R6}; see the "Normative contract types" table committed to
+    /// docs/features/typed-models/investigations/consolidate-handwritten-facades.md by this plan's Task 3
+    /// (docs/superpowers/plans/2026-07-10-consolidate-handwritten-facades-phase0b.md carries the same
+    /// table if Task 3 has not landed yet). The generator omits <see cref="CompatibleFhirVersionsAttribute"/>
+    /// for these types' base facade in <see cref="RenderClass"/>, matching the permissive-when-unmarked
+    /// behavior hand-written facades have always had (see that attribute's own doc comment). Types NOT in
+    /// this set that get consolidated later (e.g. <c>Provenance</c>) keep their attribute deliberately --
+    /// their divergence from STU3 or between R4/R5 is real, so the guard firing for them is correct, not
+    /// a regression. Also covers backbone/nested types owned by an already-exempt resource (e.g.
+    /// <c>BundleEntry</c>, <c>OperationOutcomeIssue</c>, <c>ParametersParameter</c>) whose own base facade
+    /// is equally version-agnostic, for the same reason and by the same probe.
+    /// </summary>
+    private static readonly HashSet<string> VersionAgnosticContractTypes = new(StringComparer.Ordinal)
+    {
+        "Bundle",
+        "Parameters",
+        "OperationOutcome",
+        "Extension",
+        "Identifier",
+        "Meta",
+        "Narrative",
+        "Reference",
+        "BundleEntry",
+        "BundleEntryRequest",
+        "BundleEntryResponse",
+        "BundleEntrySearch",
+        "BundleLink",
+        "OperationOutcomeIssue",
+        "ParametersParameter",
+    };
+
+    /// <summary>
+    /// The exact package specs (id#version) <see cref="VersionAgnosticContractTypes"/> was verified
+    /// against by the structural-signature probe described above. This exemption is a claim about a
+    /// SPECIFIC pair of FHIR core package versions, not about R4/R5 in the abstract -- a later patch or
+    /// minor release could change one of these types' shape without changing its version name. Program.cs
+    /// asserts the packages it actually loads (<c>RunTypedModelMultiVersion</c>'s <c>targets</c>) match
+    /// this set exactly before generation proceeds. If that assertion fails, the probe must be re-run
+    /// against the new package versions and this constant (plus <see cref="VersionAgnosticContractTypes"/>
+    /// itself, if the re-probe finds a divergence) updated before generation is allowed to continue --
+    /// silently regenerating against an unverified package version would let a newly-diverged type keep
+    /// its version-mismatch guard suppressed with no diagnostic.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> VerifiedAgainstPackageSpecs =
+    [
+        "hl7.fhir.r4.core#4.0.1",
+        "hl7.fhir.r5.core#5.0.0",
+    ];
 
     /// <summary>Gets the language name.</summary>
     public string Name => LanguageName;
@@ -428,14 +482,41 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         MemberNameAllocator memberNames)
     {
         bool isArray = element.cgIsArray();
+
+        if (!string.IsNullOrEmpty(element.ContentReference))
+        {
+            // FHIR's contentReference mechanism: this element reuses another element's own shape
+            // (e.g. Parameters.parameter.part reuses Parameters.parameter itself, recursively; checked
+            // first because a contentReference element always has an empty Type list, so IsBackbone and
+            // ResolveTypeCode below would otherwise treat it as an untyped Element fallback). The
+            // referenced path resolves to the exact type name that path's own element would get if
+            // walked directly -- same naming rule as the backbone branch below (parentType +
+            // PascalCase(segment), folded over every segment after the root).
+            string referencedTypeName = ResolveContentReferenceTypeName(element.ContentReference);
+            string refComplexName = memberNames.Allocate(ToPascalCase(jsonName), isArray);
+            EmitComplexProperty(body, referencedTypeName, refComplexName, jsonName, isArray);
+            return;
+        }
+
         string fhirTypeCode = ResolveTypeCode(element);
 
         if (IsBackbone(element, sd))
         {
             // Backbone type name mirrors the classifier: parentType + PascalCase(jsonName).
             string backboneTypeName = typeName + ToPascalCase(jsonName);
-            string complexName = memberNames.Allocate(ToPascalCase(jsonName));
+            string complexName = memberNames.Allocate(ToPascalCase(jsonName), isArray);
             EmitComplexProperty(body, backboneTypeName, complexName, jsonName, isArray);
+            return;
+        }
+
+        if (fhirTypeCode == "Resource")
+        {
+            // Resource is a hand-written runtime base (Ignixa.Serialization.SourceNodes.ResourceJsonNode),
+            // not a generated Ignixa.Models facade -- there is no single concrete type an "any resource"
+            // element could name. ResourceJsonNode is concrete with a public (JsonObject, FhirVersion?)
+            // constructor, so GetComplexProperty<ResourceJsonNode>/MutableJsonList<ResourceJsonNode>
+            // resolve via the same generic constructor lookup every other complex property already uses.
+            EmitComplexProperty(body, "ResourceJsonNode", memberNames.Allocate(ToPascalCase(jsonName), isArray), jsonName, isArray);
             return;
         }
 
@@ -457,12 +538,35 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         if (IsTypedComplex(fhirTypeCode))
         {
-            EmitComplexProperty(body, fhirTypeCode, memberNames.Allocate(ToPascalCase(jsonName)), jsonName, isArray);
+            EmitComplexProperty(body, fhirTypeCode, memberNames.Allocate(ToPascalCase(jsonName), isArray), jsonName, isArray);
             return;
         }
 
         context.RecordJsonNodeFallback($"{typeName}.{jsonName}", fhirTypeCode);
-        EmitFallback(body, memberNames.Allocate(ToPascalCase(jsonName)), jsonName, fhirTypeCode, isArray);
+        EmitFallback(body, memberNames.Allocate(ToPascalCase(jsonName), isArray), jsonName, fhirTypeCode, isArray);
+    }
+
+    /// <summary>
+    /// Resolves a <c>contentReference</c> value (e.g. <c>#Parameters.parameter</c>) to the CLR type name
+    /// the referenced element's own path would produce. Folds the backbone-naming rule (parentType +
+    /// PascalCase(segment)) over every path segment after the root, so a multi-level reference resolves
+    /// the same way a multi-level backbone walk would -- verified against the three references present in
+    /// the current R4/R5 package, all exactly two segments (root resource + one field): <c>#Bundle.link</c>
+    /// -> <c>BundleLink</c>, <c>#Observation.referenceRange</c> -> <c>ObservationReferenceRange</c>,
+    /// <c>#Parameters.parameter</c> -> <c>ParametersParameter</c> (self-referential).
+    /// </summary>
+    private static string ResolveContentReferenceTypeName(string contentReference)
+    {
+        string path = contentReference.StartsWith('#') ? contentReference[1..] : contentReference;
+        string[] segments = path.Split('.');
+
+        var typeName = new StringBuilder(segments[0]);
+        for (int i = 1; i < segments.Length; i++)
+        {
+            typeName.Append(ToPascalCase(segments[i]));
+        }
+
+        return typeName.ToString();
     }
 
     /// <summary>
@@ -471,7 +575,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// property is emitted as the unqualified type name in both layers and resolves to the base type.
     /// Concrete FHIR datatypes/backbones are PascalCase; primitives and abstract bases are excluded by
     /// the caller's primitive check. We treat any non-primitive PascalCase code as typed-complex except
-    /// the known abstract bases and <c>Reference</c>-style fallbacks handled below.
+    /// the known abstract bases.
     /// </summary>
     private static bool IsTypedComplex(string typeCode)
     {
@@ -486,14 +590,13 @@ public sealed class CSharpTypedModelLanguage : ILanguage
             return false;
         }
 
-        // Reference is intentionally a fallback (it has no generated facade in this cut).
         return char.IsUpper(typeCode[0]);
     }
 
     private static readonly HashSet<string> AbstractOrFallbackTypes = new(StringComparer.Ordinal)
     {
         "Base", "Element", "BackboneElement", "BackboneType", "DataType",
-        "PrimitiveType", "Resource", "DomainResource", "Reference",
+        "PrimitiveType", "Resource", "DomainResource",
     };
 
     private void EmitComplexProperty(StringBuilder body, string clrTypeName, string propertyName, string jsonName, bool isArray)
@@ -805,12 +908,28 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         sb.AppendLine($"/// FHIR {typeName} {kindLabel} facade. Zero-copy view over the underlying JsonObject.");
         sb.AppendLine("/// </summary>");
 
-        // Fully qualified: every generated class inherits the instance property BaseJsonNode.FhirVersion,
-        // which shadows the FhirVersion TYPE name in this attribute-argument position (CS0120) despite
-        // the `using Ignixa.Abstractions;` above -- simple-name lookup here prefers the inherited member.
-        string versionArgs = string.Join(", ", compatibleVersions.Select(v => $"global::Ignixa.Abstractions.FhirVersion.{MapToFhirVersionEnumMember(v)}"));
-        sb.AppendLine($"[CompatibleFhirVersions({versionArgs})]");
-        sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}class {typeName} : {baseClass}");
+        // isVersionSubclass is checked first and short-circuits VersionAgnosticContractTypes deliberately:
+        // that set says "the elements common to every classified version are safe to read from any
+        // version," which is a claim about the BASE type only. A per-version subclass exists precisely
+        // because some element genuinely differs between versions (e.g. Bundle.issues is R5-only,
+        // Parameters.parameter.value[x]'s choice-type union differs between R4/R5) -- so a subclass for
+        // typeName "Bundle" must keep its own single-version CompatibleFhirVersionsAttribute even though
+        // the base type doesn't, or a real cross-version misread through that specific subclass (e.g. an
+        // R4-tagged node read via R5.Bundle, silently missing the version-specific shape) would stop
+        // being caught.
+        if (!isVersionSubclass && VersionAgnosticContractTypes.Contains(typeName))
+        {
+            sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}partial class {typeName} : {baseClass}");
+        }
+        else
+        {
+            // Fully qualified: every generated class inherits the instance property BaseJsonNode.FhirVersion,
+            // which shadows the FhirVersion TYPE name in this attribute-argument position (CS0120) despite
+            // the `using Ignixa.Abstractions;` above -- simple-name lookup here prefers the inherited member.
+            string versionArgs = string.Join(", ", compatibleVersions.Select(v => $"global::Ignixa.Abstractions.FhirVersion.{MapToFhirVersionEnumMember(v)}"));
+            sb.AppendLine($"[CompatibleFhirVersions({versionArgs})]");
+            sb.AppendLine($"public {(sealedType ? "sealed " : string.Empty)}partial class {typeName} : {baseClass}");
+        }
         sb.AppendLine("{");
 
         if (isResource)
@@ -1258,8 +1377,28 @@ public sealed class PrimitiveElement<T>
             _used.Add(name + "Type");
         }
 
-        public string Allocate(string preferred)
+        public string Allocate(string preferred, bool isArray = false)
         {
+            if (_used.Add(preferred))
+            {
+                return preferred;
+            }
+
+            // A list-typed member whose preferred name collides -- almost always with its own containing
+            // type, e.g. Extension's nested "extension" list on the Extension class itself -- reads better
+            // pluralized (Extensions) than suffixed with a bare digit (Extension2). Only taken on an actual
+            // collision, so every non-colliding list property (BundleEntry.Link, Patient.Identifier, ...)
+            // keeps the FHIR wire name unchanged and singular, exactly as before.
+            if (isArray)
+            {
+                string plural = Pluralize(preferred);
+                if (!string.Equals(plural, preferred, StringComparison.Ordinal) && _used.Add(plural))
+                {
+                    _context.RecordMemberNameCollision(_typeName, preferred, plural);
+                    return plural;
+                }
+            }
+
             string candidate = preferred;
             int suffix = 2;
             while (!_used.Add(candidate))
@@ -1268,12 +1407,30 @@ public sealed class PrimitiveElement<T>
                 suffix++;
             }
 
-            if (!string.Equals(candidate, preferred, StringComparison.Ordinal))
+            _context.RecordMemberNameCollision(_typeName, preferred, candidate);
+            return candidate;
+        }
+
+        /// <summary>
+        /// Minimal English pluralizer for the collision-fallback case above -- not a general-purpose
+        /// pluralizer, just enough for FHIR PascalCase type/element names.
+        /// </summary>
+        private static string Pluralize(string name)
+        {
+            if (name.EndsWith("s", StringComparison.Ordinal) ||
+                name.EndsWith("x", StringComparison.Ordinal) ||
+                name.EndsWith("ch", StringComparison.Ordinal) ||
+                name.EndsWith("sh", StringComparison.Ordinal))
             {
-                _context.RecordMemberNameCollision(_typeName, preferred, candidate);
+                return name + "es";
             }
 
-            return candidate;
+            if (name.EndsWith("y", StringComparison.Ordinal) && name.Length > 1 && !"aeiouAEIOU".Contains(name[^2]))
+            {
+                return name[..^1] + "ies";
+            }
+
+            return name + "s";
         }
 
         public string AllocatePrimitive(string preferred, string fhirTypeCode, bool isArray)

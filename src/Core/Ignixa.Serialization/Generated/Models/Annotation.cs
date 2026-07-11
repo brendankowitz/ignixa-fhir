@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Annotation datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Annotation : BaseJsonNode
+public sealed partial class Annotation : BaseJsonNode
 {
     public Annotation()
     {
@@ -30,13 +30,18 @@ public sealed class Annotation : BaseJsonNode
     }
 
     private static readonly string[] AuthorVariantKeys =
-        ["authorString"];
+        ["authorReference", "authorString"];
 
     [JsonIgnore]
     public AnnotationAuthorType AuthorType
     {
         get
         {
+            if (MutableNode["authorReference"] is not null)
+            {
+                return AnnotationAuthorType.Reference;
+            }
+
             if (MutableNode["authorString"] is not null)
             {
                 return AnnotationAuthorType.String;
@@ -44,6 +49,13 @@ public sealed class Annotation : BaseJsonNode
 
             return AnnotationAuthorType.None;
         }
+    }
+
+    [JsonIgnore]
+    public Reference? AuthorReference
+    {
+        get => GetComplexProperty<Reference>("authorReference");
+        set => SetAuthorVariant("authorReference", value?.MutableNode);
     }
 
     [JsonIgnore]

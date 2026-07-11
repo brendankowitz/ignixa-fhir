@@ -17,8 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Narrative datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Narrative : BaseJsonNode
+public sealed partial class Narrative : BaseJsonNode
 {
     public Narrative()
     {
@@ -29,12 +28,14 @@ public sealed class Narrative : BaseJsonNode
     {
     }
 
-    // fallback: xhtml
     [JsonIgnore]
-    public JsonNode? Div
+    public PrimitiveElement<string> DivElement => new(MutableNode, "div");
+
+    [JsonIgnore]
+    public string? Div
     {
-        get => MutableNode["div"];
-        set => SetProperty("div", value);
+        get => DivElement.Value;
+        set => DivElement.Value = value;
     }
 
     [JsonIgnore]

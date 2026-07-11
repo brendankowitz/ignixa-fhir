@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR ObservationTriggeredBy datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class ObservationTriggeredBy : BaseJsonNode
+public partial class ObservationTriggeredBy : BaseJsonNode
 {
     public ObservationTriggeredBy()
     {
@@ -45,12 +45,11 @@ public class ObservationTriggeredBy : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Observation
+    public Reference? Observation
     {
-        get => MutableNode["observation"];
-        set => SetProperty("observation", value);
+        get => GetComplexProperty<Reference>("observation");
+        set => SetProperty("observation", value?.MutableNode);
     }
 
     [JsonIgnore]

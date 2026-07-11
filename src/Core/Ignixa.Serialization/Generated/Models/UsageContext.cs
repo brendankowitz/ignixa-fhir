@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR UsageContext datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class UsageContext : BaseJsonNode
+public sealed partial class UsageContext : BaseJsonNode
 {
     public UsageContext()
     {
@@ -50,7 +50,7 @@ public sealed class UsageContext : BaseJsonNode
     }
 
     private static readonly string[] ValueVariantKeys =
-        ["valueCodeableConcept", "valueQuantity", "valueRange"];
+        ["valueCodeableConcept", "valueQuantity", "valueRange", "valueReference"];
 
     [JsonIgnore]
     public UsageContextValueType ValueType
@@ -70,6 +70,11 @@ public sealed class UsageContext : BaseJsonNode
             if (MutableNode["valueRange"] is not null)
             {
                 return UsageContextValueType.Range;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return UsageContextValueType.Reference;
             }
 
             return UsageContextValueType.None;
@@ -95,6 +100,13 @@ public sealed class UsageContext : BaseJsonNode
     {
         get => GetComplexProperty<Range>("valueRange");
         set => SetValueVariant("valueRange", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     /// <summary>The raw node of whichever <c>value*</c> variant is present, or null.</summary>

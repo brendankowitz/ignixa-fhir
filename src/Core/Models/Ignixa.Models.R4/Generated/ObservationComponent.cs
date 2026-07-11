@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR ObservationComponent R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class ObservationComponent : Ignixa.Models.ObservationComponent
+public sealed partial class ObservationComponent : Ignixa.Models.ObservationComponent
 {
     public ObservationComponent()
     {

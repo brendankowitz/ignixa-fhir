@@ -1,0 +1,305 @@
+# Investigation: Consolidate Hand-Written Facades
+
+**Feature**: typed-models
+**Status**: Proposed
+**Created**: 2026-07-09
+
+> Triggered by [PR #319](https://github.com/brendankowitz/ignixa-fhir/pull/319) ("Generate typed model facades for all FHIR resources"), which deletes the `ReservedBaseTypeNames` guard in `CSharpTypedModelLanguage.cs` that previously stopped the generator from emitting a base facade for any resource that already has a hand-written `*JsonNode` facade (`Bundle`, `OperationOutcome`, `Parameters`, `Provenance`, `SearchParameter`, `CapabilityStatement`, `StructureDefinition`, `StructureMap`, `ConceptMap`, `Composition`). This is the "separate migration" [adr-2608-shared-base-models](../adr-2608-shared-base-models.md) flagged as a follow-up: *"consolidate the hand-written `*JsonNode` facades into the generated base."*
+
+## Approach
+
+**Single-type merge via `partial`, not a parallel type + rename.**
+
+Today the generator emits a self-contained sealed-in-practice class (`Ignixa.Models.Patient : DomainResourceJsonNode`, not `partial`). The naive reading of PR #319 lets that continue: for the 10 previously-reserved resources, a *second*, differently-named type now compiles alongside the hand-written one (`Ignixa.Models.Bundle` next to `Ignixa.Serialization.Models.BundleJsonNode`) — two facades over the same JSON, no relationship between them.
+
+Instead:
+
+1. **Generator change**: emit `partial class {Name} : {Base}` (one-line change — add the `partial` modifier).
+2. **Move, don't duplicate**: relocate each hand-written `*JsonNode` file into the generated type's namespace (`Ignixa.Models`) and rename the class to match exactly (`BundleJsonNode` → `Bundle`, in `Ignixa.Models`). Partial parts must share namespace *and* type name.
+3. **Strip to the delta**: delete every member from the hand-written file that the generator now also produces (properties, enums, constructors, the `ResourceType = "..."` assignment). What survives is only genuine business logic that isn't a StructureDefinition-derived accessor — e.g. `ParametersJsonNode.FindParameter/GetValueAs/SetValue`, `ProvenanceJsonNode.AddTarget/AddAgent`, `StructureDefinitionJsonNode.Parse/GetSnapshotElements`, `ReferenceJsonNode.FromResourceTypeAndId`, the `StructureMap*` `value[x]` helpers.
+4. **Base class stays in the generated part** (only one partial declaration may specify the base list): `Bundle : ResourceJsonNode`, `Patient : DomainResourceJsonNode`, etc. — generator classification already gets this right (verified: Bundle is a plain `Resource`, not `DomainResource`, in both today's hand-written base and FHIR's actual model).
+
+This collapses what would otherwise be a two-type migration (generated `Ignixa.Models.Bundle` vs. hand-written `BundleJsonNode`, with `ResourceTypeRegistry` and every `is`/`As<T>()` call site needing to flip from one to the other atomically) into a same-type edit. There is never a window where two types both claim to represent `Bundle` — `ResourceTypeRegistry` only ever points at one type because there is only one type.
+
+**Breaking change, accepted deliberately.** The rename (`Ignixa.Serialization.Models.BundleJsonNode` → `Ignixa.Models.Bundle`) changes the public type name and namespace. Internal call sites are a mechanical rename (or bridged with a compile-time-only `global using BundleJsonNode = Ignixa.Models.Bundle;` alias to avoid touching them). External NuGet consumers referencing the old name break — accepted as a normal breaking change under the pre-release versioning model (no `[Obsolete]` forwarding shim); confirmed with the repo owner (2026-07-09) that this feature has no external consumers yet worth shimming for.
+
+## Tradeoffs
+
+| Pros | Cons |
+|------|------|
+| One type per resource — no dual-dispatch window, no atomicity requirement between `ResourceTypeRegistry` and call sites | Every hand-written file needs manual triage: which members are generator-duplicates (delete) vs. genuine business logic (keep) |
+| Generated members are strictly higher fidelity (generated `Bundle` gains `Identifier`, `Timestamp`, `Signature` the hand-written version never had) | Namespace/name move is a breaking change for anything outside this repo referencing the old type names |
+| Small, mechanical generator change (`partial` keyword) enables the whole migration | Enum-literal parity is not automatically checked — hand-rolled `switch` literal tables (e.g. `OperationOutcomeJsonNode.IssueType`, ~30 literals) must be verified byte-identical against generated `[EnumLiteral]` enums before deletion |
+| Fixes an existing layering smell as a side effect: the 9 `*JsonNode` facades under `src/Application/Ignixa.Application/Features/Metadata/Models/` move into Core (`Ignixa.Models`), where resource modeling belongs | Generated types carry `[CompatibleFhirVersions]`, enforced by `As<T>()`; hand-written types had no such check — migration can surface new `InvalidCastException`s on version-tagged nodes that previously passed silently |
+| Confirmed viable pattern: hand-written and generated facades already share the identical runtime shape (`GetProperty`/`SetProperty`/`GetListProperty` over the same `MutableNode`, dual `(JsonObject)` / `(JsonObject, FhirVersion?)` constructors) | Highest-risk resources (`Bundle`, `OperationOutcome`, `Parameters`) are load-bearing across the entire REST transaction pipeline — must go last, each behind its own PR and full E2E run |
+
+## Alignment
+
+- [x] Follows architectural layering rules — completes the move of resource/datatype modeling into Core (`Ignixa.Models`), removing it from Application (`Ignixa.Application.Features.Metadata.Models`).
+- [x] Developer Experience — one canonical type per resource; no "which `Bundle` do I use" ambiguity.
+- [x] Specification compliance — consolidated facades gain full StructureDefinition-derived fidelity (fields the hand-picked hand-written subset never had).
+- [x] Consistent with existing patterns — reuses the `partial class` idiom already standard for generator-augmented types in this codebase; no new mechanism introduced.
+
+## Evidence
+
+### Already-duplicated today (predates PR #319)
+
+`GenerateAllDatatypes = true` shipped earlier and already produces `Ignixa.Models.Extension/Identifier/Meta/Reference/Narrative` alongside their hand-written `*JsonNode` counterparts (verified: exactly these 5 datatypes have both a hand-written and a generated facade today — `CodeableConcept`/`Coding` were never hand-written, so they aren't consolidation candidates, just already-generated) — the two-sources-of-truth problem PR #319 widens for resources already exists for datatypes. This makes these 5 the natural, lowest-risk starting phase (no `ResourceTypeRegistry` involvement, small surface).
+
+### Structural parity (verified against real code)
+
+Hand-written `src/Core/Ignixa.Serialization/Models/BundleJsonNode.cs` (`Ignixa.Serialization.Models.BundleJsonNode : ResourceJsonNode`) and generated `src/Core/Ignixa.Serialization/Generated/Models/Patient.cs` (`Ignixa.Models.Patient : DomainResourceJsonNode`) use the identical runtime pattern: `GetProperty<T>`/`SetProperty`, `GetListProperty<T>`, nested `[EnumLiteral]` enums, and the same dual-constructor shape (`(JsonObject)` internal, `(JsonObject, FhirVersion?)` public). Generated classes are not currently `partial`.
+
+### Call-site blast radius (per resource, from repo-wide grep)
+
+- `OperationOutcome` — woven through the Domain exception hierarchy, 20+ files.
+- `Parameters` — operation endpoints, `$patch`, import/export.
+- `Bundle` — ~90 references across ~30 files: transaction pipeline, search, IPS.
+- `Composition`, `ConceptMap`, `StructureMap` — usage localized to IPS/terminology/FML features, not core request path.
+- `SearchParameter`, `Provenance`, `StructureDefinition` — moderate, contained usage.
+
+### Full hand-written facade inventory (41 files, verified by direct listing)
+
+- `src/Core/Ignixa.Serialization/Models/` (32 files): the 10 reserved resources' top-level and nested BackboneElement types (`BundleComponentJsonNode`, `BundleLinkJsonNode`, `ConceptMapElementJsonNode`, `StructureMap*JsonNode` ×8, etc.) plus 5 datatypes (`ExtensionJsonNode`, `IdentifierJsonNode`, `MetaJsonNode`, `NarrativeJsonNode`, `ReferenceJsonNode`).
+- `src/Application/Ignixa.Application/Features/Metadata/Models/` (9 files): `CapabilityStatementJsonNode` and its nested components — layered in Application today, should live in Core post-migration.
+- Runtime base classes (`BaseJsonNode`, `DomainResourceJsonNode`, `IMutableJsonNode`, `ResourceJsonNode`, 4 files, not counted above) are **not** migration candidates — they are what both hand-written and generated facades derive from.
+
+## Phased plan
+
+1. **Phase 0**: merge PR #319 with a doc note steering server code to keep using `*JsonNode` until each resource is migrated; generator change to emit `partial`; add round-trip parity tests (hand-written vs. generated output over identical JSON) for the 10 reserved resources before any deletion.
+2. **Phase 1 (low risk)**: the 5 datatypes already duplicated — `Extension`, `Identifier`, `Meta`, `Narrative`, `Reference`. No `ResourceTypeRegistry` involvement.
+3. **Phase 2 (contained resources)**: `Composition`, `ConceptMap`, `StructureMap`, then `SearchParameter`, `Provenance`, `StructureDefinition`.
+4. **Phase 3 (Application-layer facades)**: replace the 9 `Metadata/Models/*JsonNode` files with generated `Ignixa.Models.CapabilityStatement` and friends — resolves the layering smell simultaneously.
+5. **Phase 4 (load-bearing, last)**: `OperationOutcome`, `Parameters`, `Bundle` — one PR per resource, full E2E run each.
+
+## Version scope
+
+This migration covers **R4 and R5 only** — the only versions with generated typed models today (`src/Core/Models/Ignixa.Models.{R4,R5}`). `FhirVersion` also enumerates `Stu3`, `R4B`, and `R6`, but:
+
+- STU3 has no generated typed models yet — [adr-2609-stu3-classification-group](../adr-2609-stu3-classification-group.md) (classifying STU3 as its own isolated group) is still **Proposed**, not implemented.
+- R4B and R6 generation has not been investigated at all (open follow-up candidates per the [feature readme](../readme.md)).
+
+Consolidating the hand-written facades for those versions is therefore **blocked on generator work that doesn't exist yet**, not a decision this investigation can make. Tracked explicitly as a follow-up: once ADR-2609 (or an R4B/R6 equivalent) ships generated models for a version, that version's facades become eligible for the same `partial`-class consolidation described here — no new design needed, just the phased plan re-run against that version's generated surface.
+
+**`ResourceTypeRegistry` is global and version-blind — this is a real constraint on Phase 2/4, not just a documentation gap.** `src/Core/Ignixa.Serialization/ResourceTypeRegistry.cs` is a single `Dictionary<string, Func<JsonObject, ResourceJsonNode>>` with no `FhirVersion` parameter, and it only covers 5 of the 10 reserved resources: `Parameters`, `Bundle`, `OperationOutcome`, `Provenance`, `SearchParameter` (`CapabilityStatement` and the rest are constructed directly by Application-layer code, not via this registry). The version guard actually lives in `ResourceJsonNode.As<T>()` (`src/Core/Ignixa.Serialization/SourceNodes/ResourceJsonNode.cs:208`): it checks the *node's* `FhirVersion` against the *target type's* `[CompatibleFhirVersionsAttribute]` and throws `InvalidCastException` on mismatch — but only when `FhirVersion` is set and not `Unspecified`, and only for version-marked target types. Hand-written facades carry no `CompatibleFhirVersionsAttribute`, so they're exempt from this check today; generated facades are tagged (e.g. `[CompatibleFhirVersions(R4, R5)]` on `Patient`).
+
+Consequence: once `Bundle`/`Parameters`/`OperationOutcome`/`Provenance`/`SearchParameter` are merged into their R4/R5-tagged generated types, `.As<T>()` calls against an STU3/R4B/R6-tagged node **start throwing** where they previously succeeded — a genuine behavior change for those versions, not merely "no generated model to migrate to yet." Phase 2 (`Provenance`, `SearchParameter`) and Phase 4 (`Bundle`, `Parameters`, `OperationOutcome`) must resolve this explicitly before merging — e.g. by leaving those specific merged types unmarked (no `CompatibleFhirVersionsAttribute`) until STU3/R4B/R6 generation exists, trading away the version guard to preserve today's permissive behavior. **Phase 0 and Phase 1 (datatypes) are unaffected**: `ResourceTypeRegistry` only dispatches top-level resources via `JsonNodeConverter`, never nested datatypes, so `Extension`/`Identifier`/`Meta`/`Narrative`/`Reference`/`CodeableConcept`/`Coding` carry no registry or version-guard risk — confirming datatypes as the correct first increment.
+
+## Phase 0b status (implemented): normative contract types
+
+Before merging any load-bearing resource facade, a classifier structural-signature probe (`MergeType`,
+the same logic `TypedModelClassifier` uses for real generation) was run across `{R4, R5, STU3, R4B, R6}`
+for the 15 candidate consolidation types, to separate genuinely version-agnostic types from ones whose
+agnosticism was only ever an accident of staying hand-written. Verdict graded by wire-shape misread
+hazard: enum-literal drift and additive/absent elements are near-identical (read as null, safe); retypes,
+cardinality flips, and object-vs-string changes are hard divergence.
+
+| Type | R4/R5 | +STU3 | +R4B | +R6 (ballot2) | Verdict |
+|---|---|---|---|---|---|
+| Narrative | Identical | Identical | Identical | Identical | NORMATIVE |
+| Reference | Identical | additive only | Identical | Identical | NORMATIVE |
+| Meta | Identical | wire-same | Identical | Identical | NORMATIVE |
+| Identifier | Identical | enum drift only | Identical | Identical | NORMATIVE |
+| Extension | value[x] drift | value[x] drift | value[x] drift | value[x] drift | NORMATIVE |
+| Bundle | enum/additive drift | enum drift | clean (tracks R4) | clean (tracks R5) | NORMATIVE |
+| Parameters | value[x] drift only | value[x] subset | clean | clean | NORMATIVE |
+| OperationOutcome | enum drift only | enum drift only | clean | clean | NORMATIVE |
+| Provenance | R5 additive | **hard**: `agent.who`/`entity.what` choice-type change, `activity` retype | clean | additive | NOT-NORMATIVE |
+| SearchParameter | R5 additive | **hard**: `component.definition` string↔object | clean | clean | NOT-NORMATIVE |
+| StructureDefinition | soft | **hard**: `context` retype | clean | clean | NOT-NORMATIVE |
+| CapabilityStatement | soft | **hard, massive**: 22 incompatible elements, 3 STU3-only backbones | clean | enum drift | NOT-NORMATIVE |
+| StructureMap | **hard within R4/R5**: `source.defaultValue[x]` shape change | worse | tracks R4 | tracks R5 | NOT-NORMATIVE |
+| ConceptMap | **hard within R4/R5**: `equivalence`→`relationship` rename, cardinality/restructure | worse | tracks R4 | tracks R5 | NOT-NORMATIVE |
+| Composition | **hard within R4/R5**: cardinality flips, backbone→type change, `attester.mode` retype | worse | tracks R4 | tracks R5 | NOT-NORMATIVE |
+
+**8 NORMATIVE, 7 NOT-NORMATIVE.** R4B tracked R4 with zero new hard divergence across all 15 types; R6
+(ballot2) tracked R5 the same way — STU3 is the sole gatekeeper, and neither "undetermined" version
+in the original open question turned out to be undetermined.
+
+**Correction found while implementing this phase:** the table above came from a standalone probe that
+linked the classifier's source directly, outside the real `RunTypedModelMultiVersion` pipeline. Running
+the actual generator against the real R4/R5 packages (Task 1) found genuine, not-metadata-only R4/R5
+divergence for `Bundle` (`Bundle.issues` is an R5-only field), `Parameters`
+(`Parameters.parameter.value[x]`'s choice-type union differs: R5 adds `Integer64`/`CodeableReference`/
+`RatioRange`/`Availability`/`ExtendedContactDetail`, R4's `Contributor` variant isn't in R5), and enum
+growth on `BundleType`/`IssueSeverity`/`IssueType`. This does **not** overturn the NORMATIVE verdict for
+these three: FHIR's own multi-version classifier only ever places an element in the shared base when
+every classified version agrees on its exact shape, so `Bundle.issues` and the diverging `value[x]`
+members are excluded from the base and live only in per-version subclasses (`Ignixa.Models.R4.Bundle`,
+`Ignixa.Models.R5.Bundle`, etc.) — the base remains a genuinely safe, conservative common subset for any
+version, subclasses included. What it DID require fixing: `CSharpTypedModelLanguage`'s attribute-gating
+logic must suppress `CompatibleFhirVersionsAttribute` only on the unmarked set's **base** type, never on
+its per-version subclasses — subclasses exist specifically to hold the elements that differ, so they
+must keep enforcing the guard. See Task 1 Step 3 for the corrected implementation and Task 2 for the
+regression test that locks this in (`GivenR4TaggedNode_WhenAsR5Bundle_ThenStillThrows`).
+
+**Shipped (this phase):** `CSharpTypedModelLanguage` un-reserves `Bundle`/`Parameters`/`OperationOutcome`
+from `ReservedBaseTypeNames` and `Program.cs`'s `ResourceAllowList` (they are now generated for the first
+time, still unused) and omits `CompatibleFhirVersionsAttribute` for the base type of all 8 NORMATIVE
+types via a new `VersionAgnosticContractTypes` set — per-version subclasses of these types, where the
+classifier emits any, keep their attribute. This does **not** merge the three hand-written resource
+facades yet — it only makes the generated counterparts exist and stay permissive, so that merge (a
+separate, larger plan — each of `BundleJsonNode`/`ParametersJsonNode`/`OperationOutcomeJsonNode` has
+multiple nested hand-written types and several call sites, comparable in shape to the Phase 1a `Extension`
+merge but larger) doesn't regress `As<T>()` for STU3/R4B/R6-tagged nodes when it happens.
+
+**Decision for the 7 NOT-NORMATIVE types:**
+- `Provenance`, `SearchParameter`, `StructureDefinition`, `StructureMap`, `ConceptMap`, `Composition`:
+  proceed with consolidation in a future phase, but **keep** `CompatibleFhirVersionsAttribute(R4, R5)`
+  on the merged type. Their divergence is real (not an artifact of staying hand-written), so `As<T>()`
+  throwing for an STU3-tagged node reinterpreted through one of these is correct behavior — the same
+  guard ADR-2609 relies on for `Patient`. STU3 typed access to these arrives via ADR-2609's `Stu3.*`
+  types, not a shared base.
+- `CapabilityStatement`: **excluded from consolidation entirely**, not just deferred pending STU3
+  generation. The Application-layer facades (`ResourceComponentJsonNode` and siblings) don't merely
+  tolerate STU3 — they implement STU3-specific structural behavior (STU3-only backbones, retyped
+  elements) the R4/R5-classified scaffolding cannot represent. Revisit only once ADR-2609 ships and a
+  real `Stu3.CapabilityStatement` exists to hold that logic instead.
+
+**Version-pin guard added after PR review:** `VersionAgnosticContractTypes` (the 15-plus-backbone-type
+NORMATIVE set that drives the table above) is a claim about a *specific pair* of FHIR core package
+versions (`hl7.fhir.r4.core#4.0.1`, `hl7.fhir.r5.core#5.0.0`), not about "R4/R5" as an abstract concept —
+a later patch release could change one of these types' shape without changing its version name, and
+nothing previously re-verified the claim against what the generator actually loads. `Program.cs`'s
+`RunTypedModelMultiVersion` now asserts its `targets` package specs match
+`CSharpTypedModelLanguage.VerifiedAgainstPackageSpecs` before generation proceeds, and fails loudly
+(exit code 1, no output written) if they don't. This does not replace re-running the structural-signature
+probe when package versions do change — it only guarantees that a version bump can't pass through
+generation silently without someone being forced to either re-verify or explicitly update the pinned
+spec list.
+
+## Reference un-fallback status (implemented)
+
+`Reference`-typed elements previously fell back to a raw `JsonNode`/`JsonArray` accessor (`Reference`
+was hard-coded into the generator's `AbstractOrFallbackTypes` set alongside genuinely abstract bases
+like `Resource`/`Element`, even though it's a normal concrete datatype with its own generated facade).
+Fixed by removing that one entry: every `Reference`-typed element (22 in the current R4/R5 package,
+including `Identifier.Assigner`, `Observation.Subject`, `Patient.GeneralPractitioner`) now gets a typed
+`Reference?`/`MutableJsonList<Reference>` accessor, and every previously-dropped `Reference` choice
+variant (19, including `Extension.value[x]`, `ElementDefinition`'s `default/fixed/pattern[x]`,
+`Parameters.parameter.value[x]`) now gets a real `Value{X}Reference` property — which also fixed a
+latent bug where switching a choice element's variant never cleared a stale `valueReference` key, since
+a dropped variant was never added to the choice's key-clearing list.
+
+This was a hard prerequisite for the Phase 1 `Identifier`/`Reference` hand-facade merge (blocked on
+exactly this gap per this doc's evidence section) and is now resolved — Phase 1 is unblocked.
+
+**Not in scope for this fix, still open:** `Resource`-typed elements (`Bundle.Entry.Resource`,
+`Parameters.Parameter.Resource`, `OperationOutcome.Contained`, etc.) and `contentReference`-based
+recursive elements (`Parameters.Parameter.Part`, `Bundle.Entry.Link`) still fall back — separate,
+already-scoped generator work, tracked as its own plan.
+
+## Resource-typed and contentReference accessor status (implemented)
+
+The two remaining generator-fidelity gaps are closed. `Resource`-typed elements (`BundleEntry.Resource`,
+`BundleEntryResponse.Outcome`, `Observation.Contained`, `OperationOutcome.Contained`, `Patient.Contained`,
+`ParametersParameter.Resource`, `Bundle.Issues`) now resolve to the hand-written
+`Ignixa.Serialization.SourceNodes.ResourceJsonNode` runtime base — there is no single generated facade for
+"any resource," so this is a deliberate exception to routing through `Ignixa.Models`, not an oversight.
+`contentReference`-based elements (`Bundle.Entry.Link`, `Observation.Component.ReferenceRange`,
+`Parameters.Parameter.Part`) now resolve to the referenced element's own backbone type name, reusing the
+existing backbone-naming rule against a different input rather than inventing a new one.
+
+Required making `ResourceJsonNode`'s `(JsonObject, FhirVersion?)` constructor `public` — this also fixed a
+pre-existing, never-exercised latent bug where `MutableJsonList<ResourceJsonNode>` (used today only by the
+hand-written `StructureMapJsonNode.Contained`) threw on first access.
+
+`JsonNode fallbacks` in the generator's coverage-downgrade summary is now **0** for the R4/R5 package —
+every complex element in scope has a typed accessor. `Reference` choice variants (Plan A) and this task's
+fixes together account for all 51 downgrades present when this consolidation effort started (22 Reference
+fallbacks, 19 dropped Reference variants, 10 Resource/contentReference fallbacks — the remaining
+`value-set enum -> string: 16` downgrades are unrelated: real value-set binding metadata gaps like
+`all-languages`, not element-typing gaps, and out of scope for this effort).
+
+## Phase 1 status (in progress): first real merges
+
+`Narrative` and `Extension` are merged — the first two of the 41 hand-written `*JsonNode` facades this
+investigation set out to consolidate. `Narrative` needed zero hand-written code (fully generator-covered).
+`Extension` needed one small hand-written addition: `Extension.CreateWithRawValueUri(string url, string?
+valueUri, FhirVersion? fhirVersion = null)`, an `internal` factory method for the call site
+(`SecurityCapabilitySegment.cs`, core CapabilityStatement generation) that needs to set `value[x]` but can
+neither know its target FHIR version at compile time (it's multi-tenant, stamping `context.FhirVersion` per
+request) nor reference the R4/R5 packages at all (they are deliberately opt-in, not baked into the core
+request path — see this doc's Constraints). Every other call site either doesn't touch `value[x]` at all,
+or (like test-only infrastructure that has no opt-in-package restriction and chooses to reference R4/R5
+directly anyway) constructs the version-specific subclass and uses its typed accessor.
+
+**Revised after PR review (`internal` factory, not `public` instance mutator):** the first shipped version
+was `public void SetValueUriRaw(string? value)`, an instance method a caller invoked on an already-constructed
+`Extension`. Review flagged that this was reachable by every consumer of `Ignixa.Models`, not just the one
+legitimate caller, and — because it bypasses choice-variant clearing by design — nothing stopped a future
+caller from invoking it twice, or after a different `value[x]` variant was already set on the same instance,
+silently producing spec-invalid FHIR JSON with two `value[x]` keys. The fix changes the shape, not just the
+visibility: `CreateWithRawValueUri` always constructs a brand-new `Extension` and sets `valueUri` exactly
+once as part of construction, so there is no pre-existing state a call could ever conflict with — the
+double-set/dual-variant hazard is structurally unreachable, not just discouraged by a comment. `internal`
+narrows this from every consumer of `Ignixa.Models` (the previous `public` design) to the assemblies listed
+in `Ignixa.Serialization`'s `InternalsVisibleTo` (see `AssemblyInfo.cs`) — a deliberately curated friend
+list of about a dozen assemblies across `Ignixa.Application`, `Ignixa.Api`, `Ignixa.FhirFakes`, the test
+projects, and the generated `Ignixa.Models.R4`/`R5` themselves, not "the one assembly with the one real
+caller" — `Ignixa.FhirFakes` is a second real caller (see below), and the rest are trusted-but-currently-unused.
+
+**Generalized to `SetValueChoiceRaw`, in a later follow-up (also driven by PR review):**
+`CreateWithRawValueUri`'s one-off logic was lifted into `Extension.SetValueChoiceRaw(string
+valueElementName, string? value)`, an `internal` instance method that clears any *other* `value[x]` JSON
+key before setting the requested one, then `CreateWithRawValueUri` was rewritten to call it. This is safe
+to derive generically at the shared base — without R4/R5's enumerated per-version variant list — because
+FHIR's `value[x]` wire convention names every choice-type key `"value"` + PascalCase(type name) in every
+version, and `Extension` has no other property that begins with `"value"` (only `url`, `id`, `extension`
+do not); "remove every existing property whose name starts with `value`, then set the new one" is exactly
+equivalent to the generated per-version `SetValueVariant`'s enumerated clear. This upgraded
+`CreateWithRawValueUri` from "safe only because it's called once at construction" to "safe because it
+always clears," with no behavior change for its one caller. It also let `Ignixa.FhirFakes` — a stable,
+published NuGet package (`IsPackable=true`) — drop a `ProjectReference` to `Ignixa.Models.R4` that had
+leaked in: `PatientBuilder.WithExtension` previously had to construct `Ignixa.Models.R4.Extension` directly
+to get a typed `ValueString` setter, purely because the base `Extension` had none; it now calls
+`ext.SetValueChoiceRaw("valueString", value)` on the base type instead, with no R4/R5 reference anywhere
+in `Ignixa.FhirFakes`.
+
+**Also renamed in the same review pass:** `Extension`'s nested `extension`-list member was originally
+emitted as `Extension2` (a member can't share its enclosing type's name, so the generator's name allocator
+fell back to a bare numeral). Extensions are a first-class, heavily-used FHIR concept, not a one-off, so
+`Extension2` was a poor consuming experience specifically here. The generator's collision fallback
+(`CSharpTypedModelLanguage.MemberNameAllocator.Allocate`) now pluralizes a **list**-typed member on
+collision instead of numbering it, so this member is `Extensions`. This is collision-triggered only: every
+other (non-colliding) list property in the generated model set — `BundleEntry.Link`, `Patient.Identifier`,
+and the rest — is untouched, still singular, still matching its FHIR wire name exactly, so this doesn't
+introduce a codebase-wide pluralization convention. Scalar-string collisions (`Reference.Reference` ->
+`Reference2`, `Expression.Expression` -> `Expression2`) are unaffected for the same reason a scalar
+can't sensibly be pluralized — they keep the numeric fallback.
+
+**Decision recorded:** `ValueString`/`ValueUri` are deliberately *not* re-added as a same-named
+hand-written instance property on `Extension`'s shared base, even though the old hand-written
+`ExtensionJsonNode` had them. They only exist on the R4/R5 subclasses today (the classifier excludes
+`value[x]` from the base — its choice-type union genuinely differs by version, confirmed empirically
+during Plan A2). A base-level hand-written version would need a `new` modifier to avoid a build error,
+and `new` is compile-time-dispatched: any code holding a base-typed `Extension` reference — the common
+case after a merge — would silently get a simpler, non-choice-clearing implementation instead of the
+version-correct one the generated subclass already provides. This establishes the pattern for every
+future merge in this effort: **when a hand-written member's semantics only make sense for a specific
+version, express that as a version-specific accessor on the subclass — never as a same-named hand-written
+member on the shared base that could silently shadow the correct generated behavior.**
+
+**A second lesson, found the hard way during this task:** a hand-written member that *dispatches* by
+version (rather than shadowing a specific version) cannot simply live on the shared base type either, if
+it needs to name the R4/R5 types by identifier — `Ignixa.Serialization` (where the base partial lives) is
+a dependency *of* `Ignixa.Models.R4`/`R5`, not the reverse, so referencing them by name from the base is a
+circular project reference. And even resolving that wouldn't have been enough here: the actual caller
+(`Ignixa.Application`) doesn't reference the R4/R5 packages at all, deliberately, per the "opt-in, not
+baked into the core request path" constraint — a hand-written helper that only compiles by depending on
+opt-in packages can't be added to a core call site regardless of which project it lives in. The general
+resolution: when a core (non-opt-in) call site needs version-specific typed-model behavior it structurally
+cannot obtain, add a narrowly-scoped, differently-named, low-level escape hatch on the shared base instead
+of trying to give the base type version-dispatch knowledge it isn't allowed to have.
+
+Remaining Phase 1 datatypes: `Identifier`, `Reference`, `Meta` (see the Phased plan section above).
+`Identifier`/`Reference` were previously blocked on the generator's `Reference`-typed-element fallback gap
+— resolved by Plan A. `Meta` needs its own plan: its deltas are semantic, not structural (hand
+`LastUpdated` is `DateTimeOffset?` vs. generated `string?`; hand `Tags`/`Security` are spec-incorrect
+`MutablePrimitiveList<string>` vs. generated spec-correct `Coding`-typed lists) — plus `ResourceJsonNode.Meta`
+being the `Meta` property on every resource in the codebase makes this a full-suite-regression-review
+change, not a contained one.
+
+## Verdict
+
+**Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.

@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR PatientLink datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class PatientLink : BaseJsonNode
+public sealed partial class PatientLink : BaseJsonNode
 {
     public PatientLink()
     {
@@ -45,12 +45,11 @@ public sealed class PatientLink : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Other
+    public Reference? Other
     {
-        get => MutableNode["other"];
-        set => SetProperty("other", value);
+        get => GetComplexProperty<Reference>("other");
+        set => SetProperty("other", value?.MutableNode);
     }
 
     [JsonIgnore]

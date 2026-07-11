@@ -43,10 +43,11 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     }
 
     /// <summary>
-    /// Protected internal constructor for JsonConverter and derived types (accepts pre-parsed JsonObject and optional FHIR version).
-    /// Uses 'protected internal' to allow subclasses in other assemblies to use it.
+    /// Public constructor for JsonConverter and derived types (accepts pre-parsed JsonObject and optional FHIR version).
+    /// Must be public so generic constructor lookup (Activator.CreateInstance / Type.GetConstructor) used by
+    /// GetComplexProperty&lt;T&gt; and MutableJsonList&lt;T&gt; can find it when T = ResourceJsonNode.
     /// </summary>
-    protected internal ResourceJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion)
+    public ResourceJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }

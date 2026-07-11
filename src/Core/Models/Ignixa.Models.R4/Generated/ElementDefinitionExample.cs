@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR ElementDefinitionExample R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class ElementDefinitionExample : Ignixa.Models.ElementDefinitionExample
+public sealed partial class ElementDefinitionExample : Ignixa.Models.ElementDefinitionExample
 {
     public ElementDefinitionExample()
     {
@@ -31,7 +31,7 @@ public sealed class ElementDefinitionExample : Ignixa.Models.ElementDefinitionEx
     }
 
     private static readonly string[] ValueVariantKeys =
-        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueContributor", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueDosage", "valueMeta"];
+        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueReference", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueContributor", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueDosage", "valueMeta"];
 
     [JsonIgnore]
     public ElementDefinitionExampleValueType ValueType
@@ -216,6 +216,11 @@ public sealed class ElementDefinitionExample : Ignixa.Models.ElementDefinitionEx
             if (MutableNode["valueRatio"] is not null)
             {
                 return ElementDefinitionExampleValueType.Ratio;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return ElementDefinitionExampleValueType.Reference;
             }
 
             if (MutableNode["valueSampledData"] is not null)
@@ -537,6 +542,13 @@ public sealed class ElementDefinitionExample : Ignixa.Models.ElementDefinitionEx
     {
         get => GetComplexProperty<Ratio>("valueRatio");
         set => SetValueVariant("valueRatio", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     [JsonIgnore]

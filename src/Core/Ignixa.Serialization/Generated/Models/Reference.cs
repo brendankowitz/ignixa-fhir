@@ -17,8 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Reference datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Reference : BaseJsonNode
+public sealed partial class Reference : BaseJsonNode
 {
     public Reference()
     {

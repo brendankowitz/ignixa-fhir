@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Metadata.Models;
-using ExtensionJsonNode = Ignixa.Serialization.Models.ExtensionJsonNode;
+using Ignixa.Models;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 
@@ -85,48 +85,28 @@ public class SecurityCapabilitySegment(
         {
             _logger.LogDebug("Adding SMART oauth-uris extension to security component");
 
-            var oauthExtension = new ExtensionJsonNode
+            var oauthExtension = new Extension
             {
                 FhirVersion = context.FhirVersion,
                 Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
             };
 
             // Add authorize endpoint
-            oauthExtension.Extension.Add(new ExtensionJsonNode
-            {
-                FhirVersion = context.FhirVersion,
-                Url = "authorize",
-                ValueUri = smartOptions.AuthorizeUrl,
-            });
+            oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("authorize", smartOptions.AuthorizeUrl, context.FhirVersion));
 
             // Add token endpoint
-            oauthExtension.Extension.Add(new ExtensionJsonNode
-            {
-                FhirVersion = context.FhirVersion,
-                Url = "token",
-                ValueUri = smartOptions.TokenUrl,
-            });
+            oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("token", smartOptions.TokenUrl, context.FhirVersion));
 
             // Add introspect endpoint if configured
             if (!string.IsNullOrEmpty(smartOptions.IntrospectUrl))
             {
-                oauthExtension.Extension.Add(new ExtensionJsonNode
-                {
-                    FhirVersion = context.FhirVersion,
-                    Url = "introspect",
-                    ValueUri = smartOptions.IntrospectUrl,
-                });
+                oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("introspect", smartOptions.IntrospectUrl, context.FhirVersion));
             }
 
             // Add revoke endpoint if configured
             if (!string.IsNullOrEmpty(smartOptions.RevokeUrl))
             {
-                oauthExtension.Extension.Add(new ExtensionJsonNode
-                {
-                    FhirVersion = context.FhirVersion,
-                    Url = "revoke",
-                    ValueUri = smartOptions.RevokeUrl,
-                });
+                oauthExtension.Extensions.Add(Extension.CreateWithRawValueUri("revoke", smartOptions.RevokeUrl, context.FhirVersion));
             }
 
             security.Extension.Add(oauthExtension);

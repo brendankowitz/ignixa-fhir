@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR Attachment R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class Attachment : Ignixa.Models.Attachment
+public sealed partial class Attachment : Ignixa.Models.Attachment
 {
     public Attachment()
     {

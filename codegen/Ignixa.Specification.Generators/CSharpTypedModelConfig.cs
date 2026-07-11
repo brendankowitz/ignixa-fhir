@@ -28,11 +28,11 @@ public sealed class CSharpTypedModelConfig
     /// FHIR complex datatypes for the version (every entry in <c>ComplexTypesByName</c> that is not
     /// an abstract base), rather than the hand-picked <see cref="DatatypeAllowList"/>. Generating the
     /// full closure resolves Extension, Identifier, etc. to real facades and eliminates the JsonNode
-    /// fallback for most in-spec complex types. This does NOT change how <c>Reference</c>-typed
-    /// elements are emitted: <c>Reference</c> itself still gets a base facade (it's a normal concrete
-    /// datatype, needed as e.g. an <c>Identifier</c>'s target), but elements whose type IS Reference
-    /// (<c>Patient.generalPractitioner</c>, etc.) always fall back to a raw JsonNode regardless of this
-    /// flag -- see <c>AbstractOrFallbackTypes</c> in <c>CSharpTypedModelLanguage</c>. Defaults to
+    /// fallback for most in-spec complex types, including elements whose type IS <c>Reference</c>
+    /// (<c>Patient.generalPractitioner</c>, etc.) -- those resolve to a typed <c>Reference?</c>/
+    /// <c>MutableJsonList&lt;Reference&gt;</c> accessor like any other concrete datatype; see
+    /// <c>AbstractOrFallbackTypes</c> in <c>CSharpTypedModelLanguage</c> for the remaining fallback set
+    /// (abstract bases only: <c>Resource</c>, <c>Element</c>, etc.). Defaults to
     /// <c>false</c>; the <c>typed-model</c> mode sets it to <c>true</c>.
     /// </summary>
     public bool GenerateAllDatatypes { get; set; }

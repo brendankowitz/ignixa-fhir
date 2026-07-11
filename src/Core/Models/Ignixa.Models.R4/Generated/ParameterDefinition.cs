@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR ParameterDefinition R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class ParameterDefinition : Ignixa.Models.ParameterDefinition
+public sealed partial class ParameterDefinition : Ignixa.Models.ParameterDefinition
 {
     public ParameterDefinition()
     {

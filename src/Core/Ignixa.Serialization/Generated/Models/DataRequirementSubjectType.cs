@@ -24,4 +24,5 @@ public enum DataRequirementSubjectType
 {
     None,
     CodeableConcept,
+    Reference,
 }

@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR TriggerDefinition R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class TriggerDefinition : Ignixa.Models.TriggerDefinition
+public sealed partial class TriggerDefinition : Ignixa.Models.TriggerDefinition
 {
     public TriggerDefinition()
     {

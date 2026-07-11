@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR CodeableReference datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class CodeableReference : BaseJsonNode
+public partial class CodeableReference : BaseJsonNode
 {
     public CodeableReference()
     {
@@ -49,11 +49,10 @@ public class CodeableReference : BaseJsonNode
         set => IdElement.Value = value;
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Reference
+    public Reference? Reference
     {
-        get => MutableNode["reference"];
-        set => SetProperty("reference", value);
+        get => GetComplexProperty<Reference>("reference");
+        set => SetProperty("reference", value?.MutableNode);
     }
 }

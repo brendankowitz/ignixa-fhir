@@ -87,4 +87,71 @@ public sealed class AsTVersionGuardTests
 
         Should.NotThrow(() => r4Patient.As<Ignixa.Models.R5.Patient>(validate: false));
     }
+
+    // Ignixa.Models.Bundle/Parameters/OperationOutcome (the shared BASE type) carry no
+    // CompatibleFhirVersionsAttribute (Phase 0b) -- the classifier only places an element in the base
+    // when every classified version agrees on its shape, so the base is a safe, conservative common
+    // subset for any version, even though real per-version divergence exists elsewhere on these types
+    // (Bundle.issues is R5-only, Parameters.parameter.value[x]'s choice-type union differs by version --
+    // both live only in the R4/R5 subclasses, which keep their own attribute; see the tests below).
+    [Fact]
+    public void GivenStu3TaggedNode_WhenAsBundle_ThenSucceeds()
+    {
+        var node = ResourceJsonNode.Parse("""{ "resourceType": "Bundle" }""");
+        node.FhirVersion = FhirVersion.Stu3;
+
+        Should.NotThrow(() => node.As<Bundle>());
+    }
+
+    [Fact]
+    public void GivenStu3TaggedNode_WhenAsParameters_ThenSucceeds()
+    {
+        var node = ResourceJsonNode.Parse("""{ "resourceType": "Parameters" }""");
+        node.FhirVersion = FhirVersion.Stu3;
+
+        Should.NotThrow(() => node.As<Parameters>());
+    }
+
+    [Fact]
+    public void GivenStu3TaggedNode_WhenAsOperationOutcome_ThenSucceeds()
+    {
+        var node = ResourceJsonNode.Parse("""{ "resourceType": "OperationOutcome" }""");
+        node.FhirVersion = FhirVersion.Stu3;
+
+        Should.NotThrow(() => node.As<OperationOutcome>());
+    }
+
+    [Fact]
+    public void GivenR4bTaggedNode_WhenAsBundle_ThenSucceedsAndVersionIsPreserved()
+    {
+        var node = ResourceJsonNode.Parse("""{ "resourceType": "Bundle" }""");
+        node.FhirVersion = FhirVersion.R4B;
+
+        Bundle bundle = node.As<Bundle>();
+
+        bundle.FhirVersion.ShouldBe(FhirVersion.R4B);
+    }
+
+    [Fact]
+    public void GivenR4TaggedNode_WhenAsR5Bundle_ThenStillThrows()
+    {
+        // Control specific to this task's own bug: the base Bundle type is unmarked, but its R4/R5
+        // subclasses are NOT -- Bundle.issues (R5-only) and BundleType's R5-only "subscription-notification"
+        // literal are real per-version divergences, so a genuine cross-version misread through the
+        // version-tagged subclass must still throw, exactly like Patient below.
+        var r4Bundle = ResourceJsonNode.Parse("""{ "resourceType": "Bundle" }""").As<Ignixa.Models.R4.Bundle>();
+
+        Should.Throw<InvalidCastException>(() => r4Bundle.As<Ignixa.Models.R5.Bundle>());
+    }
+
+    [Fact]
+    public void GivenR4TaggedNode_WhenAsR5OnlyPatient_ThenStillThrows()
+    {
+        // Control: Phase 0b only exempted the eight named types. A genuinely version-specific facade
+        // (Patient's R4/R5 subclasses) must keep throwing on a real mismatch -- proves the gating in
+        // RenderClass didn't accidentally weaken the guard for anything outside VersionAgnosticContractTypes.
+        var r4Patient = ResourceJsonNode.Parse("""{ "resourceType": "Patient", "id": "example" }""").As<Ignixa.Models.R4.Patient>();
+
+        Should.Throw<InvalidCastException>(() => r4Patient.As<Ignixa.Models.R5.Patient>());
+    }
 }

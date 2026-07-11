@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Patient resource facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Patient : DomainResourceJsonNode
+public partial class Patient : DomainResourceJsonNode
 {
     public Patient()
     {
@@ -61,13 +61,8 @@ public class Patient : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<PatientContact> Contact => GetListProperty<PatientContact>("contact");
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonArray? Contained
-    {
-        get => MutableNode["contained"] as JsonArray;
-        set => SetProperty("contained", value);
-    }
+    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
 
     private static readonly string[] DeceasedVariantKeys =
         ["deceasedBoolean", "deceasedDateTime"];
@@ -154,13 +149,8 @@ public class Patient : DomainResourceJsonNode
         set => SetProperty("gender", value?.GetLiteral());
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? GeneralPractitioner
-    {
-        get => MutableNode["generalPractitioner"] as JsonArray;
-        set => SetProperty("generalPractitioner", value);
-    }
+    public MutableJsonList<Reference> GeneralPractitioner => GetListProperty<Reference>("generalPractitioner");
 
     [JsonIgnore]
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
@@ -178,12 +168,11 @@ public class Patient : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<PatientLink> Link => GetListProperty<PatientLink>("link");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? ManagingOrganization
+    public Reference? ManagingOrganization
     {
-        get => MutableNode["managingOrganization"];
-        set => SetProperty("managingOrganization", value);
+        get => GetComplexProperty<Reference>("managingOrganization");
+        set => SetProperty("managingOrganization", value?.MutableNode);
     }
 
     [JsonIgnore]

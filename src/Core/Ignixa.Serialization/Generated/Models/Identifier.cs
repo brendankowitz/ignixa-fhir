@@ -17,8 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Identifier datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Identifier : BaseJsonNode
+public sealed partial class Identifier : BaseJsonNode
 {
     public Identifier()
     {
@@ -29,12 +28,11 @@ public sealed class Identifier : BaseJsonNode
     {
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Assigner
+    public Reference? Assigner
     {
-        get => MutableNode["assigner"];
-        set => SetProperty("assigner", value);
+        get => GetComplexProperty<Reference>("assigner");
+        set => SetProperty("assigner", value?.MutableNode);
     }
 
     [JsonIgnore]

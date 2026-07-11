@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR Extension R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Extension : Ignixa.Models.Extension
+public sealed partial class Extension : Ignixa.Models.Extension
 {
     public Extension()
     {
@@ -31,7 +31,7 @@ public sealed class Extension : Ignixa.Models.Extension
     }
 
     private static readonly string[] ValueVariantKeys =
-        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueInteger64", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCodeableReference", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueRatioRange", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueAvailability", "valueExtendedContactDetail", "valueDosage", "valueMeta"];
+        ["valueBase64Binary", "valueBoolean", "valueCanonical", "valueCode", "valueDate", "valueDateTime", "valueDecimal", "valueId", "valueInstant", "valueInteger", "valueInteger64", "valueMarkdown", "valueOid", "valuePositiveInt", "valueString", "valueTime", "valueUnsignedInt", "valueUri", "valueUrl", "valueUuid", "valueAddress", "valueAge", "valueAnnotation", "valueAttachment", "valueCodeableConcept", "valueCodeableReference", "valueCoding", "valueContactPoint", "valueCount", "valueDistance", "valueDuration", "valueHumanName", "valueIdentifier", "valueMoney", "valuePeriod", "valueQuantity", "valueRange", "valueRatio", "valueRatioRange", "valueReference", "valueSampledData", "valueSignature", "valueTiming", "valueContactDetail", "valueDataRequirement", "valueExpression", "valueParameterDefinition", "valueRelatedArtifact", "valueTriggerDefinition", "valueUsageContext", "valueAvailability", "valueExtendedContactDetail", "valueDosage", "valueMeta"];
 
     [JsonIgnore]
     public ExtensionValueType ValueType
@@ -231,6 +231,11 @@ public sealed class Extension : Ignixa.Models.Extension
             if (MutableNode["valueRatioRange"] is not null)
             {
                 return ExtensionValueType.RatioRange;
+            }
+
+            if (MutableNode["valueReference"] is not null)
+            {
+                return ExtensionValueType.Reference;
             }
 
             if (MutableNode["valueSampledData"] is not null)
@@ -578,6 +583,13 @@ public sealed class Extension : Ignixa.Models.Extension
     {
         get => GetComplexProperty<RatioRange>("valueRatioRange");
         set => SetValueVariant("valueRatioRange", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public Reference? ValueReference
+    {
+        get => GetComplexProperty<Reference>("valueReference");
+        set => SetValueVariant("valueReference", value?.MutableNode);
     }
 
     [JsonIgnore]

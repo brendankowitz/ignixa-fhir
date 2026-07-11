@@ -26,4 +26,5 @@ public enum UsageContextValueType
     CodeableConcept,
     Quantity,
     Range,
+    Reference,
 }

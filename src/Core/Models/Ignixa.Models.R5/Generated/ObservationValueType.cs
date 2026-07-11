@@ -35,4 +35,5 @@ public enum ObservationValueType
     DateTime,
     Period,
     Attachment,
+    Reference,
 }

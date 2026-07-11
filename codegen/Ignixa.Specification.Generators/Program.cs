@@ -243,18 +243,36 @@ static async Task<int> RunTypedModelMultiVersion(ConfigRoot loaderConfig)
 
     // Stage 1 targets R4 + R5. Order matters: the first version is treated as primary for
     // base-element enum expansion (Identical => the set is the same across versions).
-    var targets = new[]
+    var targets = new (string Version, string PackageId)[]
     {
         ("R4", "hl7.fhir.r4.core#4.0.1"),
         ("R5", "hl7.fhir.r5.core#5.0.0"),
     };
+
+    // CSharpTypedModelLanguage.VersionAgnosticContractTypes is a claim verified against a specific pair
+    // of package versions (VerifiedAgainstPackageSpecs), not "R4/R5" in the abstract. If these targets
+    // are ever bumped without re-running the structural-signature probe, a genuinely-diverged type could
+    // silently keep its version-mismatch guard suppressed. Fail loudly here rather than let that pass
+    // unnoticed.
+    var loadedPackageSpecs = targets.Select(t => t.PackageId).ToList();
+    if (!loadedPackageSpecs.SequenceEqual(CSharpTypedModelLanguage.VerifiedAgainstPackageSpecs))
+    {
+        Console.WriteLine("✗ Typed-model generation is targeting FHIR spec packages that " +
+            "VersionAgnosticContractTypes has not been verified against.");
+        Console.WriteLine($"  Targeting: {string.Join(", ", loadedPackageSpecs)}");
+        Console.WriteLine($"  Verified against: {string.Join(", ", CSharpTypedModelLanguage.VerifiedAgainstPackageSpecs)}");
+        Console.WriteLine("  Re-run the structural-signature probe for Bundle/Parameters/OperationOutcome/etc. " +
+            "against the new package versions, update VersionAgnosticContractTypes if anything diverged, then " +
+            "update VerifiedAgainstPackageSpecs to match before regenerating.");
+        return 1;
+    }
 
     string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     string baseOutputDir = Path.Combine(repoRoot, "src", "Core", "Ignixa.Serialization", "Generated", "Models");
 
     var typedModelConfig = new CSharpTypedModelConfig
     {
-        ResourceAllowList = ["Patient", "Observation"],
+        ResourceAllowList = ["Patient", "Observation", "Bundle", "Parameters", "OperationOutcome"],
         DatatypeAllowList = ["HumanName", "CodeableConcept", "Coding", "Quantity", "Identifier", "Period", "ContactPoint"],
         GenerateAllDatatypes = true,
     };

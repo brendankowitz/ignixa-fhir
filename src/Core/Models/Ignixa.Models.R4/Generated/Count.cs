@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR Count R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class Count : Ignixa.Models.Count
+public sealed partial class Count : Ignixa.Models.Count
 {
     public Count()
     {

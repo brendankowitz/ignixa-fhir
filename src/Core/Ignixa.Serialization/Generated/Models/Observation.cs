@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Observation resource facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Observation : DomainResourceJsonNode
+public partial class Observation : DomainResourceJsonNode
 {
     public Observation()
     {
@@ -35,13 +35,8 @@ public class Observation : DomainResourceJsonNode
     {
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? BasedOn
-    {
-        get => MutableNode["basedOn"] as JsonArray;
-        set => SetProperty("basedOn", value);
-    }
+    public MutableJsonList<Reference> BasedOn => GetListProperty<Reference>("basedOn");
 
     [JsonIgnore]
     public CodeableConcept? BodySite
@@ -63,13 +58,8 @@ public class Observation : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<ObservationComponent> Component => GetListProperty<ObservationComponent>("component");
 
-    // fallback: Resource
     [JsonIgnore]
-    public JsonArray? Contained
-    {
-        get => MutableNode["contained"] as JsonArray;
-        set => SetProperty("contained", value);
-    }
+    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
 
     [JsonIgnore]
     public CodeableConcept? DataAbsentReason
@@ -78,20 +68,14 @@ public class Observation : DomainResourceJsonNode
         set => SetProperty("dataAbsentReason", value?.MutableNode);
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? DerivedFrom
-    {
-        get => MutableNode["derivedFrom"] as JsonArray;
-        set => SetProperty("derivedFrom", value);
-    }
+    public MutableJsonList<Reference> DerivedFrom => GetListProperty<Reference>("derivedFrom");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Device
+    public Reference? Device
     {
-        get => MutableNode["device"];
-        set => SetProperty("device", value);
+        get => GetComplexProperty<Reference>("device");
+        set => SetProperty("device", value?.MutableNode);
     }
 
     private static readonly string[] EffectiveVariantKeys =
@@ -193,32 +177,21 @@ public class Observation : DomainResourceJsonNode
         }
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Encounter
+    public Reference? Encounter
     {
-        get => MutableNode["encounter"];
-        set => SetProperty("encounter", value);
+        get => GetComplexProperty<Reference>("encounter");
+        set => SetProperty("encounter", value?.MutableNode);
     }
 
     [JsonIgnore]
     public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? Focus
-    {
-        get => MutableNode["focus"] as JsonArray;
-        set => SetProperty("focus", value);
-    }
+    public MutableJsonList<Reference> Focus => GetListProperty<Reference>("focus");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? HasMember
-    {
-        get => MutableNode["hasMember"] as JsonArray;
-        set => SetProperty("hasMember", value);
-    }
+    public MutableJsonList<Reference> HasMember => GetListProperty<Reference>("hasMember");
 
     [JsonIgnore]
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
@@ -259,31 +232,20 @@ public class Observation : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<Annotation> Note => GetListProperty<Annotation>("note");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? PartOf
-    {
-        get => MutableNode["partOf"] as JsonArray;
-        set => SetProperty("partOf", value);
-    }
+    public MutableJsonList<Reference> PartOf => GetListProperty<Reference>("partOf");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonArray? Performer
-    {
-        get => MutableNode["performer"] as JsonArray;
-        set => SetProperty("performer", value);
-    }
+    public MutableJsonList<Reference> Performer => GetListProperty<Reference>("performer");
 
     [JsonIgnore]
     public MutableJsonList<ObservationReferenceRange> ReferenceRange => GetListProperty<ObservationReferenceRange>("referenceRange");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Specimen
+    public Reference? Specimen
     {
-        get => MutableNode["specimen"];
-        set => SetProperty("specimen", value);
+        get => GetComplexProperty<Reference>("specimen");
+        set => SetProperty("specimen", value?.MutableNode);
     }
 
     [JsonIgnore]
@@ -293,12 +255,11 @@ public class Observation : DomainResourceJsonNode
         set => SetProperty("status", value?.GetLiteral());
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Subject
+    public Reference? Subject
     {
-        get => MutableNode["subject"];
-        set => SetProperty("subject", value);
+        get => GetComplexProperty<Reference>("subject");
+        set => SetProperty("subject", value?.MutableNode);
     }
 
     [JsonIgnore]

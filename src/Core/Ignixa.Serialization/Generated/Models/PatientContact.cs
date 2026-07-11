@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR PatientContact datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class PatientContact : BaseJsonNode
+public sealed partial class PatientContact : BaseJsonNode
 {
     public PatientContact()
     {
@@ -66,12 +66,11 @@ public sealed class PatientContact : BaseJsonNode
         set => SetProperty("name", value?.MutableNode);
     }
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Organization
+    public Reference? Organization
     {
-        get => MutableNode["organization"];
-        set => SetProperty("organization", value);
+        get => GetComplexProperty<Reference>("organization");
+        set => SetProperty("organization", value?.MutableNode);
     }
 
     [JsonIgnore]

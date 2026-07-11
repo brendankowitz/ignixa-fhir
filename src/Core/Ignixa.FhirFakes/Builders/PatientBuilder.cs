@@ -11,7 +11,7 @@ using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.EdgeCases;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -87,7 +87,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     private readonly List<AdditionalName> _additionalNames = [];
 
     // Custom extensions
-    private readonly List<ExtensionJsonNode> _extensions = [];
+    private readonly List<Extension> _extensions = [];
 
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
@@ -414,17 +414,17 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     /// <example>
     /// <code>
     /// var patient = CreatePatient()
-    ///     .WithExtension("http://example.org/ext1", ext => ext.ValueString = "value1")
+    ///     .WithExtension("http://example.org/ext1", ext => ext.Extensions.Add(
+    ///         new Extension { Url = "http://example.org/nested" }))
     ///     .Build();
     /// </code>
     /// </example>
-    public PatientBuilder WithExtension(string url, Action<ExtensionJsonNode> configure)
+    public PatientBuilder WithExtension(string url, Action<Extension> configure)
     {
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(configure);
 
-        var ext = new ExtensionJsonNode();
-        ext.Url = url;
+        var ext = new Extension { Url = url };
         configure(ext);
         _extensions.Add(ext);
         return this;
@@ -441,9 +441,8 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(valueString);
 
-        var ext = new ExtensionJsonNode();
-        ext.Url = url;
-        ext.ValueString = valueString;
+        var ext = new Extension { Url = url };
+        ext.SetValueChoiceRaw("valueString", valueString);
         _extensions.Add(ext);
         return this;
     }

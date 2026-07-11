@@ -59,6 +59,7 @@ public enum ElementDefinitionFixedType
     Quantity,
     Range,
     Ratio,
+    Reference,
     SampledData,
     Signature,
     Timing,

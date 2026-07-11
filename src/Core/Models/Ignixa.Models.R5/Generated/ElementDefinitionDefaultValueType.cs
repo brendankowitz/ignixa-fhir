@@ -62,6 +62,7 @@ public enum ElementDefinitionDefaultValueType
     Range,
     Ratio,
     RatioRange,
+    Reference,
     SampledData,
     Signature,
     Timing,

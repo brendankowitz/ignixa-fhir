@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR Dosage R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class Dosage : Ignixa.Models.Dosage
+public sealed partial class Dosage : Ignixa.Models.Dosage
 {
     public Dosage()
     {

@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Timing datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Timing : BaseJsonNode
+public sealed partial class Timing : BaseJsonNode
 {
     public Timing()
     {

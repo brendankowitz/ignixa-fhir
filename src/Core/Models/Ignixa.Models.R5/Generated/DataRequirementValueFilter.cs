@@ -19,7 +19,7 @@ namespace Ignixa.Models.R5;
 /// FHIR DataRequirementValueFilter R5 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class DataRequirementValueFilter : Ignixa.Models.DataRequirementValueFilter
+public sealed partial class DataRequirementValueFilter : Ignixa.Models.DataRequirementValueFilter
 {
     public DataRequirementValueFilter()
     {

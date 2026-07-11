@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR ElementDefinitionSlicingDiscriminator R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class ElementDefinitionSlicingDiscriminator : Ignixa.Models.ElementDefinitionSlicingDiscriminator
+public sealed partial class ElementDefinitionSlicingDiscriminator : Ignixa.Models.ElementDefinitionSlicingDiscriminator
 {
     public ElementDefinitionSlicingDiscriminator()
     {

@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR ObservationComponent datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class ObservationComponent : BaseJsonNode
+public partial class ObservationComponent : BaseJsonNode
 {
     public ObservationComponent()
     {
@@ -62,11 +62,6 @@ public class ObservationComponent : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
-    // fallback: Element
     [JsonIgnore]
-    public JsonArray? ReferenceRange
-    {
-        get => MutableNode["referenceRange"] as JsonArray;
-        set => SetProperty("referenceRange", value);
-    }
+    public MutableJsonList<ObservationReferenceRange> ReferenceRange => GetListProperty<ObservationReferenceRange>("referenceRange");
 }

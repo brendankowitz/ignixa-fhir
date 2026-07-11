@@ -17,8 +17,7 @@ namespace Ignixa.Models;
 /// <summary>
 /// FHIR Extension datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
-[CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public class Extension : BaseJsonNode
+public partial class Extension : BaseJsonNode
 {
     public Extension()
     {
@@ -30,7 +29,7 @@ public class Extension : BaseJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension2 => GetListProperty<Extension>("extension");
+    public MutableJsonList<Extension> Extensions => GetListProperty<Extension>("extension");
 
     [JsonIgnore]
     public PrimitiveElement<string> IdElement => new(MutableNode, "id");

@@ -62,6 +62,7 @@ public enum ElementDefinitionPatternType
     Range,
     Ratio,
     RatioRange,
+    Reference,
     SampledData,
     Signature,
     Timing,

@@ -136,47 +136,77 @@ public sealed class TypedFacadeTests
         ReferenceEquals(p1.MaritalStatus!.MutableNode(), p2.MaritalStatus!.MutableNode()).ShouldBeFalse();
     }
 
-    // -- Reference-typed fallback elements (no typed Reference facade in this cut; raw JsonNode) -----
+    // -- Reference-typed elements (typed Reference facade as of the Plan A generator fix) -----------
 
     [Fact]
-    public void GivenReferenceTypedFallbackElement_WhenSetAndSerialized_ThenRoundTripsThroughReparse()
+    public void GivenReferenceTypedElement_WhenSetAndSerialized_ThenRoundTripsThroughReparse()
     {
-        // Observation.subject is one of the most heavily-used Reference-typed elements in FHIR, and
-        // (like every Reference-typed element -- see AbstractOrFallbackTypes) has no typed facade: the
-        // generated accessor is a raw JsonNode?, not a MutableJsonList<Reference>/Reference property.
+        // Observation.subject is one of the most heavily-used Reference-typed elements in FHIR.
+        // Reference2 is the `reference` field's accessor -- named Reference2 because a property cannot
+        // share its enclosing type's name. Unlike Extension's collision (a list, pluralized to
+        // Extensions), this one is a scalar string, so the allocator falls back to a numeric suffix.
         var obs = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""")
             .As<Ignixa.Models.R4.Observation>();
 
-        obs.Subject = new System.Text.Json.Nodes.JsonObject
+        obs.Subject = new Ignixa.Models.Reference
         {
-            ["reference"] = "Patient/123",
-            ["display"] = "Jean Chalmers",
+            Reference2 = "Patient/123",
+            Display = "Jean Chalmers",
         };
 
-        obs.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
+        obs.Subject!.Reference2.ShouldBe("Patient/123");
 
         var reparsed = ResourceJsonNode.Parse(obs.SerializeToString()).As<Ignixa.Models.R4.Observation>();
-        reparsed.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
-        reparsed.Subject!["display"]!.GetValue<string>().ShouldBe("Jean Chalmers");
+        reparsed.Subject!.Reference2.ShouldBe("Patient/123");
+        reparsed.Subject!.Display.ShouldBe("Jean Chalmers");
     }
 
     [Fact]
-    public void GivenReferenceFallbackValueAlreadyAttached_WhenAssignedToAnotherParent_ThenItIsClonedNotThrown()
+    public void GivenReferenceValueAlreadyAttached_WhenAssignedToAnotherParent_ThenItIsClonedNotThrown()
     {
-        // The fallback setter routes through the same BaseJsonNode.SetProperty as typed complex
-        // properties (see GivenComplexValueAlreadyAttached... above), so the same clone-on-reparent
-        // guarantee should hold here too -- worth pinning directly rather than assuming it transfers.
-        var reference = new System.Text.Json.Nodes.JsonObject { ["reference"] = "Patient/123" };
+        // The typed-complex setter (EmitComplexProperty) routes through the same BaseJsonNode.SetProperty
+        // as every other complex property (see GivenComplexValueAlreadyAttached... above), so the same
+        // clone-on-reparent guarantee should hold here too -- worth pinning directly rather than assuming.
+        var reference = new Ignixa.Models.Reference { Reference2 = "Patient/123" };
 
         var obs1 = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""").As<Ignixa.Models.R4.Observation>();
         var obs2 = ResourceJsonNode.Parse("""{ "resourceType": "Observation", "status": "final" }""").As<Ignixa.Models.R4.Observation>();
 
-        obs1.Subject = reference; // attaches `reference` under obs1
+        obs1.Subject = reference; // attaches `reference`'s underlying node under obs1
 
         Should.NotThrow(() => obs2.Subject = reference);
 
-        obs1.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
-        obs2.Subject!["reference"]!.GetValue<string>().ShouldBe("Patient/123");
-        ReferenceEquals(obs1.Subject, obs2.Subject).ShouldBeFalse();
+        obs1.Subject!.Reference2.ShouldBe("Patient/123");
+        obs2.Subject!.Reference2.ShouldBe("Patient/123");
+        ReferenceEquals(obs1.Subject!.MutableNode(), obs2.Subject!.MutableNode()).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenExtensionWithValueString_WhenValueReferenceIsSetInstead_ThenValueStringIsCleared()
+    {
+        // Locks in a real bug the Plan A generator fix resolved: Extension.value[x]'s Reference variant
+        // was previously dropped entirely (RecordDroppedChoiceVariant), so it was never added to
+        // ValueVariantKeys -- meaning Set{Base}Variant, which only clears keys present in that array,
+        // could never clear a stale valueReference when a DIFFERENT variant was set (setting valueString
+        // would leave a pre-existing valueReference behind, producing invalid dual-variant JSON). The
+        // reverse direction (Reference -> String) was never actually broken -- valueString was always in
+        // the array -- so both directions are asserted here to pin the one that mattered.
+        var ext = new Ignixa.Models.R4.Extension { Url = "http://example.org/ext" };
+
+        ext.ValueString = "hello";
+        ext.ValueType.ShouldBe(Ignixa.Models.R4.ExtensionValueType.String);
+
+        ext.ValueReference = new Ignixa.Models.Reference { Reference2 = "Patient/123" };
+
+        ext.ValueType.ShouldBe(Ignixa.Models.R4.ExtensionValueType.Reference);
+        ext.ValueString.ShouldBeNull();
+        ext.ValueReference!.Reference2.ShouldBe("Patient/123");
+
+        // The critical direction: setting a different variant must clear the now-stale valueReference.
+        ext.ValueString = "again";
+
+        ext.ValueType.ShouldBe(Ignixa.Models.R4.ExtensionValueType.String);
+        ext.ValueString.ShouldBe("again");
+        ext.ValueReference.ShouldBeNull();
     }
 }

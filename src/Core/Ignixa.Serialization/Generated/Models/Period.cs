@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR Period datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
-public sealed class Period : BaseJsonNode
+public sealed partial class Period : BaseJsonNode
 {
     public Period()
     {

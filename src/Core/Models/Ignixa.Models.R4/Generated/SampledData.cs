@@ -19,7 +19,7 @@ namespace Ignixa.Models.R4;
 /// FHIR SampledData R4 datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4)]
-public sealed class SampledData : Ignixa.Models.SampledData
+public sealed partial class SampledData : Ignixa.Models.SampledData
 {
     public SampledData()
     {

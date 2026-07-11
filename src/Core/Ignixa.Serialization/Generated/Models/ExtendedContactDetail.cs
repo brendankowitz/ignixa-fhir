@@ -18,7 +18,7 @@ namespace Ignixa.Models;
 /// FHIR ExtendedContactDetail datatype facade. Zero-copy view over the underlying JsonObject.
 /// </summary>
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R5)]
-public class ExtendedContactDetail : BaseJsonNode
+public partial class ExtendedContactDetail : BaseJsonNode
 {
     public ExtendedContactDetail()
     {
@@ -52,12 +52,11 @@ public class ExtendedContactDetail : BaseJsonNode
     [JsonIgnore]
     public MutableJsonList<HumanName> Name => GetListProperty<HumanName>("name");
 
-    // fallback: Reference
     [JsonIgnore]
-    public JsonNode? Organization
+    public Reference? Organization
     {
-        get => MutableNode["organization"];
-        set => SetProperty("organization", value);
+        get => GetComplexProperty<Reference>("organization");
+        set => SetProperty("organization", value?.MutableNode);
     }
 
     [JsonIgnore]

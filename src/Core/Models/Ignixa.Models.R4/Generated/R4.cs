@@ -36,7 +36,10 @@ public static class R4
     [ModuleInitializer]
     public static void Register()
     {
+        VersionedModelRegistry.Register("Bundle", Version, jsonObject => new Bundle(jsonObject));
         VersionedModelRegistry.Register("Observation", Version, jsonObject => new Observation(jsonObject));
+        VersionedModelRegistry.Register("OperationOutcome", Version, jsonObject => new OperationOutcome(jsonObject));
+        VersionedModelRegistry.Register("Parameters", Version, jsonObject => new Parameters(jsonObject));
         VersionedModelRegistry.Register("Patient", Version, jsonObject => new Patient(jsonObject));
     }
 }
