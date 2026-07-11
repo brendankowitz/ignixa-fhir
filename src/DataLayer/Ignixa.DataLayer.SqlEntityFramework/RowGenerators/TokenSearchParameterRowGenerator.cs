@@ -80,7 +80,7 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
 
                 // SystemId lookup from the system mappings cache
                 // When no system is specified, set to DBNull so it can be matched with |code pattern
-                if (string.IsNullOrEmpty(tokenValue.System))
+                if (TokenCodeStorage.IsExplicitNoSystem(tokenValue.System))
                 {
                     record.SetDBNull(3);
                 }
@@ -97,15 +97,15 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
 
                 // Handle code overflow for very long codes
                 // Code is guaranteed to be non-null here due to guard above
-                if (tokenValue.Code.Length > 128)
+                var (code, codeOverflow) = TokenCodeStorage.SplitCode(tokenValue.Code);
+                record.SetString(4, code);
+                if (codeOverflow is null)
                 {
-                    record.SetString(4, tokenValue.Code[..128]);
-                    record.SetString(5, tokenValue.Code[128..]);
+                    record.SetDBNull(5);
                 }
                 else
                 {
-                    record.SetString(4, tokenValue.Code);
-                    record.SetDBNull(5);
+                    record.SetString(5, codeOverflow);
                 }
 
                 yield return record;
@@ -157,8 +157,8 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                     identifierTypeSystemId = sysId;
                 }
 
-                // Truncate code to 128 chars to match the key used in the main table
-                var code = tokenValue.Code.Length > 128 ? tokenValue.Code[..128] : tokenValue.Code;
+                // Truncate code to match the key used in the main table
+                var (code, _) = TokenCodeStorage.SplitCode(tokenValue.Code);
 
                 int? systemId = null;
                 if (!string.IsNullOrEmpty(tokenValue.System) &&

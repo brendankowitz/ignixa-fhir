@@ -517,7 +517,7 @@ public class CompositeSearchParameterQueryGenerator
             else if (stringExpr.FieldName == FieldName.TokenSystem)
             {
                 // Empty string means explicitly no system
-                bool isEmpty = string.IsNullOrEmpty(stringExpr.Value);
+                bool isEmpty = TokenCodeStorage.IsExplicitNoSystem(stringExpr.Value);
                 return (isEmpty ? null : stringExpr.Value, null, isEmpty);
             }
         }
