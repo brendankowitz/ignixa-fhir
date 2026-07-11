@@ -240,6 +240,26 @@ public class SearchParameterQueryGeneratorResourceLevelTests : TestBase
     }
 
     [Fact]
+    public async Task GivenTypeConstrainedSearchWithMismatchedTypeFilter_WhenGeneratingQuery_ThenReturnsEmpty()
+    {
+        // Arrange: resourceTypeId constrains the search to Patient (1), but _type asks for Observation.
+        CreateResource(resourceTypeId: 1, resourceId: "patient-1");
+
+        var typeParameter = new SearchParameterInfo("_type", "_type", SearchParamType.Token);
+        var expression = new SearchParameterExpression(
+            typeParameter,
+            new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, "Observation", false));
+
+        // Act: uses synchronous ToList() since the optimized path returns Enumerable.Empty<long>().AsQueryable()
+        // which is a plain LINQ-to-Objects queryable that doesn't implement IAsyncEnumerable
+        var query = await _generator.GenerateQueryAsync(resourceTypeId: 1, expression, CancellationToken.None);
+        var results = query.ToList();
+
+        // Assert
+        results.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenTypeMultipleValues_WhenGeneratingQuery_ThenReturnsAllMatchingTypes()
     {
         // Arrange: system-wide search with _type filtering for multiple resource types
