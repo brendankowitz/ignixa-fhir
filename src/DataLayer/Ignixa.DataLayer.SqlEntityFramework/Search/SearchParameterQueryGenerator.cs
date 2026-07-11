@@ -1073,12 +1073,15 @@ public class SearchParameterQueryGenerator
     {
         _logger.LogDebug("Using optimized Quantity AND query generation");
 
-        // Extract the components from the AND expression
+        // Extract the components from the AND expression. eq/ap produce a nested
+        // And(GreaterThanOrEqual lowerBound, LessThanOrEqual upperBound); ne produces a nested
+        // Or(LessThan lowerBound, GreaterThan upperBound) - both must be recursed into, or the
+        // value comparator is silently dropped (or, for the no-unit case, only the last bound wins).
         string? systemUri = null;
         string? code = null;
-        BinaryExpression? valueExpr = null;
+        var quantityBinaryExpressions = new List<BinaryExpression>();
 
-        foreach (var expr in multiaryExpr.Expressions)
+        void ExtractQuantityComponents(Expression expr)
         {
             if (expr is StringExpression stringExpr)
             {
@@ -1094,8 +1097,20 @@ public class SearchParameterQueryGenerator
             }
             else if (expr is BinaryExpression binaryExpr && binaryExpr.FieldName == FieldName.Quantity)
             {
-                valueExpr = binaryExpr;
+                quantityBinaryExpressions.Add(binaryExpr);
             }
+            else if (expr is MultiaryExpression nestedMultiary)
+            {
+                foreach (var subExpr in nestedMultiary.Expressions)
+                {
+                    ExtractQuantityComponents(subExpr);
+                }
+            }
+        }
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            ExtractQuantityComponents(expr);
         }
 
         // Build base query with resource type and search param filters
@@ -1127,9 +1142,12 @@ public class SearchParameterQueryGenerator
             query = query.Where(sp => sp.QuantityCodeId == quantityCodeId.Value);
         }
 
-        // Add value comparison if specified
-        if (valueExpr != null)
+        // Add value comparison if specified. A single comparator (ge/le/gt/lt) applies directly;
+        // eq/ap/ne widen to a precision range and are represented as a pair of comparators - see
+        // ExtractQuantityComponents above for how that pair reaches this method intact.
+        if (quantityBinaryExpressions.Count == 1)
         {
+            var valueExpr = quantityBinaryExpressions[0];
             var value = Convert.ToDecimal(valueExpr.Value);
 
             _logger.LogDebug(
@@ -1140,6 +1158,44 @@ public class SearchParameterQueryGenerator
                 valueExpr.BinaryOperator);
 
             query = ComparisonPredicates.ApplyQuantityRangeComparison(query, valueExpr.BinaryOperator, value);
+        }
+        else if (quantityBinaryExpressions.Count == 2)
+        {
+            var first = quantityBinaryExpressions[0];
+            var second = quantityBinaryExpressions[1];
+            var firstValue = Convert.ToDecimal(first.Value);
+            var secondValue = Convert.ToDecimal(second.Value);
+
+            _logger.LogDebug(
+                "Quantity AND query: System={System}, Code={Code}, Range=[{FirstOp} {FirstValue}, {SecondOp} {SecondValue}]",
+                systemUri,
+                code,
+                first.BinaryOperator,
+                firstValue,
+                second.BinaryOperator,
+                secondValue);
+
+            if (first.BinaryOperator == BinaryOperator.GreaterThanOrEqual && second.BinaryOperator == BinaryOperator.LessThanOrEqual)
+            {
+                // eq/ap: both bounds must hold on the same row - apply sequentially so EF ANDs them.
+                query = ComparisonPredicates.ApplyQuantityRangeComparison(query, first.BinaryOperator, firstValue);
+                query = ComparisonPredicates.ApplyQuantityRangeComparison(query, second.BinaryOperator, secondValue);
+            }
+            else if (first.BinaryOperator == BinaryOperator.LessThan && second.BinaryOperator == BinaryOperator.GreaterThan)
+            {
+                // ne: either bound failing is sufficient - must be a single OR predicate, not chained Where calls.
+                query = query.Where(sp => sp.HighValue < firstValue || sp.LowValue > secondValue);
+            }
+            else
+            {
+                throw new NotSupportedException(
+                    $"Unexpected quantity comparator pair: {first.BinaryOperator}, {second.BinaryOperator}");
+            }
+        }
+        else if (quantityBinaryExpressions.Count > 2)
+        {
+            throw new NotSupportedException(
+                $"Unexpected number of quantity value comparators in AND expression: {quantityBinaryExpressions.Count}");
         }
 
         return query.Select(sp => sp.ResourceSurrogateId);
