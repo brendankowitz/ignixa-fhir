@@ -14,6 +14,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Ignixa.TestScript")]
 [assembly: InternalsVisibleTo("Ignixa.TestScript.FhirFakes")]
 [assembly: InternalsVisibleTo("Ignixa.Api.E2ETests")]
+[assembly: InternalsVisibleTo("Ignixa.Models.Tests")]
 
 // Reserved for planned generated typed-model packages (not yet present in this
 // solution) that will share this JSON backing store.

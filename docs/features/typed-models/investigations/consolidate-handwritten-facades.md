@@ -156,6 +156,18 @@ merge but larger) doesn't regress `As<T>()` for STU3/R4B/R6-tagged nodes when it
   elements) the R4/R5-classified scaffolding cannot represent. Revisit only once ADR-2609 ships and a
   real `Stu3.CapabilityStatement` exists to hold that logic instead.
 
+**Version-pin guard added after PR review:** `VersionAgnosticContractTypes` (the 15-plus-backbone-type
+NORMATIVE set that drives the table above) is a claim about a *specific pair* of FHIR core package
+versions (`hl7.fhir.r4.core#4.0.1`, `hl7.fhir.r5.core#5.0.0`), not about "R4/R5" as an abstract concept —
+a later patch release could change one of these types' shape without changing its version name, and
+nothing previously re-verified the claim against what the generator actually loads. `Program.cs`'s
+`RunTypedModelMultiVersion` now asserts its `targets` package specs match
+`CSharpTypedModelLanguage.VerifiedAgainstPackageSpecs` before generation proceeds, and fails loudly
+(exit code 1, no output written) if they don't. This does not replace re-running the structural-signature
+probe when package versions do change — it only guarantees that a version bump can't pass through
+generation silently without someone being forced to either re-verify or explicitly update the pinned
+spec list.
+
 ## Reference un-fallback status (implemented)
 
 `Reference`-typed elements previously fell back to a raw `JsonNode`/`JsonArray` accessor (`Reference`
@@ -203,14 +215,26 @@ fallbacks, 19 dropped Reference variants, 10 Resource/contentReference fallbacks
 
 `Narrative` and `Extension` are merged — the first two of the 41 hand-written `*JsonNode` facades this
 investigation set out to consolidate. `Narrative` needed zero hand-written code (fully generator-covered).
-`Extension` needed one small hand-written addition: `Extension.SetValueUriRaw(string?)`, a low-level
-instance method for the one call site (`SecurityCapabilitySegment.cs`, core CapabilityStatement
-generation) that needs to set `value[x]` but can neither know its target FHIR version at compile time
-(it's multi-tenant, stamping `context.FhirVersion` per request) nor reference the R4/R5 packages at all
-(they are deliberately opt-in, not baked into the core request path — see this doc's Constraints).
-Every other call site either doesn't touch `value[x]` at all, or (like `PatientBuilder`, test-only
-infrastructure with no opt-in-package restriction) constructs the version-specific subclass directly and
-uses its typed accessor.
+`Extension` needed one small hand-written addition: `Extension.CreateWithRawValueUri(string url, string?
+valueUri, FhirVersion? fhirVersion = null)`, an `internal` factory method for the one call site
+(`SecurityCapabilitySegment.cs`, core CapabilityStatement generation) that needs to set `value[x]` but can
+neither know its target FHIR version at compile time (it's multi-tenant, stamping `context.FhirVersion` per
+request) nor reference the R4/R5 packages at all (they are deliberately opt-in, not baked into the core
+request path — see this doc's Constraints). Every other call site either doesn't touch `value[x]` at all,
+or (like `PatientBuilder`, test-only infrastructure with no opt-in-package restriction) constructs the
+version-specific subclass directly and uses its typed accessor.
+
+**Revised after PR review (`internal` factory, not `public` instance mutator):** the first shipped version
+was `public void SetValueUriRaw(string? value)`, an instance method a caller invoked on an already-constructed
+`Extension`. Review flagged that this was reachable by every consumer of `Ignixa.Models`, not just the one
+legitimate caller, and — because it bypasses choice-variant clearing by design — nothing stopped a future
+caller from invoking it twice, or after a different `value[x]` variant was already set on the same instance,
+silently producing spec-invalid FHIR JSON with two `value[x]` keys. The fix changes the shape, not just the
+visibility: `CreateWithRawValueUri` always constructs a brand-new `Extension` and sets `valueUri` exactly
+once as part of construction, so there is no pre-existing state a call could ever conflict with — the
+double-set/dual-variant hazard is structurally unreachable, not just discouraged by a comment. `internal`
+(scoped to `Ignixa.Application` via `InternalsVisibleTo`, see `AssemblyInfo.cs`) additionally shrinks the
+blast radius from "every consumer of `Ignixa.Models`" to the one assembly with the one real caller.
 
 **Decision recorded:** `ValueString`/`ValueUri` are deliberately *not* re-added as a same-named
 hand-written instance property on `Extension`'s shared base, even though the old hand-written

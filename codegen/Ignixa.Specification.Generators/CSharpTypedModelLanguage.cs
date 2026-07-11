@@ -103,6 +103,24 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "ParametersParameter",
     };
 
+    /// <summary>
+    /// The exact package specs (id#version) <see cref="VersionAgnosticContractTypes"/> was verified
+    /// against by the structural-signature probe described above. This exemption is a claim about a
+    /// SPECIFIC pair of FHIR core package versions, not about R4/R5 in the abstract -- a later patch or
+    /// minor release could change one of these types' shape without changing its version name. Program.cs
+    /// asserts the packages it actually loads (<c>RunTypedModelMultiVersion</c>'s <c>targets</c>) match
+    /// this set exactly before generation proceeds. If that assertion fails, the probe must be re-run
+    /// against the new package versions and this constant (plus <see cref="VersionAgnosticContractTypes"/>
+    /// itself, if the re-probe finds a divergence) updated before generation is allowed to continue --
+    /// silently regenerating against an unverified package version would let a newly-diverged type keep
+    /// its version-mismatch guard suppressed with no diagnostic.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> VerifiedAgainstPackageSpecs =
+    [
+        "hl7.fhir.r4.core#4.0.1",
+        "hl7.fhir.r5.core#5.0.0",
+    ];
+
     /// <summary>Gets the language name.</summary>
     public string Name => LanguageName;
 

@@ -91,30 +91,26 @@ public class SecurityCapabilitySegment(
                 Url = "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
             };
 
+            // "Extension2" is the generator's name for the nested extension list -- FHIR's Extension.extension
+            // element can't be named "Extension" on the Extension class itself (collides with the class name),
+            // so the generator's allocator falls back to a numeric suffix. Not version-specific.
+
             // Add authorize endpoint
-            var authorizeExtension = new Extension { FhirVersion = context.FhirVersion, Url = "authorize" };
-            authorizeExtension.SetValueUriRaw(smartOptions.AuthorizeUrl);
-            oauthExtension.Extension2.Add(authorizeExtension);
+            oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("authorize", smartOptions.AuthorizeUrl, context.FhirVersion));
 
             // Add token endpoint
-            var tokenExtension = new Extension { FhirVersion = context.FhirVersion, Url = "token" };
-            tokenExtension.SetValueUriRaw(smartOptions.TokenUrl);
-            oauthExtension.Extension2.Add(tokenExtension);
+            oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("token", smartOptions.TokenUrl, context.FhirVersion));
 
             // Add introspect endpoint if configured
             if (!string.IsNullOrEmpty(smartOptions.IntrospectUrl))
             {
-                var introspectExtension = new Extension { FhirVersion = context.FhirVersion, Url = "introspect" };
-                introspectExtension.SetValueUriRaw(smartOptions.IntrospectUrl);
-                oauthExtension.Extension2.Add(introspectExtension);
+                oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("introspect", smartOptions.IntrospectUrl, context.FhirVersion));
             }
 
             // Add revoke endpoint if configured
             if (!string.IsNullOrEmpty(smartOptions.RevokeUrl))
             {
-                var revokeExtension = new Extension { FhirVersion = context.FhirVersion, Url = "revoke" };
-                revokeExtension.SetValueUriRaw(smartOptions.RevokeUrl);
-                oauthExtension.Extension2.Add(revokeExtension);
+                oauthExtension.Extension2.Add(Extension.CreateWithRawValueUri("revoke", smartOptions.RevokeUrl, context.FhirVersion));
             }
 
             security.Extension.Add(oauthExtension);
