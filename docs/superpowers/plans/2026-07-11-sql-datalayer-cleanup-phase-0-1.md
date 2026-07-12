@@ -1151,3 +1151,70 @@ Per this plan's own gate ("resolve the quantity/number comparator semantics deci
 3. **Fixed independently, ahead of Phase 2**: `DatabaseInitializer`'s first-ever-bootstrap sequence had a connection-pool poisoning bug — the expected-to-fail `CanConnectAsync()` probe against a not-yet-existing database trips SqlClient's connection-pool blocking period for that connection string, causing the very next step (`IsDatabaseEmptyAsync`) to receive a cached failure instead of a real round-trip and silently skip running `97.sql` (leaving a zero-table database, or a loud `SqlException 1801` if `MigrateAsync` then also hits the poisoned pool). `SqlConnection.ClearPool()` was tried first and empirically proven **not** to reset the blocking-period tracker (verified against a real Docker SQL Server before settling on the real fix). The actual fix: the existence probe itself now uses a dedicated non-pooled connection (`CanConnectNonPooledAsync`), so an expected failure there never poisons the pool the rest of bootstrap and the app rely on; `IsDatabaseEmptyAsync`'s old fail-conservative catch-and-assume-not-empty was also removed, so a genuine failure now propagates instead of being silently absorbed into a wrong guess. Verified end-to-end against a real Docker SQL Server (cold bootstrap: 84 batches of 97.sql + 6 migrations + 48 tables; idempotent re-run: clean, no-op) by two independent runs, including one by a Fable review. **Carried forward for Phase 2's test-infrastructure task**: this fix has no permanent automated regression test — the failure mode is a timing-dependent SqlClient blocking-period race that the current InMemory-only test suite structurally cannot represent. A future accidental revert to a pooled probe would surface as *intermittent* E2E flakiness, not a deterministic test failure. Phase 2's real-SQL-Server test fixture work (see finding #5) should include a first-boot bootstrap test covering this exact scenario.
 4. **A third candidate bug (97.sql not creating `__EFMigrationsHistory`, breaking `MigrateAsync` on fresh bootstrap) was investigated and closed as a false lead** — it doesn't create that table, but that's by design and works correctly; the `SqlException 1801` initially observed was actually finding #3's pool-poisoning bug feeding EF a stale "database doesn't exist" answer, misattributed to the wrong cause. No separate fix needed; resolved by #3.
 5. **Testcontainers feasibility spike: viable, hybrid recommended.** A real SQL Server via Testcontainers can close the EF-InMemory-provider gap for `EF.Constant()`/`EF.Functions.Collate()` paths (proven with a working spike reproducing a currently-InMemory-unrunnable `ChainedExpressionProcessor` test against a real container). Recommendation: keep InMemory as the default for the bulk of the test suite; add Testcontainers as opt-in only for the specific classes needing real-SQL coverage (`ChainedExpressionProcessor`, `CompartmentSearchQueryGenerator`, `PatientEverythingQueryGenerator`, and `SearchParameterQueryGenerator`'s String/Token paths) — measured marginal cost (~3.2-4.6s/test bootstrap, ~5-6s one-time container startup) is too slow to impose on the whole fast feedback loop. Recommended lifecycle: one container per test class, fresh uniquely-named database per test (matches the existing InMemory convention). Bootstrap must mirror the real `DatabaseInitializer` path (97.sql + migrations) — never `EnsureCreated()`, which would measure a schema no real deployment has (per finding #1 in the prior section). CI Docker availability confirmed not a blocker (`ubuntu-latest`, already used by the E2E job).
+
+### Findings from Phase 2 implementation (composite structure preservation, 2026-07-12)
+
+Phase 2 (design: `docs/superpowers/specs/2026-07-11-composite-structure-preservation-design.md`, plan:
+`docs/superpowers/plans/2026-07-11-composite-structure-preservation.md`) shipped a new
+`CompositeComponentExpression` wrapper carrying each composite search-parameter component's effective
+`SearchParameterInfo` and position from parse time through SQL query generation, replacing
+`ComponentIndex`-heuristic reconstruction and `IsReferenceExpression`/`IsTokenExpression`
+expression-shape sniffing. Also fixed a confirmed pre-existing bug exposed while rewriting extraction:
+composite OR-of-value-groups (e.g. `code-value-quantity=a$1,b$2`) were being merged across groups and
+ANDed instead of unioned — call this out in release notes alongside the comparator-semantics change
+from the prior section, since it's also a live search-behavior change (a correctness fix, not new
+behavior).
+
+Three findings surfaced during Phase 2 and were deliberately **not** fixed as part of it (each has its
+own scope/design-decision reason, documented in full in the design spec's "Out of scope" section):
+
+1. **`CompositeSearchParameterQueryGenerator.ApplyDateTimeFilter` last-writer-wins overwrite bug**
+   (~lines 682-741 as of Phase 0/1's numbering, relocated slightly by Phase 2's edits): composite
+   DateTime `eq` searches can silently drop the lower bound because the 3-expression range-scan
+   pattern's `ge`/`le` pair overwrites a single start/end slot instead of accumulating both bounds.
+   Confirmed real, needs a test and a fix. Interacts with finding #3 below — see there for why fixing
+   one without the other changes observable behavior.
+2. **`DateTimeEqualityRewriter.MatchPattern` doesn't match `SearchComparator.Eq`'s current Date output
+   shape.** Discovered mid-execution of Phase 2's Task 3 (the implementer correctly refused to weaken
+   a failing regression test and traced the real cause instead of assuming its own mistake — see the
+   design spec for the full mechanism). Commit `23c18854` ("Adds String & Date Search E2E Tests (#109)",
+   2025-12-09 — six weeks before Phase 2 started, entirely unrelated to it) changed `SearchValueExpressionBuilderHelper`'s
+   Date `Eq` case from containment semantics (`And(GE(DateTimeStart, x), LE(DateTimeEnd, y))`) to
+   overlap-check semantics (`And(LE(DateTimeStart, y), GE(DateTimeEnd, x))`) — a genuinely different
+   relationship between the two bounds, not just a field/operator swap.
+   `DateTimeEqualityRewriter.MatchPattern` still only recognizes the old containment pairing, so its
+   3-expression range-scan-friendly rewrite (meant to give a covering index on `(DateTimeStart,
+   DateTimeEnd)` a proper two-sided seek) has been dead code for **every** `eq` Date search — composite
+   or plain — since that commit. **Not fully dead**: the `ap` (approximate) comparator still emits the
+   old containment shape, so the rewriter still fires for `ap` today; don't delete it as unreachable.
+   **No safe local fix exists** (Fable-verified, independently derived and cross-checked): under
+   containment, `Start >= x AND End <= y` plus the `Start <= End` invariant trivially implies
+   `Start <= y`, which is why the rewriter's third clause is a provably-redundant, index-friendly
+   tightening. Under overlap (`Start <= y AND End >= x`), no analogous bound on `Start` is derivable —
+   a stored range `[1900, 2100]` legitimately overlaps a one-day search window, so there's no finite
+   lower bound to add. The only known correct approach under overlap semantics is a range-width split
+   (bucket short vs. long stored ranges and derive different bounds per bucket, per Microsoft FHIR
+   Server's `IsLongerThanADay` pattern) — a schema/query-generator design decision requiring its own
+   investigation, not a one-line `MatchPattern` fix. **Interacts with finding #1**: fixing
+   `ApplyDateTimeFilter`'s overwrite bug without also fixing this one (or vice versa) changes observable
+   behavior, since the 3-expression pattern `ApplyDateTimeFilter` consumes currently never arrives for
+   `eq`. Investigate both together.
+3. **`CompositeSearchIndexingDiagnosticTests.GivenCompositeSearchValue_WhenParsing_ThenComparatorIsParsedCorrectly`**
+   (`test/Ignixa.Application.Tests/Search/Indexing/CompositeSearchIndexingDiagnosticTests.cs`, 5 of 8
+   theory cases) asserts directly on raw parser output shape — specifically that
+   `andExpr.Expressions[1]` *is* the quantity expression tree directly — and its `CollectBinaryExpressions`
+   helper doesn't descend into `CompositeComponentExpression.WrappedExpression`. Since Phase 2's Task 2
+   wrapped every composite component, this test now finds the `BinaryExpression` nodes one level deeper
+   than it looks. This is a parser-output-shape characterization test, not anything Phase 2's own task
+   list touched (`SearchParameterQueryGenerator`/`CompositeSearchParameterQueryGenerator` consume the
+   already-parsed tree; this test is upstream of that). Left failing deliberately rather than
+   force-fixed outside scope — confirmed at every subsequent task's regression check through Phase 2's
+   Task 6 that these are the *only* new failures, no others. Needs a small, contained follow-up: update
+   the test's tree-walk to unwrap `CompositeComponentExpression`.
+
+One minor, non-blocking code-quality note: `SearchParameterQueryGenerator.CombineWithOr` (added by
+Phase 2's Task 4, for the OR-of-groups fix) is a verbatim duplicate of
+`SearchExpressionQueryBuilder.CombineWithOr` (same `Concat`+`Distinct`-over-chained-`Union` rationale,
+added earlier by the original SQL data layer work). Mandated by the design spec ("mirrors ... exactly"),
+not implementer discretion — a dedup candidate (shared static helper) for a future cleanup pass, not a
+Phase 2 blocker.
