@@ -1397,7 +1397,7 @@ public class SearchParameterQueryGenerator
         // Collation to use based on case-sensitivity requirement
         // CI_AI = Case-Insensitive, Accent-Insensitive (FHIR default for string search)
         // CS_AS = Case-Sensitive, Accent-Sensitive (FHIR :exact modifier)
-        var collation = ignoreCase ? "Latin1_General_100_CI_AI" : "Latin1_General_100_CS_AS";
+        var collation = ignoreCase ? StringStorage.DefaultCollation : StringStorage.ExactCollation;
 
         // For long strings (those with TextOverflow), we need to search the combined text
         // Text contains first 256 chars, TextOverflow contains the rest
@@ -1408,7 +1408,7 @@ public class SearchParameterQueryGenerator
                     // Build starts-with pattern
                     var pattern = $"{searchText}%";
 
-                    if (searchText.Length > 256)
+                    if (searchText.Length > StringStorage.InlineWidth)
                     {
                         // Search value is longer than 256 chars - need to match against concatenated text
                         query = baseQuery

@@ -30,10 +30,6 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </remarks>
 public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    // Text column max length matches the database column definition (256 chars)
-    // TextOverflow (nvarchar(max)) handles any additional characters
-    private const int StringColumnMaxLength = 256;
-
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -78,17 +74,18 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 // Store text in ORIGINAL case for :exact modifier support
                 // Case-insensitive search is handled via query-time collation (Latin1_General_100_CI_AI)
                 var textValue = stringValue.String;
-                if (textValue != null && textValue.Length > StringColumnMaxLength)
+                if (textValue != null)
                 {
-                    record.SetString(3, textValue.Substring(0, StringColumnMaxLength));
-                    record.SetString(4, textValue.Substring(StringColumnMaxLength));
+                    var (inline, overflow) = StringStorage.Split(textValue);
+                    record.SetString(3, inline);
+                    if (overflow != null)
+                        record.SetString(4, overflow);
+                    else
+                        record.SetDBNull(4);
                 }
                 else
                 {
-                    if (textValue != null)
-                        record.SetString(3, textValue);
-                    else
-                        record.SetDBNull(3);
+                    record.SetDBNull(3);
                     record.SetDBNull(4);
                 }
 
