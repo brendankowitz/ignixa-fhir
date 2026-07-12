@@ -1273,7 +1273,7 @@ public class SearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(identifierTypeCode))
         {
-            query = query.Where(sp => EF.Functions.Collate(sp.IdentifierTypeCode, "Latin1_General_100_CI_AS") == identifierTypeCode);
+            query = query.Where(sp => EF.Functions.Collate(sp.IdentifierTypeCode, TokenCodeStorage.CaseInsensitiveCollation) == identifierTypeCode);
         }
 
         _logger.LogDebug(
@@ -1293,12 +1293,12 @@ public class SearchParameterQueryGenerator
         {
             return query
                 .Where(sp => sp.CodeOverflow != null &&
-                    EF.Functions.Collate(sp.Code + sp.CodeOverflow, "Latin1_General_100_CI_AS") == code)
+                    EF.Functions.Collate(sp.Code + sp.CodeOverflow, TokenCodeStorage.CaseInsensitiveCollation) == code)
                 .Select(sp => sp.ResourceSurrogateId);
         }
 
         return query
-            .Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
+            .Where(sp => EF.Functions.Collate(sp.Code, TokenCodeStorage.CaseInsensitiveCollation) == code)
             .Select(sp => sp.ResourceSurrogateId);
     }
 
@@ -1510,13 +1510,13 @@ public class SearchParameterQueryGenerator
         {
             query = baseQuery
                 .Where(sp => sp.CodeOverflow != null &&
-                    EF.Functions.Collate(sp.Code + sp.CodeOverflow, "Latin1_General_100_CI_AS") == code)
+                    EF.Functions.Collate(sp.Code + sp.CodeOverflow, TokenCodeStorage.CaseInsensitiveCollation) == code)
                 .Select(sp => sp.ResourceSurrogateId);
         }
         else
         {
             query = baseQuery
-                .Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
+                .Where(sp => EF.Functions.Collate(sp.Code, TokenCodeStorage.CaseInsensitiveCollation) == code)
                 .Select(sp => sp.ResourceSurrogateId);
         }
 

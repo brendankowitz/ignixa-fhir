@@ -25,6 +25,12 @@ public class TokenCodeStorageTests
     }
 
     [Fact]
+    public void GivenCaseInsensitiveCollation_WhenRead_ThenMatchesExpectedSqlServerCollationName()
+    {
+        TokenCodeStorage.CaseInsensitiveCollation.ShouldBe("Latin1_General_100_CI_AS");
+    }
+
+    [Fact]
     public void GivenCodeAtMaxInlineLength_WhenSplit_ThenStoredInlineWithNoOverflow()
     {
         var code = new string('a', TokenCodeStorage.MaxInlineCodeLength);

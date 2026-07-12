@@ -26,6 +26,14 @@ public static class TokenCodeStorage
     public const int MaxInlineCodeLength = 256;
 
     /// <summary>
+    /// The collation used to compare token codes case-insensitively at query time, per FHIR R4's
+    /// search.html guidance: "When in doubt, servers SHOULD treat tokens in a case-insensitive manner,
+    /// on the grounds that including undesired data has less safety implications than excluding
+    /// desired behavior." Applied identically to single-parameter and composite token code comparisons.
+    /// </summary>
+    public const string CaseInsensitiveCollation = "Latin1_General_100_CI_AS";
+
+    /// <summary>
     /// An empty or null system string means the token explicitly has no system —
     /// stored as a NULL SystemId, matched via the FHIR "|code" convention.
     /// </summary>
