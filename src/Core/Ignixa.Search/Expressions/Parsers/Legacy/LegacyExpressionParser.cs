@@ -1,31 +1,36 @@
 // -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-// Frozen snapshot of Ignixa.Search.Expressions.Parsers.ExpressionParser as it existed on `main`
-// before PR #332 (the handwritten-scanner search parser rewrite). See LegacyStringExtensions.cs for
-// why this exists. Implements the SAME IExpressionParser interface as the current parser (that
-// interface was not touched by PR #332), so this class and the current ExpressionParser can be
-// constructed against identical ISearchParameterDefinitionManager/IFhirSchemaProvider fixtures and
-// run side-by-side over the same input corpus - see SearchParserOldVsNewParityTests.
+// This is the search expression parser as it existed before PR #332 (the handwritten-scanner
+// rewrite - see docs/features/search/investigations/superpower-search-expression-parser.md),
+// preserved here as a rollback lever. It is NOT wired into any DI container or referenced anywhere
+// in production code by default; the active parser is Ignixa.Search.Expressions.Parsers.
+// ExpressionParser. If the new parser causes a production issue, swap the construction in
+// SearchOptionsBuilderFactory.cs to use LegacyExpressionParser/LegacySearchParameterExpressionParser
+// instead, and redeploy - no config flag, no runtime toggle, just this file existing and compiling.
+// This class implements the same IExpressionParser interface as the current parser (unchanged by
+// PR #332), so the swap is a two-line change. Covered by
+// test/Ignixa.Application.Tests/Search/Expressions/Parsers/SearchParserOldVsNewParityTests.cs, which
+// runs this class and the current parser side-by-side over the same input corpus. Delete this
+// folder once the new parser has enough production bake time that this lever is no longer wanted.
 
 using System.Globalization;
 using EnsureThat;
 using Ignixa.Abstractions;
-using Ignixa.Search;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
-using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
 
-namespace Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
+namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
-internal sealed class LegacyExpressionParser : IExpressionParser
+public sealed class LegacyExpressionParser : IExpressionParser
 {
     private const char SearchSplitChar = ':';
     private const char ChainParameter = '.';

@@ -1,28 +1,26 @@
 // -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-// Frozen snapshot of Ignixa.Search.Expressions.Parsers.SearchParameterExpressionParser as it existed
-// on `main` before PR #332. See LegacyStringExtensions.cs for why this exists.
+// See LegacyExpressionParser.cs for why this exists and how to use it as a rollback lever.
 
 using System.Globalization;
 using EnsureThat;
 using Ignixa.Abstractions;
-using Ignixa.Search;
 using Ignixa.Search.Exceptions;
 using Ignixa.Specification;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Expressions;
-using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
 
-namespace Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
+namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
-internal sealed class LegacySearchParameterExpressionParser : ISearchParameterExpressionParser
+public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpressionParser
 {
     private static readonly Tuple<string, SearchComparator>[] SearchParamComparators = Enum.GetValues(typeof(SearchComparator))
         .Cast<SearchComparator>()

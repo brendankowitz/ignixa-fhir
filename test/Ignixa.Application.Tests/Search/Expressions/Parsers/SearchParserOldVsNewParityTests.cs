@@ -5,10 +5,10 @@
 
 #nullable enable
 
-using Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
+using Ignixa.Search.Expressions.Parsers.Legacy;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
@@ -21,9 +21,10 @@ namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
 
 /// <summary>
 /// Differential characterization suite for PR #332 (the handwritten-scanner search parser rewrite):
-/// runs the SAME input corpus through the pre-rewrite parser (Legacy/, a frozen snapshot of `main`
-/// before this PR) and the current parser, side by side, and asserts they produce equivalent
-/// results.
+/// runs the SAME input corpus through the pre-rewrite parser (Ignixa.Search.Expressions.Parsers.
+/// Legacy, a frozen snapshot of `main` before this PR, also kept in production as a rollback lever -
+/// see LegacyExpressionParser.cs) and the current parser, side by side, and asserts they produce
+/// equivalent results.
 ///
 /// Two kinds of assertions:
 /// - <see cref="AssertIdenticalBehavior"/>: old and new MUST produce the same expression tree (via
@@ -36,9 +37,9 @@ namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
 ///   recorded in the test body (mirrors the "Behavior changes" section of the PR description).
 ///
 /// This suite exists because a rewrite's entire value proposition rests on "same behavior, cleaner
-/// structure" - see docs/features/search/investigations/superpower-search-expression-parser.md. When
-/// the old parser is eventually deleted, the Legacy/ snapshot can be deleted too; this suite (and the
-/// documented-divergence list) is the durable record of what changed and why.
+/// structure" - see docs/features/search/investigations/superpower-search-expression-parser.md. It
+/// also doubles as regression coverage for the Legacy/ rollback lever itself: if it ever stops
+/// compiling or behaving like the original, this suite is what would catch it.
 /// </summary>
 public class SearchParserOldVsNewParityTests
 {

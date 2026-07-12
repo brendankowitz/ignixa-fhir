@@ -1,21 +1,20 @@
 // -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-// Frozen snapshot of Ignixa.Search.Expressions.Parsers.SearchValueExpressionBuilderHelper as it
-// existed on `main` before PR #332. See LegacyStringExtensions.cs for why this exists.
+// See LegacyExpressionParser.cs for why this exists and how to use it as a rollback lever.
 
 using System.Diagnostics;
 using EnsureThat;
-using Ignixa.Search;
 using Ignixa.Search.Extensions;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Expressions;
 
-namespace Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
+namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
 internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVisitor
 {

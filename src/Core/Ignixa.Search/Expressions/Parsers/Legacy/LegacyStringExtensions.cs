@@ -1,18 +1,28 @@
 // -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-// Frozen snapshot of Ignixa.Search.Indexing.StringExtensions as it existed on `main` before PR #332
-// (the handwritten-scanner search parser rewrite), for the sole purpose of running the pre-rewrite
-// parser (see LegacyExpressionParser.cs) side-by-side with the current parser in
-// SearchParserOldVsNewParityTests. Not shipped, not referenced by production code. Delete this
-// Legacy/ folder once the parity suite is no longer needed (e.g. the old parser's behavior is fully
-// characterized elsewhere and this differential harness has served its purpose).
+// See LegacyExpressionParser.cs for why this exists and how to use it as a rollback lever.
+//
+// NOTE: some of these extension methods (SplitByTokenSeparator, JoinByOrSeparator,
+// EscapeSearchParameterValue, UnescapeSearchParameterValue) have the same name and signature as
+// methods still present on Ignixa.Search.Indexing.StringExtensions (the production, trimmed-down
+// version - it dropped SplitByOrSeparator/SplitByCompositeSeparator since the current parser doesn't
+// need them). Any file that imports BOTH Ignixa.Search.Indexing and Ignixa.Search.Expressions.
+// Parsers.Legacy and then calls one of those four names will get a compile-time ambiguous-call error
+// (CS0121), not a silent misresolution, since both extend the identical `string` receiver type with
+// identical signatures. Neither LegacyExpressionParser.cs nor LegacySearchParameterExpressionParser.cs
+// import both namespaces while calling an overlapping name (verified: only SplitByOrSeparator and
+// SplitByCompositeSeparator are actually called here, and neither exists on the production type
+// anymore). If you add code here that needs one of the four overlapping methods, fully qualify it as
+// Ignixa.Search.Expressions.Parsers.Legacy.LegacyStringExtensions.MethodName(...) rather than relying
+// on extension-method syntax.
 
 using EnsureThat;
 
-namespace Ignixa.Application.Tests.Search.Expressions.Parsers.Legacy;
+namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
 internal static class LegacyStringExtensions
 {
