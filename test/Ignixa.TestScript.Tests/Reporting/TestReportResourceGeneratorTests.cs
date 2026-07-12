@@ -137,4 +137,64 @@ public class TestReportResourceGeneratorTests
         var actionResult = json["test"]!.AsArray()[0]!["action"]!.AsArray()[0]!["result"]!.GetValue<string>();
         actionResult.ShouldBe("skip");
     }
+
+    [Fact]
+    public void GivenGroupActionWithMembers_WhenGenerating_ThenMembersRenderAsChildExtensions()
+    {
+        var report = new TestScriptReport
+        {
+            TestScriptName = "GroupReport",
+            StartTime = DateTimeOffset.UtcNow,
+            EndTime = DateTimeOffset.UtcNow,
+            TestResults =
+            [
+                new TestCaseResult("DeletedResourceReadback", null, [
+                    new ActionResult("grp", "Deleted resource readback", TestScriptOutcome.Pass,
+                        "assertionAnyOfGroup 'grp': matched alternative 'Alternative: 404 Not Found'",
+                        GroupId: "grp",
+                        Members:
+                        [
+                            new AssertionGroupMemberResult("Preferred: 410 Gone", true, false, "Expected response 'gone' but got status 404"),
+                            new AssertionGroupMemberResult("Alternative: 404 Not Found", true, true, null)
+                        ])
+                ], TestScriptOutcome.Pass)
+            ]
+        };
+
+        var json = TestReportResourceGenerator.Generate(report);
+
+        var action = json["test"]!.AsArray()[0]!["action"]!.AsArray()[0]!;
+        action["result"]!.GetValue<string>().ShouldBe("pass");
+        var extensions = action["extension"]!.AsArray();
+        extensions.Count.ShouldBe(2);
+        extensions[0]!["url"]!.GetValue<string>().ShouldBe("http://ignixa.io/testscript/assertionGroupMember");
+        var firstChildren = extensions[0]!["extension"]!.AsArray();
+        firstChildren.Any(c => c!["url"]!.GetValue<string>() == "passed" && c["valueBoolean"]!.GetValue<bool>() == false)
+            .ShouldBeTrue();
+        extensions[1]!["extension"]!.AsArray()
+            .Any(c => c!["url"]!.GetValue<string>() == "passed" && c["valueBoolean"]!.GetValue<bool>() == true)
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenActionWithoutMembers_WhenGenerating_ThenNoExtensionEmitted()
+    {
+        var report = new TestScriptReport
+        {
+            TestScriptName = "PlainReport",
+            StartTime = DateTimeOffset.UtcNow,
+            EndTime = DateTimeOffset.UtcNow,
+            TestResults =
+            [
+                new TestCaseResult("Plain", null, [
+                    new ActionResult("a", null, TestScriptOutcome.Pass)
+                ], TestScriptOutcome.Pass)
+            ]
+        };
+
+        var json = TestReportResourceGenerator.Generate(report);
+
+        var action = json["test"]!.AsArray()[0]!["action"]!.AsArray()[0]!;
+        action.AsObject().ContainsKey("extension").ShouldBeFalse();
+    }
 }

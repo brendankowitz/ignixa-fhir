@@ -56,6 +56,8 @@ public static class TestReportResourceGenerator
         return array;
     }
 
+    private const string AssertionGroupMemberUrl = "http://ignixa.io/testscript/assertionGroupMember";
+
     private static JsonObject GenerateAction(ActionResult action)
     {
         var obj = new JsonObject
@@ -65,7 +67,35 @@ public static class TestReportResourceGenerator
         if (action.Label is not null) obj["id"] = action.Label;
         if (action.Message is not null) obj["message"] = action.Message;
         if (action.Description is not null) obj["detail"] = action.Description;
+
+        if (action.Members is { Count: > 0 })
+            obj["extension"] = GenerateGroupMemberExtensions(action.Members);
+
         return obj;
+    }
+
+    private static JsonArray GenerateGroupMemberExtensions(IReadOnlyList<AssertionGroupMemberResult> members)
+    {
+        var array = new JsonArray();
+        foreach (var member in members)
+        {
+            var children = new JsonArray
+            {
+                new JsonObject { ["url"] = "applicable", ["valueBoolean"] = member.Applicable },
+                new JsonObject { ["url"] = "passed", ["valueBoolean"] = member.Passed }
+            };
+            if (member.Description is not null)
+                children.Add(new JsonObject { ["url"] = "description", ["valueString"] = member.Description });
+            if (member.Message is not null)
+                children.Add(new JsonObject { ["url"] = "message", ["valueString"] = member.Message });
+
+            array.Add(new JsonObject
+            {
+                ["url"] = AssertionGroupMemberUrl,
+                ["extension"] = children
+            });
+        }
+        return array;
     }
 
     // Action-level results bind to the FHIR action-result valueset (pass | skip | fail | warning | error).
