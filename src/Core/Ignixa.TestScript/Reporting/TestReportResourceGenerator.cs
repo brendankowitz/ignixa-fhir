@@ -56,6 +56,7 @@ public static class TestReportResourceGenerator
         return array;
     }
 
+    private const string AssertionAnyOfGroupUrl = "http://ignixa.io/testscript/assertionAnyOfGroup";
     private const string AssertionGroupMemberUrl = "http://ignixa.io/testscript/assertionGroupMember";
 
     private static JsonObject GenerateAction(ActionResult action)
@@ -68,15 +69,22 @@ public static class TestReportResourceGenerator
         if (action.Message is not null) obj["message"] = action.Message;
         if (action.Description is not null) obj["detail"] = action.Description;
 
+        var extensions = new JsonArray();
+        if (action.GroupId is not null)
+            extensions.Add(new JsonObject { ["url"] = AssertionAnyOfGroupUrl, ["valueString"] = action.GroupId });
         if (action.Members is { Count: > 0 })
-            obj["extension"] = GenerateGroupMemberExtensions(action.Members);
+            foreach (var member in GenerateGroupMemberExtensions(action.Members))
+                extensions.Add(member);
+
+        if (extensions.Count > 0)
+            obj["extension"] = extensions;
 
         return obj;
     }
 
-    private static JsonArray GenerateGroupMemberExtensions(IReadOnlyList<AssertionGroupMemberResult> members)
+    private static List<JsonObject> GenerateGroupMemberExtensions(IReadOnlyList<AssertionGroupMemberResult> members)
     {
-        var array = new JsonArray();
+        var result = new List<JsonObject>();
         foreach (var member in members)
         {
             var children = new JsonArray
@@ -89,13 +97,13 @@ public static class TestReportResourceGenerator
             if (member.Message is not null)
                 children.Add(new JsonObject { ["url"] = "message", ["valueString"] = member.Message });
 
-            array.Add(new JsonObject
+            result.Add(new JsonObject
             {
                 ["url"] = AssertionGroupMemberUrl,
                 ["extension"] = children
             });
         }
-        return array;
+        return result;
     }
 
     // Action-level results bind to the FHIR action-result valueset (pass | skip | fail | warning | error).

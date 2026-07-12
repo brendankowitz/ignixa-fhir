@@ -96,6 +96,7 @@ public class AssertionAlternativesTests
         groupAction.Outcome.ShouldBe(TestScriptOutcome.Pass);
         groupAction.Members![0].Passed.ShouldBeFalse();
         groupAction.Members[1].Passed.ShouldBeTrue();
+        groupAction.Description.ShouldBe("Alternative: 404 Not Found");
     }
 
     [Fact]
@@ -247,5 +248,62 @@ public class AssertionAlternativesTests
 
         report.TestResults[0].Actions[2].Outcome.ShouldBe(TestScriptOutcome.Skip);
         report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Pass);
+    }
+
+    [Fact]
+    public async Task GivenGroupWhereFirstMemberIsInapplicableAndLaterMemberPasses_WhenExecuting_ThenAggregatePassesViaLaterMember()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 404 });
+
+        var definition = SingleTestDefinition("GroupFirstInapplicable",
+            new OperationExpression { Type = "delete", Resource = "Patient", Params = "/async-id", ResponseId = "delete-response" },
+            new AssertExpression
+            {
+                Criteria = new ResponseStatusCriteria("okay"),
+                AnyOfGroupId = "readback",
+                WarningOnly = true,
+                Description = "Only applies if delete returned 202",
+                WhenResponseStatus = new ResponseStatusCondition("delete-response", [202])
+            },
+            new AssertExpression
+            {
+                Criteria = new ResponseStatusCriteria("notFound"),
+                AnyOfGroupId = "readback",
+                WarningOnly = true,
+                Description = "404 when tracked as gone"
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Pass);
+        var groupAction = report.TestResults[0].Actions[1];
+        groupAction.Members![0].Applicable.ShouldBeFalse();
+        groupAction.Members[1].Passed.ShouldBeTrue();
+        groupAction.Description.ShouldBe("404 when tracked as gone");
+    }
+
+    [Fact]
+    public async Task GivenStandaloneAssertionWithUnresolvableSourceId_WhenExecuting_ThenRecordedAsError()
+    {
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new TestResponse { StatusCode = 200 });
+
+        var definition = SingleTestDefinition("StandaloneBadSourceId",
+            new OperationExpression { Type = "read", Resource = "Patient", Params = "/123" },
+            new AssertExpression
+            {
+                Criteria = new ResponseStatusCriteria("okay"),
+                WarningOnly = true,
+                Description = "Broken conditional assertion",
+                WhenResponseStatus = new ResponseStatusCondition("does-not-exist", [202])
+            });
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.TestResults[0].Outcome.ShouldBe(TestScriptOutcome.Error);
+        report.TestResults[0].Actions[1].Outcome.ShouldBe(TestScriptOutcome.Error);
     }
 }

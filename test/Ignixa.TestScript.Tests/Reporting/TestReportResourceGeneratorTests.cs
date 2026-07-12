@@ -166,12 +166,14 @@ public class TestReportResourceGeneratorTests
         var action = json["test"]!.AsArray()[0]!["action"]!.AsArray()[0]!;
         action["result"]!.GetValue<string>().ShouldBe("pass");
         var extensions = action["extension"]!.AsArray();
-        extensions.Count.ShouldBe(2);
-        extensions[0]!["url"]!.GetValue<string>().ShouldBe("http://ignixa.io/testscript/assertionGroupMember");
-        var firstChildren = extensions[0]!["extension"]!.AsArray();
+        extensions.Count.ShouldBe(3);
+        extensions[0]!["url"]!.GetValue<string>().ShouldBe("http://ignixa.io/testscript/assertionAnyOfGroup");
+        extensions[0]!["valueString"]!.GetValue<string>().ShouldBe("grp");
+        extensions[1]!["url"]!.GetValue<string>().ShouldBe("http://ignixa.io/testscript/assertionGroupMember");
+        var firstChildren = extensions[1]!["extension"]!.AsArray();
         firstChildren.Any(c => c!["url"]!.GetValue<string>() == "passed" && c["valueBoolean"]!.GetValue<bool>() == false)
             .ShouldBeTrue();
-        extensions[1]!["extension"]!.AsArray()
+        extensions[2]!["extension"]!.AsArray()
             .Any(c => c!["url"]!.GetValue<string>() == "passed" && c["valueBoolean"]!.GetValue<bool>() == true)
             .ShouldBeTrue();
     }
