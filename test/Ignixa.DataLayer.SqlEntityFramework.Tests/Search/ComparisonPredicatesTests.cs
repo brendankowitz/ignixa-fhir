@@ -117,6 +117,30 @@ public class ComparisonPredicatesTests
         results.Count.ShouldBe(expectMatch ? 1 : 0);
     }
 
+    [Theory]
+    [MemberData(nameof(NumberRangeComparisonCases))]
+    public void GivenStoredCompositeRange_WhenApplyQuantityRangeComparison_ThenMatchesCanonicalSemantics(
+        BinaryOperator op, decimal searchValue, bool expectMatch)
+    {
+        var stored = new[]
+        {
+            new TokenQuantityCompositeSearchParamEntity { ResourceTypeId = 1, ResourceSurrogateId = 1, SearchParamId = 1, Code1 = "code", LowValue = 10m, HighValue = 20m }
+        }.AsQueryable();
+
+        var results = ComparisonPredicates.ApplyQuantityRangeComparison(stored, op, searchValue).ToList();
+
+        results.Count.ShouldBe(expectMatch ? 1 : 0);
+    }
+
+    [Fact]
+    public void GivenInvalidOperator_WhenApplyQuantityRangeComparisonOnComposite_ThenThrowsNotSupported()
+    {
+        var query = Enumerable.Empty<TokenQuantityCompositeSearchParamEntity>().AsQueryable();
+
+        Should.Throw<NotSupportedException>(() =>
+            ComparisonPredicates.ApplyQuantityRangeComparison(query, InvalidOperator, 1m));
+    }
+
     [Fact]
     public void GivenStoredRange_WhenApplyDateTimeStartComparisonStartsAfter_ThenMatchesStrictSeparation()
     {

@@ -98,6 +98,42 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
     }
 
     [Fact]
+    public async Task GivenOverlappingStoredCompositeRange_WhenComparingGtAndSa_ThenTheyProduceDifferentResults()
+    {
+        // Arrange
+        var resource = CreateResource(resourceTypeId: 3, resourceId: "obs-straddling");
+        const short searchParamId = 102;
+
+        Context.TokenQuantityCompositeSearchParams.Add(new TokenQuantityCompositeSearchParamEntity
+        {
+            ResourceTypeId = 3,
+            ResourceSurrogateId = resource.ResourceSurrogateId,
+            SearchParamId = searchParamId,
+            Code1 = "8462-4",
+            SystemId1 = null,
+            LowValue = 10m,
+            HighValue = 20m,
+        });
+        await Context.SaveChangesAsync();
+
+        var component0 = new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, "8462-4", false);
+        var gtComponent1 = new BinaryExpression(BinaryOperator.GreaterThan, FieldName.Quantity, null, 15m);
+        var saComponent1 = new BinaryExpression(BinaryOperator.StartsAfter, FieldName.Quantity, null, 15m);
+
+        // Act
+        var gtQuery = await _generator.GenerateTokenQuantityQueryAsync(resourceTypeId: 3, searchParamId, component0, gtComponent1, CancellationToken.None);
+        var gtResults = await gtQuery.ToListAsync();
+
+        var saQuery = await _generator.GenerateTokenQuantityQueryAsync(resourceTypeId: 3, searchParamId, component0, saComponent1, CancellationToken.None);
+        var saResults = await saQuery.ToListAsync();
+
+        // Assert: High(20) > 15 is true (gt matches); Low(10) > 15 is false (sa must not match) -
+        // exactly the distinction composite's pre-fix wrong-direction gt/lt couldn't make.
+        gtResults.ShouldHaveSingleItem();
+        saResults.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenTokenDateTimeComposite_WhenDateMatches_ThenReturnsResource()
     {
         // Arrange

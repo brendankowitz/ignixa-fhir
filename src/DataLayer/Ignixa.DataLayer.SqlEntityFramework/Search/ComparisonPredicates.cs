@@ -134,4 +134,22 @@ public static class ComparisonPredicates
         BinaryOperator.EndsBefore => query.Where(sp => sp.HighValue < value),
         _ => throw new NotSupportedException($"Binary operator {op} is not supported for Quantity comparison"),
     };
+
+    /// <summary>
+    /// Applies a range-encoded ("fuzzy") comparison used by both Number and Quantity search parameters,
+    /// where each indexed value is stored as a [LowValue, HighValue] range rather than a single value.
+    /// </summary>
+    public static IQueryable<Entities.TokenQuantityCompositeSearchParamEntity> ApplyQuantityRangeComparison(
+        IQueryable<Entities.TokenQuantityCompositeSearchParamEntity> query, BinaryOperator op, decimal value) => op switch
+    {
+        BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
+        BinaryOperator.GreaterThan => query.Where(sp => sp.HighValue > value),
+        BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.HighValue >= value),
+        BinaryOperator.LessThan => query.Where(sp => sp.LowValue < value),
+        BinaryOperator.LessThanOrEqual => query.Where(sp => sp.LowValue <= value),
+        BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
+        BinaryOperator.StartsAfter => query.Where(sp => sp.LowValue > value),
+        BinaryOperator.EndsBefore => query.Where(sp => sp.HighValue < value),
+        _ => throw new NotSupportedException($"Binary operator {op} is not supported for Quantity comparison"),
+    };
 }

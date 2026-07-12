@@ -660,36 +660,20 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply value filter based on what was extracted:
-        // - Two BinaryExpressions (eq/ap): Range query - stored range must overlap search range
-        // - One BinaryExpression: Single comparator (ge, le, gt, lt)
+        // - Two BinaryExpressions (eq/ap): Range query - both bounds applied sequentially so EF ANDs them
+        // - One BinaryExpression: single comparator, delegated to ComparisonPredicates directly
         if (quantityBinaryExpressions.Count == 2)
         {
-            // Range query (equality/approximate): both GreaterThanOrEqual and LessThanOrEqual present
             var lowerBound = quantityBinaryExpressions.FirstOrDefault(e => e.Op == BinaryOperator.GreaterThanOrEqual).Value;
             var upperBound = quantityBinaryExpressions.FirstOrDefault(e => e.Op == BinaryOperator.LessThanOrEqual).Value;
 
-            // Range overlap: stored range must overlap with search range
-            // For exact match with stored value X: lowerBound <= X <= upperBound
-            query = query.Where(q => q.LowValue <= upperBound && q.HighValue >= lowerBound);
+            query = ComparisonPredicates.ApplyQuantityRangeComparison(query, BinaryOperator.GreaterThanOrEqual, lowerBound);
+            query = ComparisonPredicates.ApplyQuantityRangeComparison(query, BinaryOperator.LessThanOrEqual, upperBound);
         }
         else if (quantityBinaryExpressions.Count == 1)
         {
-            // Single comparator
             var (op, value) = quantityBinaryExpressions[0];
-            query = op switch
-            {
-                // ge: stored value must be >= search value (check HighValue for range overlap)
-                BinaryOperator.GreaterThanOrEqual => query.Where(q => q.HighValue >= value),
-                // le: stored value must be <= search value (check LowValue for range overlap)
-                BinaryOperator.LessThanOrEqual => query.Where(q => q.LowValue <= value),
-                // gt: stored value must be > search value
-                BinaryOperator.GreaterThan => query.Where(q => q.LowValue > value),
-                // lt: stored value must be < search value
-                BinaryOperator.LessThan => query.Where(q => q.HighValue < value),
-                // ne: stored value must not equal search value
-                BinaryOperator.NotEqual => query.Where(q => q.HighValue < value || q.LowValue > value),
-                _ => query
-            };
+            query = ComparisonPredicates.ApplyQuantityRangeComparison(query, op, value);
         }
 
         return query;
