@@ -81,10 +81,10 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
                 _outputExpression = Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
                 break;
             case SearchComparator.Sa:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeStart, _componentIndex, dateTime.End);
+                _outputExpression = Expression.StartsAfter(FieldName.DateTimeStart, _componentIndex, dateTime.End);
                 break;
             case SearchComparator.Eb:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
+                _outputExpression = Expression.EndsBefore(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
                 break;
             case SearchComparator.Ap:
                 long startTicks = dateTime.Start.UtcTicks;

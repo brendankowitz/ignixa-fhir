@@ -124,4 +124,19 @@ public class SearchParameterQueryGeneratorDateTimeTests : TestBase
 
         results.ShouldBe(new[] { matching });
     }
+
+    [Fact]
+    public async Task GivenOverlappingStoredRange_WhenComparingGtAndSa_ThenTheyProduceDifferentResults()
+    {
+        // A stored range that overlaps the search boundary: gt (overlap-above) must match it,
+        // sa (strictly after, no overlap) must not - this is exactly the distinction that was
+        // lost when both aliased to the same BinaryOperator.GreaterThan.
+        var straddling = await CreateObservationWithDateAsync("obs-straddling", new DateTime(2019, 6, 1), new DateTime(2020, 6, 1));
+
+        var gtResults = await RunSearchAsync("gt2020-01-01");
+        var saResults = await RunSearchAsync("sa2020-01-01");
+
+        gtResults.ShouldBe(new[] { straddling });
+        saResults.ShouldBeEmpty();
+    }
 }
