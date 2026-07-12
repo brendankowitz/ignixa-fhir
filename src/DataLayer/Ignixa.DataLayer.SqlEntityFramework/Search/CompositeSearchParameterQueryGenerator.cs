@@ -313,43 +313,13 @@ public class CompositeSearchParameterQueryGenerator
     {
         _logger.LogDebug("Generating Reference|Token composite query for SearchParamId={SearchParamId}", searchParamId);
 
-        // Detect actual component types from the expressions to handle FHIR spec inconsistencies
-        // (e.g., DocumentReference "relationship" parameter has swapped component definitions)
-        var comp0IsReference = IsReferenceExpression(component0);
-        var comp0IsToken = IsTokenExpression(component0);
-        var comp1IsReference = IsReferenceExpression(component1);
-        var comp1IsToken = IsTokenExpression(component1);
-
-        // Determine which component is the reference and which is the token
-        Expression referenceExpr;
-        Expression tokenExpr;
-
-        if (comp0IsReference && comp1IsToken)
-        {
-            // Expected order: Reference first, Token second
-            referenceExpr = component0;
-            tokenExpr = component1;
-        }
-        else if (comp0IsToken && comp1IsReference)
-        {
-            // Swapped order: Token first, Reference second (e.g., DocumentReference relationship)
-            _logger.LogDebug("Detected swapped component order for SearchParamId={SearchParamId}: Token in position 0, Reference in position 1", searchParamId);
-            referenceExpr = component1;
-            tokenExpr = component0;
-        }
-        else
-        {
-            // Fallback to original assumption if we can't determine types
-            _logger.LogWarning("Unable to determine component types for Reference|Token composite SearchParamId={SearchParamId}, using assumed order", searchParamId);
-            referenceExpr = component0;
-            tokenExpr = component1;
-        }
-
-        // Extract reference value
-        var reference = ExtractReferenceValue(referenceExpr);
+        // Caller (SearchParameterQueryGenerator.GenerateReferenceTokenGroupQueryAsync) already
+        // resolved component order by effective type before calling this method - component0 is
+        // always the reference, component1 is always the token.
+        var reference = ExtractReferenceValue(component0);
 
         // Extract token value
-        var token = ExtractTokenValues(tokenExpr);
+        var token = ExtractTokenValues(component1);
         int? systemId2 = null;
 
         if (!string.IsNullOrEmpty(token.System))
@@ -388,47 +358,6 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         return query.Select(r => r.ResourceSurrogateId);
-    }
-
-    /// <summary>
-    /// Determines if an expression contains reference fields.
-    /// </summary>
-    private bool IsReferenceExpression(Expression expression)
-    {
-        if (expression is StringExpression stringExpr)
-        {
-            return stringExpr.FieldName is FieldName.ReferenceResourceType or FieldName.ReferenceResourceId or FieldName.ReferenceBaseUri;
-        }
-
-        if (expression is MultiaryExpression multiary)
-        {
-            return multiary.Expressions.Any(IsReferenceExpression);
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Determines if an expression contains token fields.
-    /// </summary>
-    private bool IsTokenExpression(Expression expression)
-    {
-        if (expression is StringExpression stringExpr)
-        {
-            return stringExpr.FieldName is FieldName.TokenCode or FieldName.TokenSystem or FieldName.TokenText;
-        }
-
-        if (expression is MissingFieldExpression missingExpr)
-        {
-            return missingExpr.FieldName is FieldName.TokenSystem;
-        }
-
-        if (expression is MultiaryExpression multiary)
-        {
-            return multiary.Expressions.Any(IsTokenExpression);
-        }
-
-        return false;
     }
 
     /// <summary>
