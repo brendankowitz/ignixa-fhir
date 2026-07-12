@@ -152,7 +152,9 @@ public class SearchParameterQueryGenerator
     {
         _logger.LogDebug("Processing composite search parameter: {Code}", searchParameter.Code);
 
-        // Determine the composite type based on component types
+        // Determine the composite type based on static component definitions - this is a routing
+        // decision (which physical SQL table to use), orthogonal to the per-value effective-type
+        // correction carried by CompositeComponentExpression below.
         var compositeType = _compositeQueryGenerator.DetermineCompositeType(searchParameter);
 
         if (compositeType == CompositeType.Unknown)
@@ -160,165 +162,135 @@ public class SearchParameterQueryGenerator
             _logger.LogWarning(
                 "Unknown composite type for parameter {Code}, falling back to non-composite search",
                 searchParameter.Code);
-            return await ProcessExpressionAsync(resourceTypeId, searchParamId, expr, ct);
+            return await ProcessExpressionAsync(resourceTypeId, searchParamId, UnwrapCompositeComponents(expr), ct);
         }
 
-        // Extract component expressions from the outer expression
-        // Composite expressions are typically MultiaryExpression (AND) containing component expressions
-        var componentExpressions = ExtractComponentExpressions(expr);
+        var groups = ExtractComponentGroups(expr);
 
-        if (componentExpressions.Count < 2)
+        if (groups.Count == 0 || groups.Any(g => g.Count < 2))
         {
             _logger.LogWarning(
-                "Composite parameter {Code} requires at least 2 components, found {Count}",
-                searchParameter.Code,
-                componentExpressions.Count);
+                "Composite parameter {Code} requires at least 2 components in every OR group",
+                searchParameter.Code);
             return Enumerable.Empty<long>().AsQueryable();
         }
 
-        // Route to appropriate composite query generator method based on type
+        var groupQueries = new List<IQueryable<long>>(groups.Count);
+        foreach (var group in groups)
+        {
+            groupQueries.Add(await GenerateGroupQueryAsync(resourceTypeId, searchParamId, compositeType, group, ct));
+        }
+
+        return groupQueries.Count == 1 ? groupQueries[0] : CombineWithOr(groupQueries);
+    }
+
+    /// <summary>
+    /// Generates the resource-ID query for a single composite type over a single OR'd value group's
+    /// components (already ordered by Position).
+    /// </summary>
+    private async Task<IQueryable<long>> GenerateGroupQueryAsync(
+        short? resourceTypeId,
+        short searchParamId,
+        CompositeType compositeType,
+        List<CompositeComponentExpression> group,
+        CancellationToken ct)
+    {
         return compositeType switch
         {
             CompositeType.TokenToken => await _compositeQueryGenerator.GenerateTokenTokenQueryAsync(
-                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+                resourceTypeId, searchParamId, group[0].WrappedExpression, group[1].WrappedExpression, ct),
 
             CompositeType.TokenQuantity => await _compositeQueryGenerator.GenerateTokenQuantityQueryAsync(
-                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+                resourceTypeId, searchParamId, group[0].WrappedExpression, group[1].WrappedExpression, ct),
 
             CompositeType.TokenString => await _compositeQueryGenerator.GenerateTokenStringQueryAsync(
-                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
-
-            CompositeType.ReferenceToken => await _compositeQueryGenerator.GenerateReferenceTokenQueryAsync(
-                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+                resourceTypeId, searchParamId, group[0].WrappedExpression, group[1].WrappedExpression, ct),
 
             CompositeType.TokenDateTime => await _compositeQueryGenerator.GenerateTokenDateTimeQueryAsync(
-                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+                resourceTypeId, searchParamId, group[0].WrappedExpression, group[1].WrappedExpression, ct),
+
+            CompositeType.ReferenceToken => await GenerateReferenceTokenGroupQueryAsync(resourceTypeId, searchParamId, group, ct),
 
             _ => Enumerable.Empty<long>().AsQueryable()
         };
     }
 
     /// <summary>
-    /// Extracts component expressions from a composite search expression.
-    /// Component expressions are identified by their ComponentIndex property.
+    /// Resolves the Reference and Token components by effective type rather than position, replacing
+    /// IsReferenceExpression/IsTokenExpression sniffing of the built expression shape. When both
+    /// components resolve to the same effective type (ambiguous order - e.g. both values look like
+    /// references), returns empty results with a warning rather than assuming position order and
+    /// returning plausible-but-possibly-wrong filtered results.
     /// </summary>
-    private List<Expression> ExtractComponentExpressions(Expression expr)
+    private async Task<IQueryable<long>> GenerateReferenceTokenGroupQueryAsync(
+        short? resourceTypeId,
+        short searchParamId,
+        List<CompositeComponentExpression> group,
+        CancellationToken ct)
     {
-        _logger.LogDebug("ExtractComponentExpressions: Input expression type = {Type}", expr.GetType().Name);
-        LogExpressionTree(expr, 0);
+        var referenceComponent = group.FirstOrDefault(c => c.ComponentSearchParameter.Type == SearchParamType.Reference);
+        var tokenComponent = group.FirstOrDefault(c => c.ComponentSearchParameter.Type == SearchParamType.Token);
 
-        var componentsByIndex = new Dictionary<int, List<Expression>>();
-
-        void CollectByComponentIndex(Expression e)
+        if (referenceComponent == null || tokenComponent == null)
         {
-            if (e is IFieldExpression fieldExpr && fieldExpr.ComponentIndex.HasValue)
-            {
-                int index = fieldExpr.ComponentIndex.Value;
-                if (!componentsByIndex.ContainsKey(index))
-                {
-                    componentsByIndex[index] = [];
-                }
-
-                componentsByIndex[index].Add(e);
-            }
-            else if (e is MultiaryExpression multiary)
-            {
-                // Check if all child expressions have the same ComponentIndex
-                // If so, this is a composite component expression.
-                // Need to recursively get component indices from nested expressions.
-                var childComponentIndices = new HashSet<int?>();
-                CollectComponentIndices(multiary, childComponentIndices);
-
-                if (childComponentIndices.Count == 1 && childComponentIndices.First().HasValue)
-                {
-                    // All descendants have the same ComponentIndex - this is a complete component expression
-                    int index = childComponentIndices.First()!.Value;
-                    if (!componentsByIndex.ContainsKey(index))
-                    {
-                        componentsByIndex[index] = [];
-                    }
-
-                    componentsByIndex[index].Add(e);
-                }
-                else
-                {
-                    // Mixed or no component indices - recurse into children
-                    foreach (var child in multiary.Expressions)
-                    {
-                        CollectByComponentIndex(child);
-                    }
-                }
-            }
-            else if (e is NotExpression notExpr)
-            {
-                CollectByComponentIndex(notExpr.Expression);
-            }
+            _logger.LogWarning(
+                "Reference|Token composite SearchParamId={SearchParamId} did not resolve one Reference and one Token component",
+                searchParamId);
+            return Enumerable.Empty<long>().AsQueryable();
         }
 
-        // Helper to recursively collect all ComponentIndex values from an expression tree
-        void CollectComponentIndices(Expression e, HashSet<int?> indices)
-        {
-            if (e is IFieldExpression fieldExpr && fieldExpr.ComponentIndex.HasValue)
-            {
-                indices.Add(fieldExpr.ComponentIndex);
-            }
-            else if (e is MultiaryExpression multiary)
-            {
-                foreach (var child in multiary.Expressions)
-                {
-                    CollectComponentIndices(child, indices);
-                }
-            }
-        }
-
-        CollectByComponentIndex(expr);
-
-        // Build result list ordered by component index
-        var result = new List<Expression>();
-        var sortedIndices = componentsByIndex.Keys.OrderBy(k => k).ToList();
-
-        foreach (var index in sortedIndices)
-        {
-            var expressions = componentsByIndex[index];
-            if (expressions.Count == 1)
-            {
-                result.Add(expressions[0]);
-            }
-            else
-            {
-                // Combine multiple expressions for the same component with AND
-                result.Add(Expression.And(expressions.ToArray()));
-            }
-        }
-
-        return result;
+        return await _compositeQueryGenerator.GenerateReferenceTokenQueryAsync(
+            resourceTypeId, searchParamId, referenceComponent.WrappedExpression, tokenComponent.WrappedExpression, ct);
     }
 
-    private void LogExpressionTree(Expression expr, int depth)
+    /// <summary>
+    /// Splits a composite expression into its OR'd value groups, each containing its
+    /// CompositeComponentExpression components ordered by Position. Composite expressions from
+    /// SearchParameterExpressionParser are either And(component, component, ...) for a single value
+    /// group, or Or(And(...), And(...), ...) for multiple comma-separated value groups.
+    /// </summary>
+    private static List<List<CompositeComponentExpression>> ExtractComponentGroups(Expression expr) =>
+        expr is MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } orExpr
+            ? orExpr.Expressions.Select(ExtractSingleGroup).ToList()
+            : [ExtractSingleGroup(expr)];
+
+    private static List<CompositeComponentExpression> ExtractSingleGroup(Expression expr) => expr switch
     {
-        var indent = new string(' ', depth * 2);
-        switch (expr)
+        CompositeComponentExpression cce => [cce],
+        MultiaryExpression { MultiaryOperation: MultiaryOperator.And } andExpr =>
+            andExpr.Expressions.OfType<CompositeComponentExpression>().OrderBy(c => c.Position).ToList(),
+        _ => []
+    };
+
+    /// <summary>
+    /// Strips CompositeComponentExpression wrappers, restoring the tree shape
+    /// ProcessExpressionAsync understands - used only by the CompositeType.Unknown fallback, which
+    /// predates CompositeComponentExpression and must keep degrading gracefully rather than throwing.
+    /// </summary>
+    private static Expression UnwrapCompositeComponents(Expression expr) => expr switch
+    {
+        CompositeComponentExpression cce => UnwrapCompositeComponents(cce.WrappedExpression),
+        MultiaryExpression m => new MultiaryExpression(m.MultiaryOperation, m.Expressions.Select(UnwrapCompositeComponents).ToList()),
+        NotExpression n => new NotExpression(UnwrapCompositeComponents(n.Expression)),
+        _ => expr
+    };
+
+    /// <summary>
+    /// Combines multiple resource-ID queries with OR semantics. Uses Concat+Distinct instead of
+    /// chained Union to avoid deeply nested expression trees - chained Union creates
+    /// q0.Union(q1).Union(q2)...Union(qN), which nests deeply and can cause a stack overflow in EF
+    /// Core's ExpressionTreeFuncletizer with many queries. Mirrors
+    /// SearchExpressionQueryBuilder.CombineWithOr exactly.
+    /// </summary>
+    private static IQueryable<long> CombineWithOr(List<IQueryable<long>> queries)
+    {
+        if (queries.Count == 0)
         {
-            case MultiaryExpression multiary:
-                _logger.LogDebug("{Indent}{Kind}(", indent, multiary.MultiaryOperation);
-                foreach (var child in multiary.Expressions)
-                {
-                    LogExpressionTree(child, depth + 1);
-                }
-                _logger.LogDebug("{Indent})", indent);
-                break;
-            case BinaryExpression binary:
-                _logger.LogDebug("{Indent}Binary({Field}, {Op}, {Value}, CI={CI})",
-                    indent, binary.FieldName, binary.BinaryOperator, binary.Value, binary.ComponentIndex);
-                break;
-            case StringExpression stringExpr:
-                _logger.LogDebug("{Indent}String({Field}, {Op}, '{Value}', CI={CI})",
-                    indent, stringExpr.FieldName, stringExpr.StringOperator, stringExpr.Value, stringExpr.ComponentIndex);
-                break;
-            default:
-                _logger.LogDebug("{Indent}{Type}", indent, expr.GetType().Name);
-                break;
+            throw new ArgumentException("Cannot combine zero queries", nameof(queries));
         }
+
+        var result = queries.Aggregate((current, next) => current.Concat(next));
+        return result.Distinct();
     }
 
     /// <summary>
