@@ -416,6 +416,9 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("CodeOverflow2")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("BaseUri1")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");

@@ -162,7 +162,10 @@ public class CompositeSearchParameterQueryGenerator
         // Apply first component filter
         if (!string.IsNullOrEmpty(token1.Code))
         {
-            query = query.Where(t => t.Code1 == token1.Code);
+            query = token1.Code.Length > TokenCodeStorage.MaxInlineCodeLength
+                ? query.Where(t => t.CodeOverflow1 != null &&
+                    EF.Functions.Collate(t.Code1 + t.CodeOverflow1, TokenCodeStorage.CaseInsensitiveCollation) == token1.Code)
+                : query.Where(t => EF.Functions.Collate(t.Code1, TokenCodeStorage.CaseInsensitiveCollation) == token1.Code);
         }
 
         if (systemId1.HasValue)
@@ -178,7 +181,10 @@ public class CompositeSearchParameterQueryGenerator
         // Apply second component filter
         if (!string.IsNullOrEmpty(token2.Code))
         {
-            query = query.Where(t => t.Code2 == token2.Code);
+            query = token2.Code.Length > TokenCodeStorage.MaxInlineCodeLength
+                ? query.Where(t => t.CodeOverflow2 != null &&
+                    EF.Functions.Collate(t.Code2 + t.CodeOverflow2, TokenCodeStorage.CaseInsensitiveCollation) == token2.Code)
+                : query.Where(t => EF.Functions.Collate(t.Code2, TokenCodeStorage.CaseInsensitiveCollation) == token2.Code);
         }
 
         if (systemId2.HasValue)
@@ -227,7 +233,10 @@ public class CompositeSearchParameterQueryGenerator
         // Apply first component (token) filter
         if (!string.IsNullOrEmpty(token.Code))
         {
-            query = query.Where(t => t.Code1 == token.Code);
+            query = token.Code.Length > TokenCodeStorage.MaxInlineCodeLength
+                ? query.Where(t => t.CodeOverflow1 != null &&
+                    EF.Functions.Collate(t.Code1 + t.CodeOverflow1, TokenCodeStorage.CaseInsensitiveCollation) == token.Code)
+                : query.Where(t => EF.Functions.Collate(t.Code1, TokenCodeStorage.CaseInsensitiveCollation) == token.Code);
         }
 
         if (systemId1.HasValue)
@@ -278,7 +287,10 @@ public class CompositeSearchParameterQueryGenerator
         // Apply first component (token) filter
         if (!string.IsNullOrEmpty(token.Code))
         {
-            query = query.Where(t => t.Code1 == token.Code);
+            query = token.Code.Length > TokenCodeStorage.MaxInlineCodeLength
+                ? query.Where(t => t.CodeOverflow1 != null &&
+                    EF.Functions.Collate(t.Code1 + t.CodeOverflow1, TokenCodeStorage.CaseInsensitiveCollation) == token.Code)
+                : query.Where(t => EF.Functions.Collate(t.Code1, TokenCodeStorage.CaseInsensitiveCollation) == token.Code);
         }
 
         if (systemId1.HasValue)
@@ -354,7 +366,10 @@ public class CompositeSearchParameterQueryGenerator
         // Apply second component (token) filter
         if (!string.IsNullOrEmpty(token.Code))
         {
-            query = query.Where(r => r.Code2 == token.Code);
+            query = token.Code.Length > TokenCodeStorage.MaxInlineCodeLength
+                ? query.Where(r => r.CodeOverflow2 != null &&
+                    EF.Functions.Collate(r.Code2 + r.CodeOverflow2, TokenCodeStorage.CaseInsensitiveCollation) == token.Code)
+                : query.Where(r => EF.Functions.Collate(r.Code2, TokenCodeStorage.CaseInsensitiveCollation) == token.Code);
         }
 
         if (systemId2.HasValue)
@@ -402,7 +417,10 @@ public class CompositeSearchParameterQueryGenerator
         // Apply first component (token) filter
         if (!string.IsNullOrEmpty(token.Code))
         {
-            query = query.Where(t => t.Code1 == token.Code);
+            query = token.Code.Length > TokenCodeStorage.MaxInlineCodeLength
+                ? query.Where(t => t.CodeOverflow1 != null &&
+                    EF.Functions.Collate(t.Code1 + t.CodeOverflow1, TokenCodeStorage.CaseInsensitiveCollation) == token.Code)
+                : query.Where(t => EF.Functions.Collate(t.Code1, TokenCodeStorage.CaseInsensitiveCollation) == token.Code);
         }
 
         if (systemId1.HasValue)
