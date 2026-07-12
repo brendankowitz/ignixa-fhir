@@ -105,11 +105,13 @@ public static class ComparisonPredicates
         IQueryable<Entities.NumberSearchParamEntity> query, BinaryOperator op, decimal value) => op switch
     {
         BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-        BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-        BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-        BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-        BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
+        BinaryOperator.GreaterThan => query.Where(sp => sp.HighValue > value),
+        BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.HighValue >= value),
+        BinaryOperator.LessThan => query.Where(sp => sp.LowValue < value),
+        BinaryOperator.LessThanOrEqual => query.Where(sp => sp.LowValue <= value),
         BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
+        BinaryOperator.StartsAfter => query.Where(sp => sp.LowValue > value),
+        BinaryOperator.EndsBefore => query.Where(sp => sp.HighValue < value),
         _ => throw new NotSupportedException($"Binary operator {op} is not supported for Number comparison"),
     };
 
@@ -121,11 +123,13 @@ public static class ComparisonPredicates
         IQueryable<Entities.QuantitySearchParamEntity> query, BinaryOperator op, decimal value) => op switch
     {
         BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-        BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-        BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-        BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-        BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
+        BinaryOperator.GreaterThan => query.Where(sp => sp.HighValue > value),
+        BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.HighValue >= value),
+        BinaryOperator.LessThan => query.Where(sp => sp.LowValue < value),
+        BinaryOperator.LessThanOrEqual => query.Where(sp => sp.LowValue <= value),
         BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
+        BinaryOperator.StartsAfter => query.Where(sp => sp.LowValue > value),
+        BinaryOperator.EndsBefore => query.Where(sp => sp.HighValue < value),
         _ => throw new NotSupportedException($"Binary operator {op} is not supported for Quantity comparison"),
     };
 }
