@@ -39,20 +39,28 @@ internal class ComparisonValueVisitor : ISearchValueVisitor
     public void Visit(DateTimeSearchValue dateTime)
     {
         EnsureArg.IsNotNull(dateTime, nameof(dateTime));
-        AddComparison(_expressionBinaryOperator, dateTime.Start);
+        AddComparison(_expressionBinaryOperator, UsesLowBound(_expressionBinaryOperator) ? dateTime.Start : dateTime.End);
     }
 
     public void Visit(NumberSearchValue number)
     {
         EnsureArg.IsNotNull(number, nameof(number));
-        AddComparison(_expressionBinaryOperator, number.High);
+        AddComparison(_expressionBinaryOperator, UsesLowBound(_expressionBinaryOperator) ? number.Low : number.High);
     }
 
     public void Visit(QuantitySearchValue quantity)
     {
         EnsureArg.IsNotNull(quantity, nameof(quantity));
-        AddComparison(_expressionBinaryOperator, quantity.High);
+        AddComparison(_expressionBinaryOperator, UsesLowBound(_expressionBinaryOperator) ? quantity.Low : quantity.High);
     }
+
+    /// <summary>
+    /// Lt/Le/Sa read the stored range's low/start bound; Gt/Ge/Eb read the high/end bound. Eq/Ne
+    /// are unreachable here for Number/Quantity/DateTime (they always arrive pre-expanded into a
+    /// Ge/Le or Lt/Gt pair upstream in SearchValueExpressionBuilderHelper) - defaulting them to the
+    /// high bound matches this visitor's pre-existing behavior for that unreachable case.
+    /// </summary>
+    private static bool UsesLowBound(BinaryOperator op) => op is BinaryOperator.LessThan or BinaryOperator.LessThanOrEqual or BinaryOperator.StartsAfter;
 
     public void Visit(ReferenceSearchValue reference)
     {
@@ -108,6 +116,12 @@ internal class ComparisonValueVisitor : ISearchValueVisitor
                 break;
             case BinaryOperator.LessThanOrEqual:
                 _comparisonValues.Add(() => first.Any(x => x.CompareTo(_second) <= 0));
+                break;
+            case BinaryOperator.StartsAfter:
+                _comparisonValues.Add(() => first.Any(x => x.CompareTo(_second) > 0));
+                break;
+            case BinaryOperator.EndsBefore:
+                _comparisonValues.Add(() => first.Any(x => x.CompareTo(_second) < 0));
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(binaryOperator));
