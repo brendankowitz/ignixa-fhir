@@ -17,7 +17,6 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
 {
-    private const int StringColumnMaxLength = 128;
     private readonly IReadOnlyDictionary<string, int> _systemMappings;
 
     /// <summary>
@@ -43,7 +42,7 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("SystemId1", SqlDbType.Int),
             new SqlMetaData("Code1", SqlDbType.VarChar, TokenCodeStorage.MaxInlineCodeLength),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
-            new SqlMetaData("Text2", SqlDbType.NVarChar, 128),
+            new SqlMetaData("Text2", SqlDbType.NVarChar, StringStorage.InlineWidth),
             new SqlMetaData("TextOverflow2", SqlDbType.NVarChar, -1),
         };
 
@@ -114,19 +113,22 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
                             record.SetDBNull(5);
                         }
 
-                        // String component
-                        var textValue = stringComponent.String?.ToUpperInvariant();
-                        if (textValue != null && textValue.Length > StringColumnMaxLength)
+                        // String component - stores original case; matching normalization (default CI_AI vs :exact CS_AS)
+                        // happens at query time via collation, mirroring StringSearchParameterRowGenerator's single-String
+                        // convention (see StringStorage).
+                        var textValue = stringComponent.String;
+                        if (textValue != null)
                         {
-                            record.SetString(6, textValue.Substring(0, StringColumnMaxLength));
-                            record.SetString(7, textValue.Substring(StringColumnMaxLength));
+                            var (inline, overflow) = StringStorage.Split(textValue);
+                            record.SetString(6, inline);
+                            if (overflow != null)
+                                record.SetString(7, overflow);
+                            else
+                                record.SetDBNull(7);
                         }
                         else
                         {
-                            if (textValue != null)
-                                record.SetString(6, textValue);
-                            else
-                                record.SetDBNull(6);
+                            record.SetDBNull(6);
                             record.SetDBNull(7);
                         }
 
