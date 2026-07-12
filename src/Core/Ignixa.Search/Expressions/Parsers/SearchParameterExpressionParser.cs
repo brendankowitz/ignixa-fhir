@@ -155,11 +155,16 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
                                 componentSearchParameter.Description);
                         }
 
-                        compositeExpressions[componentIndex] = Build(
+                        Expression componentExpression = Build(
                             effectiveSearchParameter,
                             null,
                             componentIndex,
                             componentValue);
+
+                        compositeExpressions[componentIndex] = new CompositeComponentExpression(
+                            effectiveSearchParameter,
+                            componentIndex,
+                            componentExpression);
                     }
 
                     orExpressions[orIndex] = Expression.And(compositeExpressions);
