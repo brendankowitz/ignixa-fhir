@@ -92,6 +92,29 @@ public class SearchParameterQueryGeneratorQuantityAndTests : TestBase
         return resource.ResourceSurrogateId;
     }
 
+    private async Task<long> CreateObservationWithQuantityRangeAsync(string resourceId, decimal low, decimal high, string? system, string? code)
+    {
+        var resource = CreateResource(ObservationTypeId, resourceId);
+
+        int? systemId = system is null ? null : await Cache.GetOrCreateSystemIdAsync(system);
+        int? codeId = code is null ? null : await Cache.GetOrCreateQuantityCodeIdAsync(code);
+
+        Context.QuantitySearchParams.Add(new QuantitySearchParamEntity
+        {
+            ResourceTypeId = ObservationTypeId,
+            ResourceSurrogateId = resource.ResourceSurrogateId,
+            SearchParamId = ValueQuantityParamId,
+            SystemId = systemId,
+            QuantityCodeId = codeId,
+            SingleValue = null,
+            LowValue = low,
+            HighValue = high
+        });
+        Context.SaveChanges();
+
+        return resource.ResourceSurrogateId;
+    }
+
     private async Task<List<long>> RunSearchAsync(string queryValue)
     {
         var expression = (SearchParameterExpression)_parser.Parse(_valueQuantityParam, modifier: null, queryValue);
@@ -152,5 +175,33 @@ public class SearchParameterQueryGeneratorQuantityAndTests : TestBase
         var results = await RunSearchAsync($"ap5.4|{Ucum}|mg");
 
         results.ShouldBe(new[] { matching });
+    }
+
+    [Fact]
+    public async Task GivenUnitQualifiedSaQuantitySearch_WhenGeneratingQuery_ThenExcludesStraddlingRange()
+    {
+        // Stored range [5.0, 6.0] straddles the search boundary of 5.4: gt (overlap-above) would
+        // match it (HighValue 6.0 > 5.4), but sa (strictly after, no overlap) must not
+        // (LowValue 5.0 > 5.4 is false) - exactly the distinction lost by aliasing sa to gt.
+        await CreateObservationWithQuantityRangeAsync("obs-straddling", 5.0m, 6.0m, Ucum, "mg");
+        var clearlyAfter = await CreateObservationWithQuantityRangeAsync("obs-clearly-after", 10.0m, 10.0m, Ucum, "mg");
+
+        var results = await RunSearchAsync($"sa5.4|{Ucum}|mg");
+
+        results.ShouldBe(new[] { clearlyAfter });
+    }
+
+    [Fact]
+    public async Task GivenUnitQualifiedEbQuantitySearch_WhenGeneratingQuery_ThenExcludesStraddlingRange()
+    {
+        // Stored range [5.0, 6.0] straddles the search boundary of 5.4: lt (overlap-below) would
+        // match it (LowValue 5.0 < 5.4), but eb (strictly before, no overlap) must not
+        // (HighValue 6.0 < 5.4 is false).
+        await CreateObservationWithQuantityRangeAsync("obs-straddling", 5.0m, 6.0m, Ucum, "mg");
+        var clearlyBefore = await CreateObservationWithQuantityRangeAsync("obs-clearly-before", 1.0m, 1.0m, Ucum, "mg");
+
+        var results = await RunSearchAsync($"eb5.4|{Ucum}|mg");
+
+        results.ShouldBe(new[] { clearlyBefore });
     }
 }

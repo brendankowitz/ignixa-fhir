@@ -364,13 +364,15 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
             case SearchComparator.Ge:
                 return Expression.GreaterThanOrEqual(fieldName, _componentIndex, number);
             case SearchComparator.Gt:
-            case SearchComparator.Sa:
                 return Expression.GreaterThan(fieldName, _componentIndex, number);
+            case SearchComparator.Sa:
+                return Expression.StartsAfter(fieldName, _componentIndex, number);
             case SearchComparator.Le:
                 return Expression.LessThanOrEqual(fieldName, _componentIndex, number);
             case SearchComparator.Lt:
-            case SearchComparator.Eb:
                 return Expression.LessThan(fieldName, _componentIndex, number);
+            case SearchComparator.Eb:
+                return Expression.EndsBefore(fieldName, _componentIndex, number);
             default:
                 ThrowComparatorNotSupported();
                 break;
