@@ -8,6 +8,7 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
+using Ignixa.FhirFakes.Builders;
 
 namespace Ignixa.Api.E2ETests.Search.DataTypes;
 
@@ -307,5 +308,158 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
         });
 
         // Error handling specifics depend on implementation
+    }
+
+    // -------------------------------------------------------------------------------------------------
+    // Phase 3 storage-convention characterization tests.
+    //
+    // These four tests pin down the read/write behavior fixed across Tasks 3-6 of the SQL data-layer
+    // cleanup. They run against a real SQL Server (the E2E default storage), where EF.Functions.Collate
+    // and the token/string overflow columns actually execute - coverage that the composite unit tests
+    // could not provide because EF Core's InMemory provider cannot translate Collate. Each test seeds
+    // its own uniquely-tagged data so it does not depend on, or perturb, the shared fixture.
+    // -------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Characterization for the composite token-overflow fix (Task 3): a Token|Token composite whose
+    /// value-token code exceeds the 256-character inline width must round-trip through the CodeOverflow
+    /// column and still match. Before Phase 3 the write side truncated at the wrong threshold and the
+    /// read side never consulted the overflow column, so this returned empty.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeTokenValueExceedingInlineWidth_WhenSearched_ThenResourceIsReturned()
+    {
+        RequireSearchParameter("Observation", "code-value-concept");
+
+        var tag = Guid.NewGuid().ToString();
+        const string valueSystem = "http://example.org/values";
+
+        // 269 chars > 256 inline width; distinctive tail sits past the boundary so a truncated store
+        // (dropped overflow) cannot spuriously match.
+        var longValueCode = "overflow-value-" + new string('x', 250) + "-END";
+
+        var observation = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("token-overflow-code", "http://example.org/composite")
+            .WithCodedValue(longValueCode, valueSystem)
+            .WithStatus("final")
+            .Build();
+
+        var created = await Harness.CreateResourceAsync(observation);
+
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-concept=http://example.org/composite|token-overflow-code${valueSystem}|{longValueCode}");
+
+        results.Length.ShouldBe(1, "composite value token exceeding 256 chars must match via the overflow column");
+        results[0].Id.ShouldBe(created.Id);
+    }
+
+    /// <summary>
+    /// Characterization for the composite token case-insensitivity fix (Task 5): composite token codes
+    /// are compared under a case-insensitive collation, so a resource stored with one casing matches a
+    /// search using a different casing. Before Phase 3 the comparison was ordinal/case-sensitive.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeTokenValueDifferingOnlyInCase_WhenSearched_ThenResourceIsReturned()
+    {
+        RequireSearchParameter("Observation", "code-value-concept");
+
+        var tag = Guid.NewGuid().ToString();
+        const string valueSystem = "http://example.org/values";
+
+        var observation = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("case-code", "http://example.org/composite")
+            .WithCodedValue("MixedCaseValue", valueSystem)
+            .WithStatus("final")
+            .Build();
+
+        var created = await Harness.CreateResourceAsync(observation);
+
+        // Stored as "MixedCaseValue", searched as upper-case - must still match.
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-concept=http://example.org/composite|case-code${valueSystem}|MIXEDCASEVALUE");
+
+        results.Length.ShouldBe(1, "composite token comparison must be case-insensitive");
+        results[0].Id.ShouldBe(created.Id);
+    }
+
+    /// <summary>
+    /// Characterization for the composite string original-case fix (Task 6): a Token|String composite
+    /// stores the string component in its original case (not upper-cased) and matches under a
+    /// case-insensitive collation. Before Phase 3 the value was normalized to upper-case on write,
+    /// destroying the original casing.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeStringValueInMixedCase_WhenSearchedByEitherCase_ThenResourceIsReturnedWithOriginalCasePreserved()
+    {
+        RequireSearchParameter("Observation", "code-value-string");
+
+        var tag = Guid.NewGuid().ToString();
+
+        var observation = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("family-name", "http://example.org/composite")
+            .WithStringValue("Smith")
+            .WithStatus("final")
+            .Build();
+
+        var created = await Harness.CreateResourceAsync(observation);
+
+        // Matching-case prefix.
+        var matchingCase = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-string=http://example.org/composite|family-name$Smith");
+
+        matchingCase.Length.ShouldBe(1, "matching-case prefix must match");
+        matchingCase[0].Id.ShouldBe(created.Id);
+
+        // Original casing is preserved in the stored resource body.
+        matchingCase[0].MutableNode["valueString"]?.GetValue<string>()
+            .ShouldBe("Smith", "the stored string component must preserve its original case");
+
+        // Different-case prefix must also match under the case-insensitive collation.
+        var differentCase = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-string=http://example.org/composite|family-name$smith");
+
+        differentCase.Length.ShouldBe(1, "composite string comparison must be case-insensitive");
+        differentCase[0].Id.ShouldBe(created.Id);
+    }
+
+    /// <summary>
+    /// Characterization for the composite string-overflow fix (Task 6): a Token|String composite whose
+    /// string component exceeds the 256-character inline width must round-trip through the TextOverflow
+    /// column and still match a prefix that extends past the boundary. Before Phase 3 the write side
+    /// split at the wrong threshold and the read side never consulted TextOverflow, so this returned empty.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeStringValueExceedingInlineWidth_WhenSearchedByOverflowingPrefix_ThenResourceIsReturned()
+    {
+        RequireSearchParameter("Observation", "code-value-string");
+
+        var tag = Guid.NewGuid().ToString();
+
+        // 275 chars > 256 inline width; distinctive tail sits past the boundary.
+        var longString = "OverflowStringComposite-" + new string('a', 240) + "-TAILMARKER";
+
+        var observation = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("overflow-string-code", "http://example.org/composite")
+            .WithStringValue(longString)
+            .WithStatus("final")
+            .Build();
+
+        var created = await Harness.CreateResourceAsync(observation);
+
+        // Prefix longer than 256 chars forces the read path to reconstruct Text + TextOverflow.
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-string=http://example.org/composite|overflow-string-code${longString}");
+
+        results.Length.ShouldBe(1, "composite string value exceeding 256 chars must match via the overflow column");
+        results[0].Id.ShouldBe(created.Id);
     }
 }
