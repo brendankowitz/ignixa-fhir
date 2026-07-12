@@ -99,6 +99,32 @@ public static class ComparisonPredicates
         _ => throw new NotSupportedException($"Binary operator {op} is not supported for DateTime end comparison"),
     };
 
+    public static IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> ApplyDateTimeStartComparison(
+        IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> query, BinaryOperator op, DateTime value) => op switch
+    {
+        BinaryOperator.Equal => query.Where(t => t.StartDateTime2 == value),
+        BinaryOperator.NotEqual => query.Where(t => t.StartDateTime2 != value),
+        BinaryOperator.GreaterThan => query.Where(t => t.StartDateTime2 > value),
+        BinaryOperator.GreaterThanOrEqual => query.Where(t => t.StartDateTime2 >= value),
+        BinaryOperator.LessThan => query.Where(t => t.StartDateTime2 < value),
+        BinaryOperator.LessThanOrEqual => query.Where(t => t.StartDateTime2 <= value),
+        BinaryOperator.StartsAfter => query.Where(t => t.StartDateTime2 > value),
+        _ => throw new NotSupportedException($"Binary operator {op} is not supported for composite DateTime start comparison"),
+    };
+
+    public static IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> ApplyDateTimeEndComparison(
+        IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> query, BinaryOperator op, DateTime value) => op switch
+    {
+        BinaryOperator.Equal => query.Where(t => t.EndDateTime2 == value),
+        BinaryOperator.NotEqual => query.Where(t => t.EndDateTime2 != value),
+        BinaryOperator.GreaterThan => query.Where(t => t.EndDateTime2 > value),
+        BinaryOperator.GreaterThanOrEqual => query.Where(t => t.EndDateTime2 >= value),
+        BinaryOperator.LessThan => query.Where(t => t.EndDateTime2 < value),
+        BinaryOperator.LessThanOrEqual => query.Where(t => t.EndDateTime2 <= value),
+        BinaryOperator.EndsBefore => query.Where(t => t.EndDateTime2 < value),
+        _ => throw new NotSupportedException($"Binary operator {op} is not supported for composite DateTime end comparison"),
+    };
+
     /// <summary>
     /// Applies a range-encoded ("fuzzy") comparison used by both Number and Quantity search parameters,
     /// where each indexed value is stored as a [LowValue, HighValue] range rather than a single value.
@@ -136,8 +162,9 @@ public static class ComparisonPredicates
     };
 
     /// <summary>
-    /// Applies a range-encoded ("fuzzy") comparison used by both Number and Quantity search parameters,
-    /// where each indexed value is stored as a [LowValue, HighValue] range rather than a single value.
+    /// Applies a range-encoded ("fuzzy") comparison for the Quantity half of a Token|Quantity composite
+    /// search parameter, where each indexed value is stored as a [LowValue, HighValue] range rather than
+    /// a single value. Operates on the composite entity shape, distinct from the single-parameter overload above.
     /// </summary>
     public static IQueryable<Entities.TokenQuantityCompositeSearchParamEntity> ApplyQuantityRangeComparison(
         IQueryable<Entities.TokenQuantityCompositeSearchParamEntity> query, BinaryOperator op, decimal value) => op switch

@@ -166,6 +166,44 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
     }
 
     [Fact]
+    public async Task GivenOverlappingStoredCompositeDateRange_WhenComparingGtAndSa_ThenTheyProduceDifferentResults()
+    {
+        // Arrange
+        var resource = CreateResource(resourceTypeId: 3, resourceId: "obs-straddling-date");
+        const short searchParamId = 103;
+
+        Context.TokenDateTimeCompositeSearchParams.Add(new TokenDateTimeCompositeSearchParamEntity
+        {
+            ResourceTypeId = 3,
+            ResourceSurrogateId = resource.ResourceSurrogateId,
+            SearchParamId = searchParamId,
+            Code1 = "status",
+            SystemId1 = null,
+            StartDateTime2 = new DateTime(2019, 6, 1),
+            EndDateTime2 = new DateTime(2020, 6, 1),
+        });
+        await Context.SaveChangesAsync();
+
+        var component0 = new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, "status", false);
+        var boundary = new DateTime(2020, 1, 1);
+        var gtComponent1 = new BinaryExpression(BinaryOperator.GreaterThan, FieldName.DateTimeEnd, null, boundary);
+        var saComponent1 = new BinaryExpression(BinaryOperator.StartsAfter, FieldName.DateTimeStart, null, boundary);
+
+        // Act
+        var gtQuery = await _generator.GenerateTokenDateTimeQueryAsync(resourceTypeId: 3, searchParamId, component0, gtComponent1, CancellationToken.None);
+        var gtResults = await gtQuery.ToListAsync();
+
+        var saQuery = await _generator.GenerateTokenDateTimeQueryAsync(resourceTypeId: 3, searchParamId, component0, saComponent1, CancellationToken.None);
+        var saResults = await saQuery.ToListAsync();
+
+        // Assert: EndDateTime2(2020-06-01) > 2020-01-01 is true (gt matches); StartDateTime2(2019-06-01)
+        // > 2020-01-01 is false (sa must not match) - before the fix, sa fell through to "_ => query"
+        // (no filter), so saResults would incorrectly contain the resource too.
+        gtResults.ShouldHaveSingleItem();
+        saResults.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenTokenStringComposite_WhenStringPrefixMatches_ThenReturnsResource()
     {
         // Arrange

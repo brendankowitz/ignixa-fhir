@@ -728,31 +728,13 @@ public class CompositeSearchParameterQueryGenerator
         // Apply start datetime filter
         if (startValue.HasValue && startOp.HasValue)
         {
-            var value = startValue.Value;
-            query = startOp.Value switch
-            {
-                BinaryOperator.GreaterThanOrEqual => query.Where(t => t.StartDateTime2 >= value),
-                BinaryOperator.GreaterThan => query.Where(t => t.StartDateTime2 > value),
-                BinaryOperator.LessThanOrEqual => query.Where(t => t.StartDateTime2 <= value),
-                BinaryOperator.LessThan => query.Where(t => t.StartDateTime2 < value),
-                BinaryOperator.Equal => query.Where(t => t.StartDateTime2 == value),
-                _ => query
-            };
+            query = ComparisonPredicates.ApplyDateTimeStartComparison(query, startOp.Value, startValue.Value);
         }
 
         // Apply end datetime filter
         if (endValue.HasValue && endOp.HasValue)
         {
-            var value = endValue.Value;
-            query = endOp.Value switch
-            {
-                BinaryOperator.GreaterThanOrEqual => query.Where(t => t.EndDateTime2 >= value),
-                BinaryOperator.GreaterThan => query.Where(t => t.EndDateTime2 > value),
-                BinaryOperator.LessThanOrEqual => query.Where(t => t.EndDateTime2 <= value),
-                BinaryOperator.LessThan => query.Where(t => t.EndDateTime2 < value),
-                BinaryOperator.Equal => query.Where(t => t.EndDateTime2 == value),
-                _ => query
-            };
+            query = ComparisonPredicates.ApplyDateTimeEndComparison(query, endOp.Value, endValue.Value);
         }
 
         return query;
