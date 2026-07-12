@@ -1630,30 +1630,9 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        // Apply comparison based on FieldName (Start vs End) and operator
-        // The expression parser creates expressions targeting specific fields:
-        // - DateTimeStart comparisons filter on sp.StartDateTime
-        // - DateTimeEnd comparisons filter on sp.EndDateTime
-        query = (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
-        {
-            (FieldName.DateTimeStart, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.StartDateTime >= value),
-            (FieldName.DateTimeStart, BinaryOperator.GreaterThan) => query.Where(sp => sp.StartDateTime > value),
-            (FieldName.DateTimeStart, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.StartDateTime <= value),
-            (FieldName.DateTimeStart, BinaryOperator.LessThan) => query.Where(sp => sp.StartDateTime < value),
-            (FieldName.DateTimeStart, BinaryOperator.Equal) => query.Where(sp => sp.StartDateTime == value),
-            (FieldName.DateTimeStart, BinaryOperator.NotEqual) => query.Where(sp => sp.StartDateTime != value),
-
-            (FieldName.DateTimeEnd, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.EndDateTime >= value),
-            (FieldName.DateTimeEnd, BinaryOperator.GreaterThan) => query.Where(sp => sp.EndDateTime > value),
-            (FieldName.DateTimeEnd, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.EndDateTime <= value),
-            (FieldName.DateTimeEnd, BinaryOperator.LessThan) => query.Where(sp => sp.EndDateTime < value),
-            (FieldName.DateTimeEnd, BinaryOperator.Equal) => query.Where(sp => sp.EndDateTime == value),
-            (FieldName.DateTimeEnd, BinaryOperator.NotEqual) => query.Where(sp => sp.EndDateTime != value),
-
-            _ => throw new NotSupportedException($"DateTime search with FieldName {binaryExpr.FieldName} and BinaryOperator {binaryExpr.BinaryOperator} is not supported")
-        };
-
-        return query.Select(sp => sp.ResourceSurrogateId);
+        // Delegates to the same ComparisonPredicates-backed dispatch the multiary DateTime path
+        // uses, instead of maintaining a second, independent (FieldName, BinaryOperator) switch.
+        return BuildSingleConditionDateTimeQuery(query, (binaryExpr.FieldName, binaryExpr.BinaryOperator, value));
     }
 
     private Task<IQueryable<long>> GenerateQuantityQueryAsync(

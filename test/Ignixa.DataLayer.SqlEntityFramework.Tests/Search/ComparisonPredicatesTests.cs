@@ -116,4 +116,28 @@ public class ComparisonPredicatesTests
 
         results.Count.ShouldBe(expectMatch ? 1 : 0);
     }
+
+    [Fact]
+    public void GivenStoredRange_WhenApplyDateTimeStartComparisonStartsAfter_ThenMatchesStrictSeparation()
+    {
+        var stored = new[]
+        {
+            new DateTimeSearchParamEntity { ResourceTypeId = 1, ResourceSurrogateId = 1, SearchParamId = 1, StartDateTime = new DateTime(2020, 1, 10), EndDateTime = new DateTime(2020, 1, 20) }
+        }.AsQueryable();
+
+        ComparisonPredicates.ApplyDateTimeStartComparison(stored, BinaryOperator.StartsAfter, new DateTime(2020, 1, 5)).Count().ShouldBe(1);
+        ComparisonPredicates.ApplyDateTimeStartComparison(stored, BinaryOperator.StartsAfter, new DateTime(2020, 1, 15)).Count().ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenStoredRange_WhenApplyDateTimeEndComparisonEndsBefore_ThenMatchesStrictSeparation()
+    {
+        var stored = new[]
+        {
+            new DateTimeSearchParamEntity { ResourceTypeId = 1, ResourceSurrogateId = 1, SearchParamId = 1, StartDateTime = new DateTime(2020, 1, 10), EndDateTime = new DateTime(2020, 1, 20) }
+        }.AsQueryable();
+
+        ComparisonPredicates.ApplyDateTimeEndComparison(stored, BinaryOperator.EndsBefore, new DateTime(2020, 1, 25)).Count().ShouldBe(1);
+        ComparisonPredicates.ApplyDateTimeEndComparison(stored, BinaryOperator.EndsBefore, new DateTime(2020, 1, 15)).Count().ShouldBe(0);
+    }
 }
