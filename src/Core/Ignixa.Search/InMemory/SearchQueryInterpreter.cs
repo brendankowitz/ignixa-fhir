@@ -278,6 +278,14 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         throw new SearchOperationNotSupportedException("_not-referenced is not supported in in-memory search.");
     }
 
+    public SearchPredicate VisitCompositeComponent(CompositeComponentExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        return expression.WrappedExpression.AcceptVisitor(this, context);
+    }
+
     /// <summary>
     /// Context that is passed through the visit.
     /// </summary>

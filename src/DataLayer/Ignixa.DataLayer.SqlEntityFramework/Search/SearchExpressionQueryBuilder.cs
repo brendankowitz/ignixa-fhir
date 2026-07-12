@@ -431,4 +431,10 @@ public sealed class SearchExpressionQueryBuilder : IExpressionVisitor<SqlQueryCo
 
     Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitIn<T>(InExpression<T> expression, SqlQueryContext context) =>
         throw new NotSupportedException($"{nameof(SearchExpressionQueryBuilder)} does not handle bare {nameof(InExpression<T>)} — field-level expressions are only valid nested inside a {nameof(SearchParameterExpression)}.");
+
+    Task<IQueryable<ResourceEntity>> IExpressionVisitor<SqlQueryContext, Task<IQueryable<ResourceEntity>>>.VisitCompositeComponent(CompositeComponentExpression expression, SqlQueryContext context)
+    {
+        throw new NotSupportedException(
+            "CompositeComponentExpression must be unwrapped by SearchParameterQueryGenerator before reaching the generic visitor dispatch.");
+    }
 }

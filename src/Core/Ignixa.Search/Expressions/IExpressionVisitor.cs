@@ -116,4 +116,11 @@ public interface IExpressionVisitor<in TContext, out TOutput>
     /// <param name="expression">The expression to visit.</param>
     /// <param name="context">The input</param>
     TOutput VisitNotReferenced(NotReferencedExpression expression, TContext context);
+
+    /// <summary>
+    /// Visits the <see cref="CompositeComponentExpression"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input</param>
+    TOutput VisitCompositeComponent(CompositeComponentExpression expression, TContext context);
 }

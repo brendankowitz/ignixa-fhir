@@ -118,4 +118,9 @@ internal abstract class DefaultExpressionVisitor<TContext, TOutput> : IExpressio
     {
         return default;
     }
+
+    public virtual TOutput VisitCompositeComponent(CompositeComponentExpression expression, TContext context)
+    {
+        return default;
+    }
 }
