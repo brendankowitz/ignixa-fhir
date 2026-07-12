@@ -305,14 +305,96 @@ public sealed class TestScriptEvaluator(
         TestScriptContext context,
         CancellationToken cancellationToken)
     {
-        foreach (var action in actions)
+        var lastGroupIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < actions.Count; i++)
+            if (actions[i] is AssertExpression { AnyOfGroupId: { } gid })
+                lastGroupIndex[gid] = i;
+
+        var pendingGroups = new Dictionary<string, List<(AssertExpression Assertion, bool Applicable, bool Passed, string? Message, bool IsError)>>(
+            StringComparer.Ordinal);
+
+        for (var i = 0; i < actions.Count; i++)
         {
+            var action = actions[i];
+
+            if (action is AssertExpression { AnyOfGroupId: { } groupId } assertion)
+            {
+                var member = EvaluateGroupMemberSafe(assertion, context);
+                if (!pendingGroups.TryGetValue(groupId, out var members))
+                    pendingGroups[groupId] = members = [];
+                members.Add((assertion, member.Applicable, member.Passed, member.Message, member.IsError));
+
+                if (i == lastGroupIndex[groupId])
+                    RecordGroupResult(context, groupId, members);
+
+                continue;
+            }
+
             context = await action.AcceptAsync(this, context, cancellationToken);
             if (action is OperationExpression)
                 context = VariableExtractor.ExtractFromResponse(variables, context, schemaProvider);
         }
 
         return context;
+    }
+
+    private (bool Applicable, bool Passed, string? Message, bool IsError) EvaluateGroupMemberSafe(
+        AssertExpression assertion, TestScriptContext context)
+    {
+        try
+        {
+            var (applicable, passed, message) = EvaluateAssertionMember(assertion, context);
+            return (applicable, passed, message, false);
+        }
+        catch (Exception ex)
+        {
+            return (false, false, ex.Message, true);
+        }
+    }
+
+    private static void RecordGroupResult(
+        TestScriptContext context,
+        string groupId,
+        List<(AssertExpression Assertion, bool Applicable, bool Passed, string? Message, bool IsError)> members)
+    {
+        var reportMembers = members
+            .Select(m => new AssertionGroupMemberResult(m.Assertion.Description, m.Applicable, m.Passed, m.Message))
+            .ToList();
+
+        var first = members[0].Assertion;
+        var errored = members.FirstOrDefault(m => m.IsError);
+        var applicableMembers = members.Where(m => m.Applicable).ToList();
+        var matched = applicableMembers.FirstOrDefault(m => m.Passed);
+
+        AssertionOutcome outcome;
+        if (errored.IsError)
+        {
+            outcome = new AssertionOutcome(false, WarningOnly: false,
+                Message: $"assertionAnyOfGroup '{groupId}': member '{errored.Assertion.Description}' failed to evaluate: {errored.Message}",
+                IsError: true);
+        }
+        else if (applicableMembers.Count == 0)
+        {
+            outcome = new AssertionOutcome(false, WarningOnly: false,
+                Message: $"assertionAnyOfGroup '{groupId}': no member was applicable — condition(s) never matched",
+                IsError: true);
+        }
+        else if (matched.Passed)
+        {
+            outcome = new AssertionOutcome(true, WarningOnly: false,
+                Message: $"assertionAnyOfGroup '{groupId}': matched alternative '{matched.Assertion.Description}'");
+        }
+        else
+        {
+            var summary = string.Join("; ", applicableMembers.Select(m => $"{m.Assertion.Description}: {m.Message}"));
+            outcome = new AssertionOutcome(false, WarningOnly: false,
+                Message: $"assertionAnyOfGroup '{groupId}': no alternative matched ({summary})");
+        }
+
+        var label = matched.Passed ? matched.Assertion.Label : first.Label;
+        var description = matched.Passed ? matched.Assertion.Description : first.Description;
+
+        context.Recorder.RecordAssertionGroupResult(groupId, label, description, outcome, reportMembers);
     }
 
     public async ValueTask<TestScriptContext> VisitOperationAsync(
@@ -399,9 +481,9 @@ public sealed class TestScriptEvaluator(
     {
         try
         {
-            var (passed, message) = EvaluateAssertionWithMessage(expression, context);
+            var (applicable, passed, message) = EvaluateAssertionMember(expression, context);
             context.Recorder.RecordAssertionResult(expression.Label, expression.Description,
-                new AssertionOutcome(passed, expression.WarningOnly, passed ? null : message));
+                new AssertionOutcome(passed, expression.WarningOnly, applicable ? message : null, Applicable: applicable));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -571,6 +653,23 @@ public sealed class TestScriptEvaluator(
         "delete" => HttpMethod.Delete,
         _ => HttpMethod.Post
     };
+
+    private (bool Applicable, bool Passed, string? Message) EvaluateAssertionMember(
+        AssertExpression assertion, TestScriptContext context)
+    {
+        if (assertion.WhenResponseStatus is { } condition)
+        {
+            if (!context.ResponseHistory.TryGetValue(condition.SourceId, out var response))
+                throw new InvalidOperationException(
+                    $"assertionWhenResponseStatus sourceId '{condition.SourceId}' refers to no known response");
+
+            if (!condition.Statuses.Contains(response.StatusCode))
+                return (false, false, null);
+        }
+
+        var (passed, message) = EvaluateAssertionWithMessage(assertion, context);
+        return (true, passed, message);
+    }
 
     private (bool Passed, string? Message) EvaluateAssertionWithMessage(
         AssertExpression assertion, TestScriptContext context)

@@ -196,4 +196,81 @@ public class TestScriptResultRecorderTests
         action.Exchange!.Request.ShouldBe(request);
         action.Exchange.Response.ShouldBe(response);
     }
+
+    [Fact]
+    public void GivenInapplicableAssertion_WhenRecording_ThenOutcomeIsSkip()
+    {
+        var recorder = new TestScriptResultRecorder();
+        recorder.BeginPhase(TestPhaseType.Test, "Test");
+        recorder.RecordAssertionResult("a", "desc",
+            new AssertionOutcome(false, WarningOnly: false, Applicable: false));
+        recorder.EndPhase();
+
+        var report = recorder.Build("name", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        report.TestResults[0].Actions[0].Outcome.ShouldBe(TestScriptOutcome.Skip);
+    }
+
+    [Fact]
+    public void GivenPassingGroupResult_WhenRecording_ThenActionCarriesGroupIdAndMembers()
+    {
+        var recorder = new TestScriptResultRecorder();
+        recorder.BeginPhase(TestPhaseType.Test, "Test");
+
+        var members = new List<AssertionGroupMemberResult>
+        {
+            new("Preferred: 410 Gone", true, false, "Expected response 'gone' but got status 404"),
+            new("Alternative: 404 Not Found", true, true, null)
+        };
+        recorder.RecordAssertionGroupResult("deleted-resource-readback", "grp", "Deleted resource readback",
+            new AssertionOutcome(true, WarningOnly: false), members);
+        recorder.EndPhase();
+
+        var report = recorder.Build("name", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var action = report.TestResults[0].Actions[0];
+        action.Outcome.ShouldBe(TestScriptOutcome.Pass);
+        action.GroupId.ShouldBe("deleted-resource-readback");
+        action.Members.ShouldNotBeNull();
+        action.Members!.Count.ShouldBe(2);
+        action.Members[1].Passed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenErroredGroupResult_WhenRecording_ThenOutcomeIsError()
+    {
+        var recorder = new TestScriptResultRecorder();
+        recorder.BeginPhase(TestPhaseType.Test, "Test");
+
+        var members = new List<AssertionGroupMemberResult>
+        {
+            new("Member A", false, false, null),
+            new("Member B", false, false, null)
+        };
+        recorder.RecordAssertionGroupResult("group-x", null, "Group X",
+            new AssertionOutcome(false, WarningOnly: false, Message: "no member was applicable", IsError: true),
+            members);
+        recorder.EndPhase();
+
+        var report = recorder.Build("name", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        report.TestResults[0].Actions[0].Outcome.ShouldBe(TestScriptOutcome.Error);
+    }
+
+    [Fact]
+    public void GivenFailedGroupResult_WhenRecording_ThenOutcomeIsFail()
+    {
+        var recorder = new TestScriptResultRecorder();
+        recorder.BeginPhase(TestPhaseType.Test, "Test");
+
+        var members = new List<AssertionGroupMemberResult>
+        {
+            new("Member A", true, false, "expected X"),
+            new("Member B", true, false, "expected Y")
+        };
+        recorder.RecordAssertionGroupResult("group-y", null, "Group Y",
+            new AssertionOutcome(false, WarningOnly: false, Message: "no alternative matched"),
+            members);
+        recorder.EndPhase();
+
+        var report = recorder.Build("name", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        report.TestResults[0].Actions[0].Outcome.ShouldBe(TestScriptOutcome.Fail);
+    }
 }

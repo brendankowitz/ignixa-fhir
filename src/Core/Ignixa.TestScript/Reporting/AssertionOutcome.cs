@@ -4,4 +4,5 @@ public sealed record AssertionOutcome(
     bool Passed,
     bool WarningOnly,
     string? Message = null,
-    bool IsError = false);
+    bool IsError = false,
+    bool Applicable = true);
