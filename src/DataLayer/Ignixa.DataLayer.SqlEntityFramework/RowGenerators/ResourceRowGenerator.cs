@@ -111,7 +111,7 @@ public class ResourceRowGenerator
 
             record.SetString(10, resource.Request.Method.ToString());
 
-            // SearchParamHash: TODO Phase 2
+            // SearchParamHash: TODO(reindex)
             record.SetDBNull(11);
 
             yield return record;

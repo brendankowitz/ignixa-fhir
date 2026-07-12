@@ -87,7 +87,7 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetString(5, refValue.ResourceId);
 
                 // Version is optional
-                record.SetDBNull(6); // TODO Phase 3: Extract version if available
+                record.SetDBNull(6); // TODO(versioned-references): Extract version if available
 
                 yield return record;
             }
