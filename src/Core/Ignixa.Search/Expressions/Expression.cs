@@ -166,6 +166,16 @@ public abstract class Expression
         return new BinaryExpression(BinaryOperator.LessThanOrEqual, fieldName, componentIndex, value);
     }
 
+    public static BinaryExpression StartsAfter(FieldName fieldName, int? componentIndex, object value)
+    {
+        return new BinaryExpression(BinaryOperator.StartsAfter, fieldName, componentIndex, value);
+    }
+
+    public static BinaryExpression EndsBefore(FieldName fieldName, int? componentIndex, object value)
+    {
+        return new BinaryExpression(BinaryOperator.EndsBefore, fieldName, componentIndex, value);
+    }
+
     /// <summary>
     /// Creates a <see cref="MissingFieldExpression"/> that represents a missing field.
     /// </summary>

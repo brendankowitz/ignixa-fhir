@@ -16,5 +16,7 @@ public enum BinaryOperator
     GreaterThanOrEqual = 2,
     LessThan = 3,
     LessThanOrEqual = 4,
-    NotEqual = 5
+    NotEqual = 5,
+    StartsAfter = 6,
+    EndsBefore = 7
 }
