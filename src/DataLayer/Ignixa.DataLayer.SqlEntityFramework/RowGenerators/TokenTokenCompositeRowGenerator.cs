@@ -40,10 +40,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId1", SqlDbType.Int),
-            new SqlMetaData("Code1", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code1", SqlDbType.VarChar, TokenCodeStorage.MaxInlineCodeLength),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
             new SqlMetaData("SystemId2", SqlDbType.Int),
-            new SqlMetaData("Code2", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code2", SqlDbType.VarChar, TokenCodeStorage.MaxInlineCodeLength),
             new SqlMetaData("CodeOverflow2", SqlDbType.VarChar, -1),
         };
 
@@ -99,17 +99,18 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent1.Code != null && tokenComponent1.Code.Length > 128)
+                        if (tokenComponent1.Code != null)
                         {
-                            record.SetString(4, tokenComponent1.Code.Substring(0, 128));
-                            record.SetString(5, tokenComponent1.Code.Substring(128));
+                            var (inline1, overflow1) = TokenCodeStorage.SplitCode(tokenComponent1.Code);
+                            record.SetString(4, inline1);
+                            if (overflow1 != null)
+                                record.SetString(5, overflow1);
+                            else
+                                record.SetDBNull(5);
                         }
                         else
                         {
-                            if (tokenComponent1.Code != null)
-                                record.SetString(4, tokenComponent1.Code);
-                            else
-                                record.SetDBNull(4);
+                            record.SetDBNull(4);
                             record.SetDBNull(5);
                         }
 
@@ -128,17 +129,18 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent2.Code != null && tokenComponent2.Code.Length > 128)
+                        if (tokenComponent2.Code != null)
                         {
-                            record.SetString(7, tokenComponent2.Code.Substring(0, 128));
-                            record.SetString(8, tokenComponent2.Code.Substring(128));
+                            var (inline2, overflow2) = TokenCodeStorage.SplitCode(tokenComponent2.Code);
+                            record.SetString(7, inline2);
+                            if (overflow2 != null)
+                                record.SetString(8, overflow2);
+                            else
+                                record.SetDBNull(8);
                         }
                         else
                         {
-                            if (tokenComponent2.Code != null)
-                                record.SetString(7, tokenComponent2.Code);
-                            else
-                                record.SetDBNull(7);
+                            record.SetDBNull(7);
                             record.SetDBNull(8);
                         }
 

@@ -41,7 +41,7 @@ public class TokenNumberNumberCompositeRowGenerator : ISearchParameterRowGenerat
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId1", SqlDbType.Int),
-            new SqlMetaData("Code1", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code1", SqlDbType.VarChar, TokenCodeStorage.MaxInlineCodeLength),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
             new SqlMetaData("SingleValue2", SqlDbType.Decimal, precision: 36, scale: 18),
             new SqlMetaData("LowValue2", SqlDbType.Decimal, precision: 36, scale: 18),
@@ -107,17 +107,18 @@ public class TokenNumberNumberCompositeRowGenerator : ISearchParameterRowGenerat
                                 continue;
                             }
 
-                            if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
+                            if (tokenComponent.Code != null)
                             {
-                                record.SetString(4, tokenComponent.Code.Substring(0, 128));
-                                record.SetString(5, tokenComponent.Code.Substring(128));
+                                var (inline, overflow) = TokenCodeStorage.SplitCode(tokenComponent.Code);
+                                record.SetString(4, inline);
+                                if (overflow != null)
+                                    record.SetString(5, overflow);
+                                else
+                                    record.SetDBNull(5);
                             }
                             else
                             {
-                                if (tokenComponent.Code != null)
-                                    record.SetString(4, tokenComponent.Code);
-                                else
-                                    record.SetDBNull(4);
+                                record.SetDBNull(4);
                                 record.SetDBNull(5);
                             }
 

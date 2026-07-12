@@ -45,7 +45,7 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ReferenceResourceId1", SqlDbType.VarChar, 64),
             new SqlMetaData("ReferenceResourceVersion1", SqlDbType.Int),
             new SqlMetaData("SystemId2", SqlDbType.Int),
-            new SqlMetaData("Code2", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code2", SqlDbType.VarChar, TokenCodeStorage.MaxInlineCodeLength),
             new SqlMetaData("CodeOverflow2", SqlDbType.VarChar, -1),
         };
 
@@ -128,17 +128,18 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
+                        if (tokenComponent.Code != null)
                         {
-                            record.SetString(8, tokenComponent.Code.Substring(0, 128));
-                            record.SetString(9, tokenComponent.Code.Substring(128));
+                            var (inline, overflow) = TokenCodeStorage.SplitCode(tokenComponent.Code);
+                            record.SetString(8, inline);
+                            if (overflow != null)
+                                record.SetString(9, overflow);
+                            else
+                                record.SetDBNull(9);
                         }
                         else
                         {
-                            if (tokenComponent.Code != null)
-                                record.SetString(8, tokenComponent.Code);
-                            else
-                                record.SetDBNull(8);
+                            record.SetDBNull(8);
                             record.SetDBNull(9);
                         }
 
