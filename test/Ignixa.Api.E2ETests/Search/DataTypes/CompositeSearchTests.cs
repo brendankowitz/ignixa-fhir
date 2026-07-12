@@ -387,13 +387,19 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
     }
 
     /// <summary>
-    /// Characterization for the composite string original-case fix (Task 6): a Token|String composite
-    /// stores the string component in its original case (not upper-cased) and matches under a
-    /// case-insensitive collation. Before Phase 3 the value was normalized to upper-case on write,
-    /// destroying the original casing.
+    /// Pins query-time case-insensitive collation matching for composite string components (the read-path
+    /// fix from Task 6) as a regression guard for the new collation mechanism: a resource stored with one
+    /// casing matches a search using a different casing.
+    ///
+    /// This test does NOT discriminate the write-side original-case-preservation fix. That fix is
+    /// unobservable through the public FHIR search API, because FHIR composite search parameters accept no
+    /// modifiers - there is no <c>:exact</c> for composites (see the <c>code-value-string</c> theory data
+    /// around line 184, and the FHIR spec). Write-side case preservation is proven instead at the unit tier
+    /// by CompositeStringOverflowTests.GivenMixedCaseStringComponent_WhenGenerated_ThenStoresOriginalCaseNotUppercased,
+    /// which asserts the row generator's emitted SqlDataRecord column value directly.
     /// </summary>
     [Fact]
-    public async Task GivenCompositeStringValueInMixedCase_WhenSearchedByEitherCase_ThenResourceIsReturnedWithOriginalCasePreserved()
+    public async Task GivenCompositeStringValueInMixedCase_WhenSearchedWithDifferentCase_ThenResourceIsReturned()
     {
         RequireSearchParameter("Observation", "code-value-string");
 
@@ -408,25 +414,13 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
 
         var created = await Harness.CreateResourceAsync(observation);
 
-        // Matching-case prefix.
-        var matchingCase = await Harness.SearchAsync(
-            "Observation",
-            $"_tag={tag}&code-value-string=http://example.org/composite|family-name$Smith");
-
-        matchingCase.Length.ShouldBe(1, "matching-case prefix must match");
-        matchingCase[0].Id.ShouldBe(created.Id);
-
-        // Original casing is preserved in the stored resource body.
-        matchingCase[0].MutableNode["valueString"]?.GetValue<string>()
-            .ShouldBe("Smith", "the stored string component must preserve its original case");
-
-        // Different-case prefix must also match under the case-insensitive collation.
-        var differentCase = await Harness.SearchAsync(
+        // Stored as "Smith", searched as lower-case - must still match under the case-insensitive collation.
+        var results = await Harness.SearchAsync(
             "Observation",
             $"_tag={tag}&code-value-string=http://example.org/composite|family-name$smith");
 
-        differentCase.Length.ShouldBe(1, "composite string comparison must be case-insensitive");
-        differentCase[0].Id.ShouldBe(created.Id);
+        results.Length.ShouldBe(1, "composite string comparison must be case-insensitive");
+        results[0].Id.ShouldBe(created.Id);
     }
 
     /// <summary>
@@ -460,6 +454,81 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
             $"_tag={tag}&code-value-string=http://example.org/composite|overflow-string-code${longString}");
 
         results.Length.ShouldBe(1, "composite string value exceeding 256 chars must match via the overflow column");
+        results[0].Id.ShouldBe(created.Id);
+    }
+
+    /// <summary>
+    /// Cross-layer integration guard that discriminates the composite token WRITE-side threshold fix
+    /// (Task 5): the split moved from a hardcoded 128 chars to the real 256-char inline column width. A
+    /// value in the 129-256 range is stored entirely inline (no overflow), so the read path takes the
+    /// NON-overflow branch - a successful match proves the write side kept the FULL value in the primary
+    /// Code column. Under the old 128-char split the tail past 128 chars was truncated and this returned
+    /// empty. The write-side split is also unit-tested directly by CompositeTokenOverflowTests, but that
+    /// test cannot prove the read path reconstructs and queries correctly end-to-end at this length.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeTokenValueWithinInlineWidth_WhenSearched_ThenResourceIsReturned()
+    {
+        RequireSearchParameter("Observation", "code-value-concept");
+
+        var tag = Guid.NewGuid().ToString();
+        const string valueSystem = "http://example.org/values";
+
+        // 200 chars: past the old 128 split, under the 256 inline width, so it stores inline with no overflow.
+        var inlineValueCode = "inline-value-" + new string('x', 183) + "-END";
+
+        var observation = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("token-inline-code", "http://example.org/composite")
+            .WithCodedValue(inlineValueCode, valueSystem)
+            .WithStatus("final")
+            .Build();
+
+        var created = await Harness.CreateResourceAsync(observation);
+
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-concept=http://example.org/composite|token-inline-code${valueSystem}|{inlineValueCode}");
+
+        results.Length.ShouldBe(1, "composite value token between 129 and 256 chars must be stored fully inline and match");
+        results[0].Id.ShouldBe(created.Id);
+    }
+
+    /// <summary>
+    /// Cross-layer integration guard that discriminates the composite string WRITE-side threshold fix
+    /// (Task 6): the split moved from a hardcoded 128 chars to the real 256-char inline column width. A
+    /// value in the 129-256 range is stored entirely inline (no overflow), so the read path takes the
+    /// NON-overflow branch - a successful prefix match proves the write side kept the FULL value in the
+    /// primary Text column. Under the old 128-char split the tail past 128 chars was truncated and a prefix
+    /// extending past it returned empty. The write-side split is also unit-tested directly by
+    /// CompositeStringOverflowTests, but that test cannot prove the read path reconstructs and queries
+    /// correctly end-to-end at this length.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeStringValueWithinInlineWidth_WhenSearchedByFullValue_ThenResourceIsReturned()
+    {
+        RequireSearchParameter("Observation", "code-value-string");
+
+        var tag = Guid.NewGuid().ToString();
+
+        // 200 chars: past the old 128 split, under the 256 inline width, so it stores inline with no overflow.
+        var inlineString = "InlineStringComposite-" + new string('a', 167) + "-TAILMARKER";
+
+        var observation = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("inline-string-code", "http://example.org/composite")
+            .WithStringValue(inlineString)
+            .WithStatus("final")
+            .Build();
+
+        var created = await Harness.CreateResourceAsync(observation);
+
+        // Prefix extends well past the old 128-char boundary; only a full inline store can match it.
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={tag}&code-value-string=http://example.org/composite|inline-string-code${inlineString}");
+
+        results.Length.ShouldBe(1, "composite string value between 129 and 256 chars must be stored fully inline and match");
         results[0].Id.ShouldBe(created.Id);
     }
 }
