@@ -302,12 +302,16 @@ public class CompositeSearchParameterQueryGenerator
             query = query.Where(t => t.SystemId1 == null);
         }
 
-        // Apply second component (string) filter
+        // Apply second component (string) filter - collation-based, overflow-aware, mirroring
+        // SearchParameterQueryGenerator.GenerateStringQueryAsync's single-String StartsWith case.
         var stringValue = ExtractStringValue(component1);
         if (!string.IsNullOrEmpty(stringValue))
         {
-            var normalizedValue = stringValue.ToUpperInvariant();
-            query = query.Where(t => t.Text2.StartsWith(normalizedValue));
+            var pattern = $"{stringValue}%";
+            query = stringValue.Length > StringStorage.InlineWidth
+                ? query.Where(t => t.TextOverflow2 != null &&
+                    EF.Functions.Like(EF.Functions.Collate(t.Text2 + t.TextOverflow2, StringStorage.DefaultCollation), pattern))
+                : query.Where(t => EF.Functions.Like(EF.Functions.Collate(t.Text2, StringStorage.DefaultCollation), pattern));
         }
 
         return query.Select(t => t.ResourceSurrogateId);
