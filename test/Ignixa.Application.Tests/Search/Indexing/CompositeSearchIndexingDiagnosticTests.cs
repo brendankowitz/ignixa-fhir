@@ -458,6 +458,10 @@ public class CompositeSearchIndexingDiagnosticTests
                 CollectBinaryExpressions(child, results);
             }
         }
+        else if (expr is CompositeComponentExpression composite)
+        {
+            CollectBinaryExpressions(composite.WrappedExpression, results);
+        }
     }
 
     private void PrintExpression(Expression expr, int indent)

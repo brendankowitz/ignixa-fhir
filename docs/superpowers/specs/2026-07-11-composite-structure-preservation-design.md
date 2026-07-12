@@ -399,6 +399,21 @@ exact current signatures (`Expression component0, Expression component1`). `IsRe
    Interacts with follow-up #1 above: fixing `ApplyDateTimeFilter`'s overwrite bug without also fixing this one (or
    vice versa) changes observable behavior, since the 3-expression pattern `ApplyDateTimeFilter` consumes currently
    never arrives for `eq`. Both should be investigated together.
+4. **`SearchParameterExpressionParser.InferSearchParamTypeFromValue` misclassifies quantity-with-unit
+   values as Token** (discovered during Phase 2's final whole-branch review; pre-existing, predates
+   this phase, but Phase 2 makes the effective type it produces load-bearing everywhere downstream).
+   The heuristic (`src/Core/Ignixa.Search/Expressions/Parsers/SearchParameterExpressionParser.cs:369-406`)
+   infers `Token` for any value containing `|`, with no further discrimination. FHIR quantity values
+   legitimately carry units in `value|system|code` form (e.g. `code-value-quantity=8480-6$gt150|http://unitsofmeasure.org|mm[Hg]`)
+   — that component also contains `|`, so it gets misclassified as Token even though its static
+   component definition is Quantity. The parser then builds a Token-shaped expression from a quantity
+   value; downstream, the composite quantity filter finds no quantity comparison to apply and silently
+   matches on the token component alone, ignoring the value entirely — a real correctness gap, not
+   theoretical. Likely fix direction: only apply value-shape inference to composites whose static
+   component definitions include a Reference component (the only confirmed case needing it, per
+   DocumentReference's `relationship` parameter), or explicitly exclude values that parse successfully
+   as a quantity/number before inferring Token from the presence of `|`. Needs its own investigation and
+   fix, tracked here rather than fixed as part of Phase 2.
 
 ## Risks
 

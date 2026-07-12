@@ -264,16 +264,17 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
     }
 
     [Fact]
-    public async Task GivenReferenceTokenComposite_WhenComponentsSwapped_ThenStillReturnsResource()
+    public async Task GivenReferenceTokenComposite_WhenComponentsPassedInWrongOrder_ThenReturnsEmptyWithoutApplyingSpuriousFilters()
     {
-        // Arrange: reproduces the DocumentReference "relationship" case
-        // (CompositeSearchParameterQueryGenerator.cs:318-346) where FHIR's spec-defined component
-        // order is inconsistent and the generator must detect the swap at runtime.
+        // Arrange: GenerateReferenceTokenQueryAsync's contract requires component0=reference,
+        // component1=token - resolved upstream by SearchParameterQueryGenerator.GenerateReferenceTokenGroupQueryAsync
+        // using each component's effective type (see Task 4). This method itself no longer sniffs or
+        // corrects component order (Task 5) - if called with the wrong order, neither extractor finds
+        // its expected field shape, so the defensive guard must return empty rather than silently
+        // applying zero filters, which would match every resource under this SearchParamId.
         var resource = CreateResource(resourceTypeId: 3, resourceId: "docref-1");
-        var decoyResource = CreateResource(resourceTypeId: 3, resourceId: "docref-decoy");
         const short searchParamId = 105;
 
-        // Add the expected row
         Context.ReferenceTokenCompositeSearchParams.Add(new ReferenceTokenCompositeSearchParamEntity
         {
             ResourceTypeId = 3,
@@ -284,29 +285,16 @@ public class CompositeSearchParameterQueryGeneratorTests : TestBase
             SystemId2 = null,
         });
 
-        // Add a decoy row with same SearchParamId and ResourceTypeId but different component values
-        // to ensure the test actually discriminates when swap detection is working.
-        Context.ReferenceTokenCompositeSearchParams.Add(new ReferenceTokenCompositeSearchParamEntity
-        {
-            ResourceTypeId = 3,
-            ResourceSurrogateId = decoyResource.ResourceSurrogateId,
-            SearchParamId = searchParamId,
-            ReferenceResourceId1 = "docref-99",
-            Code2 = "unrelated",
-            SystemId2 = null,
-        });
-
         await Context.SaveChangesAsync();
 
         var tokenComponent = new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, "replaces", false);
         var referenceComponent = new StringExpression(StringOperator.Equals, FieldName.ReferenceResourceId, null, "docref-2", false);
 
-        // Act: component0 = token, component1 = reference (swapped order)
+        // Act: component0 = token, component1 = reference (wrong order per the new contract)
         var query = await _generator.GenerateReferenceTokenQueryAsync(resourceTypeId: 3, searchParamId, tokenComponent, referenceComponent, CancellationToken.None);
         var results = await query.ToListAsync();
 
-        // Assert: Should only match the resource with docref-2/replaces, not the decoy
-        results.ShouldHaveSingleItem();
-        results[0].ShouldBe(resource.ResourceSurrogateId);
+        // Assert: must not silently match every resource under this SearchParamId
+        results.ShouldBeEmpty();
     }
 }

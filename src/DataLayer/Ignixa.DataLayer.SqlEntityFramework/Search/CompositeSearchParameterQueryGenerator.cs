@@ -320,6 +320,15 @@ public class CompositeSearchParameterQueryGenerator
 
         // Extract token value
         var token = ExtractTokenValues(component1);
+
+        if (string.IsNullOrEmpty(reference.ResourceId) && string.IsNullOrEmpty(token.Code) && !token.SystemIsEmpty)
+        {
+            _logger.LogWarning(
+                "Reference|Token composite SearchParamId={SearchParamId} produced no recognizable reference or token value",
+                searchParamId);
+            return _context.ReferenceTokenCompositeSearchParams.Where(r => false).Select(r => r.ResourceSurrogateId);
+        }
+
         int? systemId2 = null;
 
         if (!string.IsNullOrEmpty(token.System))
