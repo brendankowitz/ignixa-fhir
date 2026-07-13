@@ -153,7 +153,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         // 11. Update patchedResource meta with saved version info
         patchedResource.Meta ??= new();
         patchedResource.Meta.VersionId = saveResult.Key.VersionId ?? "1";
-        patchedResource.Meta.LastUpdated = saveResult.LastModified;
+        patchedResource.Meta.LastUpdatedOffset = saveResult.LastModified;
 
         // 12. Create final ResourceWrapper with updated meta
         var result = new ResourceWrapper(

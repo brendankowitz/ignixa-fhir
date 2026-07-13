@@ -98,7 +98,7 @@ public class MetaJsonNodeTests
     [Fact]
     public void GivenAPatientPoco_WhenConvertingToJsonNode_ThenMetaIsPopulated()
     {
-        _patientJsonNode.Meta.LastUpdated = _currentDate;
+        _patientJsonNode.Meta.LastUpdatedOffset = _currentDate;
         _patientJsonNode.Meta.VersionId = "-1";
 
         var newJson = _patientJsonNode.SerializeToString().Replace("\\u002B", "+", StringComparison.Ordinal);

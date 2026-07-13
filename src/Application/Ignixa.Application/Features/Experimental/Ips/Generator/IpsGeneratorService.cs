@@ -266,7 +266,7 @@ public class IpsGeneratorService(
             Type = CreateCompositionType()
         };
 
-        composition.Meta.Profiles.Add(IpsConstants.CompositionProfile);
+        composition.Meta.Profile.Add(IpsConstants.CompositionProfile);
 
         var author = context.Strategy.CreateAuthor(context);
         composition.Author.Add(Reference.FromResourceTypeAndId(author.ResourceType, author.Id));

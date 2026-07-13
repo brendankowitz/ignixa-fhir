@@ -347,7 +347,47 @@ plus new characterization tests (`test/Ignixa.Models.Tests/IdentifierFacadeTests
 (true TDD red→green here, since that method didn't previously exist on the generated type — the round-trip
 tests are regression coverage for already-correct generated behavior, same as `NarrativeFacadeTests`).
 
-Remaining Phase 1 item: `Meta`, per the semantic-delta caveat above — not started.
+**`Meta` merged (2026-07-13).** Unlike `Narrative`/`Identifier`/`Reference` (fully generator-covered, zero or
+one surviving member), `Meta` hit a real naming collision: the generated `Ignixa.Models.Meta` already has
+its own `LastUpdated` (a raw `string?`, per the generator's spec-correct-primitive design), so the
+hand-written `DateTimeOffset?` convenience couldn't be re-added under the same name — a property can't be
+overloaded by type the way a method can. Resolved (per the repo owner's explicit call, since this is a
+real design fork, not a mechanical one) by adding a distinctly-named `LastUpdatedOffset` (`DateTimeOffset?`)
+on the merged partial `Meta`, wrapping the generated `LastUpdated` string with the same ISO-8601-UTC
+parse/format logic the hand-written type used. This matches the existing repo pattern of DateTimeOffset
+convenience wrappers over raw `instant`/`dateTime` strings elsewhere (`CompositionJsonNode.Date`,
+`ProvenanceJsonNode.Recorded`, `BundleComponentResponseJsonNode.LastModified` — all still hand-written,
+out of scope here) rather than pushing ISO-8601 parsing into the ~23 real call sites that relied on
+`DateTimeOffset` semantics (assignment, `.HasValue`, `.Value - .Value` diffs across
+`Ignixa.Application`/`Ignixa.DataLayer.SqlEntityFramework` and their tests).
+
+The other three hand-written members needed no such treatment:
+- `Tags`/`Security` (hand: spec-incorrect `MutablePrimitiveList<string>`) had **zero real call sites** —
+  repo-wide grep for `.Meta.Tags`/`.Meta.Security` found only comments and unrelated same-named symbols
+  (`System.Security.*`, `SearchParameterCapabilitySegment.Security`). These deleted cleanly, picking up
+  the generated `Tag`/`Security` (`MutableJsonList<Coding>`, spec-correct) as a free correctness fix.
+- `Profiles` (hand) → `Profile` (generated, matching the FHIR wire name) had exactly **one** real call
+  site (`IpsGeneratorService.cs`), same element type (`MutablePrimitiveList<string>`) — a mechanical rename.
+- `VersionId`/`Source`: unchanged name and type on both sides, no call-site impact.
+
+`MetaJsonNode.cs` is deleted outright; the merge lives in `Models/Meta.cs` (`public partial class Meta`,
+just the `LastUpdatedOffset` accessor). `ResourceJsonNode.Meta` (the property present on every resource in
+the codebase) now returns `Ignixa.Models.Meta` instead of `Ignixa.Serialization.Models.MetaJsonNode`; its
+`_cachedMeta` field and constructor call were updated to match. `SourceNodeExtensions.RemoveExtension`
+(the one surviving `Meta`-targeting extension method, used for stripping the soft-delete marker extension)
+was retargeted from `MetaJsonNode` to `Meta` with no logic change.
+
+Verified: `dotnet build All.sln` (0 warnings/errors); the full non-E2E `dotnet test All.sln` suite green
+(the only two failures, in `Ignixa.SqlOnFhir.Tests`, are the pre-existing `sql-on-fhir-tests` submodule not
+being initialized in this worktree — confirmed via `git submodule status`, unrelated to this change); the
+full `Ignixa.Api.E2ETests` suite green (600 passed, 0 failed, 20 skipped — same skip count as before this
+change). New characterization tests: `test/Ignixa.Models.Tests/MetaFacadeTests.cs`, covering
+`Profile`/`Tag` round-trips and `LastUpdatedOffset` (parse, UTC-normalizing set, null read, null clear —
+true TDD red→green, since that accessor didn't exist before this task).
+
+**Phase 1 complete.** All five datatypes (`Narrative`, `Extension`, `Identifier`, `Reference`, `Meta`) are
+now merged into their generated `Ignixa.Models` counterparts. Next up per the Phased plan: Phase 2
+(`Composition`, `ConceptMap`, `StructureMap`, `SearchParameter`, `Provenance`, `StructureDefinition`).
 
 ## Verdict
 

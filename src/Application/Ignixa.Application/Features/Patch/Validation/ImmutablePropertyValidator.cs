@@ -34,14 +34,14 @@ public class ImmutablePropertyValidator
         }
 
         // Validate meta.lastUpdated unchanged (if both have meta)
-        if (before.Meta.LastUpdated.HasValue && after.Meta.LastUpdated.HasValue)
+        if (before.Meta.LastUpdatedOffset.HasValue && after.Meta.LastUpdatedOffset.HasValue)
         {
             // Allow small time differences (within 1 second) due to serialization
-            var timeDifference = Math.Abs((before.Meta.LastUpdated.Value - after.Meta.LastUpdated.Value).TotalSeconds);
+            var timeDifference = Math.Abs((before.Meta.LastUpdatedOffset.Value - after.Meta.LastUpdatedOffset.Value).TotalSeconds);
             if (timeDifference > 1)
             {
                 throw new FhirPatchException(
-                    $"Cannot modify immutable property 'meta.lastUpdated' via PATCH (server-managed). Before: '{before.Meta.LastUpdated}', After: '{after.Meta.LastUpdated}'");
+                    $"Cannot modify immutable property 'meta.lastUpdated' via PATCH (server-managed). Before: '{before.Meta.LastUpdatedOffset}', After: '{after.Meta.LastUpdatedOffset}'");
             }
         }
     }

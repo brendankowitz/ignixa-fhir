@@ -72,10 +72,10 @@ public class ImmutablePropertyValidatorTests
         var timestamp = DateTimeOffset.UtcNow;
 
         var before = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        before.Meta.LastUpdated = timestamp;
+        before.Meta.LastUpdatedOffset = timestamp;
 
         var after = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        after.Meta.LastUpdated = timestamp;
+        after.Meta.LastUpdatedOffset = timestamp;
 
         _validator.Validate(before, after);
     }
@@ -84,10 +84,10 @@ public class ImmutablePropertyValidatorTests
     public void GivenChangedLastUpdated_WhenValidating_ThenThrowsException()
     {
         var before = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        before.Meta.LastUpdated = DateTimeOffset.UtcNow.AddMinutes(-10);
+        before.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow.AddMinutes(-10);
 
         var after = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        after.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        after.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
 
         var ex = Assert.Throws<FhirPatchException>(() => _validator.Validate(before, after));
         Assert.Contains("meta.lastUpdated", ex.Message);
@@ -120,7 +120,7 @@ public class ImmutablePropertyValidatorTests
     {
         var before = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
         var after = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        after.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        after.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
 
         _validator.Validate(before, after);
     }
@@ -129,7 +129,7 @@ public class ImmutablePropertyValidatorTests
     public void GivenNullLastUpdatedInAfter_WhenValidating_ThenNoExceptionThrown()
     {
         var before = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        before.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        before.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
 
         var after = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
 
@@ -142,10 +142,10 @@ public class ImmutablePropertyValidatorTests
         var timestamp = DateTimeOffset.UtcNow;
 
         var before = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        before.Meta.LastUpdated = timestamp;
+        before.Meta.LastUpdatedOffset = timestamp;
 
         var after = new ResourceJsonNode { ResourceType = "Patient", Id = "123" };
-        after.Meta.LastUpdated = timestamp.AddMilliseconds(500); // Within 1 second
+        after.Meta.LastUpdatedOffset = timestamp.AddMilliseconds(500); // Within 1 second
 
         _validator.Validate(before, after);
     }

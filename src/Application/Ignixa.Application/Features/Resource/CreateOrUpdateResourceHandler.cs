@@ -256,7 +256,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Set initial meta values
         // For POST: Always version 1 (new resource)
         // For PUT: Start with version 1, repository will calculate actual version for updates
-        command.JsonNode.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        command.JsonNode.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
         command.JsonNode.Meta.VersionId = "1"; // Repository will update this for existing resources
 
         // Always set the ID on the JsonNode to match command.Id
@@ -270,7 +270,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.ResourceType,
             command.Id,
             command.JsonNode.Meta.VersionId, // Version will be determined by repository
-            command.JsonNode.Meta.LastUpdated.Value,
+            command.JsonNode.Meta.LastUpdatedOffset.Value,
             command.JsonNode, // Pass ResourceJsonNode directly (data layer serializes as needed)
             request,
             false) // isDeleted
@@ -322,7 +322,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             mainResourceResult.Key.VersionId);
 
         // Set meta values
-        provenanceTemplate.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        provenanceTemplate.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
         provenanceTemplate.Meta.VersionId = "1";
 
         // Validate the Provenance resource before persisting
@@ -364,7 +364,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             "Provenance",
             provenanceId,
             provenanceTemplate.Meta.VersionId!,
-            provenanceTemplate.Meta.LastUpdated!.Value,
+            provenanceTemplate.Meta.LastUpdatedOffset!.Value,
             provenanceTemplate, // ProvenanceJsonNode extends ResourceJsonNode, so this works
             request,
             false) // isDeleted
