@@ -240,6 +240,23 @@ Disposition:
   plans) — expect the InMemory-limitation baseline itself to shift once affected composite tests are
   re-homed to E2E; document the new baseline explicitly rather than comparing against the stale one.
 
+**Post-implementation correction (found during Task 10's final regression pass, not anticipated above)**:
+the "essentially the entire existing `CompositeSearchParameterQueryGeneratorTests.cs`" framing above
+undercounted the blast radius. A second, separate file —
+`test/Ignixa.DataLayer.SqlEntityFramework.Tests/Search/SearchParameterQueryGeneratorCompositeTests.cs`
+(Phase 2 coverage: OR-of-value-groups union semantics, effective-type-based component ordering, testing
+end-to-end from `SearchParameterExpressionParser` through `SearchParameterQueryGenerator` rather than
+calling `CompositeSearchParameterQueryGenerator` directly) — independently reaches the same
+`EF.Functions.Collate` calls and broke the same way, but wasn't caught by the design review's file-level
+citation. 4 of its 6 tests failed under InMemory once the read-path changes landed. Resolution (Fable
+consultation, commit `fe74cfbd`): 2 of the 4 were redundant with existing E2E theory-test data and were
+deleted outright; the other 2 (the OR-of-groups test and the effective-type order-swap test, which
+regression-test genuinely different bugs than this phase's overflow/case-insensitivity concerns) were
+re-homed to `CompositeSearchTests.cs` alongside this phase's own new characterization tests. Lesson for
+any future phase touching shared read-path infrastructure: enumerate affected test files by searching for
+call sites of the changed generator methods (`grep` for `GenerateQueryAsync`/the specific method names),
+not by file name alone — a second consumer of the same code path can exist in an unrelated-looking file.
+
 ## Risks
 
 | Risk | Mitigation |

@@ -1218,3 +1218,65 @@ Phase 2's Task 4, for the OR-of-groups fix) is a verbatim duplicate of
 added earlier by the original SQL data layer work). Mandated by the design spec ("mirrors ... exactly"),
 not implementer discretion — a dedup candidate (shared static helper) for a future cleanup pass, not a
 Phase 2 blocker.
+
+### Findings from Phase 3 Step 1 implementation (storage convention consolidation, 2026-07-12/13)
+
+Phase 3 Step 1 (design: `docs/superpowers/specs/2026-07-12-storage-convention-consolidation-design.md`,
+plan: `docs/superpowers/plans/2026-07-12-storage-convention-consolidation.md`) fixed the 4 confirmed
+write/read drift bugs finding #4 (above, "Composite token tables are a second, independent, worse
+instance of the same drift") flagged as a follow-up: composite token codes silently stopped matching
+above 128 characters (write split threshold 128→256, matching `TokenSearchParam.Code`'s real
+`VARCHAR(256)` width, plus a read-side overflow-aware branch composites never had); composite token-code
+comparison was ordinal/case-sensitive where single-parameter token comparison is deliberately
+case-insensitive; composite `Token|String` stored `ToUpperInvariant()` (destroying case, foreclosing a
+future `:exact` modifier) while single `String` preserves original case; and the composite string
+component (`Text2`/`TextOverflow2`) had the identical 128-vs-256 truncation bug as the token side. Fixed
+via two new shared storage-convention helpers (`TokenCodeStorage.CaseInsensitiveCollation` constant,
+new `StringStorage` class mirroring `TokenCodeStorage`'s shape) consumed by both the write-side
+`RowGenerators` and the read-side `CompositeSearchParameterQueryGenerator`, converging both paths onto
+the same convention instead of leaving them free to drift again. **Step 2** (the full declarative
+storage descriptor — table/columns/widths/collation/normalization as one data structure consumed
+generically by both paths, the complete answer to audit finding 4 in `staged-query-compiler.md`) remains
+explicitly out of scope and unscoped as a separate future investigation; this Step's helpers are Step 2's
+raw material, not Step 2 itself. **Real cost data point for whoever eventually scopes Step 2**: 10 tasks,
+~16 files touched (6 composite row generators + 2 new/extended helper classes + entity/snapshot mapping
++ several test files), one genuine mid-implementation entity-mapping gap discovered and fixed (see
+below), one whole-branch review round with 2 findings, plus a Task-10-stage discovery of a second
+affected test file not caught at design time (also below) — moderate cost for a narrowly-scoped
+convention-extraction pass, consistent with Phase 1's own "real cost informs Phase 2's scoping" pattern.
+
+1. **`ReferenceTokenCompositeSearchParamEntity` was missing a `CodeOverflow2` CLR property despite the
+   SQL column already existing** (`97.sql:548`, `VARCHAR(MAX)`) and the write path already populating it
+   — a genuine, independent, pre-existing correctness bug (Reference|Token composite searches with token
+   codes over 256 characters have always silently failed to match), unrelated to anything Step 1
+   otherwise touched but naturally surfaced by its Task 5 (converging composite token-code comparison
+   onto the overflow-aware pattern, which needs the overflow column mapped to read it). Fixed as part of
+   Task 5 rather than deferred: added the missing entity property + `FhirDbContextModelSnapshot.cs`
+   mapping, no migration file (the column is already in `97.sql`; this repo's convention is migrations
+   only add columns not already there, and `PendingModelChangesWarning` is already suppressed repo-wide).
+2. **EF Core InMemory's inability to translate `EF.Functions.Collate`** (already flagged as a hard
+   Phase 2 prerequisite in finding #5 of the Phase 2-prerequisite section above) had a second-order
+   consequence this Step's design review didn't fully anticipate: making `Collate` load-bearing on
+   composite read paths broke not just the composite test file the design spec's review explicitly
+   named (`CompositeSearchParameterQueryGeneratorTests.cs`), but also a second, separately-authored file
+   — `SearchParameterQueryGeneratorCompositeTests.cs` (Phase 2 coverage: OR-of-value-groups union
+   semantics, effective-type component ordering, reached via a different call path —
+   `SearchParameterExpressionParser` → `SearchParameterQueryGenerator` — rather than calling
+   `CompositeSearchParameterQueryGenerator` directly). This wasn't caught until Task 10's full
+   `dotnet test All.sln` regression pass, one task after the composite test re-homing task had already
+   run and been reviewed clean. Resolved without losing coverage (2 of 4 broken tests were redundant
+   with existing E2E data and deleted; the other 2 re-homed to E2E, since they regression-test different
+   bugs than the ones this Step's own new characterization tests cover) — but the lesson for any future
+   phase touching shared read-path infrastructure: **enumerate affected test files by searching for call
+   sites of the changed generator methods, not by file name alone.** A second consumer of the same code
+   path can live in an unrelated-looking file that a file-name-based design review won't surface.
+3. **A previously-undocumented, confirmed pre-existing, unrelated test failure surfaced during Task 10's
+   full regression run**: `Ignixa.Application.Tests.Search.Indexing.IdentifierOfTypeIndexingTests.GivenIdentifierWithType_WhenEvaluatingFhirPath_ThenTypeInfoExtracted`
+   fails deterministically (`type.coding.first().system`/`.code` FHIRPath scalar evaluation on a
+   `Patient.identifier` returns null instead of the seeded values). Confirmed via `git log` unrelated to
+   this Step (the test file was last touched by PR #147's `a7e2886b`, well before Phase 3 started, and no
+   Phase 3 Step 1 commit touched `Ignixa.Application.Tests` at all). Not investigated further — out of
+   scope for a storage-convention consolidation task — but now part of the documented expected-failure
+   baseline for whoever runs `dotnet test All.sln` next, and worth its own standalone investigation
+   (mirrors finding #6 in the Phase 0 Fable review section: an unexplained failing test is a hole in the
+   characterization baseline).
