@@ -233,8 +233,10 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
     public static readonly object[][] ReferenceTokenData =
     [
         // The "relationship" search parameter has components: relatesto (Reference), relation (Token)
-        // Query format must be: Reference$Token (e.g., DocumentReference/document1$replaces)
-        // NOT Token$Reference - the component order must match the search parameter definition
+        // Definition order is Reference$Token (e.g., DocumentReference/document1$replaces). Values whose
+        // shape is unambiguous ARE resolved by effective type even when swapped relative to that order -
+        // see GivenReferenceTokenCompositeWithValuesSwappedRelativeToDefinition_WhenSearched_ThenResolvesByEffectiveType.
+        // Only genuinely ambiguous-shaped values fall back to the definition order or the graceful-empty path.
 
         // Exact match with relatesTo reference and relation code
         new object[] { "relationship", "DocumentReference/document1$replaces", new[] { 0 } },
@@ -530,5 +532,56 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
 
         results.Length.ShouldBe(1, "composite string value between 129 and 256 chars must be stored fully inline and match");
         results[0].Id.ShouldBe(created.Id);
+    }
+
+    /// <summary>
+    /// Pins the OR-of-value-groups union fix for composite search. The pre-fix ComponentIndex extraction
+    /// merged components across comma-separated OR groups by index and ANDed them together, so
+    /// "9272-6$10,9271-8$10" would demand a single row matching code=9272-6 AND code=9271-8 AND value=10
+    /// simultaneously - impossible, always empty. Correct FHIR semantics treat each comma-separated group
+    /// as an independent match candidate, unioned together. Expecting exactly [0]+[2] (not one row, not all
+    /// rows) is what discriminates the old buggy behavior from the fix. Lives here rather than the composite
+    /// unit tests because the read path now uses EF.Functions.Collate, which the InMemory provider cannot
+    /// translate.
+    /// </summary>
+    [Fact]
+    public async Task GivenCompositeSearchWithOrOfTwoValueGroups_WhenSearched_ThenUnionsPerGroupResultsInsteadOfAndingAcrossGroups()
+    {
+        RequireSearchParameter("Observation", "code-value-quantity");
+
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={_fixture.Tag}&code-value-quantity=http://loinc.org|9272-6$10,http://loinc.org|9271-8$10");
+
+        results.Length.ShouldBe(2, "each comma-separated value group is an independent match candidate, OR'd together");
+        results.ShouldContain(r => r.Id == _fixture.Observations[0].Id); // APGAR 1-minute, score 10
+        results.ShouldContain(r => r.Id == _fixture.Observations[2].Id); // APGAR 20-minute, score 10
+    }
+
+    /// <summary>
+    /// Pins effective-type (not positional) resolution of composite component values. The "relationship"
+    /// definition order is [Reference, Token], but this test passes the values swapped: the Token value
+    /// first, then the Reference. A "|" separator in the token value is required for the swap to be
+    /// exercised at all - the parser's value-shape inference only classifies a value as token-shaped when
+    /// it carries the separator, so a bare code would fall back to the static Reference definition and
+    /// silently stop testing the swap path. The full system|code form (not the bare |code empty-system
+    /// form) is deliberate: relatesTo.code is indexed WITH the document-relationship-type CodeSystem, so
+    /// |replaces alone would demand SystemId IS NULL and never match. If GenerateReferenceTokenGroupQueryAsync
+    /// resolved by position instead of effective type it would parse the reference value as a token and vice
+    /// versa, matching nothing - so a single hit genuinely discriminates the fix. Lives here rather than the
+    /// composite unit tests because the read path now uses EF.Functions.Collate, which the InMemory provider
+    /// cannot translate.
+    /// </summary>
+    [Fact]
+    public async Task GivenReferenceTokenCompositeWithValuesSwappedRelativeToDefinition_WhenSearched_ThenResolvesByEffectiveType()
+    {
+        RequireSearchParameter("DocumentReference", "relationship");
+
+        var results = await Harness.SearchAsync(
+            "DocumentReference",
+            $"_tag={_fixture.Tag}&relationship=http://hl7.org/fhir/CodeSystem/document-relationship-type|replaces$DocumentReference/document1");
+
+        results.Length.ShouldBe(1, "component values are resolved by effective type, not position");
+        results[0].Id.ShouldBe(_fixture.DocumentReferences[0].Id);
     }
 }

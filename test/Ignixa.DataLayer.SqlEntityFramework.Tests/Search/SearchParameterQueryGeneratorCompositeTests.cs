@@ -19,17 +19,17 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
 /// <summary>
-/// End-to-end coverage (parser through SearchParameterQueryGenerator) for composite structure
-/// preservation: replaces ComponentIndex-heuristic extraction with direct CompositeComponentExpression
-/// reads, fixes OR-of-value-groups (previously ANDed components across groups), and replaces
-/// IsReferenceExpression/IsTokenExpression sniffing with effective-type-based ordering.
+/// Regression coverage for the composite paths that return before any collation-dependent comparison:
+/// the ambiguous-effective-type graceful-empty fallback and the unknown-composite-type fallback.
+/// Collation-dependent composite group/order coverage (OR-of-value-groups union, effective-type
+/// order-swap resolution) lives in test/Ignixa.Api.E2ETests/Search/DataTypes/CompositeSearchTests.cs -
+/// EF Core's InMemory provider cannot translate EF.Functions.Collate, which these read paths now use.
 /// CompositeSearchParameterQueryGeneratorTests.cs (hand-built expressions, calls the composite
 /// generator directly) is untouched by this change - do not add anything there.
 /// </summary>
 public class SearchParameterQueryGeneratorCompositeTests : TestBase
 {
     private const short ObservationTypeId = 3;
-    private const short CodeValueQuantityParamId = 200;
     private const short RelationshipParamId = 201;
 
     private readonly SearchParameterQueryGenerator _generator;
@@ -63,23 +63,6 @@ public class SearchParameterQueryGeneratorCompositeTests : TestBase
 
     private static Uri CompositeUrl(string code) => new($"http://example.org/SearchParameter/{code}");
 
-    private static SearchParameterInfo CreateCodeValueQuantityComposite()
-    {
-        var codeComponent = new SearchParameterInfo("code", "code", SearchParamType.Token);
-        var quantityComponent = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity);
-
-        return new SearchParameterInfo(
-            "code-value-quantity",
-            "code-value-quantity",
-            SearchParamType.Composite,
-            CompositeUrl("code-value-quantity"),
-            components:
-            [
-                new SearchParameterComponentInfo { ResolvedSearchParameter = codeComponent },
-                new SearchParameterComponentInfo { ResolvedSearchParameter = quantityComponent },
-            ]);
-    }
-
     private static SearchParameterInfo CreateRelationshipComposite()
     {
         var referenceComponent = new SearchParameterInfo("relationship-target", "relationship-target", SearchParamType.Reference);
@@ -95,25 +78,6 @@ public class SearchParameterQueryGeneratorCompositeTests : TestBase
                 new SearchParameterComponentInfo { ResolvedSearchParameter = referenceComponent },
                 new SearchParameterComponentInfo { ResolvedSearchParameter = codeComponent },
             ]);
-    }
-
-    private async Task<long> CreateObservationWithTokenQuantityAsync(string resourceId, string code, decimal low, decimal high)
-    {
-        var resource = CreateResource(ObservationTypeId, resourceId);
-
-        Context.TokenQuantityCompositeSearchParams.Add(new TokenQuantityCompositeSearchParamEntity
-        {
-            ResourceTypeId = ObservationTypeId,
-            ResourceSurrogateId = resource.ResourceSurrogateId,
-            SearchParamId = CodeValueQuantityParamId,
-            Code1 = code,
-            SystemId1 = null,
-            LowValue = low,
-            HighValue = high,
-        });
-        await Context.SaveChangesAsync();
-
-        return resource.ResourceSurrogateId;
     }
 
     private async Task<long> CreateDocumentReferenceRelationshipAsync(string resourceId, string referenceResourceId, string tokenCode)
@@ -153,62 +117,6 @@ public class SearchParameterQueryGeneratorCompositeTests : TestBase
         // implement IAsyncEnumerable - EF's ToListAsync() throws for those. ToList() works uniformly
         // for both EF-backed and plain LINQ-to-objects queryables.
         return query.ToList();
-    }
-
-    [Fact]
-    public async Task GivenTokenQuantityComposite_WhenSingleValueGroup_ThenReturnsMatchingResource()
-    {
-        var matching = await CreateObservationWithTokenQuantityAsync("obs-match", "8462-4", 80m, 80m);
-        await CreateObservationWithTokenQuantityAsync("obs-nomatch", "8462-4", 90m, 90m);
-
-        var results = await RunCompositeSearchAsync(CreateCodeValueQuantityComposite(), CodeValueQuantityParamId, "8462-4$80");
-
-        results.ShouldBe(new[] { matching });
-    }
-
-    [Fact]
-    public async Task GivenTokenQuantityComposite_WhenOrOfTwoValueGroups_ThenUnionsPerGroupResultsInsteadOfAndingAcrossGroups()
-    {
-        // Regression coverage for the confirmed pre-existing bug: today's ComponentIndex-based
-        // extraction merges components across OR groups by index and ANDs them, so
-        // "8462-4$80,8462-5$90" would incorrectly require a single row matching code=8462-4 AND
-        // code=8462-5 AND value=80 AND value=90 simultaneously - impossible, always empty.
-        // Correct FHIR semantics: each comma-separated group is an independent match candidate,
-        // OR'd together.
-        var matchesGroup1 = await CreateObservationWithTokenQuantityAsync("obs-group1", "8462-4", 80m, 80m);
-        var matchesGroup2 = await CreateObservationWithTokenQuantityAsync("obs-group2", "8462-5", 90m, 90m);
-        await CreateObservationWithTokenQuantityAsync("obs-neither", "8462-6", 70m, 70m);
-
-        var results = await RunCompositeSearchAsync(CreateCodeValueQuantityComposite(), CodeValueQuantityParamId, "8462-4$80,8462-5$90");
-
-        results.OrderBy(r => r).ShouldBe(new[] { matchesGroup1, matchesGroup2 }.OrderBy(r => r));
-    }
-
-    [Fact]
-    public async Task GivenRelationshipComposite_WhenValuesMatchStaticDefinitionOrder_ThenResolvesCorrectly()
-    {
-        var matching = await CreateDocumentReferenceRelationshipAsync("docref-1", "doc-abc", "replaces");
-
-        var results = await RunCompositeSearchAsync(CreateRelationshipComposite(), RelationshipParamId, "DocumentReference/doc-abc$replaces");
-
-        results.ShouldBe(new[] { matching });
-    }
-
-    [Fact]
-    public async Task GivenRelationshipComposite_WhenValuesAreSwappedRelativeToStaticDefinition_ThenStillResolvesCorrectly()
-    {
-        // Static definition order is [Reference, Token], but the value at position 0 is Token-shaped
-        // (using the explicit "|code" form so SearchParameterExpressionParser's value-shape inference
-        // actually recognizes it as a token rather than falling back to the static Reference
-        // definition - a bare code with no separator is not classified as Token-shaped) and position 1
-        // is Reference-shaped - the DocumentReference "relationship" swap this composite type's
-        // IsReferenceExpression/IsTokenExpression sniffing existed to handle.
-        // GenerateReferenceTokenGroupQueryAsync must resolve by effective type, not position.
-        var matching = await CreateDocumentReferenceRelationshipAsync("docref-1", "doc-abc", "replaces");
-
-        var results = await RunCompositeSearchAsync(CreateRelationshipComposite(), RelationshipParamId, "|replaces$DocumentReference/doc-abc");
-
-        results.ShouldBe(new[] { matching });
     }
 
     [Fact]
