@@ -47,8 +47,26 @@ public class CompositeSearchFixture : IAsyncLifetime
     /// [5] = Blood Pressure systolic=107 diastolic=60 (component-code-value-quantity)
     /// [6] = Eye color blue-eyed (token-string composite)
     /// [7] = Eye color with extended length text (token-string composite)
+    /// [8] = Date observation, valueDateTime=2020-06-15 (token-datetime composite, single instant)
+    /// [9] = Date observation, valuePeriod=2020-01-01..2020-12-31 (token-datetime composite, straddles 2020-06-01)
+    /// [10] = Date observation, valuePeriod=2020-08-01..2020-09-30 (token-datetime composite, starts after 2020-06-01)
     /// </summary>
     public IReadOnlyList<ResourceJsonNode> Observations { get; private set; } = null!;
+
+    /// <summary>
+    /// System URI for the token component of the code-value-date composite test observations.
+    /// </summary>
+    public const string DateCompositeCodeSystem = "http://example.org/date-composite";
+
+    /// <summary>
+    /// Observation.code used by the single-instant date observation ([8]).
+    /// </summary>
+    public const string DateSingleCode = "obs-date-single";
+
+    /// <summary>
+    /// Observation.code shared by the two ranged date observations ([9], [10]) used for gt-vs-sa comparison.
+    /// </summary>
+    public const string DateRangeCode = "obs-date-range";
 
     /// <summary>
     /// DocumentReference test data for reference-token composite search.
@@ -155,7 +173,19 @@ public class CompositeSearchFixture : IAsyncLifetime
                 .WithStringValue("hazel eyes with a long descriptive text that exceeds normal length")
                 .WithSubject(PatientId)
                 .WithStatus("final")
-                .Build()
+                .Build(),
+
+            // [8] - Date observation with a single-instant valueDateTime
+            // Tests: token-datetime composite (code-value-date), basic match
+            CreateDateTimeValueObservation(Tag, PatientId, DateCompositeCodeSystem, DateSingleCode, "2020-06-15"),
+
+            // [9] - Date observation with a valuePeriod straddling 2020-06-01
+            // Tests: token-datetime composite gt-vs-sa distinction (starts before, ends after)
+            CreatePeriodValueObservation(Tag, PatientId, DateCompositeCodeSystem, DateRangeCode, "2020-01-01", "2020-12-31"),
+
+            // [10] - Date observation with a valuePeriod starting after 2020-06-01
+            // Tests: token-datetime composite gt-vs-sa distinction (whole range after the search value)
+            CreatePeriodValueObservation(Tag, PatientId, DateCompositeCodeSystem, DateRangeCode, "2020-08-01", "2020-09-30")
         };
 
         return await _apiFixture.Harness.CreateResourcesAsync(observations);
@@ -265,6 +295,75 @@ public class CompositeSearchFixture : IAsyncLifetime
 
         var json = obsJson.ToJsonString();
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+    }
+
+    private static ResourceJsonNode CreateDateTimeValueObservation(
+        string tag,
+        string patientId,
+        string codeSystem,
+        string code,
+        string valueDateTime)
+    {
+        var obsJson = CreateDateObservationBase(tag, patientId, codeSystem, code);
+        obsJson["valueDateTime"] = valueDateTime;
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(obsJson.ToJsonString());
+    }
+
+    private static ResourceJsonNode CreatePeriodValueObservation(
+        string tag,
+        string patientId,
+        string codeSystem,
+        string code,
+        string periodStart,
+        string periodEnd)
+    {
+        var obsJson = CreateDateObservationBase(tag, patientId, codeSystem, code);
+        obsJson["valuePeriod"] = new JsonObject
+        {
+            ["start"] = periodStart,
+            ["end"] = periodEnd
+        };
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(obsJson.ToJsonString());
+    }
+
+    private static JsonObject CreateDateObservationBase(
+        string tag,
+        string patientId,
+        string codeSystem,
+        string code)
+    {
+        return new JsonObject
+        {
+            ["resourceType"] = "Observation",
+            ["id"] = Guid.NewGuid().ToString(),
+            ["meta"] = new JsonObject
+            {
+                ["tag"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["system"] = "http://test.ignixa.io/tag",
+                        ["code"] = tag
+                    }
+                }
+            },
+            ["status"] = "final",
+            ["code"] = new JsonObject
+            {
+                ["coding"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["system"] = codeSystem,
+                        ["code"] = code
+                    }
+                }
+            },
+            ["subject"] = new JsonObject
+            {
+                ["reference"] = $"Patient/{patientId}"
+            }
+        };
     }
 
     private static ResourceJsonNode CreateDocumentReference(

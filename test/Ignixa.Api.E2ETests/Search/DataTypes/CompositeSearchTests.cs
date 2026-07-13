@@ -276,6 +276,87 @@ public class CompositeSearchTests : CapabilityDrivenTestBase, IClassFixture<Comp
     }
 
     /// <summary>
+    /// Tests composite search parameter with token and datetime components (code-value-date).
+    /// Uses date-valued observations for testing token-datetime composites.
+    /// This is the only coverage exercising CompositeSearchParameterQueryGenerator.GenerateTokenDateTimeQueryAsync.
+    /// </summary>
+    public static readonly object[][] TokenDateTimeData =
+    [
+        // Exact day match against a valueDateTime observation
+        new object[] { $"{CompositeSearchFixture.DateCompositeCodeSystem}|{CompositeSearchFixture.DateSingleCode}$2020-06-15", new[] { 8 } },
+
+        // Code without system - still matches on code alone
+        new object[] { $"{CompositeSearchFixture.DateSingleCode}$2020-06-15", new[] { 8 } },
+
+        // No match - wrong date
+        new object[] { $"{CompositeSearchFixture.DateCompositeCodeSystem}|{CompositeSearchFixture.DateSingleCode}$2019-01-01", Array.Empty<int>() },
+
+        // No match - wrong code
+        new object[] { $"{CompositeSearchFixture.DateCompositeCodeSystem}|wrong-code$2020-06-15", Array.Empty<int>() },
+    ];
+
+    [Theory]
+    [MemberData(nameof(TokenDateTimeData))]
+    public async Task GivenACompositeSearchParameterWithTokenAndDateTime_WhenSearched_ThenCorrectBundleShouldBeReturned(
+        string queryValue,
+        int[] expectedIndices)
+    {
+        // Capability check
+        RequireSearchParameter("Observation", "code-value-date");
+
+        // Act
+        var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&code-value-date={queryValue}");
+
+        // Assert
+        var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();
+
+        results.Length.ShouldBe(expectedObservations.Length,
+            $"Search code-value-date={queryValue} should return {expectedObservations.Length} results");
+
+        foreach (var expected in expectedObservations)
+        {
+            results.ShouldContain(r => r.Id == expected.Id,
+                $"Expected observation {expected.Id} should be in results");
+        }
+    }
+
+    /// <summary>
+    /// Tests that the datetime component of a composite distinguishes gt (greater-than) from sa (starts-after).
+    /// Both share code-value-date's DateRangeCode but differ in their stored valuePeriod:
+    ///   [9] = 2020-01-01..2020-12-31 (straddles the 2020-06-01 search value)
+    ///   [10] = 2020-08-01..2020-09-30 (starts strictly after 2020-06-01)
+    /// gt2020-06-01 matches any range whose END is after the search value: both [9] and [10].
+    /// sa2020-06-01 matches only ranges whose START is after the search value: [10] only.
+    /// This pins the regression where sa fell through to a no-op filter arm (which would return both).
+    /// </summary>
+    [Fact]
+    public async Task GivenACompositeDateRange_WhenComparingGtAndSa_ThenTheyProduceDifferentResults()
+    {
+        // Capability check
+        RequireSearchParameter("Observation", "code-value-date");
+
+        var code = $"{CompositeSearchFixture.DateCompositeCodeSystem}|{CompositeSearchFixture.DateRangeCode}";
+        var straddling = _fixture.Observations[9];
+        var startsAfter = _fixture.Observations[10];
+
+        // Act - gt: range END after 2020-06-01 -> both observations
+        var gtResults = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&code-value-date={code}$gt2020-06-01");
+
+        // Act - sa: range START after 2020-06-01 -> only the range that starts after
+        var saResults = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&code-value-date={code}$sa2020-06-01");
+
+        // Assert - gt matches both
+        gtResults.Length.ShouldBe(2, "gt2020-06-01 should match both the straddling range and the range starting after");
+        gtResults.ShouldContain(r => r.Id == straddling.Id);
+        gtResults.ShouldContain(r => r.Id == startsAfter.Id);
+
+        // Assert - sa matches only the range whose start is after the search value
+        saResults.Length.ShouldBe(1, "sa2020-06-01 should match only the range whose start is after the search value");
+        saResults.ShouldContain(r => r.Id == startsAfter.Id);
+        saResults.ShouldNotContain(r => r.Id == straddling.Id);
+    }
+
+    /// <summary>
     /// Tests that composite search correctly handles missing components.
     /// Composite search requires ALL components to be present in the resource.
     /// </summary>

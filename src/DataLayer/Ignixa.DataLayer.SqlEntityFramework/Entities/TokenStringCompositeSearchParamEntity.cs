@@ -50,7 +50,8 @@ public class TokenStringCompositeSearchParamEntity
 
     /// <summary>
     /// Gets or sets the text value for the string component.
-    /// Stored normalized for case-insensitive matching.
+    /// Stored in its original case; case-insensitive matching is applied at query time
+    /// via the column's case-insensitive collation, not by normalizing the value on write.
     /// </summary>
     [Required]
     [MaxLength(256)]
