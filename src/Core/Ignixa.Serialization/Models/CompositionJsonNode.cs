@@ -90,9 +90,9 @@ public class CompositionJsonNode : ResourceJsonNode
     /// Who or what the composition is about.
     /// </summary>
     [JsonIgnore]
-    public ReferenceJsonNode Subject
+    public Reference Subject
     {
-        get => GetComplexProperty<ReferenceJsonNode>("subject")!;
+        get => GetComplexProperty<Reference>("subject")!;
         set
         {
             if (value is null)
@@ -144,7 +144,7 @@ public class CompositionJsonNode : ResourceJsonNode
     /// Identifies who is responsible for the information in the composition.
     /// </summary>
     [JsonIgnore]
-    public MutableJsonList<ReferenceJsonNode> Author => GetListProperty<ReferenceJsonNode>("author");
+    public MutableJsonList<Reference> Author => GetListProperty<Reference>("author");
 
     /// <summary>
     /// Attests to accuracy of composition.
@@ -156,9 +156,9 @@ public class CompositionJsonNode : ResourceJsonNode
     /// Organization which maintains the composition.
     /// </summary>
     [JsonIgnore]
-    public ReferenceJsonNode? Custodian
+    public Reference? Custodian
     {
-        get => GetComplexProperty<ReferenceJsonNode>("custodian");
+        get => GetComplexProperty<Reference>("custodian");
         set
         {
             if (value is null)
@@ -272,9 +272,9 @@ public class CompositionJsonNode : ResourceJsonNode
         }
 
         [JsonIgnore]
-        public ReferenceJsonNode? Party
+        public Reference? Party
         {
-            get => GetComplexProperty<ReferenceJsonNode>("party");
+            get => GetComplexProperty<Reference>("party");
             set
             {
                 if (value is null)
@@ -312,9 +312,9 @@ public class CompositionJsonNode : ResourceJsonNode
         }
 
         [JsonIgnore]
-        public ReferenceJsonNode? TargetReference
+        public Reference? TargetReference
         {
-            get => GetComplexProperty<ReferenceJsonNode>("targetReference");
+            get => GetComplexProperty<Reference>("targetReference");
             set
             {
                 if (value is null)
@@ -348,7 +348,7 @@ public class CompositionJsonNode : ResourceJsonNode
         public MutableJsonList<CodeableConceptJsonNode> Code => GetListProperty<CodeableConceptJsonNode>("code");
 
         [JsonIgnore]
-        public MutableJsonList<ReferenceJsonNode> Detail => GetListProperty<ReferenceJsonNode>("detail");
+        public MutableJsonList<Reference> Detail => GetListProperty<Reference>("detail");
     }
 
     /// <summary>
@@ -440,7 +440,7 @@ public class CompositionJsonNode : ResourceJsonNode
         /// A reference to data that supports this section.
         /// </summary>
         [JsonIgnore]
-        public MutableJsonList<ReferenceJsonNode> Entry => GetListProperty<ReferenceJsonNode>("entry");
+        public MutableJsonList<Reference> Entry => GetListProperty<Reference>("entry");
 
         /// <summary>
         /// Why the section is empty.

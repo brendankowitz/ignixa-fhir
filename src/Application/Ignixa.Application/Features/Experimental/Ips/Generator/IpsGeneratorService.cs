@@ -262,14 +262,14 @@ public class IpsGeneratorService(
             Status = CompositionJsonNode.CompositionStatus.Final,
             Date = context.GenerationTime,
             Title = context.Strategy.CreateTitle(context),
-            Subject = ReferenceJsonNode.FromResourceTypeAndId("Patient", context.PatientId),
+            Subject = Reference.FromResourceTypeAndId("Patient", context.PatientId),
             Type = CreateCompositionType()
         };
 
         composition.Meta.Profiles.Add(IpsConstants.CompositionProfile);
 
         var author = context.Strategy.CreateAuthor(context);
-        composition.Author.Add(ReferenceJsonNode.FromResourceTypeAndId(author.ResourceType, author.Id));
+        composition.Author.Add(Reference.FromResourceTypeAndId(author.ResourceType, author.Id));
 
         foreach (var section in context.Strategy.GetSections())
         {
@@ -313,7 +313,7 @@ public class IpsGeneratorService(
         {
             foreach (var resource in resources)
             {
-                sectionComponent.Entry.Add(ReferenceJsonNode.FromResourceTypeAndId(resource.ResourceType, resource.Id));
+                sectionComponent.Entry.Add(Reference.FromResourceTypeAndId(resource.ResourceType, resource.Id));
             }
 
             sectionComponent.Text = new Narrative

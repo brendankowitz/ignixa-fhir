@@ -1,8 +1,9 @@
 # Investigation: Consolidate Hand-Written Facades
 
 **Feature**: typed-models
-**Status**: Proposed
+**Status**: In Progress
 **Created**: 2026-07-09
+**Last re-scoped**: 2026-07-12
 
 > Triggered by [PR #319](https://github.com/brendankowitz/ignixa-fhir/pull/319) ("Generate typed model facades for all FHIR resources"), which deletes the `ReservedBaseTypeNames` guard in `CSharpTypedModelLanguage.cs` that previously stopped the generator from emitting a base facade for any resource that already has a hand-written `*JsonNode` facade (`Bundle`, `OperationOutcome`, `Parameters`, `Provenance`, `SearchParameter`, `CapabilityStatement`, `StructureDefinition`, `StructureMap`, `ConceptMap`, `Composition`). This is the "separate migration" [adr-2608-shared-base-models](../adr-2608-shared-base-models.md) flagged as a follow-up: *"consolidate the hand-written `*JsonNode` facades into the generated base."*
 
@@ -22,6 +23,8 @@ Instead:
 This collapses what would otherwise be a two-type migration (generated `Ignixa.Models.Bundle` vs. hand-written `BundleJsonNode`, with `ResourceTypeRegistry` and every `is`/`As<T>()` call site needing to flip from one to the other atomically) into a same-type edit. There is never a window where two types both claim to represent `Bundle` — `ResourceTypeRegistry` only ever points at one type because there is only one type.
 
 **Breaking change, accepted deliberately.** The rename (`Ignixa.Serialization.Models.BundleJsonNode` → `Ignixa.Models.Bundle`) changes the public type name and namespace. Internal call sites are a mechanical rename (or bridged with a compile-time-only `global using BundleJsonNode = Ignixa.Models.Bundle;` alias to avoid touching them). External NuGet consumers referencing the old name break — accepted as a normal breaking change under the pre-release versioning model (no `[Obsolete]` forwarding shim); confirmed with the repo owner (2026-07-09) that this feature has no external consumers yet worth shimming for.
+
+**Re-scope note (2026-07-12) on that assumption:** `Ignixa.Serialization` and `Ignixa.Models.{R4,R5}` are all `IsPackable=true` under `src/Core`, which `.github/workflows/ci.yml` packs and `publish-release.yml` pushes to **public NuGet.org** (not the internal GitHub Packages feed) on every tagged release — this has been happening continuously since `release/0.0.101`, with `release/0.6.19` the most recent tag at time of writing. So this is a genuinely public, versioned package, not a dormant or internal-only one; "no external consumers yet" is a real judgment call about adoption, not about publication reach. Re-affirming the no-shim decision here rather than silently carrying it forward, since it's the one assumption in this doc that isn't independently verifiable by reading code.
 
 ## Tradeoffs
 
@@ -57,6 +60,8 @@ Hand-written `src/Core/Ignixa.Serialization/Models/BundleJsonNode.cs` (`Ignixa.S
 - `Bundle` — ~90 references across ~30 files: transaction pipeline, search, IPS.
 - `Composition`, `ConceptMap`, `StructureMap` — usage localized to IPS/terminology/FML features, not core request path.
 - `SearchParameter`, `Provenance`, `StructureDefinition` — moderate, contained usage.
+
+**Re-scope correction (2026-07-12):** a fresh repo-wide grep (all of `src/` + `test/`, file-count basis, not reference-count) gives materially different numbers for the three Phase 4 types and should supersede the estimates above for sequencing purposes: `OperationOutcomeJsonNode` — **52 files**, including **13 in `Ignixa.Domain`** (the exception hierarchy, not just request/response plumbing — worse than "woven through" suggested); `BundleJsonNode` — **29 files**; `ParametersJsonNode` — **22 files**. `OperationOutcome` is the widest blast radius of the three, not `Bundle` — Phase 4 should do `Parameters` first (narrowest, most contained to operation endpoints), then `Bundle`, and leave `OperationOutcome` for last since a mis-merge there risks destabilizing exception handling across the whole Domain layer, not just one feature area.
 
 ### Full hand-written facade inventory (41 files, verified by direct listing)
 
@@ -299,6 +304,50 @@ Remaining Phase 1 datatypes: `Identifier`, `Reference`, `Meta` (see the Phased p
 `MutablePrimitiveList<string>` vs. generated spec-correct `Coding`-typed lists) — plus `ResourceJsonNode.Meta`
 being the `Meta` property on every resource in the codebase makes this a full-suite-regression-review
 change, not a contained one.
+
+**Explicit next-step order (2026-07-12):** confirmed on disk that `Identifier`, `Reference`, and `Meta` are
+all still hand-written (`Models/IdentifierJsonNode.cs`, `Models/ReferenceJsonNode.cs`,
+`Models/MetaJsonNode.cs` all present) — no partial progress on any of the three yet, and no other branch is
+mid-flight on them (`worktree-typed-models-facade-consolidation` is superseded, already squash-merged as
+`5de82fc5`). Do `Identifier` and `Reference` first, in either order — both are unblocked, low-risk, and
+`ResourceTypeRegistry`-free, matching the same shape as the already-shipped `Narrative`/`Extension` merges.
+Do `Meta` last and behind its own PR, not bundled with the other two: it's the only Phase 1 item with a
+semantic (not just structural) delta, and touching `ResourceJsonNode.Meta` means a full-suite regression
+pass regardless of how small the `Meta` type itself looks.
+
+**`Identifier` and `Reference` merged (2026-07-12).** Both followed the `Narrative` pattern more closely
+than `Extension`'s: `Identifier` needed zero hand-written code (fully generator-covered, including the
+`Type`/`Assigner` complex properties) — `Models/IdentifierJsonNode.cs` is deleted outright, no partial file
+added. `Reference` needed exactly one surviving member: `FromResourceTypeAndId(string resourceType, string
+id)`, moved into `Models/Reference.cs` as `public partial class Reference` unchanged in signature and
+behavior, only rewritten internally to set the generator's collision-renamed scalar (`Reference2`, not
+`Reference` — the property collides with the enclosing type name, see the Phase 1 `Extension2`/`Reference2`
+naming note above) instead of the hand-written type's `Reference` property.
+
+Before merging, the two API-shape changes this surfaces were checked against real call sites, since they
+looked risky on paper:
+- `Identifier.Use` changes from a raw `string?` (hand-written) to a typed `IdentifierUse?` enum (generated).
+  Zero production call sites read/write `IdentifierJsonNode.Use` today (repo-wide grep) — no actual breakage.
+- `Reference.Reference` becomes `Reference.Reference2` (the collision-fallback name, already true of the
+  generated type before this merge — see above). A raw `\.Reference\b` grep returns thousands of hits, but
+  nearly all are `SearchParamType.Reference`/choice-type `ValueType.Reference` enum members, unrelated to
+  this datatype. Real property access on a `ReferenceJsonNode` instance was exactly 4 call sites, all in
+  `Ignixa.Application.Features.Metadata.Models` (`ResourceComponentJsonNode.cs` ×3,
+  `ReferenceOrCanonicalJsonNode.cs` ×1) — and those all read/write a *different*, unrelated hand-written type
+  (`ReferenceOrCanonicalJsonNode`, its own `Reference` property), not `Ignixa.Serialization.Models.ReferenceJsonNode`.
+  The only real usage of the merged type's scalar property was internal to `FromResourceTypeAndId` itself,
+  which moved with it. `ReferenceJsonNode` as a *type name* had three consumers outside its own file —
+  `CompositionJsonNode.cs` (8 property-type declarations, Phase 2 territory, mechanically renamed to
+  `Reference`) and `IpsGeneratorService.cs` (3 calls to `FromResourceTypeAndId`, mechanically renamed) — both
+  already had `using Ignixa.Models;` in scope, so the rename needed no new imports.
+
+Verified: `dotnet build All.sln` (0 warnings/errors) and the full non-E2E `dotnet test All.sln` suite green,
+plus new characterization tests (`test/Ignixa.Models.Tests/IdentifierFacadeTests.cs`,
+`ReferenceFacadeTests.cs`) covering round-trip behavior and, for `Reference`, `FromResourceTypeAndId`
+(true TDD red→green here, since that method didn't previously exist on the generated type — the round-trip
+tests are regression coverage for already-correct generated behavior, same as `NarrativeFacadeTests`).
+
+Remaining Phase 1 item: `Meta`, per the semantic-delta caveat above — not started.
 
 ## Verdict
 
