@@ -128,9 +128,16 @@ public class IdentifierOfTypeIndexingTests
         var identifier = identifiers[0];
 
         // Act - Test FHIRPath expressions
-        var value = identifier.Scalar("value") as string;
-        var typeSystem = identifier.Scalar("type.coding.first().system") as string;
-        var typeCode = identifier.Scalar("type.coding.first().code") as string;
+        // Scalar() is called via its fully qualified name: this file also imports
+        // Ignixa.Search.Indexing.Converters, whose internal ElementExtensions.Scalar(IElement, string)
+        // overload does a literal Children(name) lookup rather than FHIRPath evaluation. Both overloads
+        // are visible here (Ignixa.Search grants InternalsVisibleTo to this assembly), and since that
+        // overload has no optional parameters, C# overload resolution prefers it over
+        // TypedElementExtensions.Scalar's context = null default - silently evaluating these as literal
+        // property names instead of FHIRPath expressions.
+        var value = Ignixa.FhirPath.Evaluation.TypedElementExtensions.Scalar(identifier, "value") as string;
+        var typeSystem = Ignixa.FhirPath.Evaluation.TypedElementExtensions.Scalar(identifier, "type.coding.first().system") as string;
+        var typeCode = Ignixa.FhirPath.Evaluation.TypedElementExtensions.Scalar(identifier, "type.coding.first().code") as string;
 
         // Assert
         value.ShouldBe("SSN-123");
