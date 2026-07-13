@@ -19,6 +19,22 @@ ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests 
   --impl my-server --out ./reports/my-server.json
 ```
 
+To authenticate requests, supply an auth header value:
+
+```bash
+ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+  --impl my-server --out ./reports/my-server.json \
+  --auth-header "Bearer <token>"
+```
+
+To emit FHIR TestReport output, provide a path for the JSON file:
+
+```bash
+ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+  --impl my-server --out ./reports/my-server.json \
+  --test-report ./reports/my-server.testreport.json
+```
+
 Merge per-implementation reports into the matrix output (`runs/` + `index.json`):
 
 ```bash

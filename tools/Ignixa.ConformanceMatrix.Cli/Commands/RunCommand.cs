@@ -1,7 +1,11 @@
 using System.CommandLine;
+using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.ConformanceMatrix.Cli.Reporting;
+using Ignixa.Models;
 using Ignixa.Serialization;
+using Ignixa.TestScript.Reporting;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.TestScript.Client;
@@ -26,12 +30,22 @@ internal static class RunCommand
         {
             Description = "FHIR version to test against (e.g. '4.0', '4.3', '5.0'). Sets fhirVersion on the Accept header and skips tests not tagged for this version. Omit to run all tests against any server."
         };
+        var authHeaderOption = new Option<string?>("--auth-header")
+        {
+            Description = "Authentication header value to apply to every request (for example 'Bearer <token>' or 'Authorization: Bearer <token>')"
+        };
+        var testReportOption = new Option<string?>("--test-report")
+        {
+            Description = "Optional path to write FHIR TestReport output as a JSON resource or Bundle"
+        };
 
         command.Options.Add(serverOption);
         command.Options.Add(testsOption);
         command.Options.Add(implOption);
         command.Options.Add(outOption);
         command.Options.Add(fhirVersionOption);
+        command.Options.Add(authHeaderOption);
+        command.Options.Add(testReportOption);
 
         command.SetAction((parseResult, cancellationToken) =>
         {
@@ -40,13 +54,15 @@ internal static class RunCommand
             var impl = parseResult.GetValue(implOption)!;
             var outPath = parseResult.GetValue(outOption)!;
             var fhirVersion = parseResult.GetValue(fhirVersionOption);
-            return RunAsync(server, tests, impl, outPath, fhirVersion, cancellationToken);
+            var authHeader = parseResult.GetValue(authHeaderOption);
+            var testReportPath = parseResult.GetValue(testReportOption);
+            return RunAsync(server, tests, impl, outPath, fhirVersion, authHeader, testReportPath, cancellationToken);
         });
 
         return command;
     }
 
-    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, CancellationToken cancellationToken)
+    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, string? authHeader, string? testReportPath, CancellationToken cancellationToken)
     {
         try
         {
@@ -76,6 +92,7 @@ internal static class RunCommand
 
             var schema = new R4CoreSchemaProvider();
             using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
+            ApplyAuthHeader(httpClient, authHeader);
             if (fhirVersion is not null)
             {
                 var mediaType = $"application/fhir+json; fhirVersion={fhirVersion}";
@@ -94,6 +111,7 @@ internal static class RunCommand
             var capabilityStatement = await FetchCapabilityStatementAsync(httpClient, cancellationToken);
 
             var allResults = new List<ImplReportResult>();
+            var testReports = new List<JsonObject>();
             foreach (var file in files)
             {
                 var relFile = Path.GetRelativePath(testsPath, file).Replace('\\', '/');
@@ -147,12 +165,13 @@ internal static class RunCommand
                 {
                     var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken,
                         fhirVersion: fhirVersion, capabilityStatement: capabilityStatement);
+                    if (!string.IsNullOrWhiteSpace(testReportPath))
+                        testReports.Add(TestReportResourceGenerator.Generate(report));
+
                     var mapped = ReportMapper.Map(report, relFile);
                     allResults.AddRange(mapped);
 
-                    var pass = mapped.Count(r => r.Status == "pass");
-                    var fail = mapped.Count(r => MatrixBuilder.IsFail(r.Status));
-                    Console.WriteLine($"    {pass} passed, {fail} failed");
+                    Console.WriteLine($"    {FormatOutcomeSummary(mapped)}");
                 }
                 catch (OperationCanceledException)
                 {
@@ -185,10 +204,10 @@ internal static class RunCommand
             var json = JsonSerializer.Serialize(implReport, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(outPath, json, cancellationToken);
 
-            var totalPass = allResults.Count(r => r.Status == "pass");
-            var totalFail = allResults.Count(r => MatrixBuilder.IsFail(r.Status));
-            var totalError = allResults.Count(r => r.Status == "error");
-            Console.WriteLine($"\n{impl}: {totalPass} passed, {totalFail} failed, {totalError} error(s) ({duration}ms) -> {outPath}");
+            if (!string.IsNullOrWhiteSpace(testReportPath))
+                await WriteTestReportAsync(testReportPath, testReports, cancellationToken);
+
+            Console.WriteLine($"\n{impl}: {FormatOutcomeSummary(allResults)} ({duration}ms) -> {outPath}");
             return ClassifyExitCode(allResults);
         }
         catch (OperationCanceledException)
@@ -202,8 +221,83 @@ internal static class RunCommand
         }
     }
 
+    internal static string FormatOutcomeSummary(IReadOnlyList<ImplReportResult> results)
+    {
+        var pass = results.Count(r => r.Status == "pass");
+        var fail = results.Count(r => r.Status == "fail");
+        var skipped = results.Count(r => r.Status == "skipped");
+        var error = results.Count(r => r.Status == "error");
+        return $"{pass} passed, {fail} failed, {skipped} skipped, {error} error(s)";
+    }
+
+    internal static (string Name, string Value) ParseAuthHeader(string input)
+    {
+        var trimmed = input.Trim();
+        if (trimmed.Length == 0)
+            return ("Authorization", string.Empty);
+
+        if (trimmed.Contains(':')
+            && !trimmed.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            && !trimmed.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)
+            && !trimmed.StartsWith("Digest ", StringComparison.OrdinalIgnoreCase))
+        {
+            var separatorIndex = trimmed.IndexOf(':');
+            return (trimmed[..separatorIndex].Trim(), trimmed[(separatorIndex + 1)..].Trim());
+        }
+
+        return ("Authorization", trimmed);
+    }
+
+    internal static JsonObject BuildTestReportPayload(IReadOnlyList<JsonObject> reports)
+    {
+        if (reports.Count == 1)
+            return reports[0];
+
+        var bundle = new Bundle();
+        ((IMutableJsonNode)bundle).MutableNode["type"] = "collection";
+
+        foreach (var report in reports)
+        {
+            bundle.Entry.Add(new Ignixa.Models.BundleEntry
+            {
+                Resource = new ResourceJsonNode(report)
+            });
+        }
+
+        return ((IMutableJsonNode)bundle).MutableNode;
+    }
+
+    internal static async Task WriteTestReportAsync(string path, IReadOnlyList<JsonObject> reports, CancellationToken cancellationToken)
+    {
+        var payload = BuildTestReportPayload(reports);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var json = payload.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(path, json, cancellationToken);
+    }
+
     internal static int ClassifyExitCode(IReadOnlyList<ImplReportResult> results)
         => results.Any(r => MatrixBuilder.IsFail(r.Status)) ? 1 : 0;
+
+    private static void ApplyAuthHeader(HttpClient httpClient, string? authHeader)
+    {
+        if (string.IsNullOrWhiteSpace(authHeader))
+            return;
+
+        var (name, value) = ParseAuthHeader(authHeader);
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(value))
+            return;
+
+        if (name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+        {
+            if (AuthenticationHeaderValue.TryParse(value, out var parsed))
+                httpClient.DefaultRequestHeaders.Authorization = parsed;
+            else
+                httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value);
+            return;
+        }
+
+        httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value);
+    }
 
     /// <summary>
     /// Fetches the target server's CapabilityStatement from <c>/metadata</c> once per run, so it
