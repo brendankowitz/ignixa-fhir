@@ -21,9 +21,9 @@ using Ignixa.NarrativeGenerator;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
+using FhirBundle = Ignixa.Models.Bundle;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 
@@ -58,7 +58,7 @@ public class IpsGeneratorService(
         ?? strategies.First();
 
     /// <inheritdoc />
-    public async Task<BundleJsonNode> GenerateIpsAsync(
+    public async Task<FhirBundle> GenerateIpsAsync(
         string patientId,
         string? profile = null,
         CancellationToken cancellationToken = default)
@@ -122,7 +122,7 @@ public class IpsGeneratorService(
     /// TODO: Implement identifier-based patient lookup using token search parameter.
     /// This will require building a proper SearchParameterExpression for the identifier parameter.
     /// </remarks>
-    public Task<BundleJsonNode> GenerateIpsByIdentifierAsync(
+    public Task<FhirBundle> GenerateIpsByIdentifierAsync(
         string? identifierSystem,
         string identifierValue,
         string? profile = null,
@@ -413,18 +413,18 @@ public class IpsGeneratorService(
         return System.Net.WebUtility.HtmlEncode(display);
     }
 
-    private BundleJsonNode AssembleBundle(
+    private FhirBundle AssembleBundle(
         IpsContext context,
         ResourceJsonNode composition,
         Dictionary<Section, List<ResourceJsonNode>> sectionResources)
     {
         var bundleId = Guid.NewGuid().ToString();
 
-        var bundle = new BundleJsonNode
+        var bundle = new FhirBundle
         {
             Id = bundleId,
-            Type = BundleJsonNode.BundleType.Document,
         };
+        bundle.SetTypeRaw("document");
 
         bundle.MutableNode["identifier"] = new JsonObject
         {
@@ -440,14 +440,14 @@ public class IpsGeneratorService(
         };
 
         // First entry: Composition
-        bundle.Entry.Add(new BundleComponentJsonNode
+        bundle.Entry.Add(new BundleEntry
         {
             FullUrl = $"urn:uuid:{composition.Id}",
             Resource = composition
         });
 
         // Second entry: Patient
-        bundle.Entry.Add(new BundleComponentJsonNode
+        bundle.Entry.Add(new BundleEntry
         {
             FullUrl = $"Patient/{context.PatientId}",
             Resource = context.Patient
@@ -455,7 +455,7 @@ public class IpsGeneratorService(
 
         // Add author (Organization/Device)
         var author = context.Strategy.CreateAuthor(context);
-        bundle.Entry.Add(new BundleComponentJsonNode
+        bundle.Entry.Add(new BundleEntry
         {
             FullUrl = $"urn:uuid:{author.Id}",
             Resource = author
@@ -470,7 +470,7 @@ public class IpsGeneratorService(
                 var resourceKey = $"{resource.ResourceType}/{resource.Id}";
                 if (addedResources.Add(resourceKey))
                 {
-                    bundle.Entry.Add(new BundleComponentJsonNode
+                    bundle.Entry.Add(new BundleEntry
                     {
                         FullUrl = resourceKey,
                         Resource = resource

@@ -23,6 +23,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -1117,7 +1118,7 @@ public static class FhirEndpoints
             logger.LogInformation("Using buffered processing (Transaction: {IsTransaction})",
                 options.Type == BundleType.Transaction);
 
-            BundleJsonNode responseBundle = await bundleProcessor.ProcessAsync(
+            Bundle responseBundle = await bundleProcessor.ProcessAsync(
                 bundleContext.Entries, options, ct);
 
             // Serialize response bundle with System.Text.Json

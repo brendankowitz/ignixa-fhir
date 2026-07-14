@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes;
@@ -19,17 +19,17 @@ public static class ResourceBundleComposer
     /// Creates a transaction Bundle: each entry uses a client-assigned <c>urn:uuid</c> fullUrl and a
     /// POST request, so the server assigns server ids and resolves cross-references.
     /// </summary>
-    public static BundleJsonNode ToTransactionBundle(IEnumerable<ResourceJsonNode> resources) =>
+    public static Bundle ToTransactionBundle(IEnumerable<ResourceJsonNode> resources) =>
         Compose(resources, "transaction", CreateTransactionEntry);
 
     /// <summary>
     /// Creates a batch Bundle: each entry uses a resolved <c>ResourceType/id</c> fullUrl and a PUT
     /// request, suitable when the resources already carry their final ids.
     /// </summary>
-    public static BundleJsonNode ToBatchBundle(IEnumerable<ResourceJsonNode> resources) =>
+    public static Bundle ToBatchBundle(IEnumerable<ResourceJsonNode> resources) =>
         Compose(resources, "batch", CreateBatchEntry);
 
-    private static BundleJsonNode Compose(
+    private static Bundle Compose(
         IEnumerable<ResourceJsonNode> resources,
         string bundleType,
         Func<ResourceJsonNode, JsonObject> entryFactory)
@@ -67,7 +67,7 @@ public static class ResourceBundleComposer
             ["entry"] = entries,
         };
 
-        return new BundleJsonNode(bundleNode);
+        return new Bundle(bundleNode);
     }
 
     private static JsonObject CreateTransactionEntry(ResourceJsonNode resource) => new()

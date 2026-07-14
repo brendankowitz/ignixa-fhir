@@ -7,9 +7,12 @@ using EnsureThat;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.History;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using System.Text.Json.Nodes;
+using FhirBundle = Ignixa.Models.Bundle;
+using FhirBundleEntryResponse = Ignixa.Models.BundleEntryResponse;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -32,7 +35,7 @@ public class BundleResponseBuilder
     /// <param name="responses">List of bundle entry responses.</param>
     /// <param name="bundleType">Bundle type (transaction or batch).</param>
     /// <returns>FHIR Bundle with response entries.</returns>
-    public BundleJsonNode BuildResponse(
+    public FhirBundle BuildResponse(
         IReadOnlyList<BundleEntryResponse> responses,
         BundleType bundleType)
     {
@@ -41,13 +44,11 @@ public class BundleResponseBuilder
         _logger.LogDebug("Building {Type} response bundle with {Count} entries", bundleType, responses.Count);
 
         var responseType = bundleType == BundleType.Transaction
-            ? BundleJsonNode.BundleType.TransactionResponse
-            : BundleJsonNode.BundleType.BatchResponse;
+            ? "transaction-response"
+            : "batch-response";
 
-        var bundle = new BundleJsonNode
-        {
-            Type = responseType
-        };
+        var bundle = new FhirBundle();
+        bundle.SetTypeRaw(responseType);
 
         foreach (var response in responses)
         {
@@ -60,11 +61,11 @@ public class BundleResponseBuilder
         return bundle;
     }
 
-    private BundleComponentJsonNode BuildEntryComponent(BundleEntryResponse response)
+    private BundleEntry BuildEntryComponent(BundleEntryResponse response)
     {
-        var entry = new BundleComponentJsonNode()
+        var entry = new BundleEntry()
         {
-            Response = new BundleComponentResponseJsonNode()
+            Response = new FhirBundleEntryResponse()
             {
                 Status = response.Status ?? response.StatusCode.ToString()
             }
@@ -85,7 +86,7 @@ public class BundleResponseBuilder
         // Add LastModified header for successful operations
         if (response.LastModified.HasValue)
         {
-            entry.Response.LastModified = response.LastModified.Value;
+            entry.Response.LastModifiedOffset = response.LastModified.Value;
         }
 
         // Add resource to entry for GET and successful POST/PUT (201/200)

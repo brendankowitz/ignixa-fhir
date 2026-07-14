@@ -4,7 +4,7 @@
 // </copyright>
 
 using Ignixa.Domain.Models;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 namespace Ignixa.Application.Features.History;
 
@@ -30,5 +30,5 @@ public sealed record HistoryResult
     /// <summary>
     /// Pagination links (self, first, prev, next, last).
     /// </summary>
-    public required IReadOnlyList<BundleLinkJsonNode> Links { get; init; }
+    public required IReadOnlyList<BundleLink> Links { get; init; }
 }

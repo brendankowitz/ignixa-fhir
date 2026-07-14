@@ -8,8 +8,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.FhirFakes;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -213,20 +213,18 @@ public sealed class SearchTestHarness
         }
 
         // Create transaction bundle (supports PUT with resolved references)
-        var bundle = new BundleJsonNode
-        {
-            Type = BundleJsonNode.BundleType.Transaction
-        };
+        var bundle = new Bundle();
+        bundle.SetTypeRaw("transaction");
 
         // Add entries for each resource
         foreach (var resource in resources)
         {
-            var entry = new BundleComponentJsonNode
+            var entry = new BundleEntry
             {
                 Resource = resource,
-                Request = new BundleComponentRequestJsonNode
+                Request = new BundleEntryRequest
                 {
-                    Method = "PUT",
+                    Method = HttpVerb.PUT,
                     Url = $"{resource.ResourceType}/{resource.Id}"
                 }
             };
@@ -245,7 +243,7 @@ public sealed class SearchTestHarness
 
         // Parse response bundle
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        var responseBundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        var responseBundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
 
         // Extract created resources from response entries
         return responseBundle.Entry
@@ -269,12 +267,12 @@ public sealed class SearchTestHarness
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
 
         // Extract only match entries from bundle (exclude outcome entries like OperationOutcome)
         // In FHIR searchset bundles, search.mode indicates: "match", "include", or "outcome"
         return bundle.Entry
-            .Where(e => e.Resource is not null && e.Search?.Mode != "outcome")
+            .Where(e => e.Resource is not null && e.Search?.Mode?.GetLiteral() != "outcome")
             .Select(e => e.Resource!)
             .ToArray();
     }
@@ -282,7 +280,7 @@ public sealed class SearchTestHarness
     /// <summary>
     /// Executes a search and returns the full Bundle (for pagination/total tests).
     /// </summary>
-    public async Task<BundleJsonNode> SearchBundleAsync(string resourceType, string queryString, CancellationToken cancellationToken = default)
+    public async Task<Bundle> SearchBundleAsync(string resourceType, string queryString, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
 
@@ -294,14 +292,14 @@ public sealed class SearchTestHarness
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        return JsonSourceNodeFactory.Parse<Bundle>(responseJson);
     }
 
     /// <summary>
     /// Executes a system-level search (no resource type) and returns the full Bundle.
     /// Used for cross-resource-type searches with _type parameter.
     /// </summary>
-    public async Task<BundleJsonNode> SearchSystemAsync(string queryString, CancellationToken cancellationToken = default)
+    public async Task<Bundle> SearchSystemAsync(string queryString, CancellationToken cancellationToken = default)
     {
         var url = string.IsNullOrEmpty(queryString)
             ? "/"
@@ -311,13 +309,13 @@ public sealed class SearchTestHarness
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        return JsonSourceNodeFactory.Parse<Bundle>(responseJson);
     }
 
     /// <summary>
     /// Executes a search via GET request to a URL (for following next links).
     /// </summary>
-    public async Task<BundleJsonNode> GetBundleAsync(string url, CancellationToken cancellationToken = default)
+    public async Task<Bundle> GetBundleAsync(string url, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(url);
 
@@ -325,7 +323,7 @@ public sealed class SearchTestHarness
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        return JsonSourceNodeFactory.Parse<Bundle>(responseJson);
     }
 
     /// <summary>

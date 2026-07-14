@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
+using Ignixa.Serialization;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -53,7 +54,7 @@ public class IncludeSearchTests_EdgeCases : IncludeTestBase
         // Assert - the matched resource shouldn't be returned as a separate include
         bundle.Entry.Count.ShouldBe(1);
         bundle.Entry[0].Resource!.Id.ShouldBe(updatedLocation.Id);
-        bundle.Entry[0].Search?.Mode.ShouldBe("match");
+        bundle.Entry[0].Search?.Mode?.GetLiteral().ShouldBe("match");
     }
 
     #endregion

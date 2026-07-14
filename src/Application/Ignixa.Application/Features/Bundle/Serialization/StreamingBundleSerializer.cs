@@ -10,11 +10,11 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Ignixa.Specification;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.Models;
 using ISchema = Ignixa.Abstractions.ISchema;
-using System.Text.Json.Nodes;
+using FhirBundleLink = Ignixa.Models.BundleLink;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
 
@@ -280,7 +280,7 @@ public static class StreamingBundleSerializer
         string bundleType,
         int? total,
         IAsyncEnumerable<SearchEntryResult> entries,
-        IReadOnlyList<BundleLinkJsonNode>? links = null,
+        IReadOnlyList<FhirBundleLink>? links = null,
         bool pretty = false,
         int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -351,7 +351,7 @@ public static class StreamingBundleSerializer
         {
             if (!hasMore || entryCount == 0)
             {
-                links = links.Where(x => x.Relation != "next").ToList();
+                links = links.Where(x => x.GetRelationRaw() != "next").ToList();
             }
 
             WriteBundleLinks(writer, links);
@@ -527,9 +527,9 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
-    /// Writes bundle links from a list of BundleLinkJsonNode.
+    /// Writes bundle links from a list of FhirBundleLink.
     /// </summary>
-    private static void WriteBundleLinks(FhirJsonWriter writer, IReadOnlyList<BundleLinkJsonNode>? links)
+    private static void WriteBundleLinks(FhirJsonWriter writer, IReadOnlyList<FhirBundleLink>? links)
     {
         if (links is null || links.Count == 0)
         {
@@ -541,7 +541,7 @@ public static class StreamingBundleSerializer
         foreach (var link in links)
         {
             writer.WriteStartObject();
-            writer.WriteString("relation", link.Relation ?? "self");
+            writer.WriteString("relation", link.GetRelationRaw() ?? "self");
             writer.WriteString("url", link.Url ?? string.Empty);
             writer.WriteEndObject();
         }
@@ -551,7 +551,7 @@ public static class StreamingBundleSerializer
 
     /// <summary>
     /// Writes bundle links from simple self/next string URLs.
-    /// Converts to BundleLinkJsonNode format internally.
+    /// Converts to FhirBundleLink format internally.
     /// </summary>
     private static void WriteBundleLinksFromStrings(FhirJsonWriter writer, string? selfLink, string? nextLink, string? relatedLink = null)
     {
@@ -560,36 +560,31 @@ public static class StreamingBundleSerializer
             return;
         }
 
-        var links = new List<BundleLinkJsonNode>();
+        var links = new List<FhirBundleLink>();
 
         if (!string.IsNullOrEmpty(selfLink))
         {
-            links.Add(new BundleLinkJsonNode(new JsonObject(), null)
-            {
-                Relation = "self",
-                Url = selfLink
-            });
+            links.Add(CreateLink("self", selfLink));
         }
 
         if (!string.IsNullOrEmpty(nextLink))
         {
-            links.Add(new BundleLinkJsonNode(new JsonObject(), null)
-            {
-                Relation = "next",
-                Url = nextLink
-            });
+            links.Add(CreateLink("next", nextLink));
         }
 
         if (!string.IsNullOrEmpty(relatedLink))
         {
-            links.Add(new BundleLinkJsonNode(new JsonObject(), null)
-            {
-                Relation = "related",
-                Url = relatedLink
-            });
+            links.Add(CreateLink("related", relatedLink));
         }
 
         WriteBundleLinks(writer, links);
+    }
+
+    private static FhirBundleLink CreateLink(string relation, string url)
+    {
+        var link = new FhirBundleLink { Url = url };
+        link.SetRelationRaw(relation);
+        return link;
     }
 
     /// <summary>

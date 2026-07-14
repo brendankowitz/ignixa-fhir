@@ -7,7 +7,7 @@ using Shouldly;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -40,7 +40,7 @@ public class PopulationGeneratorTests
         // Check each bundle is a transaction bundle with Patient resource
         foreach (var bundle in bundles)
         {
-            bundle.Type.ShouldBe(BundleJsonNode.BundleType.Transaction);
+            bundle.GetTypeRaw().ShouldBe("transaction");
             var patientResource = GetPatientFromBundle(bundle);
             patientResource.ShouldNotBeNull();
         }
@@ -367,7 +367,7 @@ public class PopulationGeneratorTests
     /// <summary>
     /// Helper method to extract the Patient resource from a transaction bundle.
     /// </summary>
-    private static System.Text.Json.Nodes.JsonNode? GetPatientFromBundle(BundleJsonNode bundle)
+    private static System.Text.Json.Nodes.JsonNode? GetPatientFromBundle(Bundle bundle)
     {
         foreach (var entry in bundle.Entry)
         {

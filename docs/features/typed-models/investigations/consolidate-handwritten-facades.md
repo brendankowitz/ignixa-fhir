@@ -805,6 +805,116 @@ Remaining Phase 4 resources -- `Bundle`, `OperationOutcome` -- each still need t
 per this section's technique (no generator step needed, same as this one), in that order per the
 established risk sequencing.
 
+## Bundle merged (Phase 4, second of three)
+
+Same no-generator-step starting position as `Parameters` (Phase 0b already generated `Bundle`/`BundleEntry`/
+`BundleEntryRequest`/`BundleEntryResponse`/`BundleEntrySearch`/`BundleLink` as `VersionAgnosticContractTypes`),
+but this merge turned out far larger in real scope than `Parameters` -- both because `Bundle` is the
+highest-traffic type in the whole request pipeline (transaction/batch processing, search, history,
+IPS) and because two of its members hit real, code-changing hazards no type-name grep could surface,
+since callers reach them through property navigation (`entry.Search.Mode`, `link.Relation`) rather than
+ever naming the underlying type.
+
+**`Bundle.Type` needed the same raw-string escape hatch as `Composition`'s divergent fields, for a
+different reason than usual.** The wire shape (`"type"`, a plain string) is identical in both versions --
+R5 only *adds* a 10th literal (`"subscription-notification"`) to R4's 9-literal `bundle-type` value set --
+but the classifier still pushes `Type` to the R4/R5 subclasses, because R4's and R5's generated `BundleType`
+enums are now genuinely different C# types (confirmed via direct diff: 9 identical literals plus R5's
+extra one). Initially added `Type`/`BundleType` verbatim to the shared base (byte-identical to the old
+hand-written enum for the 9 common literals) since this looked like a safe, common, cross-version-agnostic
+subset worth keeping typed -- but this collided at compile time (`CS0108`) with the auto-generated
+`Bundle.Type` property already present on `Ignixa.Models.R4.Bundle`/`R5.Bundle` (same name, different return
+type). Reverted to `Bundle.GetTypeRaw()`/`SetTypeRaw(string)` -- a plain raw-string pair matching
+`Composition.SetStatusRaw`'s shape -- since no real caller in this codebase ever produces or consumes the
+R5-only 10th literal, this covers every real usage with zero version-correctness risk. Public (not
+internal, unlike `Extension.SetValueChoiceRaw`'s narrow-friend-list escape hatch): `Type` is read/written
+broadly across `BundleProcessor.cs`/`BundleResponseBuilder.cs`/`IpsGeneratorService.cs` and a dozen test
+projects, not confined to one caller.
+
+**`BundleLink.Relation` hit the identical structural problem, discovered by re-sweeping for member access
+rather than type names.** `Relation`'s wire shape is a plain string in both versions too, but R5 tightens
+its value-set *binding strength* against `iana-link-relations`, which was enough for the classifier to push
+it to the R4/R5 subclasses. The initial call-site analysis (grepping for the type name `BundleLinkJsonNode`)
+found only two direct callers and concluded "clean drop-in" -- but a later re-sweep for the *member access
+pattern* itself (`\.Relation\b`, independent of what type the receiver is) found **19 more real call sites**
+across 7 E2E test files, none of which ever named the type. This is the same blind spot that separately
+caught `entry.Search.Mode` (see below) -- a lesson for any future merge in this effort: type-name grep finds
+constructors and casts, but member-access grep is required to find every real reader of a property that's
+about to change shape. Resolved with `BundleLink.GetRelationRaw()`/`SetRelationRaw(string)`, `internal` this
+time (its real footprint -- `HistoryPaginationLinkBuilder.cs`, `StreamingBundleSerializer.cs`, and E2E tests
+-- all sit inside the existing `InternalsVisibleTo` grant, unlike `Bundle.Type`'s broader footprint which
+also reaches `Ignixa.Serialization.Tests`/`Ignixa.FhirFakes.Tests`/`Ignixa.Application.Experimental.Tests`,
+none of which are on that list).
+
+**`BundleEntrySearch.Mode` and `BundleEntryRequest.Method`: real fidelity upgrades (string -> typed enum),
+found by the same member-access re-sweep.** Both are version-uniform (no R4/R5 split -- the classifier
+placed both directly on the shared base) but change type: hand-written `Mode`/`Method` were raw `string`;
+generated are `SearchEntryMode?`/`HttpVerb?`. A grep for the type names `BundleComponentSearchJsonNode`/
+`BundleComponentRequestJsonNode` found zero and one real callers respectively -- but re-sweeping for
+`.Search.Mode`/`.Search?.Mode` (correcting a first attempt that false-positived on "Models" containing
+"Mode" as a substring) found **~30 more real comparisons against string literals** (`"match"`/`"include"`/
+`"outcome"`) across nine E2E test files spanning includes, revincludes, sorting, and compartments. Fixed by
+calling the existing `GetLiteral()` extension (`this Enum value -> string`, already used throughout the
+generator's own `value?.GetLiteral()` setters) at each comparison site rather than rewriting them to compare
+enum values directly -- preserves every test's original string-literal assertions with a one-token change.
+`Method`'s one real caller (`SearchTestHarness.cs`, building a test-only transaction bundle) was fixed the
+other way, since it's a write not a comparison: `Method = "PUT"` (no longer type-checks) became
+`Method = HttpVerb.PUT` (the generated enum has literal-exact `PUT`/`POST`/etc. members).
+
+**`BundleEntryResponse.LastModified`: same semantic-not-structural delta `Meta.LastUpdated` already hit.**
+Hand-written was `DateTimeOffset?`; generated is a raw `string?`. Confirmed a real caller
+(`BundleResponseBuilder.cs`'s `BuildEntryComponent`, setting it from a `DateTimeOffset?`-typed execution
+result) needing the typed convenience -- added `LastModifiedOffset` (`DateTimeOffset?`) as a distinctly-named
+wrapper, identical shape to `Meta.LastUpdatedOffset`, and retargeted that one call site.
+
+**Two real naming collisions, both from the generated type's name matching something pre-existing --
+resolved with `using Alias = Fully.Qualified.Name;`, never by touching the pre-existing type.**
+1. `Ignixa.Models.BundleEntryResponse` (generated) vs. `Ignixa.Application.Features.Bundle.BundleEntryResponse`
+   (a pre-existing, actively-used execution-result DTO, unrelated to the FHIR wire shape). Aliased as
+   `FhirBundleEntryResponse` in `BundleProcessor.cs`/`BundleResponseBuilder.cs` -- the DTO keeps its bare name
+   everywhere it's already used as a method parameter type, untouched.
+2. `Ignixa.Models.Bundle` (generated) vs. the namespace `Ignixa.Application.Features.Bundle` itself. Any file
+   under `Ignixa.Application.Features.*` referencing bare `Bundle` resolves to the *namespace* (`CS0118`),
+   because C#'s enclosing-namespace lookup wins over a `using`-imported type of the same simple name --
+   this affects every file under that namespace tree, not just ones physically inside
+   `Ignixa.Application.Features.Bundle`. Aliased as `FhirBundle` in six files
+   (`BundleProcessor.cs`, `BundleResponseBuilder.cs`, `IIpsGeneratorService.cs`, `IpsGeneratorQuery.cs`,
+   `IpsGeneratorHandler.cs`, `IpsGeneratorService.cs`). `StreamingBundleSerializer.cs` hit the analogous
+   collision for `BundleLink` against a sibling DTO in `Ignixa.Application.Features.Bundle.Serialization` --
+   same fix, `FhirBundleLink` alias -- and separately needed its pre-existing (and still necessary)
+   `using Ignixa.Serialization.Models;` restored after an over-eager unused-using cleanup, since that
+   namespace still holds `CodeableConceptJsonNode`, an ad hoc hand-written type embedded inside
+   `OperationOutcomeJsonNode.cs` (Phase 4's last, not-yet-merged resource) that this file's
+   `WriteCodeableConcept` helper depends on.
+
+`BundleJsonNode.cs` and its four nested-type files (`BundleComponentJsonNode`, `BundleComponentRequestJsonNode`,
+`BundleComponentResponseJsonNode`, `BundleComponentSearchJsonNode`, `BundleLinkJsonNode`) deleted outright.
+Surviving logic lives in three new partials: `Models/Bundle.cs` (`GetTypeRaw`/`SetTypeRaw`),
+`Models/BundleLink.cs` (`GetRelationRaw`/`SetRelationRaw`), `Models/BundleEntryResponse.cs`
+(`LastModifiedOffset`). `BundleComponentJsonNode`'s hand-rolled per-property caching (`_cachedRequest` etc.)
+was dropped in favor of the generated type's plain `GetComplexProperty` accessor -- a pure performance
+detail with no observable behavior difference, consistent with every prior merge's "strip to the delta"
+rule.
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `Ignixa.Models.Tests` (119 passed, 8 new),
+`Ignixa.Serialization.Tests` (82 passed), `Ignixa.Application.Tests` (695 passed, 1 pre-existing unrelated
+skip), `Ignixa.Api.Tests` (114 passed), `Ignixa.Application.Experimental.Tests` (43 passed),
+`Ignixa.FhirFakes.Tests` (1428 passed on both net9.0/net10.0) all green in isolation;
+`build/check-typed-model-regen.ps1` reports no drift; full non-E2E `dotnet test All.sln` green (the same 2
+pre-existing unrelated `Ignixa.SqlOnFhir.Tests` submodule failures); full `Ignixa.Api.E2ETests` green (600
+passed, 0 failed, 20 skipped, unchanged -- exercises the include/revinclude/sort/history/compartment/IPS
+paths this merge touches most heavily). New characterization tests:
+`test/Ignixa.Models.Tests/BundleFacadeTests.cs`, covering the shared-base round-trip and each raw
+escape-hatch/typed-fidelity accessor (`GetTypeRaw`/`SetTypeRaw` including the R5-only literal,
+`GetRelationRaw`/`SetRelationRaw`, `BundleEntryRequest.Method`/`BundleEntrySearch.Mode` as typed enums,
+`LastModifiedOffset`).
+
+**Standing lesson for `OperationOutcome` (Phase 4's last resource):** type-name grep alone is not sufficient
+for merges where callers navigate through the type rather than naming it. Before concluding any member is a
+"clean drop-in," re-sweep for the member-access pattern itself (`\.PropertyName\b`) across the whole repo,
+not just the declaring type's name -- and watch for regex substring false-positives when the property name
+is a common English word fragment (`Mode` inside `Models` cost one wasted grep pass here).
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.

@@ -26,7 +26,7 @@ public static class ResourceTypeRegistry
     private static readonly Dictionary<string, Func<JsonObject, ResourceJsonNode>> _factoryMap = new()
     {
         ["Parameters"] = jsonObject => new Parameters(jsonObject),
-        ["Bundle"] = jsonObject => new BundleJsonNode(jsonObject),
+        ["Bundle"] = jsonObject => new Bundle(jsonObject),
         ["OperationOutcome"] = jsonObject => new OperationOutcomeJsonNode(jsonObject),
         ["Provenance"] = jsonObject => new Provenance(jsonObject),
         ["SearchParameter"] = jsonObject => new SearchParameter(jsonObject),

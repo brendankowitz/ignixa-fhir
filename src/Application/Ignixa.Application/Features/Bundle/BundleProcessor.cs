@@ -7,8 +7,11 @@ using EnsureThat;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
+using FhirBundle = Ignixa.Models.Bundle;
+using FhirBundleEntryResponse = Ignixa.Models.BundleEntryResponse;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -57,7 +60,7 @@ public class BundleProcessor
     /// <param name="options">Processing options (parallelism, bundle type).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Response bundle with entry results.</returns>
-    public async Task<BundleJsonNode> ProcessAsync(
+    public async Task<FhirBundle> ProcessAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         BundleProcessingOptions options,
         CancellationToken cancellationToken)
@@ -279,7 +282,7 @@ public class BundleProcessor
     /// Processes bundle entries in buffered mode with reference resolution.
     /// Used when urn:uuid or conditional references are detected.
     /// </summary>
-    private async Task<BundleJsonNode> ProcessBufferedAsync(
+    private async Task<FhirBundle> ProcessBufferedAsync(
         List<BundleEntryContext> entries,
         BundleProcessingOptions options,
         CancellationToken cancellationToken)
@@ -385,7 +388,7 @@ public class BundleProcessor
     /// For transactions: validates entries are pre-sorted by verb.
     /// For batch: executes in parallel.
     /// </summary>
-    private async Task<BundleJsonNode> ProcessStreamingAsync(
+    private async Task<FhirBundle> ProcessStreamingAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         BundleProcessingOptions options,
         CancellationToken cancellationToken)
@@ -511,7 +514,7 @@ public class BundleProcessor
         }, cancellationToken);
     }
 
-    private BundleJsonNode CreateErrorBundle(string message, string details)
+    private FhirBundle CreateErrorBundle(string message, string details)
     {
         var outcome = new OperationOutcomeJsonNode();
         outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
@@ -521,13 +524,11 @@ public class BundleProcessor
             Diagnostics = $"{message}: {details}"
         });
 
-        var bundle = new BundleJsonNode
+        var bundle = new FhirBundle();
+        bundle.SetTypeRaw("transaction-response");
+        bundle.Entry.Add(new BundleEntry()
         {
-            Type = BundleJsonNode.BundleType.TransactionResponse
-        };
-        bundle.Entry.Add(new BundleComponentJsonNode()
-        {
-            Response = new BundleComponentResponseJsonNode()
+            Response = new FhirBundleEntryResponse()
             {
                 Status = "500",
                 Outcome = outcome

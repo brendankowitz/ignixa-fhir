@@ -178,7 +178,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         bundle.Entry.Count.ShouldBe(2);
 
         // Get next page
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         nextLink.ShouldNotBeNullOrEmpty("Should have next link for pagination");
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
@@ -291,7 +291,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         bundle.Entry.Count.ShouldBe(1);
 
         // Get next page
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
@@ -465,7 +465,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         bundle.Entry.Count.ShouldBe(1);
 
         // Get second page
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
@@ -520,7 +520,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         bundle.Entry.Count.ShouldBe(1);
 
         // Get second page
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
@@ -559,13 +559,13 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var allResources = new List<ResourceJsonNode>();
         allResources.AddRange(paginatedBundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!));
 
-        var nextLink = paginatedBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = paginatedBundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         var iterations = 0;
         while (!string.IsNullOrEmpty(nextLink) && iterations < 20)
         {
             var nextBundle = await Harness.GetBundleAsync(nextLink);
             allResources.AddRange(nextBundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!));
-            nextLink = nextBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+            nextLink = nextBundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
             iterations++;
         }
 
@@ -597,13 +597,13 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var allResources = new List<ResourceJsonNode>();
         allResources.AddRange(paginatedBundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!));
 
-        var nextLink = paginatedBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = paginatedBundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         var iterations = 0;
         while (!string.IsNullOrEmpty(nextLink) && iterations < 20)
         {
             var nextBundle = await Harness.GetBundleAsync(nextLink);
             allResources.AddRange(nextBundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!));
-            nextLink = nextBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+            nextLink = nextBundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
             iterations++;
         }
 

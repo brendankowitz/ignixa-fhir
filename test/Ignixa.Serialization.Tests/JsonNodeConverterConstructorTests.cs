@@ -68,11 +68,11 @@ public class JsonNodeConverterConstructorTests
     /// Verify specific known types can be directly deserialized (regression test).
     /// </summary>
     [Fact]
-    public void BundleJsonNode_ShouldDeserializeDirectly()
+    public void Bundle_ShouldDeserializeDirectly()
     {
-        var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>("""{"resourceType":"Bundle","type":"searchset"}""");
+        var bundle = JsonSourceNodeFactory.Parse<Bundle>("""{"resourceType":"Bundle","type":"searchset"}""");
         bundle.ShouldNotBeNull();
-        bundle.Type.ShouldBe(BundleJsonNode.BundleType.Searchset);
+        bundle.GetTypeRaw().ShouldBe("searchset");
     }
 
     [Fact]

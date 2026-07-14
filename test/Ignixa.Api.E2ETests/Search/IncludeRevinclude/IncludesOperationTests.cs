@@ -8,8 +8,8 @@ using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.FhirFakes.Builders;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
@@ -71,8 +71,8 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=2");
 
         // Assert
-        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
 
         matchEntries.Count.ShouldBe(3, "should have 3 matching locations");
         includeEntries.Count.ShouldBe(2, "should have only 2 included organizations due to _includesCount=2");
@@ -102,11 +102,11 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=10");
 
         // Assert
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
         includeEntries.Count.ShouldBe(1, "should return the single included organization");
 
         // Should not have a "related" link since all includes fit
-        var relatedLink = bundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = bundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         relatedLink.ShouldBeNull("no related link needed when all includes fit");
     }
 
@@ -145,7 +145,7 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=2");
 
         // Assert
-        var relatedLink = bundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = bundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         relatedLink.ShouldNotBeNull("should have a related link for additional includes");
         relatedLink.Url.ShouldNotBeNullOrEmpty();
         relatedLink.Url!.ShouldContain("$includes");
@@ -173,7 +173,7 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=2");
 
         // Assert
-        var relatedLink = bundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = bundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         relatedLink.ShouldBeNull("no related link when there are no includes");
     }
 
@@ -210,7 +210,7 @@ public class IncludesOperationTests : IncludeTestBase
             "Location",
             $"_tag={tag}&_include=Location:organization&_includesCount=2");
 
-        var relatedLink = initialBundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = initialBundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         relatedLink.ShouldNotBeNull("should have related link");
 
         // Follow the related link
@@ -218,10 +218,10 @@ public class IncludesOperationTests : IncludeTestBase
 
         // Assert
         includesBundle.ShouldNotBeNull();
-        includesBundle.Type.ShouldBe(BundleJsonNode.BundleType.Searchset);
+        includesBundle.GetTypeRaw().ShouldBe("searchset");
 
         // Should have entries (the remaining includes)
-        var includeEntries = includesBundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var includeEntries = includesBundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
         includeEntries.Count.ShouldBeGreaterThan(0, "should have additional includes");
     }
 
@@ -260,7 +260,7 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=3");
 
         // Collect initial includes
-        foreach (var entry in bundle.Entry.Where(e => e.Search?.Mode == "include"))
+        foreach (var entry in bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include"))
         {
             if (entry.Resource?.Id is not null)
             {
@@ -269,13 +269,13 @@ public class IncludesOperationTests : IncludeTestBase
         }
 
         // Follow related links
-        var relatedLink = bundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = bundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         while (relatedLink is not null && pageCount < maxPages)
         {
             pageCount++;
             var includesBundle = await Harness.GetBundleAsync(relatedLink.Url!);
 
-            foreach (var entry in includesBundle.Entry.Where(e => e.Search?.Mode == "include"))
+            foreach (var entry in includesBundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include"))
             {
                 if (entry.Resource?.Id is not null)
                 {
@@ -283,7 +283,7 @@ public class IncludesOperationTests : IncludeTestBase
                 }
             }
 
-            relatedLink = includesBundle.Link?.FirstOrDefault(l => l.Relation == "related");
+            relatedLink = includesBundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         }
 
         // Assert
@@ -331,9 +331,9 @@ public class IncludesOperationTests : IncludeTestBase
         // Could be successful with empty results or an error response
         if (response.IsSuccessStatusCode)
         {
-            var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+            var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
             bundle.ShouldNotBeNull();
-            bundle.Type.ShouldBe(BundleJsonNode.BundleType.Searchset);
+            bundle.GetTypeRaw().ShouldBe("searchset");
         }
         else
         {
@@ -358,7 +358,7 @@ public class IncludesOperationTests : IncludeTestBase
 
         if (response.IsSuccessStatusCode)
         {
-            var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+            var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
             bundle.ShouldNotBeNull();
         }
         else
@@ -402,8 +402,8 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_count=2&_includesCount=1");
 
         // Assert
-        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
 
         matchEntries.Count.ShouldBeLessThanOrEqualTo(2, "_count should limit matches");
         includeEntries.Count.ShouldBeLessThanOrEqualTo(1, "_includesCount should limit includes");
@@ -443,8 +443,8 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_revinclude=Observation:patient&_includesCount=2");
 
         // Assert
-        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
 
         matchEntries.Count.ShouldBe(1, "should have 1 matching patient");
         includeEntries.Count.ShouldBeLessThanOrEqualTo(2, "should limit revincludes to 2");
@@ -489,7 +489,7 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Observation:*&_includesCount=1");
 
         // Assert
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
         includeEntries.Count.ShouldBeLessThanOrEqualTo(1, "should limit total includes to 1");
     }
 
@@ -521,7 +521,7 @@ public class IncludesOperationTests : IncludeTestBase
             "Location",
             $"_tag={tag}&_include=Location:organization&_includesCount=0");
 
-        var relatedLink = initialBundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = initialBundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
 
         if (relatedLink is not null)
         {
@@ -530,7 +530,7 @@ public class IncludesOperationTests : IncludeTestBase
 
             // Assert
             includesBundle.ShouldNotBeNull();
-            includesBundle.Type.ShouldBe(BundleJsonNode.BundleType.Searchset);
+            includesBundle.GetTypeRaw().ShouldBe("searchset");
         }
     }
 
@@ -562,11 +562,11 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=0");
 
         // Assert
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
         includeEntries.Count.ShouldBe(0, "should have no includes with _includesCount=0");
 
         // Should have a related link to fetch includes
-        var relatedLink = bundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = bundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         relatedLink.ShouldNotBeNull("should have related link to fetch includes");
     }
 
@@ -598,14 +598,14 @@ public class IncludesOperationTests : IncludeTestBase
             $"_tag={tag}&_include=Location:organization&_includesCount=5");
 
         // Assert
-        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
 
         matchEntries.Count.ShouldBe(3, "should have 3 matching locations");
         includeEntries.Count.ShouldBe(1, "should have only 1 included organization (deduplicated)");
 
         // No related link since all (1) includes fit within limit (5)
-        var relatedLink = bundle.Link?.FirstOrDefault(l => l.Relation == "related");
+        var relatedLink = bundle.Link?.FirstOrDefault(l => l.GetRelationRaw() == "related");
         relatedLink.ShouldBeNull("no related link needed when all includes fit");
     }
 

@@ -179,7 +179,7 @@ public class ResourceJsonNodeAsTests
     /// <summary>
     /// Test-only facade sharing "Bundle" as its post-JsonNode-suffix-strip simple name (matching
     /// ResourceTypeRegistry's "Bundle" key) but a different CLR type than the real, registered
-    /// <see cref="BundleJsonNode"/> -- exercises the "registry produced a type other than T" branch of
+    /// <see cref="Ignixa.Models.Bundle"/> -- exercises the "registry produced a type other than T" branch of
     /// As&lt;T&gt;() (ResourceJsonNode.cs), which no other test reaches: every other As&lt;T&gt;() call in
     /// this suite either targets a registered type exactly (registry hit, type matches) or a type absent
     /// from the registry entirely (falls straight to the reflection constructor, registry never consulted).
@@ -197,7 +197,7 @@ public class ResourceJsonNodeAsTests
     {
         // Arrange: "resourceType": "Bundle" satisfies the resource-type-name check for our LOCAL
         // BundleJsonNode, and ResourceTypeRegistry.TryCreateInstance("Bundle", ...) DOES hit -- but it
-        // produces Ignixa.Serialization.BundleJsonNode (the real, hand-written one), not this local type.
+        // produces Ignixa.Models.Bundle (the real, generated one), not this local type.
         var bundleNode = ResourceJsonNode.Parse(_parametersInvalidJson);
 
         // Act

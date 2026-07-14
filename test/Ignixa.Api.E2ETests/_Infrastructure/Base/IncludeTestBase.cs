@@ -8,7 +8,8 @@ using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure.Harness;
 using Ignixa.Api.E2ETests._TestData.Scenarios;
 using Ignixa.FhirFakes.Builders;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests._Infrastructure.Base;
@@ -360,7 +361,7 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
     /// <summary>
     /// Validates that a bundle contains resources with the expected IDs.
     /// </summary>
-    protected void ValidateBundleContains(BundleJsonNode bundle, params string[] expectedIds)
+    protected void ValidateBundleContains(Bundle bundle, params string[] expectedIds)
     {
         var actualIds = bundle.Entry
             .Where(e => e.Resource is not null)
@@ -377,14 +378,14 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
     /// Validates the search entry modes in a bundle.
     /// Match resources should have mode "match", included resources should have mode "include".
     /// </summary>
-    protected void ValidateSearchEntryMode(BundleJsonNode bundle, string matchResourceType)
+    protected void ValidateSearchEntryMode(Bundle bundle, string matchResourceType)
     {
         foreach (var entry in bundle.Entry)
         {
             if (entry.Resource is null) continue;
 
             var expectedMode = entry.Resource.ResourceType == matchResourceType ? "match" : "include";
-            entry.Search?.Mode.ShouldBe(expectedMode,
+            entry.Search?.Mode?.GetLiteral().ShouldBe(expectedMode,
                 $"Resource {entry.Resource.ResourceType}/{entry.Resource.Id} should have search mode {expectedMode}");
         }
     }
@@ -392,9 +393,9 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
     /// <summary>
     /// Gets the count of resources with a specific search mode.
     /// </summary>
-    protected int GetCountBySearchMode(BundleJsonNode bundle, string mode)
+    protected int GetCountBySearchMode(Bundle bundle, string mode)
     {
-        return bundle.Entry.Count(e => e.Search?.Mode == mode);
+        return bundle.Entry.Count(e => e.Search?.Mode?.GetLiteral() == mode);
     }
 
     /// <summary>

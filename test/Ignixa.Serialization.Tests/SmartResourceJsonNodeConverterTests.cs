@@ -76,14 +76,14 @@ public class SmartResourceJsonNodeConverterTests
     }
 
     [Fact]
-    public void GivenBundleJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsBundleJsonNodeInstance()
+    public void GivenBundleJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsBundleInstance()
     {
         // Act
         var resource = ResourceJsonNode.Parse(_bundleJson);
 
         // Assert
         Assert.NotNull(resource);
-        Assert.IsType<BundleJsonNode>(resource);
+        Assert.IsType<Bundle>(resource);
         Assert.Equal("Bundle", resource.ResourceType);
         Assert.Equal("example", resource.Id);
     }
@@ -183,7 +183,7 @@ public class SmartResourceJsonNodeConverterTests
         ResourceJsonNode resource = ResourceJsonNode.Parse(_bundleJson);
 
         // Act & Assert - Can use 'is' pattern matching
-        Assert.True(resource is BundleJsonNode);
+        Assert.True(resource is Bundle);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class SmartResourceJsonNodeConverterTests
 
         // Assert - Each resource type returns its specific class
         Assert.IsType<Parameters>(parameters);
-        Assert.IsType<BundleJsonNode>(bundle);
+        Assert.IsType<Bundle>(bundle);
         Assert.IsType<OperationOutcomeJsonNode>(operationOutcome);
     }
 
@@ -275,13 +275,13 @@ public class SmartResourceJsonNodeConverterTests
         object obj = resource;
 
         // We can now use 'is' and pattern matching without manual casting
-        if (obj is BundleJsonNode bundle)
+        if (obj is Bundle bundle)
         {
-            Assert.NotNull(bundle.Type);
+            Assert.NotNull(bundle.GetTypeRaw());
         }
         else
         {
-            throw new Xunit.Sdk.XunitException("Should be BundleJsonNode");
+            throw new Xunit.Sdk.XunitException("Should be Bundle");
         }
     }
 }

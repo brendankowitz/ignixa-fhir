@@ -540,7 +540,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
             .Select(e => e.Resource!)
             .ToList();
 
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         var iterations = 1;
 
         while (!string.IsNullOrEmpty(nextLink) && iterations < 10)
@@ -553,7 +553,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
                     .Where(e => e.Resource is not null)
                     .Select(e => e.Resource!));
 
-            nextLink = nextBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+            nextLink = nextBundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
             iterations++;
         }
 
@@ -583,7 +583,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_count={count}&_tag={tag}");
 
         // Assert - Should have next link since we have more results
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next");
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next");
         nextLink.ShouldNotBeNull("There should be a next link when results exceed count");
         nextLink!.Url.ShouldNotBeNullOrEmpty();
 
@@ -604,7 +604,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
                     .Where(e => e.Resource is not null)
                     .Select(e => e.Resource!));
 
-            currentNextLink = nextBundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+            currentNextLink = nextBundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
             iterations++;
         }
 
