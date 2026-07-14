@@ -463,11 +463,33 @@ Remaining Phase 2 resources -- `ConceptMap`, `StructureMap`, `SearchParameter`, 
 `StructureDefinition` -- each still need their own generator-prerequisite step (this section's technique
 generalizes) before their strip-to-delta merges, per the Phased plan's stated order.
 
-**Open follow-up, deliberately deferred to end of Phase 2:** revisit whether
-`Ignixa.Application`/`IpsGeneratorService` targeting `Ignixa.Models.R4.Composition` directly (rather than,
-e.g., a version-dispatch abstraction that would avoid the Application-layer opt-in-package exception) is
-still the right call once the remaining Phase 2 resources are done and the full shape of this pattern is
-clearer.
+**Follow-up resolved: `IpsGeneratorService` no longer references `Ignixa.Models.R4` at all.** Revisited
+after the `StructureMap` merge established that FML's genuinely-divergent members (`Group.TypeMode`,
+`Source.DefaultValue`, etc.) could all be reached via low-level raw-JSON escape hatches on the shared base
+type, with **zero** new package dependency -- the same technique applies here and is strictly better than
+the R4-specific `ProjectReference` this doc originally recommended. `IpsGeneratorService` only ever touches
+two of Composition's version-divergent fields (`status`, `subject` -- confirmed by re-checking: it never
+reads or writes `identifier`/`relatesTo` at all), and only ever writes them, never reads them back. Added
+`Composition.SetStatusRaw(string)`/`SetSubjectRaw(Reference)` (internal instance methods on a new
+`Models/Composition.cs` partial, matching `Extension.SetValueChoiceRaw`'s exact shape) instead of
+constructing `Ignixa.Models.R4.Composition`. `Ignixa.Application.csproj`'s `ProjectReference` to
+`Ignixa.Models.R4` is removed; `IpsGeneratorService.cs` now uses the plain `Ignixa.Models.Composition`
+base type throughout, no aliasing needed.
+
+**Standing principle going forward (applies to `SearchParameter`/`Provenance`/`StructureDefinition` too):**
+avoid taking a dependency on `Ignixa.Models.R4`/`R5` from Application-layer (or any non-opt-in Core) code
+at nearly all costs. FHIRPath was evaluated as an alternative for the *read* side of these raw-JSON escape
+hatches (this codebase's FHIRPath evaluator does resolve choice-type elements polymorphically off schema
+metadata -- confirmed generic, not hardcoded) but rejected: FHIRPath is 100% read-only, so every escape
+hatch that also needs to *write* (all of the ones built so far do) would still need raw JSON manipulation
+for that half regardless, splitting one conceptual operation across two access patterns and (for
+`Ignixa.Serialization`, where these live) a new dependency edge to `Ignixa.FhirPath` that doesn't exist
+today. Raw `MutableNode`/`SetProperty` access for both directions -- matching `Extension.SetValueChoiceRaw`,
+the direct existing precedent for this exact scenario -- stays the house style: a version-specific
+`Ignixa.Models.R4`/`R5` type is reached for only when a resource's real, permanent version is fixed by an
+external constraint the feature itself is built against (an IG that only targets one version) rather than
+by convenience, and even then, prefer a narrowly-scoped raw setter over the concrete subclass if the real
+need turns out to be only a couple of fields (as it did here).
 
 **`ConceptMap` merged.** All four hand-written files (`ConceptMapJsonNode.cs`,
 `ConceptMapGroupJsonNode.cs`, `ConceptMapElementJsonNode.cs`, `ConceptMapTargetJsonNode.cs`) are deleted

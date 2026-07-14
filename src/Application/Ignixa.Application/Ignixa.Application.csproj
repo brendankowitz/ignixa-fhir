@@ -13,17 +13,6 @@
     <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.NarrativeGenerator\Ignixa.NarrativeGenerator.csproj" />
-
-    <!--
-      Ignixa.Models.R4 is an opt-in package the Application layer otherwise deliberately does not
-      reference (see docs/features/typed-models/investigations/consolidate-handwritten-facades.md).
-      This is a narrow, documented exception for the Experimental IPS generator: the International
-      Patient Summary IG (v2.0.0, STU2) is permanently R4-based upstream (see
-      docs/features/fhir-operations/investigations/ips-generator.md), so IpsGeneratorService always
-      targets Ignixa.Models.R4.Composition regardless of the tenant's configured FhirVersion; it is
-      not a general loosening of the opt-in-package rule.
-    -->
-    <ProjectReference Include="..\..\Core\Models\Ignixa.Models.R4\Ignixa.Models.R4.csproj" />
   </ItemGroup>
 
   <ItemGroup>

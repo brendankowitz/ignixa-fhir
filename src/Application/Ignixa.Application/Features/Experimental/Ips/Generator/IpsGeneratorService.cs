@@ -25,18 +25,19 @@ using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
-// The IPS IG (v2.0.0, STU2) is permanently R4-based upstream, independent of the tenant's configured
-// FhirVersion -- see docs/features/fhir-operations/investigations/ips-generator.md. Aliased (not a bare
-// `using Ignixa.Models.R4;`) so CodeableConcept/Coding/Reference/Narrative/CompositionSection keep
-// resolving to the shared, version-agnostic Ignixa.Models types already in scope.
-using Composition = Ignixa.Models.R4.Composition;
-using CompositionStatus = Ignixa.Models.R4.CompositionStatus;
-
 namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 
 /// <summary>
 /// Service for generating International Patient Summary (IPS) documents.
 /// </summary>
+/// <remarks>
+/// The IPS IG (v2.0.0, STU2) this service implements is permanently R4-based upstream, independent of
+/// the tenant's configured FhirVersion -- see docs/features/fhir-operations/investigations/ips-generator.md.
+/// The Composition it builds uses the shared, version-agnostic Ignixa.Models.Composition rather than
+/// Ignixa.Models.R4.Composition (this project deliberately avoids depending on the opt-in R4/R5
+/// packages), so the two fields that genuinely diverge between versions (status, subject) are set via
+/// Composition's internal SetStatusRaw/SetSubjectRaw escape hatches instead.
+/// </remarks>
 public class IpsGeneratorService(
     IEnumerable<IIpsGenerationStrategy> strategies,
     IQueryExecutionStrategy executionStrategy,
@@ -266,12 +267,17 @@ public class IpsGeneratorService(
         var composition = new Composition
         {
             Id = compositionId,
-            Status = CompositionStatus.Final,
             Date = context.GenerationTime.ToString("o"),
             Title = context.Strategy.CreateTitle(context),
-            Subject = Reference.FromResourceTypeAndId("Patient", context.PatientId),
             Type = CreateCompositionType()
         };
+
+        // status/subject are version-tagged on the R4/R5 subclasses (real shape divergence -- R5's
+        // subject is a list), not the shared base. Set via the low-level raw setters instead of
+        // referencing Ignixa.Models.R4 directly, since the IPS IG this produces is permanently R4-based
+        // regardless of the tenant's configured FhirVersion (see this class's remarks).
+        composition.SetStatusRaw("final");
+        composition.SetSubjectRaw(Reference.FromResourceTypeAndId("Patient", context.PatientId));
 
         composition.Meta.Profile.Add(IpsConstants.CompositionProfile);
 
