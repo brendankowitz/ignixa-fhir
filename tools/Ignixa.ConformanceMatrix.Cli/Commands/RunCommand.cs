@@ -1,5 +1,7 @@
 using System.CommandLine;
+using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.ConformanceMatrix.Cli.Reporting;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -9,11 +11,23 @@ using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.FhirFakes;
 using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Parsing;
+using Ignixa.TestScript.Reporting;
 
 namespace Ignixa.ConformanceMatrix.Cli.Commands;
 
 internal static class RunCommand
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+
+    // TestReport.tester is "the name of the tester producing this report", which is this tool — not
+    // the server under test. The server is named by participant[server].display.
+    private const string ToolName = "Ignixa.ConformanceMatrix.Cli";
+
+    // Distinguishes "nothing ran because the invocation was wrong" from "the suite ran and tests
+    // failed" (ClassifyExitCode's 1), which a CI job otherwise cannot tell apart.
+    internal const int UsageErrorExitCode = 2;
+    internal const int InternalErrorExitCode = 3;
+
     public static Command Build()
     {
         var command = new Command("run", "Run a TestScript suite against a FHIR server and write a per-impl report");
@@ -21,10 +35,19 @@ internal static class RunCommand
         var serverOption = new Option<string>("--server") { Description = "Base URL of the FHIR server", Required = true };
         var testsOption = new Option<string>("--tests") { Description = "Folder containing TestScript .json files", Required = true };
         var implOption = new Option<string>("--impl") { Description = "Implementation name (column label in the matrix)", Required = true };
-        var outOption = new Option<string>("--out") { Description = "Output path for the per-impl report JSON", Required = true };
+        var outOption = new Option<string>("--out") { Description = "Output path for the report file; --format selects its shape", Required = true };
         var fhirVersionOption = new Option<string?>("--fhir-version")
         {
             Description = "FHIR version to test against (e.g. '4.0', '4.3', '5.0'). Sets fhirVersion on the Accept header and skips tests not tagged for this version. Omit to run all tests against any server."
+        };
+        var authHeaderOption = new Option<string?>("--auth-header")
+        {
+            Description = "Authentication header value to apply to every request (for example 'Bearer <token>' or 'Authorization: Bearer <token>')"
+        };
+        var formatOption = new Option<ReportFormat>("--format")
+        {
+            Description = "Shape of the --out file: 'fhir' (a Bundle of FHIR TestReport resources, the default) or 'json' (this tool's native per-impl report, which is what 'merge' consumes)",
+            DefaultValueFactory = _ => ReportFormat.Fhir
         };
 
         command.Options.Add(serverOption);
@@ -32,6 +55,8 @@ internal static class RunCommand
         command.Options.Add(implOption);
         command.Options.Add(outOption);
         command.Options.Add(fhirVersionOption);
+        command.Options.Add(authHeaderOption);
+        command.Options.Add(formatOption);
 
         command.SetAction((parseResult, cancellationToken) =>
         {
@@ -40,26 +65,41 @@ internal static class RunCommand
             var impl = parseResult.GetValue(implOption)!;
             var outPath = parseResult.GetValue(outOption)!;
             var fhirVersion = parseResult.GetValue(fhirVersionOption);
-            return RunAsync(server, tests, impl, outPath, fhirVersion, cancellationToken);
+            var authHeader = parseResult.GetValue(authHeaderOption);
+            var format = parseResult.GetValue(formatOption);
+            return RunAsync(server, tests, impl, outPath, fhirVersion, authHeader, format, cancellationToken);
         });
 
         return command;
     }
 
-    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs the suite and writes the report, returning the process exit code: 0 when everything
+    /// passed or was skipped, 1 when tests failed or errored, 2 when the invocation was unusable so
+    /// nothing ran, and 3 on an unexpected internal failure.
+    /// </summary>
+    internal static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, string? authHeader, ReportFormat format, CancellationToken cancellationToken)
     {
         try
         {
             if (!Directory.Exists(testsPath))
             {
                 Console.Error.WriteLine($"error: --tests directory not found: {testsPath}");
-                return 1;
+                return UsageErrorExitCode;
             }
 
             if (!Uri.TryCreate(server, UriKind.Absolute, out _))
             {
                 Console.Error.WriteLine($"error: --server is not a valid absolute URI: {server}");
-                return 1;
+                return UsageErrorExitCode;
+            }
+
+            // Before the suite runs, not at write time: a typo in --out that only surfaces after a
+            // full run against a live server discards every result it just spent minutes collecting.
+            if (PrepareOutputDirectory(outPath) is { } outError)
+            {
+                Console.Error.WriteLine($"error: {outError}");
+                return UsageErrorExitCode;
             }
 
             var startedAt = DateTimeOffset.UtcNow;
@@ -71,11 +111,17 @@ internal static class RunCommand
             if (files.Count == 0)
             {
                 Console.Error.WriteLine($"error: no .json files found in {testsPath} — no tests to run");
-                return 1;
+                return UsageErrorExitCode;
             }
 
             var schema = new R4CoreSchemaProvider();
             using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
+            if (ApplyAuthHeader(httpClient, authHeader) is { } authError)
+            {
+                Console.Error.WriteLine($"error: {authError}");
+                return UsageErrorExitCode;
+            }
+
             if (fhirVersion is not null)
             {
                 var mediaType = $"application/fhir+json; fhirVersion={fhirVersion}";
@@ -94,6 +140,16 @@ internal static class RunCommand
             var capabilityStatement = await FetchCapabilityStatementAsync(httpClient, cancellationToken);
 
             var allResults = new List<ImplReportResult>();
+            var bundleResources = new List<JsonObject>();
+
+            // Only the FHIR bundle carries these; the native json report already records every
+            // failure as an "error" result, so the resource is not built at all under --format json.
+            void AddBundleResource(Func<JsonObject> resource)
+            {
+                if (format == ReportFormat.Fhir)
+                    bundleResources.Add(resource());
+            }
+
             foreach (var file in files)
             {
                 var relFile = Path.GetRelativePath(testsPath, file).Replace('\\', '/');
@@ -119,6 +175,7 @@ internal static class RunCommand
                         DurationMs = 0,
                         Error = new CellError { Assertion = "Parse exception", Received = ex.Message }
                     });
+                    AddBundleResource(() => BuildParseErrorOutcome(relFile, $"{ex.GetType().Name}: {ex.Message}"));
                     continue;
                 }
 
@@ -134,6 +191,7 @@ internal static class RunCommand
                         DurationMs = 0,
                         Error = new CellError { Assertion = "Parse error", Received = messages }
                     });
+                    AddBundleResource(() => BuildParseErrorOutcome(relFile, messages));
                     continue;
                 }
 
@@ -147,12 +205,18 @@ internal static class RunCommand
                 {
                     var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken,
                         fhirVersion: fhirVersion, capabilityStatement: capabilityStatement);
+                    AddBundleResource(() => TestReportResourceGenerator.Generate(report, new TestReportContext
+                    {
+                        Tester = ToolName,
+                        ServerUri = httpClient.BaseAddress,
+                        ServerDisplay = impl,
+                        TestScriptDisplay = relFile
+                    }));
+
                     var mapped = ReportMapper.Map(report, relFile);
                     allResults.AddRange(mapped);
 
-                    var pass = mapped.Count(r => r.Status == "pass");
-                    var fail = mapped.Count(r => MatrixBuilder.IsFail(r.Status));
-                    Console.WriteLine($"    {pass} passed, {fail} failed");
+                    Console.WriteLine($"    {FormatOutcomeSummary(mapped)}");
                 }
                 catch (OperationCanceledException)
                 {
@@ -169,26 +233,16 @@ internal static class RunCommand
                         DurationMs = 0,
                         Error = new CellError { Assertion = "Evaluator error", Received = ex.Message }
                     });
+                    AddBundleResource(() => BuildEvaluatorErrorOutcome(relFile, ex));
                 }
             }
 
             var duration = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
-            var implReport = new ImplReport
-            {
-                Impl = impl,
-                StartedAt = startedAt,
-                DurationMs = duration,
-                Results = allResults
-            };
+            var payload = BuildPayload(format, impl, startedAt, duration, allResults, bundleResources);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
-            var json = JsonSerializer.Serialize(implReport, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(outPath, json, cancellationToken);
+            await File.WriteAllTextAsync(outPath, payload, cancellationToken);
 
-            var totalPass = allResults.Count(r => r.Status == "pass");
-            var totalFail = allResults.Count(r => MatrixBuilder.IsFail(r.Status));
-            var totalError = allResults.Count(r => r.Status == "error");
-            Console.WriteLine($"\n{impl}: {totalPass} passed, {totalFail} failed, {totalError} error(s) ({duration}ms) -> {outPath}");
+            Console.WriteLine($"\n{impl}: {FormatOutcomeSummary(allResults)} ({duration}ms) -> {outPath}");
             return ClassifyExitCode(allResults);
         }
         catch (OperationCanceledException)
@@ -197,13 +251,176 @@ internal static class RunCommand
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"error: {ex.GetType().Name}: {ex.Message}");
-            return 1;
+            // The full exception, not just Message: this catch only sees bugs and unhandled
+            // transport failures, where the stack and the inner chain are the actionable part —
+            // a bare "NullReferenceException: Object reference not set" is not, and an
+            // HttpRequestException's message hides the SocketException that explains it.
+            Console.Error.WriteLine($"error: unexpected failure: {ex}");
+            return InternalErrorExitCode;
+        }
+    }
+
+    /// <summary>
+    /// Records a script the runner could not parse, so a failure that produces no TestReport still
+    /// appears in the FHIR bundle rather than only in the console scrollback.
+    /// </summary>
+    internal static JsonObject BuildParseErrorOutcome(string file, string detail) =>
+        OperationOutcomeResourceGenerator.Generate(
+            OperationOutcomeResourceGenerator.StructureIssueCode, $"{file}: {detail}");
+
+    /// <summary>Records a script whose execution threw rather than producing a report.</summary>
+    internal static JsonObject BuildEvaluatorErrorOutcome(string file, Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        return OperationOutcomeResourceGenerator.Generate(
+            OperationOutcomeResourceGenerator.ExceptionIssueCode,
+            $"{file}: {error.GetType().Name}: {error.Message}");
+    }
+
+    internal static string FormatOutcomeSummary(IReadOnlyList<ImplReportResult> results)
+    {
+        var pass = results.Count(r => r.Status == "pass");
+        var fail = results.Count(r => r.Status == "fail");
+        var skipped = results.Count(r => r.Status == "skipped");
+        var error = results.Count(r => r.Status == "error");
+        return $"{pass} passed, {fail} failed, {skipped} skipped, {error} error(s)";
+    }
+
+    // An HTTP header name cannot contain whitespace, so text before the first colon that has none
+    // is a header name and anything else is a bare credential for Authorization. This holds for
+    // any scheme — Negotiate, NTLM, AWS4-HMAC-SHA256 — without enumerating them.
+    internal static (string Name, string Value) ParseAuthHeader(string input)
+    {
+        var trimmed = input.Trim();
+        if (trimmed.Length == 0)
+            return ("Authorization", string.Empty);
+
+        var separatorIndex = trimmed.IndexOf(':');
+        if (separatorIndex > 0)
+        {
+            var name = trimmed[..separatorIndex].Trim();
+            if (name.Length > 0 && !name.Any(char.IsWhiteSpace))
+                return (name, trimmed[(separatorIndex + 1)..].Trim());
+        }
+
+        return ("Authorization", trimmed);
+    }
+
+    internal static string BuildPayload(
+        ReportFormat format,
+        string impl,
+        DateTimeOffset startedAt,
+        long durationMs,
+        IReadOnlyList<ImplReportResult> results,
+        IReadOnlyList<JsonObject> bundleResources) => format switch
+        {
+            ReportFormat.Json => SerializeImplReport(impl, startedAt, durationMs, results),
+            ReportFormat.Fhir => BuildFhirBundle(bundleResources, startedAt).ToJsonString(SerializerOptions),
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unhandled report format")
+        };
+
+    /// <summary>
+    /// Wraps the run's resources — a TestReport per executed script, an OperationOutcome per script
+    /// that could not be — in a <c>collection</c> Bundle.
+    /// </summary>
+    internal static JsonObject BuildFhirBundle(IReadOnlyList<JsonObject> resources, DateTimeOffset timestamp)
+    {
+        var payload = new JsonObject
+        {
+            ["resourceType"] = "Bundle",
+            ["type"] = "collection",
+            ["timestamp"] = timestamp.ToString("o")
+        };
+
+        if (resources.Count == 0)
+            return payload;
+
+        var entries = new JsonArray();
+        foreach (var resource in resources)
+        {
+            // Bundle.entry.fullUrl must be absolute and agree with Resource.id; these resources
+            // are never persisted and carry no id, so urn:uuid is the form that fits — and it
+            // cannot collide the way a slugified file path can.
+            entries.Add(new JsonObject
+            {
+                ["fullUrl"] = $"urn:uuid:{Guid.NewGuid()}",
+                ["resource"] = resource
+            });
+        }
+
+        // FHIR JSON prohibits empty arrays, so entry is omitted above rather than emitted as [].
+        payload["entry"] = entries;
+        return payload;
+    }
+
+    private static string SerializeImplReport(string impl, DateTimeOffset startedAt, long durationMs, IReadOnlyList<ImplReportResult> results) =>
+        JsonSerializer.Serialize(
+            new ImplReport { Impl = impl, StartedAt = startedAt, DurationMs = durationMs, Results = results },
+            SerializerOptions);
+
+    /// <summary>
+    /// Creates the directory <paramref name="path"/> will be written to, returning an error message
+    /// when the path is unusable and <c>null</c> on success.
+    /// </summary>
+    /// <remarks>
+    /// Path.GetDirectoryName returns null for a root path (e.g. "C:\"), where there is nothing to
+    /// create; Directory.CreateDirectory(null) would throw instead. Path.GetFullPath rejects invalid
+    /// path characters by throwing, which is a usage error to report rather than an internal fault.
+    /// </remarks>
+    internal static string? PrepareOutputDirectory(string path)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+            return null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+            or PathTooLongException or IOException or UnauthorizedAccessException)
+        {
+            return $"--out path is unusable: {path} ({ex.GetType().Name}: {ex.Message})";
         }
     }
 
     internal static int ClassifyExitCode(IReadOnlyList<ImplReportResult> results)
         => results.Any(r => MatrixBuilder.IsFail(r.Status)) ? 1 : 0;
+
+    /// <summary>
+    /// Applies <paramref name="authHeader"/> to <paramref name="httpClient"/>, returning an error
+    /// message when it cannot be applied and <c>null</c> on success.
+    /// </summary>
+    /// <remarks>
+    /// Every failure here must stop the run. Applying no header would exercise the whole suite
+    /// unauthenticated and report each 401 as a legitimate test failure, which is indistinguishable
+    /// from a broken server. Note the null check rather than IsNullOrWhiteSpace: an omitted flag is
+    /// null and means "no auth", while an explicit empty value is a mistake worth reporting — most
+    /// often an environment variable that expanded to nothing.
+    /// </remarks>
+    internal static string? ApplyAuthHeader(HttpClient httpClient, string? authHeader)
+    {
+        if (authHeader is null)
+            return null;
+
+        var (name, value) = ParseAuthHeader(authHeader);
+
+        if (string.IsNullOrWhiteSpace(value))
+            return $"--auth-header '{authHeader}' resolves to no header value; expected 'Bearer <token>' or 'Header-Name: <value>'. If an environment variable expands to empty, omit the flag instead of passing a blank value.";
+
+        if (name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+            && AuthenticationHeaderValue.TryParse(value, out var parsed))
+        {
+            httpClient.DefaultRequestHeaders.Authorization = parsed;
+            return null;
+        }
+
+        // TryAddWithoutValidation returns false (it does not throw) when the name is not a valid
+        // HTTP token, which would otherwise drop the credential without a trace.
+        if (!httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value))
+            return $"--auth-header name '{name}' is not a valid HTTP header name.";
+
+        return null;
+    }
 
     /// <summary>
     /// Fetches the target server's CapabilityStatement from <c>/metadata</c> once per run, so it
