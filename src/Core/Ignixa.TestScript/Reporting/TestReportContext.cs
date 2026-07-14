@@ -6,17 +6,41 @@ namespace Ignixa.TestScript.Reporting;
 /// caller so <see cref="TestReportResourceGenerator"/> can populate the matching TestReport
 /// elements. Every member is optional; omitting one drops its element rather than inventing a value.
 /// </summary>
+/// <remarks>
+/// Blank and whitespace-only values normalize to <c>null</c> on construction, so "absent" has
+/// exactly one representation. FHIR forbids empty strings, so a caller passing <c>""</c> means
+/// "I have no value" — treating that as present would emit an invalid resource.
+/// </remarks>
 public sealed record TestReportContext
 {
+    private readonly string? _tester;
+    private readonly string? _serverUri;
+    private readonly string? _testScriptDisplay;
+
     /// <summary><c>TestReport.tester</c> — the organisation or tool that executed the script.</summary>
-    public string? Tester { get; init; }
+    public string? Tester
+    {
+        get => _tester;
+        init => _tester = Normalize(value);
+    }
 
     /// <summary>Base URL of the server under test, emitted as the <c>server</c> participant.</summary>
-    public string? ServerUri { get; init; }
+    public string? ServerUri
+    {
+        get => _serverUri;
+        init => _serverUri = Normalize(value);
+    }
 
     /// <summary>
     /// <c>TestReport.testScript.display</c> — how to name the source script, e.g. a suite-relative
     /// path like <c>Search/intervals.json</c>. Defaults to the report's TestScript name.
     /// </summary>
-    public string? TestScriptDisplay { get; init; }
+    public string? TestScriptDisplay
+    {
+        get => _testScriptDisplay;
+        init => _testScriptDisplay = Normalize(value);
+    }
+
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

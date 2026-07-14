@@ -74,6 +74,140 @@ public class RunCommandTests
     }
 
     [Fact]
+    public void GivenNoAuthHeader_WhenApplying_ThenSucceedsWithoutSettingAHeader()
+    {
+        // Arrange
+        using var httpClient = new HttpClient();
+
+        // Act
+        var error = RunCommand.ApplyAuthHeader(httpClient, null);
+
+        // Assert
+        error.ShouldBeNull();
+        httpClient.DefaultRequestHeaders.Authorization.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Authorization:")]
+    [InlineData("X-Api-Key:   ")]
+    public void GivenAuthHeaderWithNoValue_WhenApplying_ThenReportsErrorRatherThanRunningUnauthenticated(string authHeader)
+    {
+        // Arrange: an env var expanding to empty is the common case; applying nothing would run the
+        // whole suite unauthenticated and report every 401 as a legitimate failure.
+        using var httpClient = new HttpClient();
+
+        // Act
+        var error = RunCommand.ApplyAuthHeader(httpClient, authHeader);
+
+        // Assert
+        error.ShouldNotBeNull();
+        error.ShouldContain("resolves to no header value");
+        httpClient.DefaultRequestHeaders.Authorization.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenInvalidHeaderName_WhenApplying_ThenReportsErrorRatherThanDroppingTheCredential()
+    {
+        // Arrange: '@' is not a valid HTTP token, so TryAddWithoutValidation returns false.
+        using var httpClient = new HttpClient();
+
+        // Act
+        var error = RunCommand.ApplyAuthHeader(httpClient, "Api@Key: abc123");
+
+        // Assert
+        error.ShouldNotBeNull();
+        error.ShouldContain("not a valid HTTP header name");
+    }
+
+    [Fact]
+    public void GivenBearerToken_WhenApplying_ThenSetsAuthorizationHeaderOnTheClient()
+    {
+        // Arrange
+        using var httpClient = new HttpClient();
+
+        // Act
+        var error = RunCommand.ApplyAuthHeader(httpClient, "Bearer abc123");
+
+        // Assert
+        error.ShouldBeNull();
+        httpClient.DefaultRequestHeaders.Authorization!.Scheme.ShouldBe("Bearer");
+        httpClient.DefaultRequestHeaders.Authorization.Parameter.ShouldBe("abc123");
+    }
+
+    [Fact]
+    public void GivenCustomHeaderName_WhenApplying_ThenAddsItToTheClient()
+    {
+        // Arrange
+        using var httpClient = new HttpClient();
+
+        // Act
+        var error = RunCommand.ApplyAuthHeader(httpClient, "X-Api-Key: abc123");
+
+        // Assert
+        error.ShouldBeNull();
+        httpClient.DefaultRequestHeaders.GetValues("X-Api-Key").ShouldBe(["abc123"]);
+    }
+
+    [Fact]
+    public void GivenUnparseableAuthorizationValue_WhenApplying_ThenFallsBackToAddingItVerbatim()
+    {
+        // Arrange: a credential Authorization cannot parse must still reach the wire.
+        using var httpClient = new HttpClient();
+
+        // Act
+        var error = RunCommand.ApplyAuthHeader(httpClient, "Authorization: AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
+
+        // Assert
+        error.ShouldBeNull();
+        httpClient.DefaultRequestHeaders.GetValues("Authorization")
+            .ShouldBe(["AWS4-HMAC-SHA256 Credential=abc/20260714:xyz"]);
+    }
+
+    [Fact]
+    public void GivenJsonFormat_WhenBuildingPayload_ThenProducesTheNativeImplReportShape()
+    {
+        // Arrange: this is the shape 'merge' deserializes; a regression breaks the matrix pipeline.
+        var results = new List<ImplReportResult> { MakeResult("pass") };
+
+        // Act
+        var payload = RunCommand.BuildPayload(ReportFormat.Json, "my-server", DateTimeOffset.UnixEpoch, 42, results, []);
+
+        // Assert
+        var parsed = JsonNode.Parse(payload)!;
+        parsed["impl"]!.GetValue<string>().ShouldBe("my-server");
+        parsed["duration_ms"]!.GetValue<long>().ShouldBe(42);
+        parsed["results"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenFhirFormat_WhenBuildingPayload_ThenProducesATestReportBundle()
+    {
+        // Act
+        var payload = RunCommand.BuildPayload(
+            ReportFormat.Fhir, "my-server", DateTimeOffset.UnixEpoch, 42, [], [MakeTestReport("Search/basic.json")]);
+
+        // Assert
+        var parsed = JsonNode.Parse(payload)!;
+        parsed["resourceType"]!.GetValue<string>().ShouldBe("Bundle");
+        parsed["entry"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenNoReports_WhenBuildingPayload_ThenOmitsEntryBecauseFhirForbidsEmptyArrays()
+    {
+        // Arrange: reachable when every script fails to parse.
+
+        // Act
+        var payload = RunCommand.BuildTestReportPayload([], DateTimeOffset.UnixEpoch);
+
+        // Assert
+        payload["resourceType"]!.GetValue<string>().ShouldBe("Bundle");
+        payload.ContainsKey("entry").ShouldBeFalse();
+    }
+
+    [Fact]
     public void GivenSingleReport_WhenBuildingPayload_ThenStillReturnsBundleCollection()
     {
         var payload = RunCommand.BuildTestReportPayload([MakeTestReport("Search/basic.json")], DateTimeOffset.UnixEpoch);
@@ -85,16 +219,20 @@ public class RunCommandTests
     }
 
     [Fact]
-    public void GivenMultipleReports_WhenBuildingPayload_ThenEntriesCarryFullUrlSlugs()
+    public void GivenMultipleReports_WhenBuildingPayload_ThenEntriesCarryUniqueAbsoluteFullUrls()
     {
+        // Arrange/Act: fullUrl must be absolute per R4, and unique within the Bundle per bdl-7.
         var payload = RunCommand.BuildTestReportPayload(
             [MakeTestReport("Search/intervals.json"), MakeTestReport("CRUD/basic.json")],
             DateTimeOffset.UnixEpoch);
 
+        // Assert
         var entries = payload["entry"]!.AsArray();
         entries.Count.ShouldBe(2);
-        entries[0]!["fullUrl"]!.GetValue<string>().ShouldBe("TestReport/search-intervals-json");
-        entries[1]!["fullUrl"]!.GetValue<string>().ShouldBe("TestReport/crud-basic-json");
+
+        var fullUrls = entries.Select(e => e!["fullUrl"]!.GetValue<string>()).ToList();
+        fullUrls.ShouldAllBe(url => Uri.IsWellFormedUriString(url, UriKind.Absolute));
+        fullUrls.Distinct().Count().ShouldBe(2);
         entries[0]!["resource"]!["resourceType"]!.GetValue<string>().ShouldBe("TestReport");
     }
 

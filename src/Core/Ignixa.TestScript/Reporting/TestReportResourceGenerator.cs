@@ -18,7 +18,7 @@ public static class TestReportResourceGenerator
             ["participant"] = GenerateParticipants(context)
         };
 
-        if (context?.Tester is { Length: > 0 } tester)
+        if (context?.Tester is { } tester)
             testReport["tester"] = tester;
 
         if (report.SetupResult is not null)
@@ -39,6 +39,9 @@ public static class TestReportResourceGenerator
     private static JsonObject GenerateTestScriptReference(TestScriptReport report, TestReportContext? context) =>
         new() { ["display"] = context?.TestScriptDisplay ?? report.TestScriptName };
 
+    // TestReportContext normalizes blank values to null, so a plain null check is enough here and
+    // an empty TestScriptDisplay falls back to the script name rather than emitting "display": "".
+
     // participant.uri is 1..1, so the server entry only appears once a URI is known. The
     // test-engine entry is this library, which is true regardless of what the caller supplies.
     private static JsonArray GenerateParticipants(TestReportContext? context)
@@ -53,7 +56,7 @@ public static class TestReportResourceGenerator
             }
         };
 
-        if (context?.ServerUri is { Length: > 0 } serverUri)
+        if (context?.ServerUri is { } serverUri)
         {
             participants.Insert(0, new JsonObject
             {

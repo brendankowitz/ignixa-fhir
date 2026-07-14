@@ -94,7 +94,12 @@ internal static class RunCommand
 
             var schema = new R4CoreSchemaProvider();
             using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
-            ApplyAuthHeader(httpClient, authHeader);
+            if (ApplyAuthHeader(httpClient, authHeader) is { } authError)
+            {
+                Console.Error.WriteLine($"error: {authError}");
+                return 1;
+            }
+
             if (fhirVersion is not null)
             {
                 var mediaType = $"application/fhir+json; fhirVersion={fhirVersion}";
@@ -201,9 +206,7 @@ internal static class RunCommand
             }
 
             var duration = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
-            var payload = format == ReportFormat.Json
-                ? SerializeImplReport(impl, startedAt, duration, allResults)
-                : BuildTestReportPayload(testReports, startedAt).ToJsonString(SerializerOptions);
+            var payload = BuildPayload(format, impl, startedAt, duration, allResults, testReports);
 
             EnsureDirectoryExists(outPath);
             await File.WriteAllTextAsync(outPath, payload, cancellationToken);
@@ -251,35 +254,47 @@ internal static class RunCommand
         return ("Authorization", trimmed);
     }
 
+    internal static string BuildPayload(
+        ReportFormat format,
+        string impl,
+        DateTimeOffset startedAt,
+        long durationMs,
+        IReadOnlyList<ImplReportResult> results,
+        IReadOnlyList<JsonObject> testReports) => format switch
+        {
+            ReportFormat.Json => SerializeImplReport(impl, startedAt, durationMs, results),
+            ReportFormat.Fhir => BuildTestReportPayload(testReports, startedAt).ToJsonString(SerializerOptions),
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unhandled report format")
+        };
+
     internal static JsonObject BuildTestReportPayload(IReadOnlyList<JsonObject> reports, DateTimeOffset timestamp)
     {
+        var payload = new JsonObject
+        {
+            ["resourceType"] = "Bundle",
+            ["type"] = "collection",
+            ["timestamp"] = timestamp.ToString("o")
+        };
+
+        if (reports.Count == 0)
+            return payload;
+
         var entries = new JsonArray();
         foreach (var report in reports)
         {
+            // Bundle.entry.fullUrl must be absolute and agree with Resource.id; these TestReports
+            // are never persisted and carry no id, so urn:uuid is the form that fits — and it
+            // cannot collide the way a slugified file path can.
             entries.Add(new JsonObject
             {
-                ["fullUrl"] = $"TestReport/{SlugifyReport(report)}",
+                ["fullUrl"] = $"urn:uuid:{Guid.NewGuid()}",
                 ["resource"] = report
             });
         }
 
-        return new JsonObject
-        {
-            ["resourceType"] = "Bundle",
-            ["type"] = "collection",
-            ["timestamp"] = timestamp.ToString("o"),
-            ["entry"] = entries
-        };
-    }
-
-    private static string SlugifyReport(JsonObject report)
-    {
-        var source = report["testScript"]?["display"]?.GetValue<string>()
-            ?? report["name"]?.GetValue<string>()
-            ?? "testreport";
-
-        var normalized = new string([.. source.Select(c => char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')]);
-        return string.Join('-', normalized.Split('-', StringSplitOptions.RemoveEmptyEntries));
+        // FHIR JSON prohibits empty arrays, so entry is omitted above rather than emitted as [].
+        payload["entry"] = entries;
+        return payload;
     }
 
     private static string SerializeImplReport(string impl, DateTimeOffset startedAt, long durationMs, IReadOnlyList<ImplReportResult> results) =>
@@ -299,28 +314,40 @@ internal static class RunCommand
     internal static int ClassifyExitCode(IReadOnlyList<ImplReportResult> results)
         => results.Any(r => MatrixBuilder.IsFail(r.Status)) ? 1 : 0;
 
-    private static void ApplyAuthHeader(HttpClient httpClient, string? authHeader)
+    /// <summary>
+    /// Applies <paramref name="authHeader"/> to <paramref name="httpClient"/>, returning an error
+    /// message when it cannot be applied and <c>null</c> on success.
+    /// </summary>
+    /// <remarks>
+    /// Every failure here must stop the run. Applying no header would exercise the whole suite
+    /// unauthenticated and report each 401 as a legitimate test failure, which is indistinguishable
+    /// from a broken server. Note the null check rather than IsNullOrWhiteSpace: an omitted flag is
+    /// null and means "no auth", while an explicit empty value is a mistake worth reporting — most
+    /// often an environment variable that expanded to nothing.
+    /// </remarks>
+    internal static string? ApplyAuthHeader(HttpClient httpClient, string? authHeader)
     {
-        if (string.IsNullOrWhiteSpace(authHeader))
-            return;
+        if (authHeader is null)
+            return null;
 
         var (name, value) = ParseAuthHeader(authHeader);
 
-        // Returning quietly here would run the whole suite unauthenticated and report every test
-        // as a legitimate 401 failure, which looks identical to a broken server.
         if (string.IsNullOrWhiteSpace(value))
-            throw new ArgumentException($"--auth-header '{authHeader}' has no header value; expected 'Bearer <token>' or 'Header-Name: <value>'.", nameof(authHeader));
+            return $"--auth-header '{authHeader}' resolves to no header value; expected 'Bearer <token>' or 'Header-Name: <value>'. If an environment variable expands to empty, omit the flag instead of passing a blank value.";
 
-        if (name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+        if (name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+            && AuthenticationHeaderValue.TryParse(value, out var parsed))
         {
-            if (AuthenticationHeaderValue.TryParse(value, out var parsed))
-                httpClient.DefaultRequestHeaders.Authorization = parsed;
-            else
-                httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value);
-            return;
+            httpClient.DefaultRequestHeaders.Authorization = parsed;
+            return null;
         }
 
-        httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value);
+        // TryAddWithoutValidation returns false (it does not throw) when the name is not a valid
+        // HTTP token, which would otherwise drop the credential without a trace.
+        if (!httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value))
+            return $"--auth-header name '{name}' is not a valid HTTP header name.";
+
+        return null;
     }
 
     /// <summary>

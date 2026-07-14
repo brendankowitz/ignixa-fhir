@@ -80,6 +80,65 @@ public class TestReportResourceGeneratorTests
         participants[1]!["type"]!.GetValue<string>().ShouldBe("test-engine");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GivenBlankTestScriptDisplay_WhenGenerating_ThenFallsBackToScriptNameRatherThanEmittingEmptyString(string display)
+    {
+        // Arrange: FHIR forbids empty strings, so a blank display must not reach the resource.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "ReadPatientTest",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, new TestReportContext { TestScriptDisplay = display });
+
+        // Assert
+        json["testScript"]!["display"]!.GetValue<string>().ShouldBe("ReadPatientTest");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GivenBlankContextValues_WhenGenerating_ThenOmitsTesterAndServerParticipant(string blank)
+    {
+        // Arrange
+        var report = new TestScriptReport
+        {
+            TestScriptName = "Blank",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, new TestReportContext { Tester = blank, ServerUri = blank });
+
+        // Assert
+        json["tester"].ShouldBeNull();
+        json["participant"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenPaddedContextValues_WhenGenerating_ThenTrimsThem()
+    {
+        // Arrange
+        var report = new TestScriptReport
+        {
+            TestScriptName = "Padded",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, new TestReportContext { Tester = "  my-server  " });
+
+        // Assert
+        json["tester"]!.GetValue<string>().ShouldBe("my-server");
+    }
+
     [Fact]
     public void GivenNoServerUri_WhenGenerating_ThenOmitsServerParticipant()
     {
