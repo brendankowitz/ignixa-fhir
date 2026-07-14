@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Experimental.Transform;
@@ -27,7 +27,7 @@ namespace Ignixa.Application.Features.Experimental.Transform;
 /// <param name="Content">Input resource to transform (required)</param>
 public record TransformResourceCommand(
     string? Source = null,
-    StructureMapJsonNode? SourceMap = null,
+    StructureMap? SourceMap = null,
     IReadOnlyList<string>? SrcMaps = null,
-    IReadOnlyList<StructureMapJsonNode>? SupportingMaps = null,
+    IReadOnlyList<StructureMap>? SupportingMaps = null,
     ResourceJsonNode? Content = null) : IRequest<ResourceJsonNode>;

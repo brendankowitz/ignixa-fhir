@@ -7,10 +7,14 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+
+// Ignixa.Models also defines an "Expression" datatype (FHIR's Expression, e.g. used by DataRequirement) --
+// disambiguate in favor of this AST's own Expression, used pervasively throughout this file.
+using Expression = Ignixa.FhirMappingLanguage.Expressions.Expression;
 
 namespace Ignixa.FhirMappingLanguage.Serialization;
 
@@ -35,12 +39,12 @@ public class StructureMapBuilder
     /// Builds a FHIR StructureMap resource from a MapExpression AST.
     /// </summary>
     /// <param name="map">The parsed map expression.</param>
-    /// <returns>A StructureMapJsonNode representing the StructureMap resource.</returns>
-    public StructureMapJsonNode Build(MapExpression map)
+    /// <returns>A StructureMap representing the StructureMap resource.</returns>
+    public StructureMap Build(MapExpression map)
     {
         ArgumentNullException.ThrowIfNull(map);
 
-        var structureMap = new StructureMapJsonNode
+        var structureMap = new StructureMap
         {
             Url = map.Url,
             Name = map.Identifier,
@@ -81,13 +85,13 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a structure element from a UsesExpression.
     /// </summary>
-    private StructureMapStructureJsonNode BuildStructure(UsesExpression uses)
+    private StructureMapStructure BuildStructure(UsesExpression uses)
     {
-        var structure = new StructureMapStructureJsonNode
+        var structure = new StructureMapStructure
         {
             Url = uses.Url,
             Alias = uses.Alias,
-            Mode = ConvertToStructureMapModelMode(uses.Mode)
+            Mode = ConvertToModelMode(uses.Mode)
         };
         structure.FhirVersion = _targetVersion;
         return structure;
@@ -96,9 +100,9 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a group element from a GroupExpression.
     /// </summary>
-    private StructureMapGroupJsonNode BuildGroup(GroupExpression group)
+    private StructureMapGroup BuildGroup(GroupExpression group)
     {
-        var groupNode = new StructureMapGroupJsonNode
+        var groupNode = new StructureMapGroup
         {
             Name = group.Name,
             Extends = group.Extends
@@ -107,9 +111,13 @@ public class StructureMapBuilder
         // Inherit FhirVersion from builder
         groupNode.FhirVersion = _targetVersion;
 
-        // TypeMode is required in R4, optional in R5+
-        // Set to None for both versions (valid default)
-        groupNode.TypeMode = StructureMapGroupTypeMode.None;
+        // typeMode is required in R4/R4B (map-group-type-mode value set has "none" as a valid default);
+        // R5 dropped "none" from the value set entirely (only types|type-and-types remain) and made the
+        // element optional, so omit it there rather than writing a value R5 doesn't accept.
+        if (_targetVersion < FhirVersion.R5)
+        {
+            groupNode.MutableNode["typeMode"] = "none";
+        }
 
         // Add input parameters
         foreach (var param in group.Parameters)
@@ -129,13 +137,13 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds an input element from a ParameterExpression.
     /// </summary>
-    private StructureMapInputJsonNode BuildInput(ParameterExpression parameter)
+    private StructureMapGroupInput BuildInput(ParameterExpression parameter)
     {
-        var input = new StructureMapInputJsonNode
+        var input = new StructureMapGroupInput
         {
             Name = parameter.Name,
             Type = parameter.Type,
-            Mode = ConvertToStructureMapInputMode(parameter.Mode)
+            Mode = ConvertToInputMode(parameter.Mode)
         };
         input.FhirVersion = _targetVersion;
         return input;
@@ -144,9 +152,9 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a rule element from a RuleExpression.
     /// </summary>
-    private StructureMapRuleJsonNode BuildRule(RuleExpression rule)
+    private StructureMapGroupRule BuildRule(RuleExpression rule)
     {
-        var ruleNode = new StructureMapRuleJsonNode
+        var ruleNode = new StructureMapGroupRule
         {
             Name = rule.Name
         };
@@ -192,11 +200,11 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a source element from a SourceExpression.
     /// </summary>
-    private StructureMapSourceJsonNode BuildSource(SourceExpression source)
+    private StructureMapGroupRuleSource BuildSource(SourceExpression source)
     {
         var (context, element) = ExtractContextAndElement(source.Context);
 
-        var sourceNode = new StructureMapSourceJsonNode
+        var sourceNode = new StructureMapGroupRuleSource
         {
             Context = context,
             Element = element,
@@ -246,9 +254,9 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a target element from a TargetExpression.
     /// </summary>
-    private StructureMapTargetJsonNode BuildTarget(TargetExpression target)
+    private StructureMapGroupRuleTarget BuildTarget(TargetExpression target)
     {
-        var targetNode = new StructureMapTargetJsonNode
+        var targetNode = new StructureMapGroupRuleTarget
         {
             Variable = target.Variable
         };
@@ -260,7 +268,7 @@ public class StructureMapBuilder
         if (target.Context is not null)
         {
             var (context, element) = ExtractContextAndElement(target.Context);
-            targetNode.Context = context;
+            targetNode.SetContext(context);
             targetNode.Element = element;
         }
 
@@ -285,7 +293,7 @@ public class StructureMapBuilder
 
                 case LiteralExpression literal:
                     // Direct assignment - use 'copy' transform with the value
-                    targetNode.Transform = StructureMapTransform.Copy;
+                    targetNode.Transform = MapTransform.Copy;
                     var literalParam = BuildParameter(literal);
                     literalParam.FhirVersion = _targetVersion;
                     targetNode.Parameter.Add(literalParam);
@@ -293,8 +301,8 @@ public class StructureMapBuilder
 
                 case IdentifierExpression identifier:
                     // Variable reference - use 'copy' transform
-                    targetNode.Transform = StructureMapTransform.Copy;
-                    var identifierParam = new StructureMapParameterJsonNode();
+                    targetNode.Transform = MapTransform.Copy;
+                    var identifierParam = new StructureMapGroupRuleTargetParameter();
                     identifierParam.FhirVersion = _targetVersion;
                     identifierParam.SetValue("Id", JsonValue.Create(identifier.Name));
                     targetNode.Parameter.Add(identifierParam);
@@ -302,8 +310,8 @@ public class StructureMapBuilder
 
                 case QualifiedIdentifierExpression qualifiedId:
                     // Qualified reference - use 'copy' transform
-                    targetNode.Transform = StructureMapTransform.Copy;
-                    var qualParam = new StructureMapParameterJsonNode();
+                    targetNode.Transform = MapTransform.Copy;
+                    var qualParam = new StructureMapGroupRuleTargetParameter();
                     qualParam.FhirVersion = _targetVersion;
                     qualParam.SetValue("String", JsonValue.Create(ExpressionToString(qualifiedId)));
                     targetNode.Parameter.Add(qualParam);
@@ -323,9 +331,9 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a dependent element from a GroupInvocationExpression.
     /// </summary>
-    private StructureMapDependentJsonNode BuildDependent(GroupInvocationExpression invocation)
+    private StructureMapGroupRuleDependent BuildDependent(GroupInvocationExpression invocation)
     {
-        var dependent = new StructureMapDependentJsonNode
+        var dependent = new StructureMapGroupRuleDependent
         {
             Name = invocation.GroupName
         };
@@ -333,25 +341,27 @@ public class StructureMapBuilder
         // Inherit FhirVersion from builder
         dependent.FhirVersion = _targetVersion;
 
-        // Add arguments using version-appropriate method
+        // Add arguments using version-appropriate method. Dependent.parameter/variable aren't on the
+        // shared base (R4 has variable, R5+ has parameter) so both branches go through MutableNode
+        // directly rather than a typed list property.
         if (_targetVersion >= FhirVersion.R5)
         {
-            // R5+: Use structured parameters
+            // R5+: Use structured parameters (preserves the argument's real type, e.g. an int literal
+            // stays valueInteger rather than being flattened to a string).
+            var parameterArray = (JsonArray)(dependent.MutableNode["parameter"] ??= new JsonArray());
             foreach (var arg in invocation.Arguments)
             {
                 var param = BuildParameter(arg);
                 param.FhirVersion = _targetVersion;
-                dependent.Parameter.Add(param);
+                parameterArray.Add(param.MutableNode);
             }
         }
         else
         {
             // R4/R4B: Use simple string variables
-            // Extract string representations from arguments
             foreach (var arg in invocation.Arguments)
             {
-                var variable = ExpressionToString(arg);
-                dependent.Variable.Add(variable);
+                dependent.AddDependentVariable(ExpressionToString(arg));
             }
         }
 
@@ -361,9 +371,9 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a parameter object from an expression.
     /// </summary>
-    private static StructureMapParameterJsonNode BuildParameter(Expression expression)
+    private static StructureMapGroupRuleTargetParameter BuildParameter(Expression expression)
     {
-        var param = new StructureMapParameterJsonNode();
+        var param = new StructureMapGroupRuleTargetParameter();
 
         switch (expression)
         {
@@ -445,24 +455,24 @@ public class StructureMapBuilder
     }
 
     /// <summary>
-    /// Converts ModelMode to StructureMapModelMode.
+    /// Converts ModelMode to MapModelMode.
     /// </summary>
-    private static StructureMapModelMode ConvertToStructureMapModelMode(ModelMode mode) => mode switch
+    private static MapModelMode ConvertToModelMode(ModelMode mode) => mode switch
     {
-        ModelMode.Source => StructureMapModelMode.Source,
-        ModelMode.Target => StructureMapModelMode.Target,
-        ModelMode.Queried => StructureMapModelMode.Queried,
-        ModelMode.Produced => StructureMapModelMode.Produced,
+        ModelMode.Source => MapModelMode.Source,
+        ModelMode.Target => MapModelMode.Target,
+        ModelMode.Queried => MapModelMode.Queried,
+        ModelMode.Produced => MapModelMode.Produced,
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid model mode")
     };
 
     /// <summary>
-    /// Converts ParameterMode to StructureMapInputMode.
+    /// Converts ParameterMode to MapInputMode.
     /// </summary>
-    private static StructureMapInputMode ConvertToStructureMapInputMode(ParameterMode mode) => mode switch
+    private static MapInputMode ConvertToInputMode(ParameterMode mode) => mode switch
     {
-        ParameterMode.Source => StructureMapInputMode.Source,
-        ParameterMode.Target => StructureMapInputMode.Target,
+        ParameterMode.Source => MapInputMode.Source,
+        ParameterMode.Target => MapInputMode.Target,
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid parameter mode")
     };
 
@@ -482,12 +492,12 @@ public class StructureMapBuilder
     };
 
     /// <summary>
-    /// Tries to parse a transform function name to StructureMapTransform enum.
+    /// Tries to parse a transform function name to MapTransform enum.
     /// </summary>
-    private static bool TryParseTransformName(string functionName, out StructureMapTransform transform)
+    private static bool TryParseTransformName(string functionName, out MapTransform transform)
     {
-        var parsed = EnumUtility.ParseLiteral<StructureMapTransform>(functionName);
-        transform = parsed ?? StructureMapTransform.Copy;
+        var parsed = EnumUtility.ParseLiteral<MapTransform>(functionName);
+        transform = parsed ?? MapTransform.Copy;
         return parsed.HasValue;
     }
 

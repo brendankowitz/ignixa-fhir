@@ -111,9 +111,12 @@ public class StructureMapBuilderVersionTests
         var dependent = rule.Dependent[0];
         dependent.Name.ShouldBe("Helper");
 
-        // R5 should use Parameter property (not Variable)
-        dependent.Parameter.Count.ShouldBe(1);
-        dependent.Parameter[0].GetValueAs<string>().ShouldBe("src");
+        // R5 should use the parameter array (not variable) -- Dependent.Parameter/.Variable aren't on
+        // the shared base (they're R4-only/R5-only respectively), so wire shape is asserted directly and
+        // the value is read back via the version-agnostic GetDependentVariables() wrapper.
+        dependent.MutableNode().ContainsKey("parameter").ShouldBeTrue();
+        dependent.MutableNode().ContainsKey("variable").ShouldBeFalse();
+        dependent.GetDependentVariables().ShouldContain("src");
     }
 
     [Fact]
@@ -142,9 +145,10 @@ public class StructureMapBuilderVersionTests
         var dependent = rule.Dependent[0];
         dependent.Name.ShouldBe("Helper");
 
-        // R4 should use Variable property (not Parameter)
-        dependent.Variable.Count.ShouldBe(1);
-        dependent.Variable.ShouldContain("src");
+        // R4 should use the variable array (not parameter)
+        dependent.MutableNode().ContainsKey("variable").ShouldBeTrue();
+        dependent.MutableNode().ContainsKey("parameter").ShouldBeFalse();
+        dependent.GetDependentVariables().ShouldContain("src");
     }
 
     [Fact]
@@ -167,8 +171,8 @@ public class StructureMapBuilderVersionTests
         // Assert
         var source = structureMap.Group[0].Rule[0].Source[0];
 
-        // R5 should use DefaultValue property
-        source.DefaultValue.ShouldBe("'Unknown'");
+        // R5 should use the plain defaultValue string
+        source.GetDefaultValueString().ShouldBe("'Unknown'");
     }
 
     [Fact]
@@ -196,92 +200,17 @@ public class StructureMapBuilderVersionTests
         source.MutableNode()["defaultValueString"]!.GetValue<string>().ShouldBe("'Unknown'");
     }
 
-    [Fact]
-    public void GivenR5Builder_WhenBuildingMap_ThenCanAccessR5Properties()
-    {
-        // Arrange
-        var fml = """
-            map 'http://example.org/test' = 'TestMap'
-
-            group Main(source src : Patient, target tgt : Bundle) {
-            }
-            """;
-        var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirVersion.R5);
-
-        // Act
-        var structureMap = builder.Build(ast);
-
-        // Assert - These should NOT throw
-        structureMap.VersionAlgorithmString = "semver";
-        structureMap.CopyrightLabel = "© 2025";
-        structureMap.VersionAlgorithmString.ShouldBe("semver");
-        structureMap.CopyrightLabel.ShouldBe("© 2025");
-    }
-
-    [Fact]
-    public void GivenR4Builder_WhenBuildingMap_ThenCannotAccessR5Properties()
-    {
-        // Arrange
-        var fml = """
-            map 'http://example.org/test' = 'TestMap'
-
-            group Main(source src : Patient, target tgt : Bundle) {
-            }
-            """;
-        var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirVersion.R4);
-
-        // Act
-        var structureMap = builder.Build(ast);
-
-        // Assert - These SHOULD throw
-        Assert.Throws<NotSupportedException>(() => structureMap.VersionAlgorithmString = "semver");
-        Assert.Throws<NotSupportedException>(() => _ = structureMap.CopyrightLabel);
-    }
-
-    [Fact]
-    public void GivenR5Builder_WhenBuildingMap_ThenGroupTypeModeCanBeOptional()
-    {
-        // Arrange
-        var fml = """
-            map 'http://example.org/test' = 'TestMap'
-
-            group Main(source src : Patient, target tgt : Bundle) {
-            }
-            """;
-        var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirVersion.R5);
-
-        // Act
-        var structureMap = builder.Build(ast);
-        var group = structureMap.Group[0];
-
-        // Assert - TypeMode can be set to null in R5
-        group.TypeMode = null;
-        group.TypeMode.ShouldBeNull();
-    }
-
-    [Fact]
-    public void GivenR4Builder_WhenBuildingMap_ThenGroupTypeModeIsRequired()
-    {
-        // Arrange
-        var fml = """
-            map 'http://example.org/test' = 'TestMap'
-
-            group Main(source src : Patient, target tgt : Bundle) {
-            }
-            """;
-        var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirVersion.R4);
-
-        // Act
-        var structureMap = builder.Build(ast);
-        var group = structureMap.Group[0];
-
-        // Assert - TypeMode cannot be set to null in R4
-        Assert.Throws<ArgumentNullException>(() => group.TypeMode = null);
-    }
+    // GivenR5Builder_WhenBuildingMap_ThenCanAccessR5Properties / GivenR4Builder_..._ThenCannotAccessR5Properties
+    // and the GroupTypeMode pair below them were removed: they tested the hand-written type's runtime
+    // version guards (NotSupportedException/ArgumentNullException) for VersionAlgorithmString,
+    // CopyrightLabel, and Group.TypeMode. None of those three are used by any real caller (confirmed by
+    // repo-wide grep before the merge), so they weren't given a version-agnostic wrapper -- the guard is
+    // now a compile-time one instead: those members simply don't exist on the shared Ignixa.Models
+    // base at all (VersionAlgorithmString/CopyrightLabel are R5-only fields on Ignixa.Models.R5.StructureMap;
+    // TypeMode is on both Ignixa.Models.R4.StructureMapGroup and Ignixa.Models.R5.StructureMapGroup). See
+    // docs/features/typed-models/investigations/consolidate-handwritten-facades.md for the Group.TypeMode
+    // fix this merge made in StructureMapBuilder (the old code unconditionally wrote "none", which is
+    // invalid in R5 since R5's map-group-type-mode value set dropped that literal).
 
     [Fact]
     public void GivenR5Builder_WhenUsingExtensionMethods_ThenSupportsConstantsIsTrue()

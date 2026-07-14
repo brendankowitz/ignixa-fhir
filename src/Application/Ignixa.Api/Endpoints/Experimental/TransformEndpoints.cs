@@ -6,6 +6,7 @@
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Experimental.Transform;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -128,9 +129,9 @@ public static class TransformEndpoints
         }
 
         var source = parameters.GetParameterStringValue("source");
-        var sourceMap = parameters.GetParameterResource<StructureMapJsonNode>("sourceMap");
+        var sourceMap = parameters.GetParameterResource<StructureMap>("sourceMap");
         var srcMaps = parameters.GetParameterStringValues("srcMap").ToList();
-        var supportingMaps = parameters.GetParameterResources<StructureMapJsonNode>("supportingMap").ToList();
+        var supportingMaps = parameters.GetParameterResources<StructureMap>("supportingMap").ToList();
         var content = parameters.GetParameterResource<ResourceJsonNode>("content");
 
         var command = new TransformResourceCommand(

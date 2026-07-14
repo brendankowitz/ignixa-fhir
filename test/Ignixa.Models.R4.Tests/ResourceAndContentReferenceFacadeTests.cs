@@ -3,7 +3,6 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
 using Xunit;
@@ -79,7 +78,7 @@ public sealed class ResourceAndContentReferenceFacadeTests
         // FIRST use of MutableJsonList<ResourceJsonNode> anywhere in the process (a static factory
         // initializer that could never find a public (JsonObject, FhirVersion) constructor). Nothing in
         // the codebase exercised this property before now.
-        var map = new StructureMapJsonNode();
+        var map = new Ignixa.Models.StructureMap();
 
         Should.NotThrow(() => map.Contained.Count);
 

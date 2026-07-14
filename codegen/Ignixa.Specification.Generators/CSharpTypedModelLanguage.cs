@@ -59,7 +59,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "SearchParameter",
         "CapabilityStatement",
         "StructureDefinition",
-        "StructureMap",
     };
 
     /// <summary>

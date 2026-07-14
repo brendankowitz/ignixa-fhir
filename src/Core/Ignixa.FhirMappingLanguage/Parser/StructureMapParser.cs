@@ -8,10 +8,14 @@
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+
+// Ignixa.Models also defines an "Expression" datatype (FHIR's Expression, e.g. used by DataRequirement) --
+// disambiguate in favor of this AST's own Expression, used pervasively throughout this file.
+using Expression = Ignixa.FhirMappingLanguage.Expressions.Expression;
 
 namespace Ignixa.FhirMappingLanguage.Parser;
 
@@ -36,11 +40,11 @@ public class StructureMapParser
     /// <summary>
     /// Parses a FHIR StructureMap resource into a MapExpression AST.
     /// </summary>
-    /// <param name="structureMap">The StructureMap resource as StructureMapJsonNode</param>
+    /// <param name="structureMap">The StructureMap resource</param>
     /// <returns>The parsed MapExpression</returns>
     /// <exception cref="ArgumentNullException">Thrown when structureMap is null</exception>
     /// <exception cref="InvalidOperationException">Thrown when required fields are missing</exception>
-    public MapExpression Parse(StructureMapJsonNode structureMap)
+    public MapExpression Parse(StructureMap structureMap)
     {
         ArgumentNullException.ThrowIfNull(structureMap);
 
@@ -66,7 +70,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses structure[] array into UsesExpression[].
     /// </summary>
-    private static List<UsesExpression> ParseStructures(IEnumerable<StructureMapStructureJsonNode>? structures)
+    private static List<UsesExpression> ParseStructures(IEnumerable<StructureMapStructure>? structures)
     {
         if (structures is null)
         {
@@ -98,7 +102,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses group[] array into GroupExpression[].
     /// </summary>
-    private static List<GroupExpression> ParseGroups(IEnumerable<StructureMapGroupJsonNode>? groups)
+    private static List<GroupExpression> ParseGroups(IEnumerable<StructureMapGroup>? groups)
     {
         if (groups is null)
         {
@@ -118,7 +122,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses input[] array into ParameterExpression[].
     /// </summary>
-    private static List<ParameterExpression> ParseInputParameters(IEnumerable<StructureMapInputJsonNode>? inputs)
+    private static List<ParameterExpression> ParseInputParameters(IEnumerable<StructureMapGroupInput>? inputs)
     {
         if (inputs is null)
         {
@@ -137,7 +141,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses rule[] array into RuleExpression[].
     /// </summary>
-    private static List<RuleExpression> ParseRules(IEnumerable<StructureMapRuleJsonNode>? rules)
+    private static List<RuleExpression> ParseRules(IEnumerable<StructureMapGroupRule>? rules)
     {
         if (rules is null)
         {
@@ -157,7 +161,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses source[] array into SourceExpression[].
     /// </summary>
-    private static List<SourceExpression> ParseSources(IEnumerable<StructureMapSourceJsonNode>? sources)
+    private static List<SourceExpression> ParseSources(IEnumerable<StructureMapGroupRuleSource>? sources)
     {
         if (sources is null)
         {
@@ -200,7 +204,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses target[] array into TargetExpression[].
     /// </summary>
-    private static List<TargetExpression> ParseTargets(IEnumerable<StructureMapTargetJsonNode>? targets)
+    private static List<TargetExpression> ParseTargets(IEnumerable<StructureMapGroupRuleTarget>? targets)
     {
         if (targets is null)
         {
@@ -209,11 +213,14 @@ public class StructureMapParser
 
         return targets.Select(t =>
         {
-            // Parse context and element
+            // Parse context and element. Context isn't on the shared base (R4 pairs it with a sibling
+            // contextType the classifier folds into its structural signature) even though the wire shape
+            // is identical in both versions -- read it via the version-agnostic wrapper.
             Expression? contextExpr = null;
-            if (t.Context is not null)
+            var context = t.GetContext();
+            if (context is not null)
             {
-                contextExpr = new IdentifierExpression(t.Context);
+                contextExpr = new IdentifierExpression(context);
                 if (t.Element is not null)
                 {
                     contextExpr = new QualifiedIdentifierExpression(contextExpr, t.Element);
@@ -238,7 +245,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses transform and parameter[] into TransformExpression.
     /// </summary>
-    private static Expression? ParseTransform(StructureMapTargetJsonNode target)
+    private static Expression? ParseTransform(StructureMapGroupRuleTarget target)
     {
         if (target.Transform is null)
         {
@@ -253,7 +260,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses parameter[] array into Expression[] for transforms.
     /// </summary>
-    private static List<Expression> ParseTransformParameters(IEnumerable<StructureMapParameterJsonNode>? parameters)
+    private static List<Expression> ParseTransformParameters(IEnumerable<StructureMapGroupRuleTargetParameter>? parameters)
     {
         if (parameters is null)
         {
@@ -307,8 +314,8 @@ public class StructureMapParser
     /// Parses dependent clause (nested rules or group invocations).
     /// </summary>
     private static Expression? ParseDependent(
-        IEnumerable<StructureMapRuleJsonNode>? nestedRules,
-        IEnumerable<StructureMapDependentJsonNode>? dependentCalls)
+        IEnumerable<StructureMapGroupRule>? nestedRules,
+        IEnumerable<StructureMapGroupRuleDependent>? dependentCalls)
     {
         // Check for nested rules first (RuleSetExpression)
         if (nestedRules is not null && nestedRules.Any())
@@ -372,7 +379,7 @@ public class StructureMapParser
     /// Parses default value[x] into Expression.
     /// Handles both R4 format (defaultValue[x]) and R5 format (defaultValue as string).
     /// </summary>
-    private static Expression? ParseDefaultValue(StructureMapSourceJsonNode source)
+    private static Expression? ParseDefaultValue(StructureMapGroupRuleSource source)
     {
         var defaultNode = source.GetDefaultValue();
         if (defaultNode is null)
@@ -433,24 +440,24 @@ public class StructureMapParser
         string.IsNullOrWhiteSpace(value) ? null : new LiteralExpression(value);
 
     /// <summary>
-    /// Converts StructureMapModelMode to ModelMode.
+    /// Converts MapModelMode to ModelMode.
     /// </summary>
-    private static ModelMode ConvertModelMode(StructureMapModelMode? mode) => mode switch
+    private static ModelMode ConvertModelMode(MapModelMode? mode) => mode switch
     {
-        StructureMapModelMode.Source => ModelMode.Source,
-        StructureMapModelMode.Queried => ModelMode.Queried,
-        StructureMapModelMode.Target => ModelMode.Target,
-        StructureMapModelMode.Produced => ModelMode.Produced,
+        MapModelMode.Source => ModelMode.Source,
+        MapModelMode.Queried => ModelMode.Queried,
+        MapModelMode.Target => ModelMode.Target,
+        MapModelMode.Produced => ModelMode.Produced,
         _ => ModelMode.Source
     };
 
     /// <summary>
-    /// Converts StructureMapInputMode to ParameterMode.
+    /// Converts MapInputMode to ParameterMode.
     /// </summary>
-    private static ParameterMode ConvertParameterMode(StructureMapInputMode? mode) => mode switch
+    private static ParameterMode ConvertParameterMode(MapInputMode? mode) => mode switch
     {
-        StructureMapInputMode.Source => ParameterMode.Source,
-        StructureMapInputMode.Target => ParameterMode.Target,
+        MapInputMode.Source => ParameterMode.Source,
+        MapInputMode.Target => ParameterMode.Target,
         _ => ParameterMode.Source
     };
 

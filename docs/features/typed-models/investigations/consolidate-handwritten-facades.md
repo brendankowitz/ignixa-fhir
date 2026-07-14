@@ -489,6 +489,101 @@ full non-E2E `dotnet test All.sln` green (same 2 pre-existing unrelated submodul
 `test/Ignixa.Models.Tests/ConceptMapFacadeTests.cs`, covering the shared base (`Url`, `Name`, `Status`,
 `Group`/`Element`) and the R4-vs-R5 `equivalence`/`relationship` rename directly on both subclasses.
 
+**`StructureMap` merged** -- by far the largest and most load-bearing Phase 2 resource (9 hand-written
+files, ~1300 lines, real production callers in `Ignixa.FhirMappingLanguage`'s FML parser/builder and the
+Experimental `$transform` operation). Dispatched a research fork first to map every real call site before
+touching anything, since the hand-written type already did extensive hand-rolled R4-vs-R5 runtime dispatch
+(`NotSupportedException`/`ArgumentNullException` guards) for several members -- unlike `Composition`, this
+wasn't a case of discovering divergence for the first time, but of replacing an already-known-divergent,
+already-hand-guarded design with the generated equivalent.
+
+**Key difference from `Composition`'s IPS case: FML is genuinely, deliberately multi-version, not
+pinned to one.** `StructureMapParser`/`StructureMapBuilder` take `FhirVersion` as a runtime constructor
+parameter and stamp it on every node they build -- there's no single "this feature only ever targets R4"
+escape hatch available. This ruled out the Composition playbook (give `Ignixa.Application` a narrow
+R4-only package reference) and initially suggested `Ignixa.FhirMappingLanguage` would need `ProjectReference`s
+to *both* `Ignixa.Models.R4` and `Ignixa.Models.R5` to construct version-specific subclasses for every
+divergent member. That turned out to be unnecessary: every divergent member the codebase actually touches
+(`Group.TypeMode`, `Source.DefaultValue`/choice-type, `Target.Context`, `Target`/`Dependent.Parameter`'s
+`value[x]`, `Dependent.Variable`/`Parameter`) is reachable through raw JSON manipulation via the *inherited*
+`BaseJsonNode.MutableNode` (`internal`, already covered by `Ignixa.FhirMappingLanguage`'s existing
+`InternalsVisibleTo` grant) and the public non-generic `SetProperty(string, JsonNode?)` -- neither requires
+naming the R4/R5 types at all. `StructureMapExtensions.cs` (already home to hand-rolled version-branching
+wrappers before this merge) was extended with this same technique for every divergent member, so
+`Ignixa.FhirMappingLanguage` carries **no new package reference** -- the existing wrapper wraps the
+generated base type instead of the hand-written one, same shape as `Extension.SetValueChoiceRaw`.
+
+Findings from the pre-work fork, and how each was handled:
+- **`Target.ListMode` is a real `0..*` list in both versions**, not the list-vs-scalar bug it initially
+  looked like -- the generated base (sourced directly from the real FHIR core package, the authoritative
+  source) confirms `MutablePrimitiveList<string>`, matching the hand-written shape exactly. No fix needed;
+  the fork's suspicion didn't survive cross-checking against the generator's output.
+- **`Group.TypeMode` had a real, previously-unnoticed bug**: `StructureMapBuilder` unconditionally wrote
+  `typeMode: "none"` for every version, but R5's `map-group-type-mode` value set dropped `"none"` entirely
+  (confirmed: the generated per-version enums are genuinely different types, `R4.MapGroupTypeMode` has
+  3 values, `R5.MapGroupTypeMode` has 2) -- so the old code silently wrote spec-invalid data for every R5
+  StructureMap it built. Fixed as a side effect of typing this properly: `typeMode` is now written only
+  for R4/R4B (required there); R5 omits it (optional there), matching the field's real semantics instead
+  of forcing one hand-picked "safe for both" literal that wasn't actually safe for both.
+- **Two copies of the `Transform` feature exist; one is dead code.** `Ignixa.Application/Features/Experimental/Transform`
+  is registered and live; `Ignixa.Application.Operations/Features/Transform` (near-identical, differs only
+  in namespace) is never wired into DI anywhere -- confirmed via `ApplicationServicesRegistration.cs`. Both
+  needed mechanical type-rename fixes to keep compiling (the dead copy would otherwise break the build),
+  but deleting genuinely-dead code discovered incidentally, outside this merge's stated scope, wasn't done
+  here -- flagged as a follow-up cleanup, not resolved.
+- **`Target.Parameter`/`Source.DefaultValue`'s `value[x]`/`defaultValue[x]` choice-type surfaces were
+  reimplemented using the generated per-version typed accessors internally** (`DefaultValueString`,
+  `ValueString`/`ValueInteger`/etc., the generated `ValueType`/`DefaultValueType` discriminators) rather
+  than the hand-written type's manual property-key string manipulation -- but the *public* wrapper API
+  (`GetValue()`/`GetValueAs<T>()`/`SetValue(suffix, value)`/`GetDefaultValueString()`/`SetDefaultValueString()`)
+  is unchanged, so `StructureMapParser.cs`/`StructureMapBuilder.cs` needed only type renames, not logic
+  rewrites, at their call sites.
+- **`GetDependentVariables()` needed a real behavior fix during verification** (caught by the existing
+  `GivenStructureMapWithoutFhirVersion_WhenParsingR5Format_ThenParsesCorrectly` test, not by inspection):
+  the hand-written original detected the wire shape (`variable` vs. `parameter` array) by trying one
+  accessor and catching `NotSupportedException` when `FhirVersion` wasn't set on the node. The initial
+  rewrite branched purely on `FhirVersion` and silently defaulted to R4 behavior when it was null, breaking
+  parsing of version-unset R5-shaped input. Fixed by detecting presence of the `parameter` key directly
+  (checking the actual JSON) rather than trusting a possibly-absent version tag -- a strictly more robust
+  design than either the old or the first-draft-new one.
+- **`Ignixa.FhirMappingLanguage`'s own `Expression` AST type collides with the generated `Ignixa.Models.Expression`
+  datatype** (used by e.g. `DataRequirement`). Resolved with an explicit `using Expression =
+  Ignixa.FhirMappingLanguage.Expressions.Expression;` alias in both `StructureMapParser.cs` and
+  `StructureMapBuilder.cs` (an explicit alias wins over either wildcard `using`), rather than qualifying
+  every one of the file's dozens of existing bare `Expression` references.
+
+All 9 hand-written files deleted outright (`StructureMapJsonNode.cs` and its 8 nested-type files); no
+surviving partial file, matching `Identifier`/`ConceptMap`. The old dedicated hand-written-type test suite
+(`test/Ignixa.Serialization.Tests/StructureMapVersionTests.cs`, ~470 lines) tested the hand-written design's
+*own* runtime-guard mechanism specifically (its `NotSupportedException`/`ArgumentNullException` messages for
+R4-vs-R5 access) -- since that mechanism no longer exists (replaced by the generated types' compile-time
+separation), most of it was obsolete by construction rather than portable. Deleted and replaced with
+`test/Ignixa.Models.Tests/StructureMapFacadeTests.cs`, covering the shared base round-trip, the R4/R5
+`MapGroupTypeMode` enum divergence, and the extension-method wrapper behaviors that do still exist
+(`GetDependentVariables`/`AddDependentVariable`/`GetDefaultValueString`/`SetDefaultValueString`/`GetContext`/
+`SetContext`/`GetValue`/`GetValueAs`/`SetValue`/`SupportsConstants`/`GetConstantsOrEmpty`). The FML project's
+own version-matrix tests (`StructureMapParserVersionTests.cs`, `StructureMapJsonEdgeCasesTests.cs`,
+`RoundTripTests.cs`, `StructureMapBuilderVersionTests.cs`) needed only type renames plus, in
+`StructureMapBuilderVersionTests.cs`, removing four tests that specifically exercised the now-gone
+`VersionAlgorithmString`/`CopyrightLabel`/`Group.TypeMode`-null-guard hand-written behavior (none of those
+three fields have any real caller, so -- consistent with the rest of this merge -- they weren't given a
+version-agnostic wrapper to test).
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `build/check-typed-model-regen.ps1` reports no drift;
+`Ignixa.FhirMappingLanguage.Tests` (535 passed, 0 failed, 1 skipped -- the 1 real regression this merge
+introduced, `GetDependentVariables`'s version-detection bug above, was caught by this suite and fixed before
+being called done); `Ignixa.Models.Tests` (94 passed), `Ignixa.Models.R4.Tests` (63 passed), the
+Transform-related slice of `Ignixa.Application.Tests` (45 passed) all green; full non-E2E `dotnet test
+All.sln` green (same 2 pre-existing unrelated submodule failures); full `Ignixa.Api.E2ETests` green
+(600/0/20, unchanged).
+
+**Phase 2 progress:** `Composition`, `ConceptMap`, and `StructureMap` merged. Remaining: `SearchParameter`,
+`Provenance`, `StructureDefinition` -- per the earlier Phase 0b classification, all three are NOT-NORMATIVE
+(real R4/R5 divergence, not just enum drift) and should **keep** `CompatibleFhirVersionsAttribute(R4, R5)`
+once merged, unlike the version-agnostic set. `SearchParameter` and `Provenance` also participate in
+`ResourceTypeRegistry` (version-blind today), which Phase 2's evidence section flagged as needing explicit
+resolution before those two merge -- not yet addressed.
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.
