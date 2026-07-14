@@ -599,12 +599,44 @@ Transform-related slice of `Ignixa.Application.Tests` (45 passed) all green; ful
 All.sln` green (same 2 pre-existing unrelated submodule failures); full `Ignixa.Api.E2ETests` green
 (600/0/20, unchanged).
 
-**Phase 2 progress:** `Composition`, `ConceptMap`, and `StructureMap` merged. Remaining: `SearchParameter`,
-`Provenance`, `StructureDefinition` -- per the earlier Phase 0b classification, all three are NOT-NORMATIVE
-(real R4/R5 divergence, not just enum drift) and should **keep** `CompatibleFhirVersionsAttribute(R4, R5)`
-once merged, unlike the version-agnostic set. `SearchParameter` and `Provenance` also participate in
-`ResourceTypeRegistry` (version-blind today), which Phase 2's evidence section flagged as needing explicit
-resolution before those two merge -- not yet addressed.
+**`SearchParameter` merged.** Un-reserved and allow-listed via the same recipe as the prior three;
+content-hash diff confirmed only 12 new/changed files (`SearchParameter`, `SearchParameterComponent`,
+`SearchParamType` on the shared base; R4's `SearchXpathUsage`; R5's `SearchParameterVersionAlgorithmType`/
+`SearchProcessingmode`; the two `R{4,5}.cs`/`_GlobalUsings.cs` registration files), all additive except
+those two registration files. Unlike `Composition`/`StructureMap`, this one had **no design fork at all**:
+every real field the hand-written type exposed (`Name`, `Code`, `Description`, `Url`, `Type`, `Expression`,
+`Base`, `Target`) landed on the shared base with full fidelity -- the only element the classifier flagged
+incompatible (`language`) is a generic `DomainResource`-level field the hand-written type never touched.
+The Phase 0b table's "hard: `component.definition` string↔object" finding didn't reproduce against the
+real generator run (same "probe over-predicted, real pipeline under-diverges" pattern already seen with
+`Composition`/`Parameters` in Phase 0b) -- `SearchParameterComponent.Definition` is a plain shared-base
+`string?` in both versions.
+
+Deleted `SearchParameterJsonNode.cs` outright (zero surviving members, same as `Identifier`/`ConceptMap`).
+Three real call sites, all pure construction (never touching a field): `ResourceTypeRegistry.cs`'s factory
+map, `ResourceConverter.cs`'s special-cased read path, and one test assertion -- all three retargeted from
+`new SearchParameterJsonNode(jsonObject)` to `new SearchParameter(jsonObject)`, calling the generated
+type's `protected internal` single-arg constructor (accessible since `ResourceTypeRegistry`/`ResourceConverter`
+live in the same `Ignixa.Serialization` assembly). `ResourceTypeRegistry`'s factory leaves `FhirVersion`
+unset either way (pre-existing behavior, unchanged by this merge) -- per this doc's earlier analysis, the
+newly-added `[CompatibleFhirVersions(R4, R5)]` guard therefore doesn't fire at this construction point; it
+only matters if something downstream explicitly tags the node's `FhirVersion` and then attempts an
+`.As<T>()` cast, which no test in this repo currently exercises for `SearchParameter` against an
+STU3/R4B/R6-tagged node.
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `build/check-typed-model-regen.ps1` reports no drift;
+full non-E2E `dotnet test All.sln` green (same 2 pre-existing unrelated submodule failures -- a few
+unrelated transient MSBuild/GitVersion/ICU-globalization crashes were hit and cleared on retry during this
+verification pass, environment flakiness unrelated to this change); full `Ignixa.Api.E2ETests` green
+(600/0/20, unchanged). New characterization tests: `test/Ignixa.Models.Tests/SearchParameterFacadeTests.cs`.
+
+**Phase 2 progress:** `Composition`, `ConceptMap`, `StructureMap`, and `SearchParameter` merged. Remaining:
+`Provenance`, `StructureDefinition` -- both NOT-NORMATIVE per Phase 0b (real R4/R5 divergence), both should
+**keep** `CompatibleFhirVersionsAttribute(R4, R5)` once merged. `Provenance` also participates in
+`ResourceTypeRegistry`; based on `SearchParameter`'s experience just above, this is lower-risk than the
+doc previously flagged it -- the registry's factories don't set `FhirVersion`, so the version guard doesn't
+engage at that specific construction point regardless -- but still worth re-confirming per-resource since
+`Provenance` may have real callers that set `FhirVersion` explicitly downstream (`SearchParameter` didn't).
 
 ## Verdict
 

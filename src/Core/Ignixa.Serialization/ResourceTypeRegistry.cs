@@ -5,6 +5,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -28,7 +29,7 @@ public static class ResourceTypeRegistry
         ["Bundle"] = jsonObject => new BundleJsonNode(jsonObject),
         ["OperationOutcome"] = jsonObject => new OperationOutcomeJsonNode(jsonObject),
         ["Provenance"] = jsonObject => new ProvenanceJsonNode(jsonObject),
-        ["SearchParameter"] = jsonObject => new SearchParameterJsonNode(jsonObject),
+        ["SearchParameter"] = jsonObject => new SearchParameter(jsonObject),
         // It can be registered separately by the Application layer if needed
     };
 

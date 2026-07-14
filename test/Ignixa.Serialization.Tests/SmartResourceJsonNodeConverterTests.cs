@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -101,14 +102,14 @@ public class SmartResourceJsonNodeConverterTests
     }
 
     [Fact]
-    public void GivenSearchParameterJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsSearchParameterJsonNodeInstance()
+    public void GivenSearchParameterJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsSearchParameterInstance()
     {
         // Act
         var resource = ResourceJsonNode.Parse(_searchParameterJson);
 
         // Assert
         Assert.NotNull(resource);
-        Assert.IsType<SearchParameterJsonNode>(resource);
+        Assert.IsType<SearchParameter>(resource);
         Assert.Equal("SearchParameter", resource.ResourceType);
         Assert.Equal("example", resource.Id);
     }

@@ -39,6 +39,7 @@ global using Period = Ignixa.Models.Period;
 global using Range = Ignixa.Models.Range;
 global using Ratio = Ignixa.Models.Ratio;
 global using Reference = Ignixa.Models.Reference;
+global using SearchParameterComponent = Ignixa.Models.SearchParameterComponent;
 global using Signature = Ignixa.Models.Signature;
 global using StructureMapGroupInput = Ignixa.Models.StructureMapGroupInput;
 global using StructureMapGroupRule = Ignixa.Models.StructureMapGroupRule;

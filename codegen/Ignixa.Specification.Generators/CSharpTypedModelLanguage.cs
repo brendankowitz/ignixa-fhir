@@ -56,7 +56,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
     {
         "Provenance",
-        "SearchParameter",
         "CapabilityStatement",
         "StructureDefinition",
     };
