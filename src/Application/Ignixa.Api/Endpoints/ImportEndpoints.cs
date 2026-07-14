@@ -11,6 +11,7 @@ using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -78,12 +79,12 @@ public static class ImportEndpoints
                 $"Expected Parameters resource, got {resource.ResourceType}"));
         }
 
-        var parameters = resource as ParametersJsonNode;
+        var parameters = resource as Parameters;
         if (parameters == null)
         {
             // Try to convert
             var json = resource.SerializeToString();
-            parameters = System.Text.Json.JsonSerializer.Deserialize<ParametersJsonNode>(json);
+            parameters = System.Text.Json.JsonSerializer.Deserialize<Parameters>(json);
 
             if (parameters == null)
             {
@@ -134,11 +135,11 @@ public static class ImportEndpoints
 
         // Extract storage detail if present
         var storageDetailParam = parameters.FindParameter("storageDetail");
-        ParametersJsonNode? storageDetail = null;
+        Parameters? storageDetail = null;
         if (storageDetailParam != null)
         {
             var storageJson = System.Text.Json.JsonSerializer.Serialize(storageDetailParam);
-            storageDetail = System.Text.Json.JsonSerializer.Deserialize<ParametersJsonNode>(storageJson);
+            storageDetail = System.Text.Json.JsonSerializer.Deserialize<Parameters>(storageJson);
         }
 
         // Read per-import performance tuning settings from configuration

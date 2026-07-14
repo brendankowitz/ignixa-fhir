@@ -15,7 +15,7 @@ namespace Ignixa.Serialization.Tests;
 /// <summary>
 /// Tests for smart type resolution in JsonNodeConverter.
 /// Verifies that parsing generic ResourceJsonNode returns the correct specific type
-/// (e.g., ParametersJsonNode) based on the resourceType field.
+/// (e.g., Parameters) based on the resourceType field.
 /// </summary>
 public class SmartResourceJsonNodeConverterTests
 {
@@ -63,14 +63,14 @@ public class SmartResourceJsonNodeConverterTests
 }";
 
     [Fact]
-    public void GivenParametersJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsParametersJsonNodeInstance()
+    public void GivenParametersJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsParametersInstance()
     {
         // Act
         var resource = ResourceJsonNode.Parse(_parametersJson);
 
         // Assert
         Assert.NotNull(resource);
-        Assert.IsType<ParametersJsonNode>(resource);
+        Assert.IsType<Parameters>(resource);
         Assert.Equal("Parameters", resource.ResourceType);
         Assert.Equal("example", resource.Id);
     }
@@ -129,23 +129,23 @@ public class SmartResourceJsonNodeConverterTests
     }
 
     [Fact]
-    public void GivenParametersJson_WhenParsingExplicitlyAsParametersJsonNode_ThenReturnsParametersJsonNodeInstance()
+    public void GivenParametersJson_WhenParsingExplicitlyAsParameters_ThenReturnsParametersInstance()
     {
         // Act - Explicit type request bypasses smart routing
         // Use the same options as ResourceJsonNode.Parse to ensure consistent behavior
-        var resource = JsonSourceNodeFactory.Parse<ParametersJsonNode>(_parametersJson);
+        var resource = JsonSourceNodeFactory.Parse<Parameters>(_parametersJson);
 
         // Assert
         Assert.NotNull(resource);
-        Assert.IsType<ParametersJsonNode>(resource);
+        Assert.IsType<Parameters>(resource);
         Assert.Equal("Parameters", resource.ResourceType);
     }
 
     [Fact]
-    public void GivenParametersJsonNode_WhenAccessingTypedProperties_ThenPropertiesAreAccessible()
+    public void GivenParameters_WhenAccessingTypedProperties_ThenPropertiesAreAccessible()
     {
         // Arrange
-        var resource = ResourceJsonNode.Parse(_parametersJson) as ParametersJsonNode;
+        var resource = ResourceJsonNode.Parse(_parametersJson) as Parameters;
         Assert.NotNull(resource);
 
         // Act
@@ -164,15 +164,15 @@ public class SmartResourceJsonNodeConverterTests
         ResourceJsonNode resource = ResourceJsonNode.Parse(_parametersJson);
 
         // Act & Assert - Can use 'is' pattern matching
-        Assert.True(resource is ParametersJsonNode);
+        Assert.True(resource is Parameters);
 
-        if (resource is ParametersJsonNode parameters)
+        if (resource is Parameters parameters)
         {
             Assert.NotNull(parameters.Parameter);
         }
         else
         {
-            throw new Xunit.Sdk.XunitException("Should be ParametersJsonNode");
+            throw new Xunit.Sdk.XunitException("Should be Parameters");
         }
     }
 
@@ -195,7 +195,7 @@ public class SmartResourceJsonNodeConverterTests
         var operationOutcome = ResourceJsonNode.Parse(_operationOutcomeJson);
 
         // Assert - Each resource type returns its specific class
-        Assert.IsType<ParametersJsonNode>(parameters);
+        Assert.IsType<Parameters>(parameters);
         Assert.IsType<BundleJsonNode>(bundle);
         Assert.IsType<OperationOutcomeJsonNode>(operationOutcome);
     }
@@ -253,14 +253,14 @@ public class SmartResourceJsonNodeConverterTests
     {
         // Arrange
         var originalResource = ResourceJsonNode.Parse(_parametersJson);
-        Assert.IsType<ParametersJsonNode>(originalResource);
+        Assert.IsType<Parameters>(originalResource);
 
         // Act
         var serialized = originalResource.SerializeToString();
         var reparsed = ResourceJsonNode.Parse(serialized);
 
         // Assert
-        Assert.IsType<ParametersJsonNode>(reparsed);
+        Assert.IsType<Parameters>(reparsed);
         Assert.Equal("Parameters", reparsed.ResourceType);
         Assert.Equal("example", reparsed.Id);
     }

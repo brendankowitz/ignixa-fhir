@@ -6,6 +6,7 @@
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Experimental.Ips.Generator;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -219,7 +220,7 @@ public static class SummaryEndpoints
 
                 if (memoryStream.Length > 0)
                 {
-                    var parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+                    var parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
                     profile = parameters?.GetParameterStringValue("profile");
                 }
             }

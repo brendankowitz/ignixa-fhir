@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch;
@@ -23,10 +23,10 @@ public class FhirPatchParametersParser
             throw new ArgumentNullException(nameof(parametersNode), "Parameters resource cannot be null");
         }
 
-        // Cast to ParametersJsonNode
-        if (parametersNode is not ParametersJsonNode parameters)
+        // Cast to Parameters
+        if (parametersNode is not Parameters parameters)
         {
-            throw new FhirPatchException($"Expected ParametersJsonNode but got {parametersNode.GetType().Name}");
+            throw new FhirPatchException($"Expected Parameters but got {parametersNode.GetType().Name}");
         }
 
         if (parameters.ResourceType != "Parameters")
@@ -64,7 +64,7 @@ public class FhirPatchParametersParser
         return operations.ToArray();
     }
 
-    private FhirPatchOperation ParseOperation(ParameterJsonNode operationParameter)
+    private FhirPatchOperation ParseOperation(ParametersParameter operationParameter)
     {
         if (operationParameter.Part == null || operationParameter.Part.Count == 0)
         {
@@ -125,11 +125,11 @@ public class FhirPatchParametersParser
 
     private void ValidateOperationParts(
         FhirPatchOperationType type,
-        ParameterJsonNode pathPart,
-        ParameterJsonNode valuePart,
-        ParameterJsonNode indexPart,
-        ParameterJsonNode sourcePart,
-        ParameterJsonNode destinationPart)
+        ParametersParameter pathPart,
+        ParametersParameter valuePart,
+        ParametersParameter indexPart,
+        ParametersParameter sourcePart,
+        ParametersParameter destinationPart)
     {
         switch (type)
         {

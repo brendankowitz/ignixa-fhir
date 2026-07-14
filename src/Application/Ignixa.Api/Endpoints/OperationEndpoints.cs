@@ -17,6 +17,7 @@ using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -330,8 +331,8 @@ public static class OperationEndpoints
 
         if (jsonNode.ResourceType == "Parameters")
         {
-            // Use ParametersJsonNode model for strongly-typed parameter access
-            var parametersNode = jsonNode.As<ParametersJsonNode>();
+            // Use Parameters model for strongly-typed parameter access
+            var parametersNode = jsonNode.As<Parameters>();
 
             foreach (var param in parametersNode.Parameter)
             {
@@ -533,13 +534,13 @@ public static class OperationEndpoints
         CancellationToken cancellationToken)
     {
         // Parse Parameters from request body
-        ParametersJsonNode? parameters;
+        Parameters? parameters;
         try
         {
             await using var memoryStream = memoryStreamManager.GetStream("member-match-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+            parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
         }
         catch
         {

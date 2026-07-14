@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Xunit;
@@ -83,9 +84,9 @@ public class JsonNodeConverterConstructorTests
     }
 
     [Fact]
-    public void ParametersJsonNode_ShouldDeserializeDirectly()
+    public void Parameters_ShouldDeserializeDirectly()
     {
-        var parameters = JsonSourceNodeFactory.Parse<ParametersJsonNode>("""{"resourceType":"Parameters"}""");
+        var parameters = JsonSourceNodeFactory.Parse<Parameters>("""{"resourceType":"Parameters"}""");
         parameters.ShouldNotBeNull();
         parameters.ResourceType.ShouldBe("Parameters");
     }

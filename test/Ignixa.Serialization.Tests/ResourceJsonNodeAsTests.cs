@@ -5,8 +5,8 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Serialization.Tests.TestData;
 using Xunit;
@@ -40,44 +40,44 @@ public class ResourceJsonNodeAsTests
 
 
     [Fact]
-    public void GivenAResourceJsonNode_WhenConvertingToParametersJsonNode_ThenSucceedsWithValidation()
+    public void GivenAResourceJsonNode_WhenConvertingToParameters_ThenSucceedsWithValidation()
     {
         // Arrange
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
 
         // Act
-        var result = parametersNode.As<ParametersJsonNode>();
+        var result = parametersNode.As<Parameters>();
 
         // Assert
         Assert.NotNull(result);
-        Assert.IsType<ParametersJsonNode>(result);
+        Assert.IsType<Parameters>(result);
         Assert.Equal("Parameters", result.ResourceType);
         Assert.Equal("example", result.Id);
     }
 
     [Fact]
-    public void GivenAResourceJsonNode_WhenConvertingToParametersJsonNode_ThenSharesSameMutableNode()
+    public void GivenAResourceJsonNode_WhenConvertingToParameters_ThenSharesSameMutableNode()
     {
         // Arrange
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
         var originalMutableNode = ((IMutableJsonNode)parametersNode).MutableNode;
 
         // Act
-        var result = parametersNode.As<ParametersJsonNode>();
+        var result = parametersNode.As<Parameters>();
 
         // Assert - Zero-copy: both reference the same JsonObject
         Assert.Same(originalMutableNode, ((IMutableJsonNode)result).MutableNode);
     }
 
     [Fact]
-    public void GivenAResourceJsonNode_WhenConvertingToParametersJsonNode_ThenCopiesFhirVersion()
+    public void GivenAResourceJsonNode_WhenConvertingToParameters_ThenCopiesFhirVersion()
     {
         // Arrange
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
         parametersNode.FhirVersion = FhirVersion.R4;
 
         // Act
-        var result = parametersNode.As<ParametersJsonNode>();
+        var result = parametersNode.As<Parameters>();
 
         // Assert
         Assert.NotNull(result.FhirVersion);
@@ -85,15 +85,15 @@ public class ResourceJsonNodeAsTests
     }
 
     [Fact]
-    public void GivenABundleResource_WhenConvertingToParametersJsonNode_ThenThrowsInvalidCastException()
+    public void GivenABundleResource_WhenConvertingToParameters_ThenThrowsInvalidCastException()
     {
         // Arrange
         var bundleNode = ResourceJsonNode.Parse(_parametersInvalidJson);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidCastException>(() => bundleNode.As<ParametersJsonNode>());
+        var ex = Assert.Throws<InvalidCastException>(() => bundleNode.As<Parameters>());
         Assert.Contains("Cannot convert resource of type 'Bundle'", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("ParametersJsonNode", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("to Parameters", ex.Message, StringComparison.Ordinal);
         Assert.Contains("expected 'Parameters'", ex.Message, StringComparison.Ordinal);
     }
 
@@ -104,11 +104,11 @@ public class ResourceJsonNodeAsTests
         var bundleNode = ResourceJsonNode.Parse(_parametersInvalidJson);
 
         // Act
-        var result = bundleNode.As<ParametersJsonNode>(validate: false);
+        var result = bundleNode.As<Parameters>(validate: false);
 
         // Assert - Conversion succeeds even though types don't match
         Assert.NotNull(result);
-        Assert.IsType<ParametersJsonNode>(result);
+        Assert.IsType<Parameters>(result);
         // Note: ResourceType is still "Bundle" - only the wrapper changed
         Assert.Equal("Bundle", result.ResourceType);
     }
@@ -121,7 +121,7 @@ public class ResourceJsonNodeAsTests
         Assert.Null(parametersNode.FhirVersion);
 
         // Act
-        var result = parametersNode.As<ParametersJsonNode>();
+        var result = parametersNode.As<Parameters>();
 
         // Assert
         Assert.Null(result.FhirVersion);
@@ -134,7 +134,7 @@ public class ResourceJsonNodeAsTests
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
 
         // Act
-        var parametersJsonNode = parametersNode.As<ParametersJsonNode>();
+        var parametersJsonNode = parametersNode.As<Parameters>();
         var parameters = parametersJsonNode.Parameter;
 
         // Assert
@@ -151,7 +151,7 @@ public class ResourceJsonNodeAsTests
         var originalId = parametersNode.Id;
 
         // Act
-        var result = parametersNode.As<ParametersJsonNode>();
+        var result = parametersNode.As<Parameters>();
         result.Id = "modified";
 
         // Assert - Both reference the same underlying JsonObject
@@ -166,8 +166,8 @@ public class ResourceJsonNodeAsTests
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
 
         // Act
-        var result1 = parametersNode.As<ParametersJsonNode>();
-        var result2 = result1.As<ParametersJsonNode>(); // Cast the already-converted instance
+        var result1 = parametersNode.As<Parameters>();
+        var result2 = result1.As<Parameters>(); // Cast the already-converted instance
 
         // Assert
         Assert.NotNull(result1);

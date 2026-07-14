@@ -104,13 +104,13 @@ public static class TransformEndpoints
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         CancellationToken cancellationToken)
     {
-        ParametersJsonNode? parameters;
+        Parameters? parameters;
         try
         {
             await using var memoryStream = memoryStreamManager.GetStream("transform-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+            parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
         }
         catch
         {
@@ -164,13 +164,13 @@ public static class TransformEndpoints
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         CancellationToken cancellationToken)
     {
-        ParametersJsonNode? parameters;
+        Parameters? parameters;
         try
         {
             await using var memoryStream = memoryStreamManager.GetStream("transform-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+            parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
         }
         catch
         {

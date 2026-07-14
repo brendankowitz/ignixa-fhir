@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -127,21 +128,21 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
     }
 
     /// <summary>
-    /// Builds the response Parameters resource from the match result using ParametersJsonNode.
+    /// Builds the response Parameters resource from the match result.
     /// </summary>
-    public static ParametersJsonNode BuildResponseParameters(MemberMatchResult result)
+    public static Parameters BuildResponseParameters(MemberMatchResult result)
     {
         if (!result.Success)
         {
             throw new InvalidOperationException("Cannot build response parameters for failed match result.");
         }
 
-        var parameters = new ParametersJsonNode();
+        var parameters = new Parameters();
 
         // Add MemberIdentifier parameter
         if (result.MemberIdentifier is not null)
         {
-            var memberIdentifierParam = new ParameterJsonNode();
+            var memberIdentifierParam = new ParametersParameter();
             memberIdentifierParam.Name = "MemberIdentifier";
             memberIdentifierParam.SetValue("valueIdentifier", result.MemberIdentifier.DeepClone());
             parameters.Parameter.Add(memberIdentifierParam);
@@ -150,7 +151,7 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
         // Add Patient reference parameter (optional)
         if (!string.IsNullOrEmpty(result.PatientReference))
         {
-            var patientParam = new ParameterJsonNode();
+            var patientParam = new ParametersParameter();
             patientParam.Name = "Patient";
             patientParam.SetValue("valueReference", new JsonObject
             {

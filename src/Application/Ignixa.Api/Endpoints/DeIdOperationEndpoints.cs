@@ -9,6 +9,7 @@ using Ignixa.Api.Http;
 using Ignixa.Application.Operations.Features.DeIdentify;
 using Ignixa.DeId.Darts;
 using Ignixa.DeId.Darts.Configuration;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -130,7 +131,7 @@ public static class DeIdOperationEndpoints
         // parameter[2].name = "configuration", parameter[2].resource = {Library} (custom de-id config)
         if (resourceNode.ResourceType == "Parameters")
         {
-            var parametersNode = resourceNode.As<ParametersJsonNode>();
+            var parametersNode = resourceNode.As<Parameters>();
             var resourceParam = parametersNode.GetParameterResource<ResourceJsonNode>("resource");
             var policyParam = parametersNode.GetParameterStringValue("policy");
             var configurationParam = parametersNode.GetParameterResource<ResourceJsonNode>("configuration");

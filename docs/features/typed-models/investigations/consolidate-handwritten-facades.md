@@ -3,7 +3,7 @@
 **Feature**: typed-models
 **Status**: In Progress
 **Created**: 2026-07-09
-**Last re-scoped**: 2026-07-13
+**Last re-scoped**: 2026-07-14
 
 > Triggered by [PR #319](https://github.com/brendankowitz/ignixa-fhir/pull/319) ("Generate typed model facades for all FHIR resources"), which deletes the `ReservedBaseTypeNames` guard in `CSharpTypedModelLanguage.cs` that previously stopped the generator from emitting a base facade for any resource that already has a hand-written `*JsonNode` facade (`Bundle`, `OperationOutcome`, `Parameters`, `Provenance`, `SearchParameter`, `CapabilityStatement`, `StructureDefinition`, `StructureMap`, `ConceptMap`, `Composition`). This is the "separate migration" [adr-2608-shared-base-models](../adr-2608-shared-base-models.md) flagged as a follow-up: *"consolidate the hand-written `*JsonNode` facades into the generated base."*
 
@@ -727,6 +727,83 @@ covering the shared-base round-trip and the `Kind`/`Derivation` enum patterns re
 `Provenance`, `StructureDefinition`) are merged into their generated `Ignixa.Models` counterparts. Only
 `CapabilityStatement` remains reserved — excluded from this effort entirely per the Phase 0b decision, not
 a Phase 3 candidate, pending a real `Stu3.CapabilityStatement` type once ADR-2609 ships.
+
+## Phase 4 status (in progress): Parameters merged, first of the three load-bearing resources
+
+Per this doc's own re-scope note (2026-07-12), Phase 4's three resources are sequenced by blast radius:
+`Parameters` (22 files, narrowest, contained to operation endpoints) first, then `Bundle` (29 files,
+transaction pipeline), with `OperationOutcome` last (52 files including 13 in `Ignixa.Domain`'s exception
+hierarchy — a mis-merge there is the highest-risk failure mode of the three).
+
+**Generator prerequisite already done.** Unlike every Phase 2 resource, Phase 0b's `partial`-class
+prerequisite work already un-reserved and allow-listed `Bundle`/`Parameters`/`OperationOutcome` and marked
+all three `VersionAgnosticContractTypes` (no `CompatibleFhirVersionsAttribute` on the base type) -- so this
+merge needed no generator/regeneration step, unlike Composition through StructureDefinition. This also
+means the `.As<T>()` version-gating concern this doc tracked through Phase 2 (Provenance/SearchParameter
+keeping the attribute since their divergence is real) doesn't apply here: `Parameters`'s base carries no
+attribute, so nothing changes for STU3/R4B/R6-tagged nodes reinterpreted through it -- resolved back in
+Phase 0b, not something this merge had to re-litigate.
+
+**Different starting shape than any prior merge: composition wrapper split across two hand-written types,
+not a single `ResourceJsonNode` subclass.** `ParametersJsonNode.cs` held two classes -- `ParametersJsonNode
+: ResourceJsonNode` (the resource itself, with a `Parameter` list and `FindParameter`) and `ParameterJsonNode
+: BaseJsonNode` (a single parameter entry, with `Name`, `Part`, `Resource`, `FindPart`, and the `value[x]`
+accessor family: `GetValue`/`GetValueAs<T>`/`SetValue`). The generated counterparts already existed with
+matching shape (`Ignixa.Models.Parameters`/`ParametersParameter`), so the merge mapped one-to-one: no
+design fork like `Composition`/`StructureMap` needed, since `Parameters.Parameter`/`ParametersParameter.Name`/
+`.Part`/`.Resource` are pure generator-duplicates (`.Resource` already returns `ResourceJsonNode?` on both
+sides, zero behavior change) -- only the `Find*`/`value[x]` accessor family is genuine surviving logic.
+
+**R4/R5 `value[x]` union divergence is real (`ParametersParameterValueType` differs: R5 adds
+`Integer64`/`CodeableReference`/`RatioRange`/`Availability`/`ExtendedContactDetail`; R4 has `Contributor`,
+dropped in R5) but no real caller needs the per-version typed discriminator.** Every real call site
+(`FhirPatchParametersParser.cs`'s FHIRPath Patch parser, `MemberMatchHandler.cs`, the two MCP patch tools,
+`ParametersExtensions.cs`) reads/writes `value[x]` exclusively through the generic name-string accessors
+(`GetValue()`, `GetValueAs<T>(name)`, `SetValue(name, ...)`) -- the same shape `Extension.SetValueChoiceRaw`
+already established as correct for version-uniform-wire-convention/version-divergent-union elements. These
+survived as `Models/Parameters.cs`'s `FindParameter`/`FindPart`/`GetValue()`/`GetValue(string)`/
+`GetValueAs<T>()`/`GetValueAs<T>(string)`/`SetValue(string, JsonNode)`/`SetValue<T>(string, T)`, moved
+verbatim (same non-nullable-annotated signatures as the original -- `Ignixa.Serialization` suppresses
+CS8600/8603/8604/8625 project-wide, so matching the original's lax annotations exactly, rather than
+"fixing" them to `?`, avoided rippling new nullable-warning obligations into `Ignixa.Application`, which
+does not suppress those).
+
+**16 real call sites retargeted**, all mechanical `ParametersJsonNode`→`Parameters`/`ParameterJsonNode`→
+`ParametersParameter` renames with no logic changes: `ResourceTypeRegistry.cs`'s factory map (same
+non-issue as `SearchParameter`/`Provenance` -- `FhirVersion` is never set at this construction point, so
+the new attribute-free base type doesn't change anything here either way); `ParametersExtensions.cs`
+(`GetParameterStringValue`/`GetParameterStringValues`/`GetParameterResource<T>`/`GetParameterResources<T>`);
+`FhirPatchParametersParser.cs`; `MemberMatchHandler.cs`; `PatchResourceFieldTool.cs`/`PatchResourceTool.cs`;
+`OperationEndpoints.cs`/`ImportEndpoints.cs`/`TransformEndpoints.cs`/`SummaryEndpoints.cs`/
+`DeIdOperationEndpoints.cs`; `CreateImportJobCommand.cs`/`CompleteJobInput.cs`/`ImportOrchestrationInput.cs`
+(bare `StorageDetail` properties); plus five test files (`FhirPatchParametersParserTests.cs`,
+`MutableNodeVisibilityTests.cs`, `JsonNodeConverterConstructorTests.cs`, `SmartResourceJsonNodeConverterTests.cs`,
+`ResourceJsonNodeAsTests.cs`) -- none held Parameters-specific business logic beyond exercising the generic
+`.As<T>()`/smart-parse/constructor-shape mechanics already covered elsewhere in this doc's Phase 0b/Phase 2
+work. One assertion needed a real (not just mechanical) fix: `ResourceJsonNodeAsTests.cs`'s
+`InvalidCastException`-message check asserted the literal substring `"ParametersJsonNode"`, which the new
+message (`"Cannot convert resource of type 'Bundle' to Parameters, expected 'Parameters'"`, since
+`targetType.Name` is now `Parameters`, not `ParametersJsonNode`) no longer contains -- updated to assert
+`"to Parameters"` instead, preserving the same discriminating check (distinguishing the actual-type clause
+from the expected-type clause already covered by a separate assertion).
+
+`ParametersJsonNode.cs` deleted outright. New characterization tests:
+`test/Ignixa.Models.Tests/ParametersFacadeTests.cs`, covering the shared-base round-trip and each surviving
+accessor (`FindParameter`, `FindPart`, `GetValue`/`GetValueAs<T>`, `SetValue` with both a `JsonNode` and a
+primitive value).
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `Ignixa.Models.Tests` (111 passed, 6 new),
+`Ignixa.Serialization.Tests` (82 passed), `Ignixa.Application.Tests` (695 passed, 1 pre-existing unrelated
+skip), `Ignixa.Api.Tests` (114 passed) all green in isolation; `build/check-typed-model-regen.ps1` reports
+no drift (expected -- no generator change this merge, prerequisite already done in Phase 0b); full non-E2E
+`dotnet test All.sln` green (the same 2 pre-existing unrelated `Ignixa.SqlOnFhir.Tests` submodule failures);
+full `Ignixa.Api.E2ETests` green (600 passed, 0 failed, 20 skipped, unchanged -- exercises the
+`$member-match`, `$patch`, `$import`/`$transform`/`$summary`, and `$de-identify` Parameters-consuming paths
+this merge touches most directly).
+
+Remaining Phase 4 resources -- `Bundle`, `OperationOutcome` -- each still need their own retargeting pass
+per this section's technique (no generator step needed, same as this one), in that order per the
+established risk sequencing.
 
 ## Verdict
 
