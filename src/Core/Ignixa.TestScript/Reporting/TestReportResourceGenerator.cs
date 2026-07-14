@@ -4,16 +4,22 @@ namespace Ignixa.TestScript.Reporting;
 
 public static class TestReportResourceGenerator
 {
-    public static JsonObject Generate(TestScriptReport report)
+    public static JsonObject Generate(TestScriptReport report, TestReportContext? context = null)
     {
         var testReport = new JsonObject
         {
             ["resourceType"] = "TestReport",
             ["name"] = report.TestScriptName,
             ["status"] = "completed",
+            ["testScript"] = GenerateTestScriptReference(report, context),
             ["result"] = MapReportResult(report.OverallOutcome),
-            ["issued"] = report.EndTime.ToString("o")
+            ["score"] = ComputeScore(report.TestResults),
+            ["issued"] = report.EndTime.ToString("o"),
+            ["participant"] = GenerateParticipants(context)
         };
+
+        if (context?.Tester is { Length: > 0 } tester)
+            testReport["tester"] = tester;
 
         if (report.SetupResult is not null)
             testReport["setup"] = GenerateSetup(report.SetupResult);
@@ -25,6 +31,49 @@ public static class TestReportResourceGenerator
             testReport["teardown"] = GenerateTeardown(report.TeardownResult);
 
         return testReport;
+    }
+
+    // TestReport.testScript is 1..1, so it is always emitted. A display-only Reference satisfies
+    // that without asserting a resolvable location for a script that only exists as a file on the
+    // runner's disk — a relative path in Reference.reference would be read as [type]/[id].
+    private static JsonObject GenerateTestScriptReference(TestScriptReport report, TestReportContext? context) =>
+        new() { ["display"] = context?.TestScriptDisplay ?? report.TestScriptName };
+
+    // participant.uri is 1..1, so the server entry only appears once a URI is known. The
+    // test-engine entry is this library, which is true regardless of what the caller supplies.
+    private static JsonArray GenerateParticipants(TestReportContext? context)
+    {
+        var participants = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "test-engine",
+                ["uri"] = "urn:ignixa:testscript-engine",
+                ["display"] = "Ignixa.TestScript"
+            }
+        };
+
+        if (context?.ServerUri is { Length: > 0 } serverUri)
+        {
+            participants.Insert(0, new JsonObject
+            {
+                ["type"] = "server",
+                ["uri"] = serverUri
+            });
+        }
+
+        return participants;
+    }
+
+    // TestReport.score is the percentage of tests that passed. Warning is a passing outcome for
+    // the report as a whole (see MapReportResult), so it counts toward the numerator here too.
+    private static double ComputeScore(IReadOnlyList<TestCaseResult> tests)
+    {
+        if (tests.Count == 0)
+            return 0;
+
+        var passed = tests.Count(t => t.Outcome is TestScriptOutcome.Pass or TestScriptOutcome.Warning);
+        return Math.Round(100d * passed / tests.Count);
     }
 
     private static JsonObject GenerateSetup(TestPhaseResult setup) =>

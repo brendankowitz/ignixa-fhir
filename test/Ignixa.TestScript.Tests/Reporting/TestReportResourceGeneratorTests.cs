@@ -32,6 +32,118 @@ public class TestReportResourceGeneratorTests
     }
 
     [Fact]
+    public void GivenNoContext_WhenGenerating_ThenTestScriptFallsBackToScriptName()
+    {
+        // Arrange: testScript is 1..1 in R4, so it must be present even with nothing supplied.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "ReadPatientTest",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report);
+
+        // Assert
+        json["testScript"]!["display"]!.GetValue<string>().ShouldBe("ReadPatientTest");
+        json["testScript"]!["reference"].ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenContext_WhenGenerating_ThenEmitsTesterParticipantAndTestScriptDisplay()
+    {
+        // Arrange
+        var report = new TestScriptReport
+        {
+            TestScriptName = "IntervalSearch",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+        var context = new TestReportContext
+        {
+            Tester = "my-server",
+            ServerUri = "https://example.org/fhir",
+            TestScriptDisplay = "Search/intervals.json"
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, context);
+
+        // Assert
+        json["tester"]!.GetValue<string>().ShouldBe("my-server");
+        json["testScript"]!["display"]!.GetValue<string>().ShouldBe("Search/intervals.json");
+
+        var participants = json["participant"]!.AsArray();
+        participants[0]!["type"]!.GetValue<string>().ShouldBe("server");
+        participants[0]!["uri"]!.GetValue<string>().ShouldBe("https://example.org/fhir");
+        participants[1]!["type"]!.GetValue<string>().ShouldBe("test-engine");
+    }
+
+    [Fact]
+    public void GivenNoServerUri_WhenGenerating_ThenOmitsServerParticipant()
+    {
+        // Arrange: participant.uri is 1..1, so a server entry with no URI must not be emitted.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "NoServer",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report);
+
+        // Assert
+        var participants = json["participant"]!.AsArray();
+        participants.Count.ShouldBe(1);
+        participants[0]!["type"]!.GetValue<string>().ShouldBe("test-engine");
+    }
+
+    [Fact]
+    public void GivenMixedOutcomes_WhenGenerating_ThenScoreIsPercentageOfPassingTests()
+    {
+        // Arrange: 1 pass + 1 warning (a passing outcome) out of 4 => 50.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "Mixed",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch,
+            TestResults =
+            [
+                new TestCaseResult("A", null, [], TestScriptOutcome.Pass),
+                new TestCaseResult("B", null, [], TestScriptOutcome.Warning),
+                new TestCaseResult("C", null, [], TestScriptOutcome.Fail),
+                new TestCaseResult("D", null, [], TestScriptOutcome.Skip)
+            ]
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report);
+
+        // Assert
+        json["score"]!.GetValue<double>().ShouldBe(50);
+    }
+
+    [Fact]
+    public void GivenNoTests_WhenGenerating_ThenScoreIsZeroRatherThanDivideByZero()
+    {
+        // Arrange
+        var report = new TestScriptReport
+        {
+            TestScriptName = "Empty",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report);
+
+        // Assert
+        json["score"]!.GetValue<double>().ShouldBe(0);
+    }
+
+    [Fact]
     public void GivenFailingReport_WhenGenerating_ThenResultIsFail()
     {
         var report = new TestScriptReport

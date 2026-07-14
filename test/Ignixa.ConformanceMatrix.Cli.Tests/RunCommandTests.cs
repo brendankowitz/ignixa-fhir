@@ -56,26 +56,56 @@ public class RunCommandTests
         value.ShouldBe("value");
     }
 
-    [Fact]
-    public void GivenSingleReport_WhenBuildingPayload_ThenReturnsTestReportResource()
-    {
-        var payload = RunCommand.BuildTestReportPayload([new JsonObject { ["resourceType"] = "TestReport" }]);
+    private static JsonObject MakeTestReport(string display) =>
+        new()
+        {
+            ["resourceType"] = "TestReport",
+            ["testScript"] = new JsonObject { ["display"] = display }
+        };
 
-        payload.ShouldNotBeNull();
-        payload!["resourceType"]!.GetValue<string>().ShouldBe("TestReport");
+    [Fact]
+    public void GivenCustomAuthScheme_WhenNormalizingAuthHeader_ThenTreatsItAsBareCredential()
+    {
+        // Arrange: a scheme not on any hardcoded list, whose credential contains a colon.
+        var (name, value) = RunCommand.ParseAuthHeader("AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
+
+        name.ShouldBe("Authorization");
+        value.ShouldBe("AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
     }
 
     [Fact]
-    public void GivenMultipleReports_WhenBuildingPayload_ThenReturnsBundleCollection()
+    public void GivenSingleReport_WhenBuildingPayload_ThenStillReturnsBundleCollection()
     {
-        var payload = RunCommand.BuildTestReportPayload([
-            new JsonObject { ["resourceType"] = "TestReport" },
-            new JsonObject { ["resourceType"] = "TestReport" }
-        ]);
+        var payload = RunCommand.BuildTestReportPayload([MakeTestReport("Search/basic.json")], DateTimeOffset.UnixEpoch);
 
         payload.ShouldNotBeNull();
-        payload!["resourceType"]!.GetValue<string>().ShouldBe("Bundle");
+        payload["resourceType"]!.GetValue<string>().ShouldBe("Bundle");
         payload["type"]!.GetValue<string>().ShouldBe("collection");
+        payload["entry"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenMultipleReports_WhenBuildingPayload_ThenEntriesCarryFullUrlSlugs()
+    {
+        var payload = RunCommand.BuildTestReportPayload(
+            [MakeTestReport("Search/intervals.json"), MakeTestReport("CRUD/basic.json")],
+            DateTimeOffset.UnixEpoch);
+
+        var entries = payload["entry"]!.AsArray();
+        entries.Count.ShouldBe(2);
+        entries[0]!["fullUrl"]!.GetValue<string>().ShouldBe("TestReport/search-intervals-json");
+        entries[1]!["fullUrl"]!.GetValue<string>().ShouldBe("TestReport/crud-basic-json");
+        entries[0]!["resource"]!["resourceType"]!.GetValue<string>().ShouldBe("TestReport");
+    }
+
+    [Fact]
+    public void GivenReports_WhenBuildingPayload_ThenBundleCarriesRunTimestamp()
+    {
+        var startedAt = new DateTimeOffset(2026, 7, 14, 9, 30, 0, TimeSpan.Zero);
+
+        var payload = RunCommand.BuildTestReportPayload([MakeTestReport("Search/basic.json")], startedAt);
+
+        payload["timestamp"]!.GetValue<string>().ShouldBe(startedAt.ToString("o"));
     }
 
     [Fact]

@@ -55,6 +55,22 @@ var testReport = TestReportResourceGenerator.Generate(report);
 Console.WriteLine(testReport.ToJsonString());
 ```
 
+`Generate` takes an optional `TestReportContext` carrying the facts the engine cannot infer from the
+run itself — who executed the script, which server was exercised, and what to call the script. Supply
+it to populate `tester`, the `server` participant, and `testScript.display`:
+
+```csharp
+var testReport = TestReportResourceGenerator.Generate(report, new TestReportContext
+{
+    Tester = "my-server",
+    ServerUri = "https://your-fhir-server",
+    TestScriptDisplay = "Search/intervals.json"
+});
+```
+
+Omitting it is fine: `testScript.display` falls back to the script's name, and the `server`
+participant is dropped rather than emitted with a placeholder URI.
+
 The parser is strict: unknown assert operators, unsupported criteria fields, malformed actions, and
 type-mismatched fields all produce `ParseSeverity.Error` entries rather than silently changing test
 semantics. Always check `IsSuccess` and surface `Errors` — a script that fails to parse never reaches
@@ -259,14 +275,21 @@ merges per-implementation reports into a published conformance matrix:
 ```bash
 dotnet tool install -g Ignixa.ConformanceMatrix.Cli
 
-# Run a conformance suite against a server, producing a per-impl report
+# Run a conformance suite against a server, writing a Bundle of FHIR TestReport resources
 ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
   --impl my-server --out ./reports/my-server.json
+
+# merge reads the native per-impl report, not TestReport, so ask for --format json
+ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+  --impl my-server --out ./reports/my-server.json --format json
 
 # Merge per-impl reports into the matrix (runs/ + index.json)
 ignixa-matrix merge --results ./reports --out ./matrix \
   --commit "$(git rev-parse HEAD)" --branch main
 ```
+
+`--out` is always the report file; `--format` chooses its shape — `fhir` (default) for a `Bundle` of
+`TestReport` resources, or `json` for the native per-impl report that `merge` consumes.
 
 `run` exits non-zero when any test fails *or errors* (an engine/transport error is never reported as
 a pass), prints parse warnings per file, and records crashed scripts as `error` cells rather than

@@ -3,9 +3,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.ConformanceMatrix.Cli.Reporting;
-using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.TestScript.Reporting;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.TestScript.Client;
@@ -13,11 +11,14 @@ using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.FhirFakes;
 using Ignixa.TestScript.Fixtures;
 using Ignixa.TestScript.Parsing;
+using Ignixa.TestScript.Reporting;
 
 namespace Ignixa.ConformanceMatrix.Cli.Commands;
 
 internal static class RunCommand
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+
     public static Command Build()
     {
         var command = new Command("run", "Run a TestScript suite against a FHIR server and write a per-impl report");
@@ -34,9 +35,10 @@ internal static class RunCommand
         {
             Description = "Authentication header value to apply to every request (for example 'Bearer <token>' or 'Authorization: Bearer <token>')"
         };
-        var testReportOption = new Option<string?>("--test-report")
+        var formatOption = new Option<ReportFormat>("--format")
         {
-            Description = "Optional path to write FHIR TestReport output as a JSON resource or Bundle"
+            Description = "Shape of the --out file: 'fhir' (a Bundle of FHIR TestReport resources, the default) or 'json' (this tool's native per-impl report, which is what 'merge' consumes)",
+            DefaultValueFactory = _ => ReportFormat.Fhir
         };
 
         command.Options.Add(serverOption);
@@ -45,7 +47,7 @@ internal static class RunCommand
         command.Options.Add(outOption);
         command.Options.Add(fhirVersionOption);
         command.Options.Add(authHeaderOption);
-        command.Options.Add(testReportOption);
+        command.Options.Add(formatOption);
 
         command.SetAction((parseResult, cancellationToken) =>
         {
@@ -55,14 +57,14 @@ internal static class RunCommand
             var outPath = parseResult.GetValue(outOption)!;
             var fhirVersion = parseResult.GetValue(fhirVersionOption);
             var authHeader = parseResult.GetValue(authHeaderOption);
-            var testReportPath = parseResult.GetValue(testReportOption);
-            return RunAsync(server, tests, impl, outPath, fhirVersion, authHeader, testReportPath, cancellationToken);
+            var format = parseResult.GetValue(formatOption);
+            return RunAsync(server, tests, impl, outPath, fhirVersion, authHeader, format, cancellationToken);
         });
 
         return command;
     }
 
-    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, string? authHeader, string? testReportPath, CancellationToken cancellationToken)
+    private static async Task<int> RunAsync(string server, string testsPath, string impl, string outPath, string? fhirVersion, string? authHeader, ReportFormat format, CancellationToken cancellationToken)
     {
         try
         {
@@ -165,8 +167,15 @@ internal static class RunCommand
                 {
                     var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken,
                         fhirVersion: fhirVersion, capabilityStatement: capabilityStatement);
-                    if (!string.IsNullOrWhiteSpace(testReportPath))
-                        testReports.Add(TestReportResourceGenerator.Generate(report));
+                    if (format == ReportFormat.Fhir)
+                    {
+                        testReports.Add(TestReportResourceGenerator.Generate(report, new TestReportContext
+                        {
+                            Tester = impl,
+                            ServerUri = server,
+                            TestScriptDisplay = relFile
+                        }));
+                    }
 
                     var mapped = ReportMapper.Map(report, relFile);
                     allResults.AddRange(mapped);
@@ -192,20 +201,12 @@ internal static class RunCommand
             }
 
             var duration = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
-            var implReport = new ImplReport
-            {
-                Impl = impl,
-                StartedAt = startedAt,
-                DurationMs = duration,
-                Results = allResults
-            };
+            var payload = format == ReportFormat.Json
+                ? SerializeImplReport(impl, startedAt, duration, allResults)
+                : BuildTestReportPayload(testReports, startedAt).ToJsonString(SerializerOptions);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
-            var json = JsonSerializer.Serialize(implReport, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(outPath, json, cancellationToken);
-
-            if (!string.IsNullOrWhiteSpace(testReportPath))
-                await WriteTestReportAsync(testReportPath, testReports, cancellationToken);
+            EnsureDirectoryExists(outPath);
+            await File.WriteAllTextAsync(outPath, payload, cancellationToken);
 
             Console.WriteLine($"\n{impl}: {FormatOutcomeSummary(allResults)} ({duration}ms) -> {outPath}");
             return ClassifyExitCode(allResults);
@@ -230,49 +231,69 @@ internal static class RunCommand
         return $"{pass} passed, {fail} failed, {skipped} skipped, {error} error(s)";
     }
 
+    // An HTTP header name cannot contain whitespace, so text before the first colon that has none
+    // is a header name and anything else is a bare credential for Authorization. This holds for
+    // any scheme — Negotiate, NTLM, AWS4-HMAC-SHA256 — without enumerating them.
     internal static (string Name, string Value) ParseAuthHeader(string input)
     {
         var trimmed = input.Trim();
         if (trimmed.Length == 0)
             return ("Authorization", string.Empty);
 
-        if (trimmed.Contains(':')
-            && !trimmed.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            && !trimmed.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)
-            && !trimmed.StartsWith("Digest ", StringComparison.OrdinalIgnoreCase))
+        var separatorIndex = trimmed.IndexOf(':');
+        if (separatorIndex > 0)
         {
-            var separatorIndex = trimmed.IndexOf(':');
-            return (trimmed[..separatorIndex].Trim(), trimmed[(separatorIndex + 1)..].Trim());
+            var name = trimmed[..separatorIndex].Trim();
+            if (name.Length > 0 && !name.Any(char.IsWhiteSpace))
+                return (name, trimmed[(separatorIndex + 1)..].Trim());
         }
 
         return ("Authorization", trimmed);
     }
 
-    internal static JsonObject BuildTestReportPayload(IReadOnlyList<JsonObject> reports)
+    internal static JsonObject BuildTestReportPayload(IReadOnlyList<JsonObject> reports, DateTimeOffset timestamp)
     {
-        if (reports.Count == 1)
-            return reports[0];
-
-        var bundle = new Bundle();
-        ((IMutableJsonNode)bundle).MutableNode["type"] = "collection";
-
+        var entries = new JsonArray();
         foreach (var report in reports)
         {
-            bundle.Entry.Add(new Ignixa.Models.BundleEntry
+            entries.Add(new JsonObject
             {
-                Resource = new ResourceJsonNode(report)
+                ["fullUrl"] = $"TestReport/{SlugifyReport(report)}",
+                ["resource"] = report
             });
         }
 
-        return ((IMutableJsonNode)bundle).MutableNode;
+        return new JsonObject
+        {
+            ["resourceType"] = "Bundle",
+            ["type"] = "collection",
+            ["timestamp"] = timestamp.ToString("o"),
+            ["entry"] = entries
+        };
     }
 
-    internal static async Task WriteTestReportAsync(string path, IReadOnlyList<JsonObject> reports, CancellationToken cancellationToken)
+    private static string SlugifyReport(JsonObject report)
     {
-        var payload = BuildTestReportPayload(reports);
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var json = payload.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(path, json, cancellationToken);
+        var source = report["testScript"]?["display"]?.GetValue<string>()
+            ?? report["name"]?.GetValue<string>()
+            ?? "testreport";
+
+        var normalized = new string([.. source.Select(c => char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')]);
+        return string.Join('-', normalized.Split('-', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string SerializeImplReport(string impl, DateTimeOffset startedAt, long durationMs, IReadOnlyList<ImplReportResult> results) =>
+        JsonSerializer.Serialize(
+            new ImplReport { Impl = impl, StartedAt = startedAt, DurationMs = durationMs, Results = results },
+            SerializerOptions);
+
+    // Path.GetDirectoryName returns null for a root path (e.g. "C:\"), where there is nothing to
+    // create; Directory.CreateDirectory(null) would throw instead.
+    private static void EnsureDirectoryExists(string path)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
     }
 
     internal static int ClassifyExitCode(IReadOnlyList<ImplReportResult> results)
@@ -284,8 +305,11 @@ internal static class RunCommand
             return;
 
         var (name, value) = ParseAuthHeader(authHeader);
-        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(value))
-            return;
+
+        // Returning quietly here would run the whole suite unauthenticated and report every test
+        // as a legitimate 401 failure, which looks identical to a broken server.
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException($"--auth-header '{authHeader}' has no header value; expected 'Bearer <token>' or 'Header-Name: <value>'.", nameof(authHeader));
 
         if (name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
         {

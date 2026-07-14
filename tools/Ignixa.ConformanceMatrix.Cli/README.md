@@ -12,7 +12,8 @@ dotnet tool install -g Ignixa.ConformanceMatrix.Cli
 
 ## Usage
 
-Run a conformance suite against a server, producing a per-implementation report:
+Run a conformance suite against a server. `--out` is the report file; `--format` selects its shape,
+defaulting to a FHIR `Bundle` of `TestReport` resources — one per executed TestScript:
 
 ```bash
 ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
@@ -27,12 +28,12 @@ ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests 
   --auth-header "Bearer <token>"
 ```
 
-To emit FHIR TestReport output, provide a path for the JSON file:
+`merge` consumes this tool's native per-implementation report rather than FHIR `TestReport`, so pass
+`--format json` when the run feeds the matrix:
 
 ```bash
 ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
-  --impl my-server --out ./reports/my-server.json \
-  --test-report ./reports/my-server.testreport.json
+  --impl my-server --out ./reports/my-server.json --format json
 ```
 
 Merge per-implementation reports into the matrix output (`runs/` + `index.json`):
@@ -41,6 +42,13 @@ Merge per-implementation reports into the matrix output (`runs/` + `index.json`)
 ignixa-matrix merge --results ./reports --out ./matrix \
   --commit "$(git rev-parse HEAD)" --branch main
 ```
+
+### `--format`
+
+| Value | Output |
+|-------|--------|
+| `fhir` (default) | A FHIR `Bundle` (`type: collection`) of `TestReport` resources, one entry per TestScript. |
+| `json` | This tool's native per-implementation report — the shape `merge` reads. |
 
 ## Behavior
 
