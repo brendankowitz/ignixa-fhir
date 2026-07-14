@@ -3,7 +3,7 @@
 **Feature**: typed-models
 **Status**: In Progress
 **Created**: 2026-07-09
-**Last re-scoped**: 2026-07-12
+**Last re-scoped**: 2026-07-13
 
 > Triggered by [PR #319](https://github.com/brendankowitz/ignixa-fhir/pull/319) ("Generate typed model facades for all FHIR resources"), which deletes the `ReservedBaseTypeNames` guard in `CSharpTypedModelLanguage.cs` that previously stopped the generator from emitting a base facade for any resource that already has a hand-written `*JsonNode` facade (`Bundle`, `OperationOutcome`, `Parameters`, `Provenance`, `SearchParameter`, `CapabilityStatement`, `StructureDefinition`, `StructureMap`, `ConceptMap`, `Composition`). This is the "separate migration" [adr-2608-shared-base-models](../adr-2608-shared-base-models.md) flagged as a follow-up: *"consolidate the hand-written `*JsonNode` facades into the generated base."*
 
@@ -667,14 +667,66 @@ full non-E2E `dotnet test All.sln` green (same 2 pre-existing unrelated submodul
 `Ignixa.Api.E2ETests` green (600/0/20, unchanged -- exercises the X-Provenance header path this merge
 touches most directly). New characterization tests: `test/Ignixa.Models.Tests/ProvenanceFacadeTests.cs`.
 
-**Phase 2 progress:** `Composition`, `ConceptMap`, `StructureMap`, `SearchParameter`, and `Provenance`
-merged. Remaining: `StructureDefinition` -- NOT-NORMATIVE per Phase 0b (real R4/R5 divergence, "hard" in
-STU3 with a `context` retype), should **keep** `CompatibleFhirVersionsAttribute(R4, R5)` once merged. Not
-in `ResourceTypeRegistry` (constructed directly by Application-layer code per the doc's evidence section),
-so the version-gating concern that applied to `SearchParameter`/`Provenance` doesn't apply here the same
-way -- but `StructureDefinitionJsonNode` is a large, actively-used type (`Parse`/`GetSnapshotElements`
-business logic noted since Phase 0), so expect a real design fork similar to `Composition`/`StructureMap`
-rather than the load-free merges `SearchParameter`/`ConceptMap` turned out to be.
+**`StructureDefinition` merged.** Same generator prerequisite recipe; content-hash diff confirmed exactly
+14 new/changed files (`StructureDefinition`/`StructureDefinitionContext`/`StructureDefinitionDifferential`/
+`StructureDefinitionMapping`/`StructureDefinitionSnapshot`/`StructureDefinitionKind`/`TypeDerivationRule`/
+`ExtensionContextType` on the shared base plus R4/R5 subclasses and `StructureDefinitionVersionAlgorithmType`
+on R5, plus the four `R{4,5}.cs`/`_GlobalUsings.cs` registration files). `ReservedBaseTypeNames`'s doc
+comment now names `CapabilityStatement` as its sole remaining entry, with an added note that it's excluded
+from consolidation entirely per the Phase 0b decision (its STU3-specific structural behavior can't be
+represented in R4/R5-classified scaffolding), not merely deferred.
+
+Unlike every prior Phase 2 resource, `StructureDefinitionJsonNode` wasn't a `ResourceJsonNode` subclass —
+it was a **composition wrapper**: a sealed class holding a private `ResourceNode` (`ResourceJsonNode`)
+field, with a private constructor and a static `Parse(string json, ILogger logger) -> T?` factory that
+returns `null` and logs a warning on any parse failure or `resourceType` mismatch, rather than throwing.
+This is a fundamentally different shape from the `partial class {Name} : {Base}` merge every other Phase 2
+resource used, since there's no generated type to make `partial` that already *is* this wrapper — the
+migration target is retargeting callers to the generated `ResourceJsonNode`-subclass `StructureDefinition`
+directly and preserving the defensive parse-with-logging behavior at each call site instead of inside a
+shared wrapper type.
+
+Real usage was narrow: `.Url`, `.Name`, `.Type`, `.Kind`, `.Derivation`, `.ResourceNode`, and `.Parse()`
+itself, across four call sites (`ProfileCapabilitySegment.cs`, `SectionMetadataParser.cs`,
+`StructureDefinitionBasedStrategy.cs`, `SqlPackageResourceRepository.cs`). Confirmed by reading
+`BaseJsonNodeConverter<T>.Read` directly that the generic deserializer does **not** validate `resourceType`
+against the target type `T` — it just deserializes into a `JsonObject` and wraps it via
+`Activator.CreateInstance`. This means the hand-written wrapper's explicit `resourceType` equality check
+was genuine, load-bearing business logic (not defensive boilerplate the generated type already covers),
+and had to be preserved at each call site doing a generic `JsonSourceNodeFactory.Parse<StructureDefinition>`,
+not silently dropped.
+
+`Kind`/`Derivation` moved from raw string comparisons (the hand-written type's design) to the generated
+`StructureDefinitionKind`/`TypeDerivationRule` enums — a real fidelity improvement, matching the same
+enum-over-string pattern already established for `Provenance`/`SearchParameter`'s dependents.
+`SqlPackageResourceRepository.cs`'s package-classification loop was rewritten to compare
+`StructureDefinitionKind.Resource`/`.Logical` and `TypeDerivationRule.Specialization` instead of the
+equivalent string literals.
+
+**Design question resolved by explicit user consultation** (not a unilateral call, per the Transformer
+Mandate): whether the parse-with-logging-and-resourceType-check helper should be centralized in one shared
+location or duplicated inline at each of the two remaining call sites that need it
+(`ProfileCapabilitySegment.cs`, `SqlPackageResourceRepository.cs` — `SectionMetadataParser.cs` and
+`StructureDefinitionBasedStrategy.cs` only ever receive an already-parsed `StructureDefinition`, they never
+parse raw JSON themselves). Decision: **duplicate inline at both call sites**, not centralize behind a new
+shared helper — two call sites is below the "third real case" threshold this repo's YAGNI/no-premature-
+abstraction convention uses to justify an abstraction, and each site's surrounding try/catch and logging
+context already differs slightly (different logger categories, different fallback behavior on `null`).
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `build/check-typed-model-regen.ps1` reports no drift;
+`Ignixa.Models.Tests` (105 passed), `Ignixa.Application.Experimental.Tests` (43 passed) both green in
+isolation; full non-E2E `dotnet test All.sln` green (the same 2 pre-existing unrelated `Ignixa.SqlOnFhir.Tests`
+submodule failures, plus a transient `Ignixa.RepoGuards.Tests` GitVersion.MsBuild native crash hit and
+cleared on an isolated re-run — 13/13 passed on both net9.0 and net10.0 — confirming it was environment
+flakiness, not a regression from this change); full `Ignixa.Api.E2ETests` green (600 passed, 0 failed, 20
+skipped, unchanged). New characterization tests: `test/Ignixa.Models.Tests/StructureDefinitionFacadeTests.cs`,
+covering the shared-base round-trip and the `Kind`/`Derivation` enum patterns real code depends on
+(`Resource`+`Specialization`, `Logical`).
+
+**Phase 2 complete.** All six resources (`Composition`, `ConceptMap`, `StructureMap`, `SearchParameter`,
+`Provenance`, `StructureDefinition`) are merged into their generated `Ignixa.Models` counterparts. Only
+`CapabilityStatement` remains reserved — excluded from this effort entirely per the Phase 0b decision, not
+a Phase 3 candidate, pending a real `Stu3.CapabilityStatement` type once ADR-2609 ships.
 
 ## Verdict
 

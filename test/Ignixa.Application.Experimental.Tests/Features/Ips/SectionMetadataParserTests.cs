@@ -6,7 +6,8 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Application.Features.Experimental.Ips.Metadata;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
+using Ignixa.Serialization;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -124,8 +125,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
 
         // Act
         var sections = _parser.ParseSections(sd);
@@ -147,8 +147,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
 
         // Act
         var sections = _parser.ParseSections(sd);
@@ -183,8 +182,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
 
         // Act
         var sections = _parser.ParseSections(sd);
@@ -238,8 +236,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
 
         // Act
         var sections = _parser.ParseSections(sd);
@@ -294,8 +291,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
 
         // Act
         var sections = _parser.ParseSections(sd);
@@ -345,8 +341,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
 
         // Act
         var sections = _parser.ParseSections(sd);
@@ -356,7 +351,7 @@ public class SectionMetadataParserTests
         sections[0].Title.ShouldBe("sectionCustomName");
     }
 
-    private static StructureDefinitionJsonNode CreateIpsCompositionStructureDefinition()
+    private static StructureDefinition CreateIpsCompositionStructureDefinition()
     {
         var json = """
         {
@@ -429,8 +424,7 @@ public class SectionMetadataParserTests
         }
         """;
 
-        var sd = StructureDefinitionJsonNode.Parse(json, NullLogger.Instance);
-        sd.ShouldNotBeNull();
+        var sd = JsonSourceNodeFactory.Parse<StructureDefinition>(json);
         return sd;
     }
 }

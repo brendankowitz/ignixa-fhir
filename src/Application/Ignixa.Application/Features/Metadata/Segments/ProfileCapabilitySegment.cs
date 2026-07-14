@@ -12,7 +12,8 @@ using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.PackageManagement.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 
@@ -318,7 +319,8 @@ public class ProfileCapabilitySegment : ICapabilitySegment
 
     /// <summary>
     /// Extracts the resource type that a StructureDefinition profiles.
-    /// Uses StructureDefinitionJsonNode to parse and access the "type" property.
+    /// Parses defensively: package-sourced JSON may be malformed or not actually a StructureDefinition,
+    /// and BaseJsonNodeConverter's Read doesn't validate resourceType against the target type itself.
     /// </summary>
     /// <param name="resourceJson">The StructureDefinition JSON</param>
     /// <returns>The resource type being profiled, or null if not found</returns>
@@ -326,8 +328,16 @@ public class ProfileCapabilitySegment : ICapabilitySegment
     {
         try
         {
-            var structureDefinition = StructureDefinitionJsonNode.Parse(resourceJson, _logger);
-            return structureDefinition?.Type;
+            var structureDefinition = JsonSourceNodeFactory.Parse<StructureDefinition>(resourceJson);
+            if (!string.Equals(structureDefinition.ResourceType, "StructureDefinition", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Expected resourceType='StructureDefinition', got '{ResourceType}'",
+                    structureDefinition.ResourceType);
+                return null;
+            }
+
+            return structureDefinition.Type;
         }
         catch (Exception ex)
         {

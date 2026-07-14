@@ -44,19 +44,20 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// Resource types that already have a hand-written facade in <c>Ignixa.Serialization</c> or
     /// <c>Ignixa.Application</c> (the <c>*JsonNode</c> classes the request pipeline depends on). The
     /// generated base layer (namespace <c>Ignixa.Models</c>) emits a facade named exactly after the
-    /// resource (<c>StructureDefinition</c>), so it would NOT collide with the hand-written
-    /// <c>StructureDefinitionJsonNode</c> at the CLR level. This guard is nonetheless ACTIVE: it stops the
+    /// resource (<c>CapabilityStatement</c>), so it would NOT collide with the hand-written
+    /// <c>CapabilityStatementJsonNode</c> at the CLR level. This guard is nonetheless ACTIVE: it stops the
     /// generator from emitting a base facade for any resource the server already models by hand, so the
-    /// two never diverge and a consumer reaching for, say, <c>StructureDefinition</c> handling is steered
+    /// two never diverge and a consumer reaching for, say, <c>CapabilityStatement</c> handling is steered
     /// to the single server-critical implementation rather than a parallel generated one. The skip logs
     /// and continues (see <see cref="ExportMultiVersion"/>). Sourced from the hand-written resource
     /// facades under <c>src/Core/Ignixa.Serialization/Models/*JsonNode.cs</c> and
-    /// <c>src/Application/**/Models/*JsonNode.cs</c>.
+    /// <c>src/Application/**/Models/*JsonNode.cs</c>. <c>CapabilityStatement</c> is the sole remaining
+    /// entry: excluded from consolidation entirely per this doc's Phase 0b decision (its STU3-specific
+    /// structural behavior can't be represented in R4/R5-classified scaffolding), not merely deferred.
     /// </summary>
     private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
     {
         "CapabilityStatement",
-        "StructureDefinition",
     };
 
     /// <summary>
