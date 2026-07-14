@@ -44,18 +44,17 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     /// Resource types that already have a hand-written facade in <c>Ignixa.Serialization</c> or
     /// <c>Ignixa.Application</c> (the <c>*JsonNode</c> classes the request pipeline depends on). The
     /// generated base layer (namespace <c>Ignixa.Models</c>) emits a facade named exactly after the
-    /// resource (<c>Provenance</c>), so it would NOT collide with the hand-written <c>ProvenanceJsonNode</c> at
-    /// the CLR level. This guard is nonetheless ACTIVE: it stops the generator from emitting a base
-    /// facade for any resource the server already models by hand, so the two never diverge and a
-    /// consumer reaching for, say, <c>Provenance</c> handling is steered to the single server-critical
-    /// implementation rather than a parallel generated one. The skip logs and continues (see
-    /// <see cref="ExportMultiVersion"/>). Sourced from the hand-written resource facades under
-    /// <c>src/Core/Ignixa.Serialization/Models/*JsonNode.cs</c> and
+    /// resource (<c>StructureDefinition</c>), so it would NOT collide with the hand-written
+    /// <c>StructureDefinitionJsonNode</c> at the CLR level. This guard is nonetheless ACTIVE: it stops the
+    /// generator from emitting a base facade for any resource the server already models by hand, so the
+    /// two never diverge and a consumer reaching for, say, <c>StructureDefinition</c> handling is steered
+    /// to the single server-critical implementation rather than a parallel generated one. The skip logs
+    /// and continues (see <see cref="ExportMultiVersion"/>). Sourced from the hand-written resource
+    /// facades under <c>src/Core/Ignixa.Serialization/Models/*JsonNode.cs</c> and
     /// <c>src/Application/**/Models/*JsonNode.cs</c>.
     /// </summary>
     private static readonly HashSet<string> ReservedBaseTypeNames = new(StringComparer.Ordinal)
     {
-        "Provenance",
         "CapabilityStatement",
         "StructureDefinition",
     };

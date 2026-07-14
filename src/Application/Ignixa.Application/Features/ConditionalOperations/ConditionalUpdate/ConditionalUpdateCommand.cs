@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
 
@@ -21,6 +21,6 @@ public record ConditionalUpdateCommand(
     string ResourceType,
     string SearchCriteria,  // Query string parameters (e.g., "identifier=system|value")
     ResourceJsonNode JsonNode,  // Parsed FHIR resource (parsed at endpoint layer)
-    ProvenanceJsonNode? ProvenanceResource = null,
+    Provenance? ProvenanceResource = null,
     string? RequestId = null,
     DateTimeOffset? ExpiresAt = null) : IRequest<ConditionalUpdateResult>;

@@ -36,6 +36,7 @@ global using PatientCommunication = Ignixa.Models.PatientCommunication;
 global using PatientContact = Ignixa.Models.PatientContact;
 global using PatientLink = Ignixa.Models.PatientLink;
 global using Period = Ignixa.Models.Period;
+global using ProvenanceAgent = Ignixa.Models.ProvenanceAgent;
 global using Range = Ignixa.Models.Range;
 global using Ratio = Ignixa.Models.Ratio;
 global using Reference = Ignixa.Models.Reference;

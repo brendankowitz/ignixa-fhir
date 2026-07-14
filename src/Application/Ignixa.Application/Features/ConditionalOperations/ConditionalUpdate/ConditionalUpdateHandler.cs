@@ -12,7 +12,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate;
@@ -171,7 +171,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         string resourceType,
         ResourceJsonNode jsonNode,
         int tenantId,
-        ProvenanceJsonNode? provenanceResource,
+        Provenance? provenanceResource,
         DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {
@@ -240,7 +240,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         string existingVersionId,
         ResourceJsonNode jsonNode,
         int tenantId,
-        ProvenanceJsonNode? provenanceResource,
+        Provenance? provenanceResource,
         DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {

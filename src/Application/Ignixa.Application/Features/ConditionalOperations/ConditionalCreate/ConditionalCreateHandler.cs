@@ -14,7 +14,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
@@ -202,7 +202,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         string resourceType,
         ResourceJsonNode jsonNode,
         int tenantId,
-        ProvenanceJsonNode? provenanceResource,
+        Provenance? provenanceResource,
         DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {

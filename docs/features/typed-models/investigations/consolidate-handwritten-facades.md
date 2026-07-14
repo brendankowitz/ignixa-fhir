@@ -630,13 +630,51 @@ unrelated transient MSBuild/GitVersion/ICU-globalization crashes were hit and cl
 verification pass, environment flakiness unrelated to this change); full `Ignixa.Api.E2ETests` green
 (600/0/20, unchanged). New characterization tests: `test/Ignixa.Models.Tests/SearchParameterFacadeTests.cs`.
 
-**Phase 2 progress:** `Composition`, `ConceptMap`, `StructureMap`, and `SearchParameter` merged. Remaining:
-`Provenance`, `StructureDefinition` -- both NOT-NORMATIVE per Phase 0b (real R4/R5 divergence), both should
-**keep** `CompatibleFhirVersionsAttribute(R4, R5)` once merged. `Provenance` also participates in
-`ResourceTypeRegistry`; based on `SearchParameter`'s experience just above, this is lower-risk than the
-doc previously flagged it -- the registry's factories don't set `FhirVersion`, so the version guard doesn't
-engage at that specific construction point regardless -- but still worth re-confirming per-resource since
-`Provenance` may have real callers that set `FhirVersion` explicitly downstream (`SearchParameter` didn't).
+**`Provenance` merged.** Same generator prerequisite recipe; content-hash diff confirmed only 13
+new/changed files. The classifier flagged only `Provenance.language` (generic, unused boilerplate) and
+`ProvenanceEntity.role` (a nested backbone this codebase's hand-written type never modeled at all --
+`Entity` wasn't hand-written) as incompatible. Every field the hand-written type actually used --
+`Target` (`MutableJsonList<Reference>`), `Agent` (`MutableJsonList<ProvenanceAgent>`, with `Who`/
+`OnBehalfOf` as `Reference?`) -- landed on the shared base using the **already-merged Phase 1 `Reference`
+type**, which is strictly richer than the hand-written type's private nested `ReferenceComponent`
+(`Reference`/`Display` only, missing `Type`/`Identifier`).
+
+Re-confirmed the `ResourceTypeRegistry`/`.As<T>()` version-gating concern this doc has flagged since Phase
+0b, this time against a real, live call site: `ProvenanceHeaderHelper.cs` calls
+`resourceNode.As<Provenance>()` on every X-Provenance header a client submits. Traced the actual guard
+(`ResourceJsonNode.As<T>()`, `SourceNodes/ResourceJsonNode.cs:240-250`): it only fires when the source
+node's `FhirVersion` is set, non-`Unspecified`, and outside the target's `CompatibleFhirVersionsAttribute`
+list. `JsonSourceNodeFactory.ParseAsync` (what parses the X-Provenance header) never sets `FhirVersion` on
+the result, so this call site is unaffected by adding the attribute -- confirms the `SearchParameter`
+finding generalizes, at least for parse-from-raw-JSON call sites that don't explicitly tag a version.
+
+Almost all of the hand-written type's remaining surface (`Recorded` as `DateTimeOffset?`, `AddAgent`,
+`SetAgents`, `SetTargets`, the `Target`/`Agent` getters going through a full JSON round-trip via
+`JsonSerializer.Deserialize` rather than the zero-copy view the rest of the codebase uses) had **zero real
+callers** -- dropped entirely, no wrapper. One real piece of business logic survived:
+`AddTarget(resourceType, resourceId, versionId)`, which builds a versioned reference
+(`{type}/{id}/_history/{version}`) -- the one real call site is `CreateOrUpdateResourceHandler.cs`'s
+X-Provenance auto-fill path. Added as a **public** instance method on a new `Models/Provenance.cs` partial
+(public, not `internal`, since -- unlike `Extension.SetValueChoiceRaw`'s narrow-friend-list escape hatch --
+this is meant to be part of `Provenance`'s normal cross-assembly API surface, matching `Reference.FromResourceTypeAndId`'s
+visibility). `HasTarget` (checked JSON-key presence) had one real caller (the same header helper, guarding
+against a client-supplied `target`) and was replaced with `Target.Count > 0` (checks actual reference
+count) -- arguably more correct against the FHIR spec's intent than the original key-presence check, since
+an explicitly-empty `"target": []` array doesn't really specify a target either.
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `build/check-typed-model-regen.ps1` reports no drift;
+full non-E2E `dotnet test All.sln` green (same 2 pre-existing unrelated submodule failures); full
+`Ignixa.Api.E2ETests` green (600/0/20, unchanged -- exercises the X-Provenance header path this merge
+touches most directly). New characterization tests: `test/Ignixa.Models.Tests/ProvenanceFacadeTests.cs`.
+
+**Phase 2 progress:** `Composition`, `ConceptMap`, `StructureMap`, `SearchParameter`, and `Provenance`
+merged. Remaining: `StructureDefinition` -- NOT-NORMATIVE per Phase 0b (real R4/R5 divergence, "hard" in
+STU3 with a `context` retype), should **keep** `CompatibleFhirVersionsAttribute(R4, R5)` once merged. Not
+in `ResourceTypeRegistry` (constructed directly by Application-layer code per the doc's evidence section),
+so the version-gating concern that applied to `SearchParameter`/`Provenance` doesn't apply here the same
+way -- but `StructureDefinitionJsonNode` is a large, actively-used type (`Parse`/`GetSnapshotElements`
+business logic noted since Phase 0), so expect a real design fork similar to `Composition`/`StructureMap`
+rather than the load-free merges `SearchParameter`/`ConceptMap` turned out to be.
 
 ## Verdict
 

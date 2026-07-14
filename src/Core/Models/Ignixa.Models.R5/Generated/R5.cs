@@ -43,6 +43,7 @@ public static class R5
         VersionedModelRegistry.Register("OperationOutcome", Version, jsonObject => new OperationOutcome(jsonObject));
         VersionedModelRegistry.Register("Parameters", Version, jsonObject => new Parameters(jsonObject));
         VersionedModelRegistry.Register("Patient", Version, jsonObject => new Patient(jsonObject));
+        VersionedModelRegistry.Register("Provenance", Version, jsonObject => new Provenance(jsonObject));
         VersionedModelRegistry.Register("SearchParameter", Version, jsonObject => new SearchParameter(jsonObject));
         VersionedModelRegistry.Register("StructureMap", Version, jsonObject => new StructureMap(jsonObject));
     }
