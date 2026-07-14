@@ -25,6 +25,13 @@ using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
+// The IPS IG (v2.0.0, STU2) is permanently R4-based upstream, independent of the tenant's configured
+// FhirVersion -- see docs/features/fhir-operations/investigations/ips-generator.md. Aliased (not a bare
+// `using Ignixa.Models.R4;`) so CodeableConcept/Coding/Reference/Narrative/CompositionSection keep
+// resolving to the shared, version-agnostic Ignixa.Models types already in scope.
+using Composition = Ignixa.Models.R4.Composition;
+using CompositionStatus = Ignixa.Models.R4.CompositionStatus;
+
 namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 
 /// <summary>
@@ -250,17 +257,17 @@ public class IpsGeneratorService(
         resource.MutableNode["text"] = textNode;
     }
 
-    private CompositionJsonNode BuildComposition(
+    private Composition BuildComposition(
         IpsContext context,
         Dictionary<Section, List<ResourceJsonNode>> sectionResources)
     {
         var compositionId = Guid.NewGuid().ToString();
 
-        var composition = new CompositionJsonNode
+        var composition = new Composition
         {
             Id = compositionId,
-            Status = CompositionJsonNode.CompositionStatus.Final,
-            Date = context.GenerationTime,
+            Status = CompositionStatus.Final,
+            Date = context.GenerationTime.ToString("o"),
             Title = context.Strategy.CreateTitle(context),
             Subject = Reference.FromResourceTypeAndId("Patient", context.PatientId),
             Type = CreateCompositionType()
@@ -287,10 +294,10 @@ public class IpsGeneratorService(
         return composition;
     }
 
-    private static CodeableConceptJsonNode CreateCompositionType()
+    private static CodeableConcept CreateCompositionType()
     {
-        var type = new CodeableConceptJsonNode();
-        type.Coding.Add(new CodingJsonNode
+        var type = new CodeableConcept();
+        type.Coding.Add(new Coding
         {
             System = IpsConstants.LoincSystem,
             Code = IpsConstants.CompositionTypeCode,
@@ -299,11 +306,11 @@ public class IpsGeneratorService(
         return type;
     }
 
-    private CompositionJsonNode.SectionComponent CreateSectionComponent(
+    private CompositionSection CreateSectionComponent(
         Section section,
         List<ResourceJsonNode> resources)
     {
-        var sectionComponent = new CompositionJsonNode.SectionComponent
+        var sectionComponent = new CompositionSection
         {
             Title = section.Title,
             Code = CreateSectionCode(section)
@@ -335,10 +342,10 @@ public class IpsGeneratorService(
         return sectionComponent;
     }
 
-    private static CodeableConceptJsonNode CreateSectionCode(Section section)
+    private static CodeableConcept CreateSectionCode(Section section)
     {
-        var code = new CodeableConceptJsonNode();
-        code.Coding.Add(new CodingJsonNode
+        var code = new CodeableConcept();
+        code.Coding.Add(new Coding
         {
             System = section.CodeSystem,
             Code = section.Code,
@@ -347,10 +354,10 @@ public class IpsGeneratorService(
         return code;
     }
 
-    private static CodeableConceptJsonNode CreateEmptyReason()
+    private static CodeableConcept CreateEmptyReason()
     {
-        var emptyReason = new CodeableConceptJsonNode();
-        emptyReason.Coding.Add(new CodingJsonNode
+        var emptyReason = new CodeableConcept();
+        emptyReason.Coding.Add(new Coding
         {
             System = IpsConstants.EmptyReasonSystem,
             Code = "unavailable",

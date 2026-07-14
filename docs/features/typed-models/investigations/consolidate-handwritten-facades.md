@@ -389,6 +389,80 @@ true TDD red→green, since that accessor didn't exist before this task).
 now merged into their generated `Ignixa.Models` counterparts. Next up per the Phased plan: Phase 2
 (`Composition`, `ConceptMap`, `StructureMap`, `SearchParameter`, `Provenance`, `StructureDefinition`).
 
+## Phase 2 status (in progress): Composition merged, generator prerequisite discovered
+
+Unlike Phase 1, none of the six Phase 2 resources had a generated counterpart to merge into: all six
+(`Composition`, `ConceptMap`, `StructureMap`, `SearchParameter`, `Provenance`, `StructureDefinition`) --
+plus `CapabilityStatement`, excluded per the Phase 0b decision above -- were still listed in
+`CSharpTypedModelLanguage.ReservedBaseTypeNames`, and none were in `Program.cs`'s `ResourceAllowList`.
+Phase 0b only proved the `partial`-class pattern on `Bundle`/`Parameters`/`OperationOutcome` (Phase 4's
+set); it never touched the Phase 2 set. Each Phase 2 resource therefore needs its own generator
+prerequisite step first (un-reserve, allow-list, regenerate, verify no drift on already-generated
+resources) before the strip-to-delta merge from Phase 1 applies. Confirmed via a before/after content-hash
+snapshot of the generated dirs (see `build/check-typed-model-regen.ps1` for the same technique) that
+un-reserving and allow-listing `Composition` alone added exactly the expected new files
+(`Composition`/`CompositionAttester`/`CompositionEvent`/`CompositionRelatesTo`/`CompositionSection` and
+their R4/R5 subclasses, plus `DocumentRelationshipType`, `ListMode`, `V3ConfidentialityClassification`
+enums) with zero changes to `Patient`/`Observation`/`Bundle`/`Parameters`/`OperationOutcome` or shared
+datatype output -- the large `git status` diff this produced (~240 files) was entirely a pre-existing
+`core.autocrlf=true` normalization artifact (working-tree bytes vs. what a fresh checkout's smudge filter
+would produce), not real content drift; `git diff`/`cmp` against `HEAD` confirmed byte-identical content
+for every file outside the new-Composition-file list. Also required initializing the `codegen/fhir-codegen`
+submodule (`git submodule update --init codegen/fhir-codegen`), which this worktree didn't have checked
+out.
+
+**`Composition` merged.** `CompositionJsonNode.cs` is deleted outright -- like `Identifier`, it needed zero
+surviving hand-written code -- but the shape of the merge differs from every prior Phase 1 datatype: the
+generator's classifier excludes `Composition.subject`/`identifier`/`relatesTo`/`status` from the shared
+base entirely, not because of enum-literal drift (the Phase 1 pattern) but because R4 and R5 disagree on
+*wire shape*: R4's `subject`/`identifier` are single objects, R5's are lists (0..*); R4's `relatesTo` is a
+list of the `CompositionRelatesTo` backbone, R5's is a list of the unrelated `RelatedArtifact` type; R4's
+`status` and R5's `status` are separate generated enums (their literal sets differ). There is no
+version-agnostic raw accessor that can serve both shapes correctly the way `Extension.SetValueChoiceRaw`
+does for `value[x]` (whose wire convention *is* uniform across versions) -- so per this doc's established
+policy ("when a hand-written member's semantics only make sense for a specific version, express that as a
+version-specific accessor on the subclass, never a same-named hand-written member on the shared base"),
+these four fields are `Ignixa.Models.R4.Composition`/`R5.Composition`-only, with no equivalent on the
+shared base.
+
+The one real caller, `IpsGeneratorService.cs` (`Ignixa.Application.Features.Experimental.Ips.Generator`),
+set all four of these fields directly on the (previously version-agnostic) hand-written
+`CompositionJsonNode`, and -- per the "opt-in, not baked into the core request path" constraint this doc
+established during the `Extension` merge -- `Ignixa.Application` does not reference the `Ignixa.Models.R4`/
+`R5` packages, so it had no way to construct a version-specific `Composition` and no `FhirVersion` context
+to decide which one it would need anyway. Resolved by checking what version IPS generation actually
+targets: `docs/features/fhir-operations/investigations/ips-generator.md` documents the IPS IG as v2.0.0,
+STU2, **permanently R4-based** upstream -- this is not a "the tenant might be R4 or R5" ambiguity, it is a
+fixed fact about the IG this feature implements, independent of the server's configured `FhirVersion`.
+`Ignixa.Application.csproj` now carries a `ProjectReference` to `Ignixa.Models.R4` -- a narrow, documented
+exception to the opt-in-package rule, justified by and scoped to this one IG-pinned feature, not a general
+loosening -- and `IpsGeneratorService.cs` constructs `Ignixa.Models.R4.Composition` (via a `using
+Composition = Ignixa.Models.R4.Composition;` alias, chosen over a bare `using Ignixa.Models.R4;` because the
+file already uses several version-agnostic base types -- `CodeableConcept`, `Coding`, `Reference`,
+`CompositionSection` -- that a blanket namespace import would make ambiguous against their `Ignixa.Models`
+counterparts). `Date` (a generated raw `string?`, unlike the hand-written type's `DateTimeOffset?`) is
+formatted inline at its one call site (`context.GenerationTime.ToString("o")`) rather than adding a
+`LastUpdatedOffset`-style convenience property -- unlike `Meta`'s ~23 call sites, this is used exactly once,
+so YAGNI favors the inline conversion over a new named accessor. The IPS generator's own
+`CodeableConceptJsonNode`/`CodingJsonNode` usages (ad hoc hand-written types embedded inside
+`OperationOutcomeJsonNode.cs`, not part of this doc's original 41-file inventory -- a gap in that inventory
+worth noting for Phase 4) were switched to the shared, generated `Ignixa.Models.CodeableConcept`/`Coding`
+at the same time, since `Composition.Type`/`CompositionSection.Code`/`EmptyReason` are all `CodeableConcept`
+on the generated base.
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `build/check-typed-model-regen.ps1` reports no drift
+after a fresh regeneration; the dedicated `Ignixa.Application.Experimental.Tests`
+(`IpsGeneratorHandlerTests.cs`, 43 tests) and the full non-E2E `dotnet test All.sln` suite green (the same
+two pre-existing `sql-on-fhir-tests` submodule failures as the `Meta` merge, unrelated); the full
+`Ignixa.Api.E2ETests` suite green (600 passed, 0 failed, 20 skipped, same as before). New characterization
+tests: `test/Ignixa.Models.Tests/CompositionFacadeTests.cs`, covering the shared base (`Title`, `Date`,
+`Type`, `Author`, `CompositionSection`) and the R4/R5 divergence on `Subject`/`Status`/`Identifier`
+(single-object vs. list) directly.
+
+Remaining Phase 2 resources -- `ConceptMap`, `StructureMap`, `SearchParameter`, `Provenance`,
+`StructureDefinition` -- each still need their own generator-prerequisite step (this section's technique
+generalizes) before their strip-to-delta merges, per the Phased plan's stated order.
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.

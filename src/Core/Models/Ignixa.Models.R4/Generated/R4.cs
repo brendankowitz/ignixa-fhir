@@ -37,6 +37,7 @@ public static class R4
     public static void Register()
     {
         VersionedModelRegistry.Register("Bundle", Version, jsonObject => new Bundle(jsonObject));
+        VersionedModelRegistry.Register("Composition", Version, jsonObject => new Composition(jsonObject));
         VersionedModelRegistry.Register("Observation", Version, jsonObject => new Observation(jsonObject));
         VersionedModelRegistry.Register("OperationOutcome", Version, jsonObject => new OperationOutcome(jsonObject));
         VersionedModelRegistry.Register("Parameters", Version, jsonObject => new Parameters(jsonObject));

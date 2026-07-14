@@ -61,7 +61,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "StructureDefinition",
         "StructureMap",
         "ConceptMap",
-        "Composition",
     };
 
     /// <summary>
