@@ -47,7 +47,7 @@ ignixa-matrix merge --results ./reports --out ./matrix \
 
 | Value | Output |
 |-------|--------|
-| `fhir` (default) | A FHIR `Bundle` (`type: collection`) of `TestReport` resources, one entry per TestScript. |
+| `fhir` (default) | A FHIR `Bundle` (`type: collection`) — a `TestReport` per executed TestScript, plus an `OperationOutcome` per script that could not be run. |
 | `json` | This tool's native per-implementation report — the shape `merge` reads. |
 
 ## Behavior
@@ -55,8 +55,28 @@ ignixa-matrix merge --results ./reports --out ./matrix \
 - `run` exits non-zero when any test fails **or errors** — an engine or transport error is never
   reported as a pass. Crashed scripts are recorded as `error` cells rather than aborting the run,
   and parse warnings are printed per file.
+- Scripts that never ran — a file that failed to parse, or one whose execution threw — have no
+  `TestReport` to speak for them, so under `--format fhir` each is recorded as an `OperationOutcome`
+  entry: `structure` for a parse failure, `exception` for an evaluator error, with the file name in
+  `diagnostics`. Without these, a suite whose scripts all failed to parse would write a `Bundle`
+  with no entries, indistinguishable from a clean run of nothing.
 - `--fhir-version` sets the `fhirVersion` parameter on the `Accept` header for version-gated suites.
 - `merge` replaces an existing run with the same id instead of duplicating it, and refuses to
   proceed when a report file is unreadable.
+
+### Exit codes
+
+`run` distinguishes a broken invocation from a completed run with failures, so CI can tell "nothing
+ran" from "the suite ran and 3 tests failed":
+
+| Code | Meaning |
+|------|---------|
+| `0` | Every test passed or was skipped. |
+| `1` | The suite ran; at least one test failed or errored. |
+| `2` | Usage error — an unusable `--tests`, `--server`, `--auth-header`, or `--out`. Nothing ran. |
+| `3` | Unexpected internal failure. The full exception, including its stack and inner chain, is printed to stderr. |
+
+`--out` is validated **before** the suite runs, so a bad path fails fast rather than discarding a
+completed run against a live server.
 
 Built on the [Ignixa.TestScript](https://www.nuget.org/packages/Ignixa.TestScript) execution engine.

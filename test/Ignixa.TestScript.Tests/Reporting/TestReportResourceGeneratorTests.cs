@@ -63,7 +63,7 @@ public class TestReportResourceGeneratorTests
         var context = new TestReportContext
         {
             Tester = "my-server",
-            ServerUri = "https://example.org/fhir",
+            ServerUri = new Uri("https://example.org/fhir"),
             TestScriptDisplay = "Search/intervals.json"
         };
 
@@ -103,7 +103,7 @@ public class TestReportResourceGeneratorTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void GivenBlankContextValues_WhenGenerating_ThenOmitsTesterAndServerParticipant(string blank)
+    public void GivenBlankTester_WhenGenerating_ThenOmitsTesterAndServerParticipant(string blank)
     {
         // Arrange
         var report = new TestScriptReport
@@ -114,7 +114,7 @@ public class TestReportResourceGeneratorTests
         };
 
         // Act
-        var json = TestReportResourceGenerator.Generate(report, new TestReportContext { Tester = blank, ServerUri = blank });
+        var json = TestReportResourceGenerator.Generate(report, new TestReportContext { Tester = blank });
 
         // Assert
         json["tester"].ShouldBeNull();
@@ -129,22 +129,123 @@ public class TestReportResourceGeneratorTests
         var context = new TestReportContext { Tester = "original" };
 
         // Act
-        var copied = context with { Tester = "  spaced  ", ServerUri = "   " };
+        var copied = context with { Tester = "  spaced  ", TestScriptDisplay = "   " };
 
         // Assert
         copied.Tester.ShouldBe("spaced");
-        copied.ServerUri.ShouldBeNull();
+        copied.TestScriptDisplay.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenContextCopiedWithNewServerUri_WhenUsingWithExpression_ThenNewValueIsUsed()
+    {
+        // Arrange: ServerUri is a reference type with no normalization, but a 'with' copy must
+        // still carry the replaced value through like the string members above.
+        var context = new TestReportContext { ServerUri = new Uri("https://a.example.org") };
+
+        // Act
+        var copied = context with { ServerUri = new Uri("https://b.example.org") };
+
+        // Assert
+        copied.ServerUri.ShouldBe(new Uri("https://b.example.org"));
     }
 
     [Fact]
     public void GivenContextsDifferingOnlyByBlankRepresentation_WhenComparing_ThenTheyAreEqual()
     {
         // Arrange: "" and null both mean absent, so they must not produce unequal contexts.
-        var empty = new TestReportContext { Tester = "" };
-        var nulled = new TestReportContext { Tester = null };
+        var empty = new TestReportContext { Tester = "", ServerDisplay = "" };
+        var nulled = new TestReportContext { Tester = null, ServerDisplay = null };
 
         // Assert
         empty.ShouldBe(nulled);
+    }
+
+    [Fact]
+    public void GivenRelativeServerUri_WhenConstructingContext_ThenThrowsArgumentException()
+    {
+        // Arrange: TestReport.participant.uri must be absolute; a relative Uri is a programmer
+        // error at this library boundary and must fail fast rather than emit an invalid resource.
+        var relativeUri = new Uri("foo", UriKind.Relative);
+
+        // Act
+        var act = () => new TestReportContext { ServerUri = relativeUri };
+
+        // Assert
+        Should.Throw<ArgumentException>(act);
+    }
+
+    [Fact]
+    public void GivenAbsoluteServerUri_WhenGenerating_ThenEmitsUriStringOnServerParticipant()
+    {
+        // Arrange
+        var report = new TestScriptReport
+        {
+            TestScriptName = "ServerUriTest",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+        var context = new TestReportContext { ServerUri = new Uri("https://fhir.example.org/r4") };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, context);
+
+        // Assert
+        var participants = json["participant"]!.AsArray();
+        participants[0]!["type"]!.GetValue<string>().ShouldBe("server");
+        participants[0]!["uri"]!.GetValue<string>().ShouldBe("https://fhir.example.org/r4");
+    }
+
+    [Fact]
+    public void GivenServerDisplay_WhenGenerating_ThenServerParticipantCarriesDisplay()
+    {
+        // Arrange
+        var report = new TestScriptReport
+        {
+            TestScriptName = "ServerDisplayTest",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+        var context = new TestReportContext
+        {
+            ServerUri = new Uri("https://fhir.example.org"),
+            ServerDisplay = "Reference Server"
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, context);
+
+        // Assert
+        var server = json["participant"]!.AsArray()[0]!.AsObject();
+        server["display"]!.GetValue<string>().ShouldBe("Reference Server");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GivenBlankOrNullServerDisplay_WhenGenerating_ThenServerParticipantHasNoDisplayKey(string? blank)
+    {
+        // Arrange: FHIR JSON permits null only inside arrays; a null object property is invalid,
+        // so an absent display must be omitted rather than emitted as null.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "NoServerDisplayTest",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch
+        };
+        var context = new TestReportContext
+        {
+            ServerUri = new Uri("https://fhir.example.org"),
+            ServerDisplay = blank
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report, context);
+
+        // Assert
+        var server = json["participant"]!.AsArray()[0]!.AsObject();
+        server.ContainsKey("display").ShouldBeFalse();
     }
 
     [Fact]

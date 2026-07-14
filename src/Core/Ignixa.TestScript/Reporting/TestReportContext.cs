@@ -14,7 +14,8 @@ namespace Ignixa.TestScript.Reporting;
 public sealed record TestReportContext
 {
     private readonly string? _tester;
-    private readonly string? _serverUri;
+    private readonly Uri? _serverUri;
+    private readonly string? _serverDisplay;
     private readonly string? _testScriptDisplay;
 
     /// <summary><c>TestReport.tester</c> — the organisation or tool that executed the script.</summary>
@@ -24,11 +25,23 @@ public sealed record TestReportContext
         init => _tester = Normalize(value);
     }
 
-    /// <summary>Base URL of the server under test, emitted as the <c>server</c> participant.</summary>
-    public string? ServerUri
+    /// <summary>Base URL of the server under test, emitted as the <c>server</c> participant's <c>uri</c>.</summary>
+    public Uri? ServerUri
     {
         get => _serverUri;
-        init => _serverUri = Normalize(value);
+        init => _serverUri = value is not null && !value.IsAbsoluteUri
+            ? throw new ArgumentException("ServerUri must be an absolute URI.", nameof(value))
+            : value;
+    }
+
+    /// <summary>
+    /// Human-readable name of the server under test, emitted as the <c>server</c> participant's
+    /// <c>display</c>.
+    /// </summary>
+    public string? ServerDisplay
+    {
+        get => _serverDisplay;
+        init => _serverDisplay = Normalize(value);
     }
 
     /// <summary>

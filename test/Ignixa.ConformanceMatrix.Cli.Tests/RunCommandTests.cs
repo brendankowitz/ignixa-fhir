@@ -200,7 +200,7 @@ public class RunCommandTests
         // Arrange: reachable when every script fails to parse.
 
         // Act
-        var payload = RunCommand.BuildTestReportPayload([], DateTimeOffset.UnixEpoch);
+        var payload = RunCommand.BuildFhirBundle([], DateTimeOffset.UnixEpoch);
 
         // Assert
         payload["resourceType"]!.GetValue<string>().ShouldBe("Bundle");
@@ -210,7 +210,7 @@ public class RunCommandTests
     [Fact]
     public void GivenSingleReport_WhenBuildingPayload_ThenStillReturnsBundleCollection()
     {
-        var payload = RunCommand.BuildTestReportPayload([MakeTestReport("Search/basic.json")], DateTimeOffset.UnixEpoch);
+        var payload = RunCommand.BuildFhirBundle([MakeTestReport("Search/basic.json")], DateTimeOffset.UnixEpoch);
 
         payload.ShouldNotBeNull();
         payload["resourceType"]!.GetValue<string>().ShouldBe("Bundle");
@@ -222,7 +222,7 @@ public class RunCommandTests
     public void GivenMultipleReports_WhenBuildingPayload_ThenEntriesCarryUniqueAbsoluteFullUrls()
     {
         // Arrange/Act: fullUrl must be absolute per R4, and unique within the Bundle per bdl-7.
-        var payload = RunCommand.BuildTestReportPayload(
+        var payload = RunCommand.BuildFhirBundle(
             [MakeTestReport("Search/intervals.json"), MakeTestReport("CRUD/basic.json")],
             DateTimeOffset.UnixEpoch);
 
@@ -241,9 +241,240 @@ public class RunCommandTests
     {
         var startedAt = new DateTimeOffset(2026, 7, 14, 9, 30, 0, TimeSpan.Zero);
 
-        var payload = RunCommand.BuildTestReportPayload([MakeTestReport("Search/basic.json")], startedAt);
+        var payload = RunCommand.BuildFhirBundle([MakeTestReport("Search/basic.json")], startedAt);
 
         payload["timestamp"]!.GetValue<string>().ShouldBe(startedAt.ToString("o"));
+    }
+
+    [Fact]
+    public void GivenParseFailure_WhenBuildingOutcome_ThenReportsStructureWithTheOffendingFile()
+    {
+        // Arrange/Act: 'structure' is FHIR's "unable to parse the content completely, invalid syntax".
+        var outcome = RunCommand.BuildParseErrorOutcome("Search/broken.json", "Required field 'name' is missing");
+
+        // Assert
+        outcome["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        var issue = outcome["issue"]!.AsArray().ShouldHaveSingleItem()!;
+        issue["severity"]!.GetValue<string>().ShouldBe("error");
+        issue["code"]!.GetValue<string>().ShouldBe("structure");
+        issue["diagnostics"]!.GetValue<string>()
+            .ShouldBe("Search/broken.json: Required field 'name' is missing");
+    }
+
+    [Fact]
+    public void GivenEvaluatorException_WhenBuildingOutcome_ThenReportsExceptionWithTheOffendingFile()
+    {
+        // Arrange: the message alone ("Object reference not set...") does not identify the failure,
+        // so the type is carried too.
+        var error = new InvalidOperationException("fixture 'obs-past' was never resolved");
+
+        // Act: 'exception' is FHIR's "An unexpected internal error has occurred".
+        var outcome = RunCommand.BuildEvaluatorErrorOutcome("Search/intervals.json", error);
+
+        // Assert
+        outcome["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        var issue = outcome["issue"]!.AsArray().ShouldHaveSingleItem()!;
+        issue["severity"]!.GetValue<string>().ShouldBe("error");
+        issue["code"]!.GetValue<string>().ShouldBe("exception");
+        issue["diagnostics"]!.GetValue<string>().ShouldBe(
+            "Search/intervals.json: InvalidOperationException: fixture 'obs-past' was never resolved");
+    }
+
+    [Fact]
+    public void GivenTestReportsAndOperationOutcomes_WhenBuildingBundle_ThenBothCoexistAsCollectionEntries()
+    {
+        // Arrange: Bundle.type = collection imposes no homogeneity constraint, so a run that both
+        // executed and failed to parse scripts is representable in one Bundle.
+        var outcome = OperationOutcomeResourceGenerator.Generate(
+            OperationOutcomeResourceGenerator.StructureIssueCode, "Search/broken.json: invalid syntax");
+
+        // Act
+        var payload = RunCommand.BuildFhirBundle(
+            [MakeTestReport("Search/intervals.json"), outcome], DateTimeOffset.UnixEpoch);
+
+        // Assert
+        payload["type"]!.GetValue<string>().ShouldBe("collection");
+        var entries = payload["entry"]!.AsArray();
+        entries.Count.ShouldBe(2);
+
+        var resourceTypes = entries.Select(e => e!["resource"]!["resourceType"]!.GetValue<string>()).ToList();
+        resourceTypes.ShouldBe(["TestReport", "OperationOutcome"]);
+
+        var fullUrls = entries.Select(e => e!["fullUrl"]!.GetValue<string>()).ToList();
+        fullUrls.ShouldAllBe(url => url.StartsWith("urn:uuid:", StringComparison.Ordinal));
+        fullUrls.Distinct().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenUnparseableScript_WhenRunningAsFhir_ThenBundleRecordsItAsAnOperationOutcome()
+    {
+        // Arrange: without this the failure exists nowhere on disk — the Bundle would just be short
+        // an entry, which reads as a clean run of fewer scripts.
+        using var workspace = new TempWorkspace();
+        workspace.WriteScript("broken.json", "{ this is not a TestScript");
+
+        // Act
+        var exitCode = await RunCommand.RunAsync(
+            UnreachableServer, workspace.TestsPath, "my-server", workspace.OutPath,
+            fhirVersion: null, authHeader: null, ReportFormat.Fhir, CancellationToken.None);
+
+        // Assert
+        exitCode.ShouldBe(1);
+
+        var bundle = JsonNode.Parse(await File.ReadAllTextAsync(workspace.OutPath))!;
+        var resources = bundle["entry"]!.AsArray().Select(e => e!["resource"]!).ToList();
+        var outcome = resources.ShouldHaveSingleItem();
+        outcome["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+
+        var issue = outcome["issue"]!.AsArray().ShouldHaveSingleItem()!;
+        issue["code"]!.GetValue<string>().ShouldBe("structure");
+        issue["diagnostics"]!.GetValue<string>().ShouldContain("broken.json");
+    }
+
+    [Fact]
+    public async Task GivenUnparseableScript_WhenRunningAsJson_ThenNoOperationOutcomeIsEmitted()
+    {
+        // Arrange: the native report already records the failure as an "error" result; merge does
+        // not read FHIR resources.
+        using var workspace = new TempWorkspace();
+        workspace.WriteScript("broken.json", "{ this is not a TestScript");
+
+        // Act
+        var exitCode = await RunCommand.RunAsync(
+            UnreachableServer, workspace.TestsPath, "my-server", workspace.OutPath,
+            fhirVersion: null, authHeader: null, ReportFormat.Json, CancellationToken.None);
+
+        // Assert
+        exitCode.ShouldBe(1);
+
+        var payload = await File.ReadAllTextAsync(workspace.OutPath);
+        payload.ShouldNotContain("OperationOutcome");
+
+        var parsed = JsonNode.Parse(payload)!;
+        parsed["impl"]!.GetValue<string>().ShouldBe("my-server");
+        parsed["results"]!.AsArray().ShouldHaveSingleItem()!["status"]!.GetValue<string>().ShouldBe("error");
+    }
+
+    [Fact]
+    public async Task GivenMissingTestsDirectory_WhenRunning_ThenReturnsUsageExitCodeDistinctFromTestFailure()
+    {
+        // Arrange: CI must tell "the invocation was wrong, nothing ran" from "the suite ran and
+        // tests failed" (1).
+        using var workspace = new TempWorkspace();
+        var missing = Path.Combine(workspace.TestsPath, "does-not-exist");
+
+        // Act
+        var exitCode = await RunCommand.RunAsync(
+            UnreachableServer, missing, "my-server", workspace.OutPath,
+            fhirVersion: null, authHeader: null, ReportFormat.Fhir, CancellationToken.None);
+
+        // Assert
+        exitCode.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenRelativeServerUri_WhenRunning_ThenReturnsUsageExitCode()
+    {
+        using var workspace = new TempWorkspace();
+        workspace.WriteScript("broken.json", "{");
+
+        var exitCode = await RunCommand.RunAsync(
+            "not-a-uri", workspace.TestsPath, "my-server", workspace.OutPath,
+            fhirVersion: null, authHeader: null, ReportFormat.Fhir, CancellationToken.None);
+
+        exitCode.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenEmptyTestsDirectory_WhenRunning_ThenReturnsUsageExitCode()
+    {
+        using var workspace = new TempWorkspace();
+
+        var exitCode = await RunCommand.RunAsync(
+            UnreachableServer, workspace.TestsPath, "my-server", workspace.OutPath,
+            fhirVersion: null, authHeader: null, ReportFormat.Fhir, CancellationToken.None);
+
+        exitCode.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenUnusableAuthHeader_WhenRunning_ThenReturnsUsageExitCodeWithoutRunningTheSuite()
+    {
+        // Arrange: running unauthenticated would report every 401 as a legitimate test failure.
+        using var workspace = new TempWorkspace();
+        workspace.WriteScript("broken.json", "{");
+
+        // Act
+        var exitCode = await RunCommand.RunAsync(
+            UnreachableServer, workspace.TestsPath, "my-server", workspace.OutPath,
+            fhirVersion: null, authHeader: "Authorization:", ReportFormat.Fhir, CancellationToken.None);
+
+        // Assert
+        exitCode.ShouldBe(2);
+        File.Exists(workspace.OutPath).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenWritableOutPath_WhenPreparingOutputDirectory_ThenCreatesTheDirectory()
+    {
+        // Arrange: validated before the suite runs, so a typo cannot discard a completed run.
+        using var workspace = new TempWorkspace();
+        var nested = Path.Combine(workspace.Root, "reports", "nested", "out.json");
+
+        // Act
+        var error = RunCommand.PrepareOutputDirectory(nested);
+
+        // Assert
+        error.ShouldBeNull();
+        Directory.Exists(Path.GetDirectoryName(nested)!).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenOutPathWithInvalidCharacters_WhenPreparingOutputDirectory_ThenReportsErrorRatherThanThrowing()
+    {
+        // Arrange: Path.GetFullPath throws on these; that is a usage error, not an internal fault.
+        var error = RunCommand.PrepareOutputDirectory("\0invalid\0/report.json");
+
+        // Assert
+        error.ShouldNotBeNull();
+        error.ShouldContain("--out path is unusable");
+    }
+
+    // Loopback port 1 refuses immediately, so tests that must not reach a server stay fast and
+    // deterministic rather than waiting on a DNS or connect timeout.
+    private const string UnreachableServer = "http://127.0.0.1:1";
+
+    private sealed class TempWorkspace : IDisposable
+    {
+        public TempWorkspace()
+        {
+            Root = Path.Combine(Path.GetTempPath(), $"ignixa-matrix-tests-{Guid.NewGuid():N}");
+            TestsPath = Path.Combine(Root, "tests");
+            OutPath = Path.Combine(Root, "reports", "report.json");
+            Directory.CreateDirectory(TestsPath);
+        }
+
+        public string Root { get; }
+
+        public string TestsPath { get; }
+
+        public string OutPath { get; }
+
+        public void WriteScript(string name, string content) =>
+            File.WriteAllText(Path.Combine(TestsPath, name), content);
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(Root))
+                    Directory.Delete(Root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A leaked temp directory must not fail an otherwise passing test.
+            }
+        }
     }
 
     [Fact]

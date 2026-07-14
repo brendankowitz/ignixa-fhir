@@ -39,11 +39,10 @@ public static class TestReportResourceGenerator
     // TestReport.testScript is 1..1, so it is always emitted. A display-only Reference satisfies
     // that without asserting a resolvable location for a script that only exists as a file on the
     // runner's disk — a relative path in Reference.reference would be read as [type]/[id].
+    // TestReportContext normalizes blanks to null, so the ?? also covers an empty display rather
+    // than emitting "display": "".
     private static JsonObject GenerateTestScriptReference(TestScriptReport report, TestReportContext? context) =>
         new() { ["display"] = context?.TestScriptDisplay ?? report.TestScriptName };
-
-    // TestReportContext normalizes blank values to null, so a plain null check is enough here and
-    // an empty TestScriptDisplay falls back to the script name rather than emitting "display": "".
 
     // participant.uri is 1..1, so the server entry only appears once a URI is known. The
     // test-engine entry is this library, which is true regardless of what the caller supplies.
@@ -61,11 +60,15 @@ public static class TestReportResourceGenerator
 
         if (context?.ServerUri is { } serverUri)
         {
-            participants.Insert(0, new JsonObject
+            var server = new JsonObject
             {
                 ["type"] = "server",
-                ["uri"] = serverUri
-            });
+                ["uri"] = serverUri.ToString()
+            };
+            if (context.ServerDisplay is { } serverDisplay)
+                server["display"] = serverDisplay;
+
+            participants.Insert(0, server);
         }
 
         return participants;
