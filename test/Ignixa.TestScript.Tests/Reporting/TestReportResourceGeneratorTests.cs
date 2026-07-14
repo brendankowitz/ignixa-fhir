@@ -122,6 +122,32 @@ public class TestReportResourceGeneratorTests
     }
 
     [Fact]
+    public void GivenContextCopiedWithNewValue_WhenUsingWithExpression_ThenStillNormalizes()
+    {
+        // Arrange: the init accessors carry the normalization, so a 'with' copy must re-run them
+        // rather than smuggling a blank value straight into the backing field.
+        var context = new TestReportContext { Tester = "original" };
+
+        // Act
+        var copied = context with { Tester = "  spaced  ", ServerUri = "   " };
+
+        // Assert
+        copied.Tester.ShouldBe("spaced");
+        copied.ServerUri.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenContextsDifferingOnlyByBlankRepresentation_WhenComparing_ThenTheyAreEqual()
+    {
+        // Arrange: "" and null both mean absent, so they must not produce unequal contexts.
+        var empty = new TestReportContext { Tester = "" };
+        var nulled = new TestReportContext { Tester = null };
+
+        // Assert
+        empty.ShouldBe(nulled);
+    }
+
+    [Fact]
     public void GivenPaddedContextValues_WhenGenerating_ThenTrimsThem()
     {
         // Arrange
@@ -160,9 +186,10 @@ public class TestReportResourceGeneratorTests
     }
 
     [Fact]
-    public void GivenMixedOutcomes_WhenGenerating_ThenScoreIsPercentageOfPassingTests()
+    public void GivenMixedOutcomes_WhenGenerating_ThenScoreExcludesSkippedTestsFromTheDenominator()
     {
-        // Arrange: 1 pass + 1 warning (a passing outcome) out of 4 => 50.
+        // Arrange: 1 pass + 1 warning (a passing outcome) out of 3 attempted => 67. The skipped
+        // test was never run, so scoring it as a miss would understate the server.
         var report = new TestScriptReport
         {
             TestScriptName = "Mixed",
@@ -181,11 +208,36 @@ public class TestReportResourceGeneratorTests
         var json = TestReportResourceGenerator.Generate(report);
 
         // Assert
-        json["score"]!.GetValue<double>().ShouldBe(50);
+        json["score"]!.GetValue<double>().ShouldBe(67);
     }
 
     [Fact]
-    public void GivenNoTests_WhenGenerating_ThenScoreIsZeroRatherThanDivideByZero()
+    public void GivenEveryTestSkipped_WhenGenerating_ThenOmitsScoreRatherThanContradictingResult()
+    {
+        // Arrange: version- or capability-gated scripts skip every test. OverallOutcome has no Skip
+        // branch, so result is "pass" — emitting score 0 alongside it would contradict the resource.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "AllSkipped",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch,
+            TestResults =
+            [
+                new TestCaseResult("A", null, [], TestScriptOutcome.Skip),
+                new TestCaseResult("B", null, [], TestScriptOutcome.Skip)
+            ]
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report);
+
+        // Assert
+        json["result"]!.GetValue<string>().ShouldBe("pass");
+        json["score"].ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenNoTests_WhenGenerating_ThenOmitsScoreRatherThanDividingByZero()
     {
         // Arrange
         var report = new TestScriptReport
@@ -199,7 +251,28 @@ public class TestReportResourceGeneratorTests
         var json = TestReportResourceGenerator.Generate(report);
 
         // Assert
-        json["score"]!.GetValue<double>().ShouldBe(0);
+        json["score"].ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTestWithoutDescription_WhenGenerating_ThenOmitsItRatherThanEmittingJsonNull()
+    {
+        // Arrange: FHIR JSON permits null only inside arrays; a null object property is invalid.
+        var report = new TestScriptReport
+        {
+            TestScriptName = "NoDescription",
+            StartTime = DateTimeOffset.UnixEpoch,
+            EndTime = DateTimeOffset.UnixEpoch,
+            TestResults = [new TestCaseResult("A", null, [], TestScriptOutcome.Pass)]
+        };
+
+        // Act
+        var json = TestReportResourceGenerator.Generate(report);
+
+        // Assert
+        var test = json["test"]!.AsArray()[0]!.AsObject();
+        test.ContainsKey("description").ShouldBeFalse();
+        test["name"]!.GetValue<string>().ShouldBe("A");
     }
 
     [Fact]

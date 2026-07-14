@@ -12,14 +12,17 @@ public static class TestReportResourceGenerator
             ["name"] = report.TestScriptName,
             ["status"] = "completed",
             ["testScript"] = GenerateTestScriptReference(report, context),
-            ["result"] = MapReportResult(report.OverallOutcome),
-            ["score"] = ComputeScore(report.TestResults),
-            ["issued"] = report.EndTime.ToString("o"),
-            ["participant"] = GenerateParticipants(context)
+            ["result"] = MapReportResult(report.OverallOutcome)
         };
+
+        if (ComputeScore(report.TestResults) is { } score)
+            testReport["score"] = score;
 
         if (context?.Tester is { } tester)
             testReport["tester"] = tester;
+
+        testReport["issued"] = report.EndTime.ToString("o");
+        testReport["participant"] = GenerateParticipants(context);
 
         if (report.SetupResult is not null)
             testReport["setup"] = GenerateSetup(report.SetupResult);
@@ -68,15 +71,22 @@ public static class TestReportResourceGenerator
         return participants;
     }
 
-    // TestReport.score is the percentage of tests that passed. Warning is a passing outcome for
-    // the report as a whole (see MapReportResult), so it counts toward the numerator here too.
-    private static double ComputeScore(IReadOnlyList<TestCaseResult> tests)
+    // TestReport.score is the percentage of tests that passed. Warning is a passing outcome for the
+    // report as a whole (see MapReportResult), so it counts toward the numerator here too.
+    //
+    // Skipped tests are excluded from both sides rather than scored as misses. A test gated out by
+    // fhirVersion or requiresCapability was never attempted, so counting it against the server would
+    // make an all-skipped script report "result": "pass" alongside "score": 0 — and would disagree
+    // with MatrixBuilder, which keeps skipped out of both pass and fail. Returns null when nothing
+    // was scored so the caller omits the element (score is 0..1) instead of asserting a 0.
+    private static double? ComputeScore(IReadOnlyList<TestCaseResult> tests)
     {
-        if (tests.Count == 0)
-            return 0;
+        var scored = tests.Count(t => t.Outcome is not TestScriptOutcome.Skip);
+        if (scored == 0)
+            return null;
 
         var passed = tests.Count(t => t.Outcome is TestScriptOutcome.Pass or TestScriptOutcome.Warning);
-        return Math.Round(100d * passed / tests.Count);
+        return Math.Round(100d * passed / scored);
     }
 
     private static JsonObject GenerateSetup(TestPhaseResult setup) =>
@@ -87,12 +97,13 @@ public static class TestReportResourceGenerator
         var result = new JsonArray();
         foreach (var test in tests)
         {
-            result.Add(new JsonObject
-            {
-                ["name"] = test.Name,
-                ["description"] = test.Description,
-                ["action"] = GenerateActionArray(test.Actions)
-            });
+            // FHIR JSON allows null only inside arrays, to align a primitive with its "_" extension;
+            // a null-valued object property is invalid, so an absent description is omitted.
+            var obj = new JsonObject { ["name"] = test.Name };
+            if (test.Description is not null)
+                obj["description"] = test.Description;
+            obj["action"] = GenerateActionArray(test.Actions);
+            result.Add(obj);
         }
         return result;
     }

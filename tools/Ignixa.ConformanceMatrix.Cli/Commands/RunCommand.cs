@@ -26,7 +26,7 @@ internal static class RunCommand
         var serverOption = new Option<string>("--server") { Description = "Base URL of the FHIR server", Required = true };
         var testsOption = new Option<string>("--tests") { Description = "Folder containing TestScript .json files", Required = true };
         var implOption = new Option<string>("--impl") { Description = "Implementation name (column label in the matrix)", Required = true };
-        var outOption = new Option<string>("--out") { Description = "Output path for the per-impl report JSON", Required = true };
+        var outOption = new Option<string>("--out") { Description = "Output path for the report file; --format selects its shape", Required = true };
         var fhirVersionOption = new Option<string?>("--fhir-version")
         {
             Description = "FHIR version to test against (e.g. '4.0', '4.3', '5.0'). Sets fhirVersion on the Accept header and skips tests not tagged for this version. Omit to run all tests against any server."
