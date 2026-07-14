@@ -15,6 +15,7 @@ global using BundleEntryResponse = Ignixa.Models.BundleEntryResponse;
 global using BundleEntrySearch = Ignixa.Models.BundleEntrySearch;
 global using CodeableConcept = Ignixa.Models.CodeableConcept;
 global using Coding = Ignixa.Models.Coding;
+global using ConceptMapGroupElement = Ignixa.Models.ConceptMapGroupElement;
 global using ContactDetail = Ignixa.Models.ContactDetail;
 global using ContactPoint = Ignixa.Models.ContactPoint;
 global using Contributor = Ignixa.Models.Contributor;

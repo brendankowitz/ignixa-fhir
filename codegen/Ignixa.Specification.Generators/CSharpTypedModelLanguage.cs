@@ -60,7 +60,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         "CapabilityStatement",
         "StructureDefinition",
         "StructureMap",
-        "ConceptMap",
     };
 
     /// <summary>

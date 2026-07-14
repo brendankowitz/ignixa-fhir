@@ -463,6 +463,32 @@ Remaining Phase 2 resources -- `ConceptMap`, `StructureMap`, `SearchParameter`, 
 `StructureDefinition` -- each still need their own generator-prerequisite step (this section's technique
 generalizes) before their strip-to-delta merges, per the Phased plan's stated order.
 
+**Open follow-up, deliberately deferred to end of Phase 2:** revisit whether
+`Ignixa.Application`/`IpsGeneratorService` targeting `Ignixa.Models.R4.Composition` directly (rather than,
+e.g., a version-dispatch abstraction that would avoid the Application-layer opt-in-package exception) is
+still the right call once the remaining Phase 2 resources are done and the full shape of this pattern is
+clearer.
+
+**`ConceptMap` merged.** All four hand-written files (`ConceptMapJsonNode.cs`,
+`ConceptMapGroupJsonNode.cs`, `ConceptMapElementJsonNode.cs`, `ConceptMapTargetJsonNode.cs`) are deleted
+outright -- zero surviving hand-written code, same as `Identifier`. Unlike `Composition`, this merge
+carried no real design fork to resolve: a repo-wide grep found **zero real call sites** for any of the
+four hand-written types anywhere outside their own file (no production code, no tests) -- so the
+R4/R5 wire-shape divergence the generator's classifier found (`ConceptMap.identifier`,
+`ConceptMapGroup.source`/`target`, `ConceptMapGroupElementTarget`'s `equivalence`-in-R4-vs-`relationship`-
+in-R5 rename, `ConceptMapGroupUnmapped.mode`) had no caller to reconcile against. Notably, the hand-written
+`ConceptMapTargetJsonNode.Relationship` hardcoded the wire key `"relationship"` unconditionally -- correct
+for R5, silently wrong for R4 (whose wire key is `"equivalence"`) -- a latent bug that never mattered
+because nothing called it. Generator prerequisite followed the same recipe as `Composition`: un-reserve,
+allow-list, regenerate, confirm via content-hash diff that only the 38 new `ConceptMap*`-prefixed files
+changed (2520 insertions, 0 deletions, 0 unrelated files touched).
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `build/check-typed-model-regen.ps1` reports no drift;
+full non-E2E `dotnet test All.sln` green (same 2 pre-existing unrelated submodule failures); full
+`Ignixa.Api.E2ETests` green (600/0/20, unchanged). New characterization tests:
+`test/Ignixa.Models.Tests/ConceptMapFacadeTests.cs`, covering the shared base (`Url`, `Name`, `Status`,
+`Group`/`Element`) and the R4-vs-R5 `equivalence`/`relationship` rename directly on both subclasses.
+
 ## Verdict
 
 **Recommended.** The single-type `partial`-class merge is strictly better than a parallel-type-plus-rename approach: it removes the registry/call-site atomicity risk entirely (there is only ever one type per resource, so nothing can be "half migrated" at the type-identity level), costs one line in the generator, and turns the remaining work into per-resource, independently reviewable PRs with a natural risk ordering (datatypes → contained resources → Application facades → load-bearing core resources). The two risks that don't go away — enum-literal parity and newly-enforced version gating — are exactly the things Phase 0's parity tests exist to catch before any hand-written code is deleted. Breaking the public type names is accepted; this is pre-release with no external consumers to shim for.
