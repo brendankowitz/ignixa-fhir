@@ -50,7 +50,7 @@ public class ConfigureCustomSearchException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Exception,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Exception,
             Diagnostics = diagnostics
         });
     }

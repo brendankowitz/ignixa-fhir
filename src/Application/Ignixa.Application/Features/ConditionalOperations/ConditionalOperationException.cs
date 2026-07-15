@@ -63,7 +63,7 @@ public class ConditionalOperationException : FhirException
 
     private static OperationOutcomeIssue CreateIssue(string message, int matchCount, string? searchCriteria)
     {
-        var issueCode = matchCount == 0 ? OperationOutcomeIssue.IssueType.NotFound : OperationOutcomeIssue.IssueType.Duplicate;
+        var issueCode = matchCount == 0 ? OperationOutcomeIssue.IssueTypeCommon.NotFound : OperationOutcomeIssue.IssueTypeCommon.Duplicate;
 
         var issue = new OperationOutcomeIssue()
         {

@@ -132,7 +132,7 @@ public class FhirAuthorizationFilter : IEndpointFilter
         outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
             SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Forbidden,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Forbidden,
             Diagnostics = diagnostics
         });
 
@@ -151,7 +151,7 @@ public class FhirAuthorizationFilter : IEndpointFilter
         outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
             SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Exception,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Exception,
             Diagnostics = diagnostics
         });
 
@@ -170,7 +170,7 @@ public class FhirAuthorizationFilter : IEndpointFilter
         outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
             SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Transient,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Transient,
             Diagnostics = diagnostics
         });
 

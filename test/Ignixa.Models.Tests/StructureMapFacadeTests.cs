@@ -143,4 +143,35 @@ public sealed class StructureMapFacadeTests
         map.SupportsConstants().ShouldBeFalse();
         map.GetConstantsOrEmpty().ShouldBeEmpty();
     }
+
+    [Fact]
+    public void GivenR5DependentWithNonObjectParameterArrayElement_WhenGettingDependentVariables_ThenNonObjectElementIsSkipped()
+    {
+        var dependent = new StructureMapGroupRuleDependent(new JsonObject(), FhirVersion.R5);
+        dependent.MutableNode()["parameter"] = new JsonArray(
+            JsonValue.Create("not-an-object"),
+            new JsonObject { ["valueString"] = "var1" });
+
+        dependent.GetDependentVariables().ShouldBe(["var1"]);
+    }
+
+    [Fact]
+    public void GivenStructureMapWithConstAsNonArrayValue_WhenGettingConstantsOrEmpty_ThenReturnsEmpty()
+    {
+        var map = new StructureMap { FhirVersion = FhirVersion.R5 };
+        map.MutableNode()["const"] = JsonValue.Create("not-an-array");
+
+        map.GetConstantsOrEmpty().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenStructureMapWithConstArrayContainingNonObjectElement_WhenGettingConstantsOrEmpty_ThenNonObjectElementIsSkipped()
+    {
+        var map = new StructureMap { FhirVersion = FhirVersion.R5 };
+        map.MutableNode()["const"] = new JsonArray(
+            JsonValue.Create(123),
+            new JsonObject { ["name"] = "c1" });
+
+        map.GetConstantsOrEmpty().Single().Name.ShouldBe("c1");
+    }
 }

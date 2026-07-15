@@ -72,7 +72,7 @@ public class TenantResolutionMiddleware : IDisposable
                 outcome.Issue.Add(new OperationOutcomeIssue
                 {
                     SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-                    IssueTypeCode = OperationOutcomeIssue.IssueType.BusinessRule,
+                    IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.BusinessRule,
                     Diagnostics = "Partition 0 is reserved for system operations and cannot be accessed via tenant API routes"
                 });
 
@@ -100,7 +100,7 @@ public class TenantResolutionMiddleware : IDisposable
                 outcome.Issue.Add(new OperationOutcomeIssue
                 {
                     SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-                    IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
+                    IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotFound,
                     Diagnostics = $"Tenant {tenantId} not found or inactive"
                 });
 
@@ -162,7 +162,7 @@ public class TenantResolutionMiddleware : IDisposable
                 outcome.Issue.Add(new OperationOutcomeIssue
                 {
                     SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-                    IssueTypeCode = OperationOutcomeIssue.IssueType.Required,
+                    IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Required,
                     Diagnostics = "Tenant ID is required in multi-tenant scenarios. Use /tenant/{tenantId}/" + context.Request.Path.Value
                 });
 

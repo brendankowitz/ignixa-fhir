@@ -164,19 +164,19 @@ public sealed record ValidationResult
         };
     }
 
-    private static OperationOutcomeIssue.IssueType DetermineIssueType(string code)
+    private static OperationOutcomeIssue.IssueTypeCommon DetermineIssueType(string code)
     {
         // Map constraint keys to FHIR IssueType
         return code switch
         {
-            "code-invalid" or "not-in-vs" or "invalid-code" => OperationOutcomeIssue.IssueType.CodeInvalid,
-            "cardinality-violation" => OperationOutcomeIssue.IssueType.Required,
-            var c when c.StartsWith("bdl-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
-            var c when c.StartsWith("ele-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
-            var c when c.StartsWith("ext-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
-            var c when c.StartsWith("dom-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
-            var c when c.StartsWith("ref-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
-            _ => OperationOutcomeIssue.IssueType.Invariant
+            "code-invalid" or "not-in-vs" or "invalid-code" => OperationOutcomeIssue.IssueTypeCommon.CodeInvalid,
+            "cardinality-violation" => OperationOutcomeIssue.IssueTypeCommon.Required,
+            var c when c.StartsWith("bdl-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueTypeCommon.Invariant,
+            var c when c.StartsWith("ele-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueTypeCommon.Invariant,
+            var c when c.StartsWith("ext-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueTypeCommon.Invariant,
+            var c when c.StartsWith("dom-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueTypeCommon.Invariant,
+            var c when c.StartsWith("ref-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueTypeCommon.Invariant,
+            _ => OperationOutcomeIssue.IssueTypeCommon.Invariant
         };
     }
 }

@@ -175,10 +175,10 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
 
         var issueType = result.ErrorCode switch
         {
-            "no-match" => OperationOutcomeIssue.IssueType.NotFound,
-            "multiple-matches" => OperationOutcomeIssue.IssueType.MultipleMatches,
-            "invalid" => OperationOutcomeIssue.IssueType.Invalid,
-            _ => OperationOutcomeIssue.IssueType.Processing
+            "no-match" => OperationOutcomeIssue.IssueTypeCommon.NotFound,
+            "multiple-matches" => OperationOutcomeIssue.IssueTypeCommon.MultipleMatches,
+            "invalid" => OperationOutcomeIssue.IssueTypeCommon.Invalid,
+            _ => OperationOutcomeIssue.IssueTypeCommon.Processing
         };
 
         var outcome = new OperationOutcome();

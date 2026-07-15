@@ -23,7 +23,7 @@ public class BadRequestException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
             Diagnostics = message
         });
     }
@@ -34,7 +34,7 @@ public class BadRequestException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
             Diagnostics = message
         });
     }

@@ -266,7 +266,7 @@ public class BundleEntryExecutor
 
             var statusCode = isConflict ? 409 : 500;
             var severity = isConflict ? FhirOperationOutcomeIssue.IssueSeverityCode.Error : FhirOperationOutcomeIssue.IssueSeverityCode.Fatal;
-            var code = isConflict ? FhirOperationOutcomeIssue.IssueType.Conflict : FhirOperationOutcomeIssue.IssueType.Exception;
+            var code = isConflict ? FhirOperationOutcomeIssue.IssueTypeCommon.Conflict : FhirOperationOutcomeIssue.IssueTypeCommon.Exception;
 
             // Create OperationOutcome with detailed diagnostics
             var operationOutcome = new OperationOutcome();

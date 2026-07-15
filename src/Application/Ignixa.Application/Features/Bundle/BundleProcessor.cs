@@ -521,7 +521,7 @@ public class BundleProcessor
         outcome.Issue.Add(new FhirOperationOutcomeIssue()
         {
             SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Processing,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Processing,
             Diagnostics = $"{message}: {details}"
         });
 

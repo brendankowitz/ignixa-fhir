@@ -35,7 +35,7 @@ public class InvalidSearchOperationException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
             Diagnostics = message
         });
     }

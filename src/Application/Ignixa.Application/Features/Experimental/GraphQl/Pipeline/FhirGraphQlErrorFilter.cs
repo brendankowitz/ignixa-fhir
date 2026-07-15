@@ -25,7 +25,7 @@ public sealed class FhirGraphQlErrorFilter(
         var issueType = MapToFhirIssueType(error.Code);
         var message = error.Message ?? "Unexpected GraphQL error.";
 
-        if (issueType == IssueType.Exception)
+        if (issueType == IssueTypeCommon.Exception)
             logger.LogError(error.Exception, "Unexpected GraphQL error: {Message}", message);
 
         var diagnostics = _includeExceptionDetails && error.Exception is not null
@@ -45,24 +45,24 @@ public sealed class FhirGraphQlErrorFilter(
             .Build();
     }
 
-    private static IssueType MapToFhirIssueType(string? errorCode) => errorCode switch
+    private static IssueTypeCommon MapToFhirIssueType(string? errorCode) => errorCode switch
     {
-        "FHIR_REFERENCE_NOT_FOUND" => IssueType.NotFound,
-        "FHIR_NOT_FOUND" => IssueType.NotFound,
-        "FHIR_REFERENCE_NOT_SUPPORTED" => IssueType.NotSupported,
-        "FHIR_VERSION_CONFLICT" => IssueType.Conflict,
-        "INVALID_RESOURCE" => IssueType.Invalid,
-        "FHIRPATH_INVALID" => IssueType.Invalid,
-        "FHIR_OPERATION_FAILED" => IssueType.Exception,
-        "FHIR_SINGLETON_VIOLATION" => IssueType.MultipleMatches,
-        "FHIR_SYNTAX_ERROR" => IssueType.Invalid,
-        "FHIR_INVALID_INSTANCE_QUERY" => IssueType.Invalid,
-        "FHIR_UNKNOWN_RESOURCE_TYPE" => IssueType.NotSupported,
-        "FHIR_INVALID_ID" => IssueType.Invalid,
-        "FHIR_POST_PROCESSING_FAILED" => IssueType.Exception,
-        "HC0013" => IssueType.TooCostly,      // Max execution depth exceeded
-        "HC0014" => IssueType.TooCostly,      // Execution timeout
-        "AUTH_NOT_AUTHORIZED" => IssueType.Forbidden,
-        _ => IssueType.Exception,
+        "FHIR_REFERENCE_NOT_FOUND" => IssueTypeCommon.NotFound,
+        "FHIR_NOT_FOUND" => IssueTypeCommon.NotFound,
+        "FHIR_REFERENCE_NOT_SUPPORTED" => IssueTypeCommon.NotSupported,
+        "FHIR_VERSION_CONFLICT" => IssueTypeCommon.Conflict,
+        "INVALID_RESOURCE" => IssueTypeCommon.Invalid,
+        "FHIRPATH_INVALID" => IssueTypeCommon.Invalid,
+        "FHIR_OPERATION_FAILED" => IssueTypeCommon.Exception,
+        "FHIR_SINGLETON_VIOLATION" => IssueTypeCommon.MultipleMatches,
+        "FHIR_SYNTAX_ERROR" => IssueTypeCommon.Invalid,
+        "FHIR_INVALID_INSTANCE_QUERY" => IssueTypeCommon.Invalid,
+        "FHIR_UNKNOWN_RESOURCE_TYPE" => IssueTypeCommon.NotSupported,
+        "FHIR_INVALID_ID" => IssueTypeCommon.Invalid,
+        "FHIR_POST_PROCESSING_FAILED" => IssueTypeCommon.Exception,
+        "HC0013" => IssueTypeCommon.TooCostly,      // Max execution depth exceeded
+        "HC0014" => IssueTypeCommon.TooCostly,      // Execution timeout
+        "AUTH_NOT_AUTHORIZED" => IssueTypeCommon.Forbidden,
+        _ => IssueTypeCommon.Exception,
     };
 }

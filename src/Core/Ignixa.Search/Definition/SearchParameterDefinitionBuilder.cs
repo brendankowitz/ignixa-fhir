@@ -227,7 +227,7 @@ internal static class SearchParameterDefinitionBuilder
             issues.Add(new Ignixa.Models.OperationOutcomeIssue()
             {
                 SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Fatal,
-                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueType.Invalid,
+                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 Diagnostics = string.Format(CultureInfo.InvariantCulture, format, args)
             });
         }

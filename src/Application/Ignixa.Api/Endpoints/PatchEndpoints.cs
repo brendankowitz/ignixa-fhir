@@ -231,7 +231,7 @@ public static class PatchEndpoints
             outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
                 SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Information,
-                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Informational,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{id}"
             });
             return FhirResults.Ok(outcome, context);
@@ -369,7 +369,7 @@ public static class PatchEndpoints
             outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
                 SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Information,
-                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Informational,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{result.Resource.ResourceId}"
             });
             return FhirResults.Ok(outcome, context);

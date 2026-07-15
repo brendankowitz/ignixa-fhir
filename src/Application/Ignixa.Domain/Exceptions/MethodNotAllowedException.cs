@@ -26,7 +26,7 @@ public class MethodNotAllowedException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Forbidden,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Forbidden,
             Diagnostics = message
         });
     }
@@ -39,7 +39,7 @@ public class MethodNotAllowedException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Forbidden,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Forbidden,
             Diagnostics = message
         });
     }

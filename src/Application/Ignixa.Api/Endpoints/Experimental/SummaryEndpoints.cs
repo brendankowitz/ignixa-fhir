@@ -129,7 +129,7 @@ public static class SummaryEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Invalid,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -166,7 +166,7 @@ public static class SummaryEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Patient identifier is required when patient ID is not provided in URL"));
         }
 
@@ -174,7 +174,7 @@ public static class SummaryEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Invalid,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -235,7 +235,7 @@ public static class SummaryEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Invalid,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -258,7 +258,7 @@ public static class SummaryEndpoints
 
     private static OperationOutcome CreateOperationOutcome(
         OperationOutcomeIssue.IssueSeverityCode severity,
-        OperationOutcomeIssue.IssueType code,
+        OperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
         var outcome = new OperationOutcome();

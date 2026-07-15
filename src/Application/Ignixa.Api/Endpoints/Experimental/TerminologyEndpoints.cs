@@ -134,7 +134,7 @@ public static class TerminologyEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameter 'url' is required"));
         }
 
@@ -151,7 +151,7 @@ public static class TerminologyEndpoints
         {
             return Results.NotFound(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.NotFound,
+                FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
                 ex.Message));
         }
     }
@@ -175,7 +175,7 @@ public static class TerminologyEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameter 'url' is required"));
         }
 
@@ -190,7 +190,7 @@ public static class TerminologyEndpoints
         {
             return Results.NotFound(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.NotFound,
+                FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
                 ex.Message));
         }
     }
@@ -222,7 +222,7 @@ public static class TerminologyEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'code' and 'system' are required"));
         }
 
@@ -259,7 +259,7 @@ public static class TerminologyEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'code' and 'system' are required"));
         }
 
@@ -306,7 +306,7 @@ public static class TerminologyEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'codeA', 'codeB', and 'system' are required"));
         }
 
@@ -332,7 +332,7 @@ public static class TerminologyEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'codeA', 'codeB', and 'system' are required"));
         }
 
@@ -368,7 +368,7 @@ public static class TerminologyEndpoints
 
     private static OperationOutcome CreateOperationOutcome(
         FhirOperationOutcomeIssue.IssueSeverityCode severity,
-        FhirOperationOutcomeIssue.IssueType code,
+        FhirOperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
         var outcome = new OperationOutcome();

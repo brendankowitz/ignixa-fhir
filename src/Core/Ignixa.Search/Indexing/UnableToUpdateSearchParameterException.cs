@@ -58,7 +58,7 @@ public class UnableToUpdateSearchParameterException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.NotSupported,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = diagnostics
         });
     }

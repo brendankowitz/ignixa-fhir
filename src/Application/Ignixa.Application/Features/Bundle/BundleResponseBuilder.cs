@@ -112,7 +112,7 @@ public class BundleResponseBuilder
                     outcome.Issue.Add(new OperationOutcomeIssue()
                     {
                         SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Warning,
-                        IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
+                        IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
                         Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
                     });
                     entry.Response.Outcome = outcome;

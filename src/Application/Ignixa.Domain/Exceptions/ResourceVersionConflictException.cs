@@ -40,7 +40,7 @@ public class ResourceVersionConflictException : FhirException
         Issues.Add(new OperationOutcomeIssue
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Conflict,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Conflict,
             Diagnostics = $"Resource {resourceType}/{resourceId} was modified by another concurrent operation. " +
                           $"Please retry the bundle. (Attempted SurrogateId: {attemptedSurrogateId}, " +
                           $"Existing SurrogateId: {existingSurrogateId})"

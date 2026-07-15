@@ -68,7 +68,7 @@ public static class ParametersExtensions
         {
             return JsonSourceNodeFactory.Parse<T>(param.Resource.MutableNode);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             logger?.LogWarning(
                 ex,
@@ -113,7 +113,7 @@ public static class ParametersExtensions
                 {
                     return JsonSourceNodeFactory.Parse<T>(p.Resource.MutableNode);
                 }
-                catch (JsonException ex)
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
                 {
                     logger?.LogWarning(
                         ex,

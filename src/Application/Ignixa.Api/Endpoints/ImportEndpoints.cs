@@ -324,7 +324,7 @@ public static class ImportEndpoints
         outcome.Issue.Add(new OperationOutcomeIssue
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
             Diagnostics = message
         });
         return outcome;

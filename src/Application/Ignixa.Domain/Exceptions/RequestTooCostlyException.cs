@@ -26,7 +26,7 @@ public class RequestTooCostlyException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.TooCostly,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.TooCostly,
             Diagnostics = message
         });
     }
@@ -39,7 +39,7 @@ public class RequestTooCostlyException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.TooCostly,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.TooCostly,
             Diagnostics = message
         });
     }

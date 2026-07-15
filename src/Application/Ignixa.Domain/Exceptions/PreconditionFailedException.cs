@@ -31,7 +31,7 @@ public class PreconditionFailedException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Required,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Required,
             Diagnostics = message
         });
     }
@@ -44,7 +44,7 @@ public class PreconditionFailedException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.Required,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Required,
             Diagnostics = message
         });
     }

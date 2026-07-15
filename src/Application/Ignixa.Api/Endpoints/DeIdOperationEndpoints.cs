@@ -82,7 +82,7 @@ public static class DeIdOperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/$de-identify"));
         }
 
@@ -104,7 +104,7 @@ public static class DeIdOperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR Parameters resource with the resource to de-identify"));
         }
 
@@ -119,7 +119,7 @@ public static class DeIdOperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Invalid,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 $"Request body must be valid JSON: {ex.Message}"));
         }
 
@@ -140,7 +140,7 @@ public static class DeIdOperationEndpoints
             {
                 return FhirResults.BadRequest(CreateOperationOutcome(
                     OperationOutcomeIssue.IssueSeverityCode.Error,
-                    OperationOutcomeIssue.IssueType.Required,
+                    OperationOutcomeIssue.IssueTypeCommon.Required,
                     "Required parameter 'resource' is missing"));
             }
 
@@ -167,7 +167,7 @@ public static class DeIdOperationEndpoints
             {
                 return FhirResults.BadRequest(CreateOperationOutcome(
                     OperationOutcomeIssue.IssueSeverityCode.Error,
-                    OperationOutcomeIssue.IssueType.Invalid,
+                    OperationOutcomeIssue.IssueTypeCommon.Invalid,
                     ex.Message));
             }
         }
@@ -184,7 +184,7 @@ public static class DeIdOperationEndpoints
             ? Results.Ok(result.OutputResource!.MutableNode)
             : FhirResults.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Processing,
+                OperationOutcomeIssue.IssueTypeCommon.Processing,
                 result.ErrorMessage!));
     }
 
@@ -205,7 +205,7 @@ public static class DeIdOperationEndpoints
 
     private static OperationOutcome CreateOperationOutcome(
         OperationOutcomeIssue.IssueSeverityCode severity,
-        OperationOutcomeIssue.IssueType code,
+        OperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
         var outcome = new OperationOutcome();

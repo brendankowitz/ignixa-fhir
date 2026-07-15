@@ -32,7 +32,7 @@ public static class ValidationResultExtensions
             var issueComponent = new OperationOutcomeIssue()
             {
                 SeverityCode = MapSeverity(issue.Severity),
-                IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
+                IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 Diagnostics = issue.Message
             };
             issueComponent.Expression.Add(issue.Path);
@@ -45,7 +45,7 @@ public static class ValidationResultExtensions
             issueList.Add(new OperationOutcomeIssue()
             {
                 SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Information,
-                IssueTypeCode = OperationOutcomeIssue.IssueType.Informational,
+                IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = "Validation passed with no issues"
             });
         }

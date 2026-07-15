@@ -1439,7 +1439,7 @@ public static class FhirEndpoints
             outcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {
                 SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Information,
-                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueType.Informational,
+                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = result.IsPartialDelete
                     ? $"Partial delete: Deleted {result.DeletedCount} of {result.TotalMatches} matching resources (limit: {count}). " +
                       $"Deleted IDs: {string.Join(", ", result.DeletedIds)}"
@@ -1678,7 +1678,7 @@ public static class FhirEndpoints
         outcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
         {
             SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Information,
-            IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueType.Informational,
+            IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Informational,
             Diagnostics = message
         });
         return outcome;
@@ -1719,7 +1719,7 @@ public static class FhirEndpoints
             operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {
                 SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueType.NotSupported,
+                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.NotSupported,
                 Diagnostics = diagnostics
             });
         }

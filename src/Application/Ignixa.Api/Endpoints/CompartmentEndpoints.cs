@@ -136,7 +136,7 @@ public static class CompartmentEndpoints
             outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
                 SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Required,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 Diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}"
             });
             return Results.BadRequest(outcome);
@@ -222,7 +222,7 @@ public static class CompartmentEndpoints
             outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
                 SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Invalid,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Invalid,
                 Diagnostics = $"Invalid compartment type '{compartmentType}'. Must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter"
             });
             return Results.BadRequest(outcome);
@@ -312,7 +312,7 @@ public static class CompartmentEndpoints
             outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
                 SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Required,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 Diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/*"
             });
             return Results.BadRequest(outcome);

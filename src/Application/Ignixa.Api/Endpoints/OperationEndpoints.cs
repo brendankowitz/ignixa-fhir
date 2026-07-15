@@ -172,7 +172,7 @@ public static class OperationEndpoints
     /// </summary>
     private static OperationOutcome CreateOperationOutcome(
         FhirOperationOutcomeIssue.IssueSeverityCode severity,
-        FhirOperationOutcomeIssue.IssueType code,
+        FhirOperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
         var outcome = new OperationOutcome();
@@ -217,7 +217,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/$validate"));
         }
 
@@ -240,7 +240,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/$validate"));
         }
 
@@ -280,7 +280,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/{id}/$validate"));
         }
 
@@ -308,7 +308,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR resource to validate"));
         }
 
@@ -322,7 +322,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Invalid,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Request body must be valid JSON"));
         }
 
@@ -366,7 +366,7 @@ public static class OperationEndpoints
             {
                 return FhirResults.BadRequest(CreateOperationOutcome(
                     FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                    FhirOperationOutcomeIssue.IssueType.Invalid,
+                    FhirOperationOutcomeIssue.IssueTypeCommon.Invalid,
                     $"Validation mode '{mode}' requires instance-level endpoint: [base]/{{resourceType}}/{{id}}/$validate"));
             }
         }
@@ -547,7 +547,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Invalid,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Request body must be a valid FHIR Parameters resource"));
         }
 
@@ -555,7 +555,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR Parameters resource"));
         }
 
@@ -570,7 +570,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Required parameter 'MemberPatient' is missing"));
         }
 
@@ -578,7 +578,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Required parameter 'CoverageToMatch' is missing"));
         }
 
@@ -624,7 +624,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/Patient/$member-match"));
         }
 
@@ -655,7 +655,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "The _includesContinuationToken parameter is required for the $includes operation"));
         }
 
@@ -729,7 +729,7 @@ public static class OperationEndpoints
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                FhirOperationOutcomeIssue.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/$includes"));
         }
 

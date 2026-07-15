@@ -116,7 +116,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Invalid,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Request body must be a valid FHIR Parameters resource"));
         }
 
@@ -124,7 +124,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR Parameters resource"));
         }
 
@@ -151,7 +151,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Processing,
+                OperationOutcomeIssue.IssueTypeCommon.Processing,
                 $"Transformation failed: {ex.Message}"));
         }
     }
@@ -176,7 +176,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Invalid,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Request body must be a valid FHIR Parameters resource"));
         }
 
@@ -184,7 +184,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR Parameters resource"));
         }
 
@@ -205,13 +205,13 @@ public static class TransformEndpoints
             {
                 return Results.NotFound(CreateOperationOutcome(
                     OperationOutcomeIssue.IssueSeverityCode.Error,
-                    OperationOutcomeIssue.IssueType.NotFound,
+                    OperationOutcomeIssue.IssueTypeCommon.NotFound,
                     $"StructureMap/{id} not found"));
             }
 
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Processing,
+                OperationOutcomeIssue.IssueTypeCommon.Processing,
                 $"Transformation failed: {ex.Message}"));
         }
     }
@@ -226,7 +226,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/StructureMap/$transform"));
         }
 
@@ -244,7 +244,7 @@ public static class TransformEndpoints
         {
             return Results.BadRequest(CreateOperationOutcome(
                 OperationOutcomeIssue.IssueSeverityCode.Error,
-                OperationOutcomeIssue.IssueType.Required,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/StructureMap/{id}/$transform"));
         }
 
@@ -253,7 +253,7 @@ public static class TransformEndpoints
 
     private static OperationOutcome CreateOperationOutcome(
         OperationOutcomeIssue.IssueSeverityCode severity,
-        OperationOutcomeIssue.IssueType code,
+        OperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
         var outcome = new OperationOutcome();

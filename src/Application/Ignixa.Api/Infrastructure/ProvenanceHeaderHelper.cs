@@ -87,7 +87,7 @@ public static class ProvenanceHeaderHelper
                 resourceNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
             }
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             logger.LogWarning(ex, "X-Provenance header contains invalid JSON");
             throw new BadRequestException("X-Provenance header contains invalid JSON", ex);

@@ -52,11 +52,11 @@ public sealed class OperationOutcomeFacadeTests
         var issue = new OperationOutcomeIssue
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotFound,
         };
 
         issue.SeverityCode.ShouldBe(OperationOutcomeIssue.IssueSeverityCode.Error);
-        issue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueType.NotFound);
+        issue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueTypeCommon.NotFound);
         issue.MutableNode()["severity"]!.GetValue<string>().ShouldBe("error");
         issue.MutableNode()["code"]!.GetValue<string>().ShouldBe("not-found");
     }
@@ -79,5 +79,44 @@ public sealed class OperationOutcomeFacadeTests
         issue.MutableNode()["severity"] = "success";
 
         issue.SeverityCode.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenOperationOutcomeIssue_WhenRawCodeIsR5OnlyLiteral_ThenIssueTypeCodeIsNull()
+    {
+        // "limited-filter"/"success" are R5-only additions to the issue-type value set -- same
+        // R4/R5-common-subset handling as severity.
+        var issue = new OperationOutcomeIssue();
+        issue.MutableNode()["code"] = "success";
+
+        issue.IssueTypeCode.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenR5OperationOutcomeIssue_WhenCodeSetToR5OnlyLiteral_ThenRoundTrips()
+    {
+        // Locks in that Ignixa.Models.R5.OperationOutcomeIssue.Code resolves to the generated
+        // per-version Ignixa.Models.R5.IssueType (33 literals), not the shared base's nested
+        // OperationOutcomeIssue.IssueTypeCommon (31 literals, R4/R5-common subset) -- the two
+        // were previously both named "IssueType", which C#'s inherited-nested-type lookup
+        // silently resolved to the wrong (narrower) one for every R4/R5 subclass.
+        var issue = new Ignixa.Models.R5.OperationOutcomeIssue
+        {
+            Code = Ignixa.Models.R5.IssueType.LimitedFilter,
+        };
+
+        issue.Code.ShouldBe(Ignixa.Models.R5.IssueType.LimitedFilter);
+        issue.MutableNode()["code"]!.GetValue<string>().ShouldBe("limited-filter");
+    }
+
+    [Fact]
+    public void GivenR4OperationOutcomeIssue_WhenCodeSet_ThenUsesR4IssueType()
+    {
+        var issue = new Ignixa.Models.R4.OperationOutcomeIssue
+        {
+            Code = Ignixa.Models.R4.IssueType.NotFound,
+        };
+
+        issue.Code.ShouldBe(Ignixa.Models.R4.IssueType.NotFound);
     }
 }

@@ -33,7 +33,7 @@ public class SearchResourceNotSupportedException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.NotSupported,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType)
         });
     }
@@ -46,7 +46,7 @@ public class SearchResourceNotSupportedException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.NotSupported,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType)
         });
     }

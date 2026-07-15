@@ -363,7 +363,7 @@ public class MemberMatchHandlerTests
 
         var firstIssue = outcome.Issue[0];
         firstIssue.SeverityCode.ShouldBe(OperationOutcomeIssue.IssueSeverityCode.Error);
-        firstIssue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueType.NotFound);
+        firstIssue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueTypeCommon.NotFound);
     }
 
     [Fact]
@@ -381,7 +381,7 @@ public class MemberMatchHandlerTests
 
         var firstIssue = outcome.Issue[0];
         firstIssue.SeverityCode.ShouldBe(OperationOutcomeIssue.IssueSeverityCode.Error);
-        firstIssue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueType.MultipleMatches);
+        firstIssue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueTypeCommon.MultipleMatches);
     }
 
     #endregion

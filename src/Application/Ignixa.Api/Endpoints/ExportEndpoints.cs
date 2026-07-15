@@ -328,7 +328,7 @@ public static class ExportEndpoints
             outcome.Issue.Add(new OperationOutcomeIssue
             {
                 SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = OperationOutcomeIssue.IssueType.NotSupported,
+                IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
                 Diagnostics = ex.Message
             });
             return Results.BadRequest(outcome);

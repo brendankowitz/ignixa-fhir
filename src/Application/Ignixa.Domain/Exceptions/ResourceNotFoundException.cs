@@ -26,7 +26,7 @@ public class ResourceNotFoundException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotFound,
             Diagnostics = message
         });
     }
@@ -39,7 +39,7 @@ public class ResourceNotFoundException : FhirException
         Issues.Add(new OperationOutcomeIssue()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
-            IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotFound,
             Diagnostics = message
         });
     }

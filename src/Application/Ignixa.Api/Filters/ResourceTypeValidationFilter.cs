@@ -89,7 +89,7 @@ public class ResourceTypeValidationFilter : IEndpointFilter
             outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
                 SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.NotFound,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
                 Diagnostics = $"Resource type '{resourceType}' is not supported by this server (FHIR {tenantConfig.FhirVersion})"
             });
 

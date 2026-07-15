@@ -68,18 +68,18 @@ public class FhirExceptionMiddleware
         // Handle other exceptions with generic OperationOutcome
         var statusCode = HttpStatusCode.InternalServerError;
         var severity = OperationOutcomeIssue.IssueSeverityCode.Error;
-        var code = OperationOutcomeIssue.IssueType.Exception;
+        var code = OperationOutcomeIssue.IssueTypeCommon.Exception;
 
         // Map specific exceptions to HTTP status codes
         if (exception is ArgumentException or ArgumentNullException)
         {
             statusCode = HttpStatusCode.BadRequest;
-            code = OperationOutcomeIssue.IssueType.Invalid;
+            code = OperationOutcomeIssue.IssueTypeCommon.Invalid;
         }
         else if (exception is InvalidOperationException)
         {
             statusCode = HttpStatusCode.BadRequest;
-            code = OperationOutcomeIssue.IssueType.Processing;
+            code = OperationOutcomeIssue.IssueTypeCommon.Processing;
         }
 
         var operationOutcome = new OperationOutcome();

@@ -27,12 +27,17 @@ public partial class OperationOutcomeIssue
 
     /// <summary>
     /// Gets/sets <c>code</c> via a version-agnostic enum. Same rationale as <see cref="SeverityCode"/>:
-    /// R5 adds a "success" literal to the <c>issue-type</c> value set, but every real caller only uses one
-    /// of the 30 literals common to both versions.
+    /// R5 adds two literals ("limited-filter", "success") to the <c>issue-type</c> value set, but every
+    /// real caller only uses one of the 31 literals common to both versions. Named <see cref="IssueTypeCommon"/>,
+    /// not <c>IssueType</c>, to avoid colliding with the generated per-version
+    /// <see cref="Ignixa.Models.R4.IssueType"/>/<see cref="Ignixa.Models.R5.IssueType"/> top-level types: an
+    /// unqualified <c>IssueType</c> reference inside those generated subclasses would otherwise resolve to
+    /// this nested type (inherited-member lookup wins over namespace lookup), silently retyping their
+    /// generated <c>Code</c> property to the narrower common subset instead of the real per-version enum.
     /// </summary>
-    public IssueType? IssueTypeCode
+    public IssueTypeCommon? IssueTypeCode
     {
-        get => EnumUtility.ParseLiteral<IssueType>(GetProperty<string>("code"));
+        get => EnumUtility.ParseLiteral<IssueTypeCommon>(GetProperty<string>("code"));
         set => SetProperty("code", value?.GetLiteral());
     }
 
@@ -55,9 +60,12 @@ public partial class OperationOutcomeIssue
     }
 
     /// <summary>
-    /// The type of issue (FHIR IssueType value set, R4/R5-common subset).
+    /// The type of issue (FHIR IssueType value set, R4/R5-common subset). Named <c>IssueTypeCommon</c>
+    /// rather than <c>IssueType</c> to avoid shadowing the generated per-version
+    /// <see cref="Ignixa.Models.R4.IssueType"/>/<see cref="Ignixa.Models.R5.IssueType"/> types -- see
+    /// <see cref="IssueTypeCode"/>.
     /// </summary>
-    public enum IssueType
+    public enum IssueTypeCommon
     {
         [EnumLiteral("invalid", "http://hl7.org/fhir/issue-type")]
         Invalid,
