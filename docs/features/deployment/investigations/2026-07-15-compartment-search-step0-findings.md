@@ -112,8 +112,9 @@ be attributable to this resolution-loop asymmetry instead.
 (910.0ms) — a 4% residual. Cold, the order inverts outright: Arm B (1074ms) beats Arm C (1133ms) by 59ms.
 A gap that flips sign between the cold and warm measurement isn't a stable, attributable shape effect —
 it's within run-to-run noise. Arm B and Arm C are the same result within measurement error. Both close the
-overwhelming majority of the distance from Arm A: cold, A is 348-289ms (24-33%) slower than B/C; warm, A
-is 56-96ms (6-10%) slower than B/C.
+overwhelming majority of the distance from Arm A: cold, A is 289-348ms (20-24%) slower than B/C (289ms/20.3%
+vs. C, 348ms/24.5% vs. B, both relative to Arm A's 1422ms); warm, A is 56-96ms (6-10%) slower than B/C
+(56ms/5.6% vs. B, 96ms/9.5% vs. C, both relative to Arm A's 1005.7ms).
 
 Per the design doc's own instruction, the honest conclusion is that the compartment case should stop being
 this document's headline. A single change — literalize `SearchParamId` via `EF.Constant` in
