@@ -15,7 +15,7 @@
 - Do not modify `Ignixa.Search.Expressions.Parsers.Legacy.*` (PR #332's frozen rollback-lever parser) — it is read-only reference/oracle material for this plan's differential test, never a target for changes.
 - Do not modify the indexing/write path beyond Task 1's rename — `ElementSearchIndexer` and the `RowGenerators/*` stay otherwise untouched.
 - Follow repo convention: file-scoped namespaces, `Nullable=enable`, AAA test structure, `GivenContext_WhenAction_ThenResult` naming, no `#region`, one type per file.
-- Sequencing matters and must not be reordered: Task 5 (the lowerer) must land and be proven correct via its differential test *before* Task 6 (the `SearchQueryInterpreter` migration) uses it as an oracle.
+- Sequencing matters and must not be reordered: Task 5 (the lowerer) must land and be proven correct via its differential test *before* Task 6 (bridging the SQL EF backend) or Task 7 (the `SearchQueryInterpreter` migration) depend on it.
 
 ---
 
@@ -661,7 +661,106 @@ This is the proof task 6's SearchQueryInterpreter migration depends on."
 
 ---
 
-### Task 6: Migrate `SearchQueryInterpreter` to consume the typed tree directly
+### Task 6: Bridge the SQL EF search backend via `LegacyExpressionLowerer`
+
+**Inserted 2026-07-15 during execution — a real, previously-missed production consumer.** Task 5's review found that `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Search/SearchExpressionQueryBuilder.cs` — the **default production search backend** (`IgnixaApiFixture.cs:36-37`: `UseSqlServer` defaults to `true`; CI's E2E job runs against real SQL Server, never sets `TEST_USE_FILESYSTEM=true`) — is a **second, independent consumer of the `Expression` tree that neither this plan nor the design doc accounted for.** It does not implement `IExpressionVisitor` at all; it hand-dispatches via a `switch` on the expression's runtime type (`ApplySearchExpressionAsync`, `SearchExpressionQueryBuilder.cs:80-92`), with `_ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported")` as the fallthrough (`:91`) — confirmed directly, independent of the review, by reading the file. Since Task 4, this throws for any query reaching a leaf predicate, exactly as the original fhir-to-sql-compiler design doc's own diagnosis predicted it would ("adding an AST node yields a runtime `NotSupportedException` rather than a compile error").
+
+**This is not the same fix as Task 7's `SearchQueryInterpreter` migration, and should not be treated as one.** `SearchExpressionQueryBuilder` is the legacy SQL backend the entire wider fhir-to-sql-compiler project (Phases 3-9) exists to eventually *replace* — migrating it to consume the new typed tree directly now would be duplicate, throwaway work once the real compiler lands. The correct fix here is the cheapest one: bridge it through the already-proven `LegacyExpressionLowerer`, exactly the way Task 7 explicitly does NOT do for `SearchQueryInterpreter` (Task 7 migrates that consumer instead of bridging it, because it's small and in-repo; this consumer is neither — it's large, and it's slated for full replacement, not migration).
+
+**Files:**
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Search/SearchExpressionQueryBuilder.cs`
+- Test: reuse whichever existing SQL EF search test project already exercises `ApplySearchExpressionAsync` end to end — find it first (`grep -rln "SearchExpressionQueryBuilder" test/`), do not create a new test project for a one-line fix.
+
+**Interfaces:**
+- Consumes: `LegacyExpressionLowerer` (Task 5).
+- Produces: `SearchExpressionQueryBuilder` continues to receive exactly the old field-level tree shape it already handles correctly — zero changes to any of its per-type `Apply*Async` methods.
+
+- [ ] **Step 1: Confirm the exact entry point**
+
+```bash
+sed -n '60,93p' src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Search/SearchExpressionQueryBuilder.cs
+```
+
+Confirm `ApplySearchExpressionAsync(IQueryable<ResourceEntity> baseQuery, short? resourceTypeId, Expression expression, CancellationToken ct)` is the single entry point, and that the `switch` at the end (`:80-92`) is the only dispatch site — i.e., lowering `expression` once, right after the `ArgumentNullException.ThrowIfNull(expression)` check at the top of this method, covers every call path into this class. If there's a second, different entry point not shown here, STOP and report NEEDS_CONTEXT.
+
+- [ ] **Step 2: Lower at the entry point**
+
+```csharp
+public async Task<IQueryable<ResourceEntity>> ApplySearchExpressionAsync(
+    IQueryable<ResourceEntity> baseQuery,
+    short? resourceTypeId,
+    Expression expression,
+    CancellationToken ct)
+{
+    ArgumentNullException.ThrowIfNull(expression);
+
+    // Bridge: this class dispatches on the OLD field-level Expression shape via hand-written
+    // type-switch, not IExpressionVisitor. Since the semantic-IR work (2026-07-15), the parser's
+    // canonical output is the NEW typed predicate tree. Lower back to the shape this class already
+    // knows how to handle -- do not touch any Apply*Async method below to understand the new tree;
+    // that's explicitly out of scope here (this backend is slated for full replacement by
+    // Ignixa.Search.Sql in later phases, not migration). See
+    // docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md.
+    expression = expression.AcceptVisitor(new LegacyExpressionLowerer(), context: null);
+
+    _logger.LogDebug(
+        "ApplySearchExpressionAsync: ExpressionType={ExpressionType}, ResourceTypeId={ResourceTypeId}",
+        expression.GetType().Name,
+        resourceTypeId);
+
+    return expression switch
+    {
+        // ... unchanged from here down ...
+    };
+}
+```
+
+Verify `LegacyExpressionLowerer`'s `AcceptVisitor` context parameter type matches (`object?`, per Task 5) and add whatever `using Ignixa.Search.Expressions;` this file needs.
+
+- [ ] **Step 3: Find and run the existing test coverage for this class**
+
+```bash
+grep -rln "SearchExpressionQueryBuilder" test/
+```
+
+Run whichever test project(s) that returns. **Expected:** all previously-passing tests for this class still pass — the lowering step should be transparent for any query that previously worked, since `LegacyExpressionLowerer` was proven correct against the frozen `Legacy.*` parser in Task 5.
+
+- [ ] **Step 4: If E2E tests are runnable in this environment, confirm the fix against them**
+
+If a live SQL Server is reachable (per earlier phases' established pattern — check `TEST_SQL_CONNECTION_STRING` / the `ignixa-test-sql` container from prior work, or start one via `docker-compose.test.yml` if needed), run a representative slice of `Ignixa.Api.E2ETests`' search tests and confirm they no longer throw `NotSupportedException`. If no live SQL Server is reachable in this environment, report DONE_WITH_CONCERNS noting E2E could not be directly verified here, rather than claiming a coverage level you didn't actually check — do not repeat the unverified-attribution mistake this task exists to fix.
+
+- [ ] **Step 5: Build and run the broader filtered suite**
+
+```bash
+dotnet build All.sln --nologo
+dotnet test All.sln --filter "FullyQualifiedName!~E2ETests" --nologo
+```
+
+**Expected:** 0 warnings, 0 errors. No new failures relative to Task 5's tip (the only expected remaining gap at this point is `SearchQueryInterpreter`'s, which Task 7 fixes next).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "fix(datalayer): bridge SearchExpressionQueryBuilder through LegacyExpressionLowerer
+
+SearchExpressionQueryBuilder is the default production search backend
+(SQL EF) and hand-dispatches on Expression's runtime type via a switch,
+not IExpressionVisitor -- a second, independent consumer of the tree
+this plan's earlier tasks didn't account for. Since the binder started
+producing the new typed predicate tree (task 4), this threw
+NotSupportedException for any query reaching a leaf predicate.
+
+This is a bridge, not a migration: SearchExpressionQueryBuilder is the
+legacy SQL backend the wider fhir-to-sql-compiler project replaces in
+later phases, so migrating it to the new tree now would be throwaway
+work. One line at the entry point, reusing the already-proven
+LegacyExpressionLowerer, keeps it working exactly as before."
+```
+
+---
+
+### Task 7: Migrate `SearchQueryInterpreter` to consume the typed tree directly
 
 **Files:**
 - Modify: `src/Core/Ignixa.Search/InMemory/SearchQueryInterpreter.cs`
@@ -749,6 +848,6 @@ Closes phase 2 of docs/superpowers/plans/2026-07-15-fhir-to-sql-compiler-roadmap
 
 ## Self-Review
 
-- **Spec coverage:** every decision in `docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md` maps to a task — node shape (Task 2), value reuse + `CompositeIndexSearchValue` rename (Task 1), composite adoption (Task 2/4), construction (Task 3/4), legacy lowering (Task 5), and the in-scope `InMemoryIndex` migration (Task 6), sequenced exactly as the design doc's *In scope* section specifies (lowerer proven first, then migration).
-- **Placeholder scan:** a few steps (Task 2 Step 5's `SearchParameterInfo` constructor args, Task 3 Step 3's `DateTimeSearchValue` constructor, Task 5 Step 5's parser entry points, Task 6 Steps 3-4's evaluation logic) are deliberately marked "verify/read before finalizing" rather than pre-written as fact, because their exact current shape wasn't read this session and guessing would risk writing incorrect code — this is the same honest-deferral pattern used successfully in the Step 0 plan's data-seeding task, not an unscoped placeholder. Every one of them names the exact command to run to resolve the unknown before writing the real code.
-- **Type consistency:** `SearchParameterPredicateExpression(SearchParameterInfo, SearchComparator, SearchModifier?, ISearchValue)`, `CompositeComponentExpression(SearchParameterInfo, int, Expression)`, and `SearchPredicateExpressionBuilder.Build(SearchParameterInfo, SearchModifier?, SearchComparator, ISearchValue)` are used identically across Tasks 2-6 — checked for drift, none found.
+- **Spec coverage:** every decision in `docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md` maps to a task — node shape (Task 2), value reuse + `CompositeIndexSearchValue` rename (Task 1), composite adoption (Task 2/4), construction (Task 3/4), legacy lowering (Task 5), and the in-scope `InMemoryIndex` migration (Task 7), sequenced exactly as the design doc's *In scope* section specifies (lowerer proven first, then migration). **Task 6 (the SQL EF backend bridge) was not anticipated by the design doc** — it was discovered during Task 5's review as a real, previously-missed production consumer of the `Expression` tree. Recorded here rather than silently patched, since a future reader of the design doc alone would not learn this consumer exists.
+- **Placeholder scan:** a few steps (Task 2 Step 5's `SearchParameterInfo` constructor args, Task 3 Step 3's `DateTimeSearchValue` constructor, Task 5 Step 5's parser entry points, Task 7 Steps 3-4's evaluation logic) are deliberately marked "verify/read before finalizing" rather than pre-written as fact, because their exact current shape wasn't read this session and guessing would risk writing incorrect code — this is the same honest-deferral pattern used successfully in the Step 0 plan's data-seeding task, not an unscoped placeholder. Every one of them names the exact command to run to resolve the unknown before writing the real code. Task 6's Step 4 similarly requires an explicit "I could not verify this" report rather than an unverified claim, precisely because Task 5's report making an unverified claim about E2E test impact is what surfaced Task 6's need to exist in the first place.
+- **Type consistency:** `SearchParameterPredicateExpression(SearchParameterInfo, SearchComparator, SearchModifier?, ISearchValue)`, `CompositeComponentExpression(SearchParameterInfo, int, Expression)`, and `SearchPredicateExpressionBuilder.Build(SearchParameterInfo, SearchModifier?, SearchComparator, ISearchValue)` are used identically across Tasks 2-7 — checked for drift, none found.
