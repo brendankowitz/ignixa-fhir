@@ -143,7 +143,7 @@ public class CompactSearchIndexConverter : JsonConverter<List<SearchIndexEntry>>
             StringSearchValue => SearchParamType.String,
             TokenSearchValue => SearchParamType.Token,
             UriSearchValue => SearchParamType.Uri,
-            CompositeSearchValue => SearchParamType.Composite,
+            CompositeIndexSearchValue => SearchParamType.Composite,
             _ => throw new NotSupportedException($"Unknown search value type: {searchValue.GetType().Name}")
         };
     }

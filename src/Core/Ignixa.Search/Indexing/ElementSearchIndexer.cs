@@ -148,7 +148,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
             if (skip) continue;
 
-            yield return new SearchIndexEntry(compositeSearchParameterInfo, new CompositeSearchValue(componentValues));
+            yield return new SearchIndexEntry(compositeSearchParameterInfo, new CompositeIndexSearchValue(componentValues));
         }
     }
 
@@ -430,7 +430,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
             case SearchParamType.Reference:
                 return typeof(ReferenceSearchValue);
             case SearchParamType.Composite:
-                return typeof(CompositeSearchValue);
+                return typeof(CompositeIndexSearchValue);
             case SearchParamType.Quantity:
                 return typeof(QuantitySearchValue);
             case SearchParamType.Uri:
