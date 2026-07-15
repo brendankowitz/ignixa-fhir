@@ -108,7 +108,7 @@ be attributable to this resolution-loop asymmetry instead.
 
 ## Conclusion
 
-**Arm B ≈ Arm C. Literalizing `SearchParamId` is the fix.** Warm, Arm B (950.0ms) is 40ms above Arm C
+**Arm B ≈ Arm C. Literalizing `SearchParamId` closes the residual gap.** Warm, Arm B (950.0ms) is 40ms above Arm C
 (910.0ms) — a 4% residual. Cold, the order inverts outright: Arm B (1074ms) beats Arm C (1133ms) by 59ms.
 A gap that flips sign between the cold and warm measurement isn't a stable, attributable shape effect —
 it's within run-to-run noise. Arm B and Arm C are the same result within measurement error. Both close the

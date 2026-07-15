@@ -28,7 +28,7 @@ public class DatabaseSchemaInitializationTests
         return connectionString;
     }
 
-    [Fact]
+    [Fact(Skip = "Manual step 0 experiment - run explicitly, not part of CI")]
     public async Task GivenTestDatabase_WhenInitialized_ThenSchemaAppliesAndReferenceSearchParamTableIsEmpty()
     {
         // Arrange

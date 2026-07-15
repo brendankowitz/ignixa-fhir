@@ -115,6 +115,11 @@ public static class CompartmentDataSeeder
     /// Seeds the catalog (ResourceType, SearchParam) and a skewed set of ReferenceSearchParam + Resource
     /// rows for the given compartment.
     /// </summary>
+    /// <remarks>
+    /// Superseded by <see cref="SeedRealPatientCompartmentAssociationsAsync"/> for Step 0's real-catalog
+    /// timing comparisons; retained deliberately (not removed) as the original synthetic-catalog seeding
+    /// path.
+    /// </remarks>
     /// <param name="context">The FhirDbContext to seed. Its underlying connection is used directly for
     /// SqlBulkCopy; the caller retains ownership and disposal responsibility.</param>
     /// <param name="compartmentId">The compartment's ReferenceResourceId (e.g. "step0-patient").</param>
