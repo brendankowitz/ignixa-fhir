@@ -16,7 +16,7 @@
 
 ---
 
-> **Project Status:** Advanced Research / Reference Implementation. This is a personal project exploring "next-gen" architecture. It implements and pushes the advanced parts of the FHIR specification but is not a supported production product. This project heavily uses the most advanced coding AI agents (with a lot of manual validation and code-reviews) to implement and iterate quickly.
+> **Project Status:** Advanced research / reference implementation exploring "next-gen" architecture. This project heavily uses the most advanced coding AI agents (with a lot of manual validation and code-reviews) to implement and iterate quickly.
 
 ---
 

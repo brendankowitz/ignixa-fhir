@@ -46,8 +46,8 @@ using Ignixa.Serialization;
 
 // Use realistic FHIR data
 var json = """{"resourceType": "Patient", "id": "123"}""";
-var sourceNode = JsonSourceNavigator.Parse(json);
-Console.WriteLine(sourceNode["id"].Text); // Output: 123
+var resource = JsonSourceNodeFactory.Parse(json);
+Console.WriteLine(resource.SerializeToString());
 ```
 
 ### Page Structure
