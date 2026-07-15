@@ -28,3 +28,20 @@ The design doc's four-arm factorial, as originally scoped, tests a baseline ("na
 longer reachable in production. The real open question is narrower: **does literalizing `SearchParamId`
 close whatever gap remains between today's `CompartmentSearchQueryGenerator` and the known-good legacy
 SQL, at realistic data scale and skew?** That's what the rest of this plan measures.
+
+## Task 4: Three-Arm Timing Comparison (real Patient-compartment associations)
+
+Ran 2026-07-15 17:02:08 UTC against `CompartmentStep0`, compartment `step0-patient`.
+`searchParamMap` resolved by the real `CompartmentDefinitionManager`/`SearchParameterDefinitionManager` (23 distinct SearchParamId CTEs); all three arms returned 555000 rows.
+
+| Arm | Cold (ms, DBCC FREEPROCCACHE) | Warm x3 (ms) | Warm avg (ms) |
+|---|---|---|---|
+| A - production `CompartmentSearchQueryGenerator`, unmodified | 1422 | 1195, 939, 883 | 1005.7 |
+| B - Arm A + `SearchParamId` literalized via `EF.Constant` | 1074 | 972, 931, 947 | 950.0 |
+| C - legacy SQL shape (raw ADO.NET, `SearchParamId` as SQL literal) | 1133 | 930, 912, 888 | 910.0 |
+
+Raw warm-run detail:
+- Arm A warm: 1195, 939, 883 (avg 1005.7)
+- Arm B warm: 972, 931, 947 (avg 950.0)
+- Arm C warm: 930, 912, 888 (avg 910.0)
+
