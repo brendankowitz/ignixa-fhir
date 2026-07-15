@@ -98,3 +98,58 @@ something this experiment measured directly. A reader should treat this as an op
 attribute 100% of the Arm-A-vs-B gap to `SearchParamId` literalization alone; some unmeasured portion may
 be attributable to this resolution-loop asymmetry instead.
 
+## Results
+
+| Arm | Cold (ms) | Warm avg (ms) |
+|---|---|---|
+| A — production `CompartmentSearchQueryGenerator`, unmodified | 1422 | 1005.7 |
+| B — Arm A + `SearchParamId` literalized via `EF.Constant` | 1074 | 950.0 |
+| C — legacy SQL shape, `SearchParamId` literal | 1133 | 910.0 |
+
+## Conclusion
+
+**Arm B ≈ Arm C. Literalizing `SearchParamId` is the fix.** Warm, Arm B (950.0ms) is 40ms above Arm C
+(910.0ms) — a 4% residual. Cold, the order inverts outright: Arm B (1074ms) beats Arm C (1133ms) by 59ms.
+A gap that flips sign between the cold and warm measurement isn't a stable, attributable shape effect —
+it's within run-to-run noise. Arm B and Arm C are the same result within measurement error. Both close the
+overwhelming majority of the distance from Arm A: cold, A is 348-289ms (24-33%) slower than B/C; warm, A
+is 56-96ms (6-10%) slower than B/C.
+
+Per the design doc's own instruction, the honest conclusion is that the compartment case should stop being
+this document's headline. A single change — literalize `SearchParamId` via `EF.Constant` in
+`CompartmentSearchQueryGenerator.cs:182`, the same treatment already applied to `ResourceTypeId` two lines
+below it — recovers essentially all of the measured gap to hand-written SQL. That is a standalone bug-fix
+PR against one file, not a justification for a multi-week compiler project. Recommend filing it
+independently of this roadmap, not as a Phase 1 task.
+
+**A finding not asked for by the plan, but too load-bearing to leave out:** none of the three arms came
+anywhere near the 180-second timeout `CompartmentSearchProblem.txt` documents. All three completed in
+under 1.5s cold and under 1.1s warm, at 555,000 result rows with one `SearchParamId` carrying 550,000 of
+them — the same skew profile the original bug report describes. Today's production
+`CompartmentSearchQueryGenerator`, unmodified (Arm A), does not reproduce the motivating timeout at all at
+this scale. Either the original stall requires a data scale/skew this experiment didn't reach, or it was
+already fixed by something else between the original bug report and today's code. Either way, the design
+doc's framing — "Ignixa's EF-generated compartment query times out where hand-written SQL doesn't" — is
+not currently true of the code as it stands, and that fact should carry equal weight with the timing
+numbers above when anyone reads this as a motivator for Phase 1.
+
+This conclusion is qualified, not undermined, by the three caveats above:
+- The 555,000-vs-576,800 row discrepancy is a test-seeder artifact (surrogate ID ranges colliding across
+  resource types in the seeder, not in production). It affects all three arms identically, so it doesn't
+  change the cross-arm comparison.
+- Arm C tests the legacy query's CTE-per-literal-`SearchParamId` *shape*, not its original composite
+  `ResourceTypeId`+`ResourceSurrogateId` projection. "Arm B ≈ Arm C" should be read as "literalization
+  closes the gap to a shape-matched legacy baseline," not as an exact reproduction of the original
+  hand-written query's real-world performance.
+- Arm A's per-call search-param-map resolution runs inside its timed measurement while B/C skip it
+  (pre-built map). This was not isolated, so some unmeasured slice of the A-vs-B/C gap could be
+  attributable to that asymmetry rather than to literalization alone — judged unlikely to be large (warm
+  cache, CPU-bound lookups), but not measured directly.
+
+**Recommendation:** ship the one-line `SearchParamId` literalization fix independently of this roadmap. Do
+not use compartment search as the motivating case for Phase 1 of the FHIR-to-SQL compiler. If Phase 1
+proceeds, its justification rests on the storage-convention-ownership, testability, and
+injection-safety-by-construction arguments made elsewhere in the design doc — not on a performance gap a
+one-line change already closes, and not on a timeout this experiment could not reproduce in the first
+place.
+
