@@ -6,9 +6,12 @@
 using System.Data;
 using System.IO.Compression;
 using System.Text;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Search.Definition;
+using Ignixa.Specification.Extensions;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -76,6 +79,35 @@ public static class CompartmentDataSeeder
     // Deterministic multipliers applied to rowsPerResourceType to give cold resource types the
     // "wildly uneven cardinality" the design doc's capture shows, instead of a flat count per type.
     private static readonly double[] ColdRowCountMultipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 0.6, 1.1];
+
+    // Real (ResourceType, code) associations the actual R4 Patient compartment definition lists - one
+    // code per ResourceTypeCatalog entry, reusing the same 15 resource types as SeedAsync's synthetic
+    // catalog. Verified against the real CompartmentDefinitionManager + SearchParameterDefinitionManager
+    // (see SeedRealPatientCompartmentAssociationsAsync's Step A enumeration, and the
+    // Diagnose_AllRealCodes_ForEachSeededResourceType diagnostic this pairing was derived from). Index 0
+    // (Observation/subject) is always the "hot" association, mirroring SeedAsync's skew shape.
+    // Encounter/patient, Immunization/patient, and Goal/patient all resolve to the SAME canonical URL
+    // (http://hl7.org/fhir/SearchParameter/clinical-patient) - that's a real, correct collapse the
+    // production query generator's own batching optimization performs (one CTE, three ResourceTypeIds),
+    // not a data-generation bug.
+    private static readonly (string ResourceType, string Code)[] RealPatientCompartmentAssociations =
+    [
+        ("Observation", "subject"),
+        ("Encounter", "patient"),
+        ("Condition", "asserter"),
+        ("MedicationRequest", "subject"),
+        ("Procedure", "performer"),
+        ("DiagnosticReport", "subject"),
+        ("AllergyIntolerance", "recorder"),
+        ("Immunization", "patient"),
+        ("CarePlan", "performer"),
+        ("Claim", "payee"),
+        ("ExplanationOfBenefit", "payee"),
+        ("DocumentReference", "author"),
+        ("Coverage", "beneficiary"),
+        ("Goal", "patient"),
+        ("ServiceRequest", "performer"),
+    ];
 
     private static readonly byte[] PlaceholderRawResource = CreatePlaceholderRawResource();
 
@@ -168,6 +200,156 @@ public static class CompartmentDataSeeder
                 await connection.CloseAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// Step 0 fix (see task-4-brief.md): seeds skewed <c>ReferenceSearchParam</c>/<c>Resource</c> rows for
+    /// <see cref="RealPatientCompartmentAssociations"/> - real (ResourceType, code) pairs the actual R4
+    /// Patient compartment definition lists, resolved to real canonical FHIR search-parameter URLs via
+    /// the real <see cref="CompartmentDefinitionManager"/>/<see cref="SearchParameterDefinitionManager"/>
+    /// (constructed exactly as production DI does - see <c>SqlEntityFrameworkRepositoryFactory.cs</c>'s
+    /// <c>GetOrCreateDefinitionManagers</c>), NOT the synthetic <c>ignixa.dev</c> catalog <see cref="SeedAsync"/>
+    /// uses. This is additive: it does not delete or modify <see cref="SeedAsync"/>'s existing synthetic rows.
+    /// </summary>
+    /// <param name="context">The FhirDbContext to seed. Its underlying connection is used directly for
+    /// SqlBulkCopy; the caller retains ownership and disposal responsibility.</param>
+    /// <param name="compartmentId">The compartment's ReferenceResourceId (e.g. "step0-patient").</param>
+    /// <param name="rowsPerResourceType">Baseline row count for the non-hot ("cold") associations; each
+    /// cold association's actual row count is a deterministic multiple of this value, clamped to
+    /// [100, 5000]. The hot (Observation/subject) association ignores this value below a fixed floor of
+    /// 550,000 rows.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Row count seeded per "ResourceType/code" association, in catalog order.</returns>
+    public static async Task<IReadOnlyDictionary<string, int>> SeedRealPatientCompartmentAssociationsAsync(
+        FhirDbContext context,
+        string compartmentId,
+        int rowsPerResourceType,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(compartmentId);
+        if (rowsPerResourceType < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(rowsPerResourceType), rowsPerResourceType, "Must be positive.");
+        }
+
+        var compartmentManager = new CompartmentDefinitionManager(FhirVersion.R4);
+        var schemaProvider = FhirVersion.R4.GetSchemaProvider();
+        var parameterManager = new SearchParameterDefinitionManager(schemaProvider, NullLogger<SearchParameterDefinitionManager>.Instance);
+
+        // Step A: enumerate EVERY real (resourceType, code) -> canonical URL pair the actual R4 Patient
+        // compartment definition lists (all resource types in the compartment, not just this seeder's 15
+        // curated types) and sync all of them into dbo.SearchParam. This is what CompartmentSearchQueryGenerator
+        // (Arm A) needs: it resolves against ALL resource types in the compartment (resourceTypesToSearch=null),
+        // so Arm A's own query breadth - not just our curated subset - must be resolvable.
+        if (!compartmentManager.TryGetResourceTypes(CompartmentType.Patient, out var allResourceTypes))
+        {
+            throw new InvalidOperationException("Real Patient compartment definition returned no resource types - cannot proceed.");
+        }
+
+        var urlLookup = new Dictionary<(string ResourceType, string Code), string>();
+        var allUrls = new List<string>();
+        foreach (var resourceType in allResourceTypes)
+        {
+            if (!compartmentManager.TryGetSearchParams(resourceType, CompartmentType.Patient, out var codes))
+            {
+                continue;
+            }
+
+            foreach (var code in codes)
+            {
+                try
+                {
+                    var info = parameterManager.GetSearchParameter(resourceType, code);
+                    if (info.Url == null)
+                    {
+                        continue;
+                    }
+
+                    var url = info.Url.ToString();
+                    urlLookup[(resourceType, code)] = url;
+                    allUrls.Add(url);
+                }
+                catch (Exception)
+                {
+                    // Mirrors CompartmentSearchQueryGenerator's own catch-and-skip for pairs that aren't
+                    // real, resolvable search parameters (CompartmentSearchQueryGenerator.cs:147-155).
+                }
+            }
+        }
+
+        var distinctUrls = allUrls.Distinct(StringComparer.Ordinal).ToList();
+
+        // CA2000 suppressed: see SyncSearchParamCatalogAsync's identical justification - Dispose() would
+        // dispose the caller's FhirDbContext, which the caller still owns and needs afterward.
+#pragma warning disable CA2000
+        var cache = new SearchIndexReferenceDataCache(context, NullLogger<SearchIndexReferenceDataCache>.Instance);
+#pragma warning restore CA2000
+        await cache.SyncSearchParametersToDatabase(distinctUrls, parameterManager);
+
+        // Step B: resolve our curated associations' SearchParamIds now that their URLs are synced.
+        var patientResourceTypeId = await GetOrCreateResourceTypeIdAsync(context, PatientResourceTypeName, ct);
+        var curatedResourceTypeNames = RealPatientCompartmentAssociations.Select(a => a.ResourceType).ToList();
+        var resourceTypeIds = await GetOrCreateResourceTypeIdsAsync(context, curatedResourceTypeNames, ct);
+
+        var curatedUrls = RealPatientCompartmentAssociations
+            .Select(a => urlLookup[(a.ResourceType, a.Code)])
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var searchParamIdsByUrl = await context.SearchParams
+            .AsNoTracking()
+            .Where(sp => curatedUrls.Contains(sp.Uri))
+            .ToDictionaryAsync(sp => sp.Uri, sp => sp.SearchParamId, ct);
+
+        // Step C: skewed bulk insert for the curated associations, reusing SeedAsync's existing SqlBulkCopy
+        // machinery rather than duplicating it.
+        var connection = (SqlConnection)context.Database.GetDbConnection();
+        var openedByUs = connection.State != ConnectionState.Open;
+        if (openedByUs)
+        {
+            await connection.OpenAsync(ct);
+        }
+
+        var rowCountsByAssociation = new Dictionary<string, int>(StringComparer.Ordinal);
+        try
+        {
+            for (var i = 0; i < RealPatientCompartmentAssociations.Length; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var (resourceType, code) = RealPatientCompartmentAssociations[i];
+                var resourceTypeId = resourceTypeIds[resourceType];
+                var url = urlLookup[(resourceType, code)];
+                var searchParamId = searchParamIdsByUrl[url];
+                var rowCount = i == 0
+                    ? Math.Max(rowsPerResourceType, HotResourceTypeRowFloor)
+                    : ComputeColdRowCount(rowsPerResourceType, i);
+
+                var surrogateIdBase = await GetNextSurrogateIdBaseAsync(context, resourceTypeId, ct);
+
+                await BulkInsertResourceAndReferenceRowsAsync(
+                    connection,
+                    resourceTypeId,
+                    resourceType,
+                    searchParamId,
+                    patientResourceTypeId,
+                    compartmentId,
+                    surrogateIdBase,
+                    rowCount,
+                    ct);
+
+                rowCountsByAssociation[$"{resourceType}/{code}"] = rowCount;
+            }
+        }
+        finally
+        {
+            if (openedByUs)
+            {
+                await connection.CloseAsync();
+            }
+        }
+
+        return rowCountsByAssociation;
     }
 
     private static int ComputeColdRowCount(int rowsPerResourceType, int resourceTypeIndex)
