@@ -17,7 +17,7 @@ namespace Ignixa.Models.R5;
 /// <summary>
 /// Entry points and version-aware registration for the FHIR R5 typed-model package.
 /// </summary>
-public static class R5
+public static class R5Package
 {
     /// <summary>The FHIR version this package targets.</summary>
     public const FhirVersion Version = FhirVersion.R5;
@@ -59,7 +59,7 @@ public static class R5Extensions
         where T : ResourceJsonNode
     {
         ArgumentNullException.ThrowIfNull(node);
-        node.FhirVersion = R5.Version;
+        node.FhirVersion = R5Package.Version;
         return node.As<T>();
     }
 }

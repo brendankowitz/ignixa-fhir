@@ -1059,7 +1059,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// Entry points and version-aware registration for the FHIR {version} typed-model package.");
         sb.AppendLine("/// </summary>");
-        sb.AppendLine($"public static class {version}");
+        sb.AppendLine($"public static class {version}Package");
         sb.AppendLine("{");
         sb.AppendLine($"    /// <summary>The FHIR version this package targets.</summary>");
         sb.AppendLine($"    public const FhirVersion Version = FhirVersion.{version};");
@@ -1095,7 +1095,7 @@ public sealed class CSharpTypedModelLanguage : ILanguage
         sb.AppendLine("        where T : ResourceJsonNode");
         sb.AppendLine("    {");
         sb.AppendLine("        ArgumentNullException.ThrowIfNull(node);");
-        sb.AppendLine($"        node.FhirVersion = {version}.Version;");
+        sb.AppendLine($"        node.FhirVersion = {version}Package.Version;");
         sb.AppendLine("        return node.As<T>();");
         sb.AppendLine("    }");
         sb.AppendLine("}");

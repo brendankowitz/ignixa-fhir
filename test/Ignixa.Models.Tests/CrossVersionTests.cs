@@ -126,8 +126,8 @@ public sealed class CrossVersionTests
     {
         // The version packages self-register via [ModuleInitializer], but that is lazy. Reach an R4
         // and an R5 type (or call Register()) so both factories are present before dispatch.
-        Ignixa.Models.R4.R4.Register();
-        Ignixa.Models.R5.R5.Register();
+        Ignixa.Models.R4.R4Package.Register();
+        Ignixa.Models.R5.R5Package.Register();
 
         var r5Node = ResourceJsonNode.Parse(PatientJson);
         ResourceJsonNode r5 = r5Node.AsVersion(FhirVersion.R5);
@@ -143,7 +143,7 @@ public sealed class CrossVersionTests
     [Fact]
     public void GivenDispatchedBaseInstance_WhenReinterpretedToVersionDelta_ThenDeltaIsReachable()
     {
-        Ignixa.Models.R5.R5.Register();
+        Ignixa.Models.R5.R5Package.Register();
 
         var node = ResourceJsonNode.Parse(PatientJson);
         ResourceJsonNode dispatched = node.AsVersion(FhirVersion.R5);

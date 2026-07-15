@@ -17,7 +17,7 @@ namespace Ignixa.Models.R4;
 /// <summary>
 /// Entry points and version-aware registration for the FHIR R4 typed-model package.
 /// </summary>
-public static class R4
+public static class R4Package
 {
     /// <summary>The FHIR version this package targets.</summary>
     public const FhirVersion Version = FhirVersion.R4;
@@ -59,7 +59,7 @@ public static class R4Extensions
         where T : ResourceJsonNode
     {
         ArgumentNullException.ThrowIfNull(node);
-        node.FhirVersion = R4.Version;
+        node.FhirVersion = R4Package.Version;
         return node.As<T>();
     }
 }
