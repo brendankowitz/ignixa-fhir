@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Search.Exceptions;
@@ -18,10 +19,10 @@ public class BadSearchRequestException : FhirException
     public BadSearchRequestException(string message)
         : base(message)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Invalid,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
             Diagnostics = message
         });
     }
@@ -29,10 +30,10 @@ public class BadSearchRequestException : FhirException
     public BadSearchRequestException(string message, Exception innerException)
         : base(message, innerException)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Invalid,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
             Diagnostics = message
         });
     }

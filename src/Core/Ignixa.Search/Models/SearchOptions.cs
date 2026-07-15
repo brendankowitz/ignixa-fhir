@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Search.Expressions;
-using Ignixa.Serialization.Models;
 
 namespace Ignixa.Search.Models;
 
@@ -179,7 +178,7 @@ public enum SummaryType
 public record IssueComponent(
     string Severity,
     string Code,
-    CodeableConceptJsonNode Details = null,
+    Ignixa.Models.CodeableConcept Details = null,
     string Diagnostics = null,
     IReadOnlyList<string> Location = null,
     IReadOnlyList<string> Expression = null);

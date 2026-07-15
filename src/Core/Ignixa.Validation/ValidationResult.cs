@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using System.Text.Json.Nodes;
 
 namespace Ignixa.Validation;
@@ -90,18 +90,18 @@ public sealed record ValidationResult
     /// Converts this validation result to a FHIR OperationOutcome resource.
     /// Follows HAPI FHIR patterns for ecosystem compatibility.
     /// </summary>
-    /// <returns>An OperationOutcomeJsonNode resource with issues from this validation result.</returns>
-    public OperationOutcomeJsonNode ToOperationOutcome()
+    /// <returns>An OperationOutcome resource with issues from this validation result.</returns>
+    public OperationOutcome ToOperationOutcome()
     {
-        var outcome = new OperationOutcomeJsonNode();
-        var issueList = new List<OperationOutcomeJsonNode.IssueComponent>();
+        var outcome = new OperationOutcome();
+        var issueList = new List<OperationOutcomeIssue>();
 
         foreach (var issue in Issues)
         {
-            var issueComponent = new OperationOutcomeJsonNode.IssueComponent()
+            var issueComponent = new OperationOutcomeIssue()
             {
-                Severity = MapSeverity(issue.Severity),
-                Code = DetermineIssueType(issue.Code),
+                SeverityCode = MapSeverity(issue.Severity),
+                IssueTypeCode = DetermineIssueType(issue.Code),
                 Diagnostics = issue.Message
             };
 
@@ -111,7 +111,7 @@ public sealed record ValidationResult
             // Set details if available
             if (issue.Details != null)
             {
-                var detailsNode = new CodeableConceptJsonNode()
+                var detailsNode = new CodeableConcept()
                 {
                     Text = issue.Details.Text ?? string.Empty
                 };
@@ -120,7 +120,7 @@ public sealed record ValidationResult
                 {
                     foreach (var coding in issue.Details.Coding)
                     {
-                        detailsNode.Coding.Add(new CodingJsonNode()
+                        detailsNode.Coding.Add(new Coding()
                         {
                             System = coding.System ?? string.Empty,
                             Code = coding.Code ?? string.Empty,
@@ -134,7 +134,7 @@ public sealed record ValidationResult
             else
             {
                 // Fallback: Use code as text
-                issueComponent.Details = new CodeableConceptJsonNode()
+                issueComponent.Details = new CodeableConcept()
                 {
                     Text = issue.Code
                 };
@@ -152,31 +152,31 @@ public sealed record ValidationResult
         return outcome;
     }
 
-    private static OperationOutcomeJsonNode.IssueSeverity MapSeverity(IssueSeverity severity)
+    private static OperationOutcomeIssue.IssueSeverityCode MapSeverity(IssueSeverity severity)
     {
         return severity switch
         {
-            IssueSeverity.Fatal => OperationOutcomeJsonNode.IssueSeverity.Fatal,
-            IssueSeverity.Error => OperationOutcomeJsonNode.IssueSeverity.Error,
-            IssueSeverity.Warning => OperationOutcomeJsonNode.IssueSeverity.Warning,
-            IssueSeverity.Information => OperationOutcomeJsonNode.IssueSeverity.Information,
-            _ => OperationOutcomeJsonNode.IssueSeverity.Error
+            IssueSeverity.Fatal => OperationOutcomeIssue.IssueSeverityCode.Fatal,
+            IssueSeverity.Error => OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueSeverity.Warning => OperationOutcomeIssue.IssueSeverityCode.Warning,
+            IssueSeverity.Information => OperationOutcomeIssue.IssueSeverityCode.Information,
+            _ => OperationOutcomeIssue.IssueSeverityCode.Error
         };
     }
 
-    private static OperationOutcomeJsonNode.IssueType DetermineIssueType(string code)
+    private static OperationOutcomeIssue.IssueType DetermineIssueType(string code)
     {
         // Map constraint keys to FHIR IssueType
         return code switch
         {
-            "code-invalid" or "not-in-vs" or "invalid-code" => OperationOutcomeJsonNode.IssueType.CodeInvalid,
-            "cardinality-violation" => OperationOutcomeJsonNode.IssueType.Required,
-            var c when c.StartsWith("bdl-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
-            var c when c.StartsWith("ele-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
-            var c when c.StartsWith("ext-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
-            var c when c.StartsWith("dom-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
-            var c when c.StartsWith("ref-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
-            _ => OperationOutcomeJsonNode.IssueType.Invariant
+            "code-invalid" or "not-in-vs" or "invalid-code" => OperationOutcomeIssue.IssueType.CodeInvalid,
+            "cardinality-violation" => OperationOutcomeIssue.IssueType.Required,
+            var c when c.StartsWith("bdl-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
+            var c when c.StartsWith("ele-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
+            var c when c.StartsWith("ext-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
+            var c when c.StartsWith("dom-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
+            var c when c.StartsWith("ref-", StringComparison.Ordinal) => OperationOutcomeIssue.IssueType.Invariant,
+            _ => OperationOutcomeIssue.IssueType.Invariant
         };
     }
 }

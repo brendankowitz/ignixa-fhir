@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Search.Exceptions;
@@ -22,10 +23,10 @@ public class ForbiddenSearchException : FhirException
     public ForbiddenSearchException(string message)
         : base(message)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Forbidden,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Forbidden,
             Diagnostics = message
         });
     }
@@ -33,10 +34,10 @@ public class ForbiddenSearchException : FhirException
     public ForbiddenSearchException(string message, Exception innerException)
         : base(message, innerException)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Forbidden,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Forbidden,
             Diagnostics = message
         });
     }

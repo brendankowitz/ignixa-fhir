@@ -13,10 +13,12 @@ using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -130,11 +132,11 @@ public static class CompartmentEndpoints
         // Tenant resolution handled by TenantResolutionMiddleware
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.Required,
+                SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Required,
                 Diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}"
             });
             return Results.BadRequest(outcome);
@@ -216,11 +218,11 @@ public static class CompartmentEndpoints
         var validCompartmentTypes = new[] { "Patient", "Practitioner", "RelatedPerson", "Device", "Encounter" };
         if (!validCompartmentTypes.Contains(compartmentType, StringComparer.OrdinalIgnoreCase))
         {
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Invalid,
                 Diagnostics = $"Invalid compartment type '{compartmentType}'. Must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter"
             });
             return Results.BadRequest(outcome);
@@ -306,11 +308,11 @@ public static class CompartmentEndpoints
         // Tenant resolution handled by TenantResolutionMiddleware
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.Required,
+                SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Required,
                 Diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/*"
             });
             return Results.BadRequest(outcome);

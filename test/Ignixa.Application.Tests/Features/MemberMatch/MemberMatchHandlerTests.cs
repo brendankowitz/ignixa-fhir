@@ -7,6 +7,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Application.Operations.Features.MemberMatch;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -361,8 +362,8 @@ public class MemberMatchHandlerTests
         outcome.Issue.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         var firstIssue = outcome.Issue[0];
-        firstIssue.Severity.ShouldBe(OperationOutcomeJsonNode.IssueSeverity.Error);
-        firstIssue.Code.ShouldBe(OperationOutcomeJsonNode.IssueType.NotFound);
+        firstIssue.SeverityCode.ShouldBe(OperationOutcomeIssue.IssueSeverityCode.Error);
+        firstIssue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueType.NotFound);
     }
 
     [Fact]
@@ -379,8 +380,8 @@ public class MemberMatchHandlerTests
         outcome.Issue.ShouldNotBeNull();
 
         var firstIssue = outcome.Issue[0];
-        firstIssue.Severity.ShouldBe(OperationOutcomeJsonNode.IssueSeverity.Error);
-        firstIssue.Code.ShouldBe(OperationOutcomeJsonNode.IssueType.MultipleMatches);
+        firstIssue.SeverityCode.ShouldBe(OperationOutcomeIssue.IssueSeverityCode.Error);
+        firstIssue.IssueTypeCode.ShouldBe(OperationOutcomeIssue.IssueType.MultipleMatches);
     }
 
     #endregion

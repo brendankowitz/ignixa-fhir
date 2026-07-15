@@ -7,6 +7,7 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 
@@ -67,11 +68,11 @@ public class TenantResolutionMiddleware : IDisposable
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
 
-                var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                var outcome = new OperationOutcome();
+                outcome.Issue.Add(new OperationOutcomeIssue
                 {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = OperationOutcomeJsonNode.IssueType.BusinessRule,
+                    SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+                    IssueTypeCode = OperationOutcomeIssue.IssueType.BusinessRule,
                     Diagnostics = "Partition 0 is reserved for system operations and cannot be accessed via tenant API routes"
                 });
 
@@ -95,11 +96,11 @@ public class TenantResolutionMiddleware : IDisposable
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
 
-                var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                var outcome = new OperationOutcome();
+                outcome.Issue.Add(new OperationOutcomeIssue
                 {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = OperationOutcomeJsonNode.IssueType.NotFound,
+                    SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+                    IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
                     Diagnostics = $"Tenant {tenantId} not found or inactive"
                 });
 
@@ -157,11 +158,11 @@ public class TenantResolutionMiddleware : IDisposable
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
 
-                var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                var outcome = new OperationOutcome();
+                outcome.Issue.Add(new OperationOutcomeIssue
                 {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = OperationOutcomeJsonNode.IssueType.Required,
+                    SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+                    IssueTypeCode = OperationOutcomeIssue.IssueType.Required,
                     Diagnostics = "Tenant ID is required in multi-tenant scenarios. Use /tenant/{tenantId}/" + context.Request.Path.Value
                 });
 

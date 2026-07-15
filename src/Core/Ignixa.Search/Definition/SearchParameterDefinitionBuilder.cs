@@ -78,7 +78,7 @@ internal static class SearchParameterDefinitionBuilder
         IDictionary<Uri, SearchParameterInfo> uriDictionary,
         IFhirSchemaProvider modelInfoProvider)
     {
-        var issues = new List<OperationOutcomeJsonNode.IssueComponent>();
+        var issues = new List<Ignixa.Models.OperationOutcomeIssue>();
         var searchParameters = searchParamCollection.Select((x, entryIndex) =>
         {
             try
@@ -224,10 +224,10 @@ internal static class SearchParameterDefinitionBuilder
 
         void AddIssue(string format, params object[] args)
         {
-            issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+            issues.Add(new Ignixa.Models.OperationOutcomeIssue()
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Fatal,
-                Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Fatal,
+                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueType.Invalid,
                 Diagnostics = string.Format(CultureInfo.InvariantCulture, format, args)
             });
         }

@@ -128,8 +128,8 @@ public static class SummaryEndpoints
         if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -165,16 +165,16 @@ public static class SummaryEndpoints
         if (string.IsNullOrEmpty(identifier))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Required,
                 "Patient identifier is required when patient ID is not provided in URL"));
         }
 
         if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -234,8 +234,8 @@ public static class SummaryEndpoints
         if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -256,16 +256,16 @@ public static class SummaryEndpoints
         return Results.Empty;
     }
 
-    private static OperationOutcomeJsonNode CreateOperationOutcome(
-        OperationOutcomeJsonNode.IssueSeverity severity,
-        OperationOutcomeJsonNode.IssueType code,
+    private static OperationOutcome CreateOperationOutcome(
+        OperationOutcomeIssue.IssueSeverityCode severity,
+        OperationOutcomeIssue.IssueType code,
         string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = severity,
-            Code = code,
+            SeverityCode = severity,
+            IssueTypeCode = code,
             Diagnostics = diagnostics
         });
         return outcome;

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
@@ -31,10 +32,10 @@ public class SearchOperationNotSupportedException : FhirException
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(message), $"{nameof(message)} should not be null or whitespace.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.NotSupported,
             Diagnostics = message
         });
     }

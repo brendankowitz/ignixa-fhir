@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 namespace Ignixa.Serialization.Abstractions;
 
@@ -24,25 +24,25 @@ public abstract class FhirException : Exception
     {
     }
 
-    protected FhirException(params OperationOutcomeJsonNode.IssueComponent[] issues)
+    protected FhirException(params OperationOutcomeIssue[] issues)
         : this(null!, issues)
     {
     }
 
-    protected FhirException(string? message, params OperationOutcomeJsonNode.IssueComponent[]? issues)
+    protected FhirException(string? message, params OperationOutcomeIssue[]? issues)
         : this(message, null!, issues)
     {
     }
 
-    protected FhirException(string? message, Exception? innerException, params OperationOutcomeJsonNode.IssueComponent[]? issues)
+    protected FhirException(string? message, Exception? innerException, params OperationOutcomeIssue[]? issues)
         : base(message, innerException)
     {
         if (issues != null)
-            foreach (OperationOutcomeJsonNode.IssueComponent issue in issues)
+            foreach (OperationOutcomeIssue issue in issues)
                 Issues.Add(issue);
     }
 
-    public ICollection<OperationOutcomeJsonNode.IssueComponent> Issues { get; } = new List<OperationOutcomeJsonNode.IssueComponent>();
+    public ICollection<OperationOutcomeIssue> Issues { get; } = new List<OperationOutcomeIssue>();
 
     /// <summary>
     /// Gets the HTTP status code for this exception. Default is 400 (Bad Request).
@@ -52,11 +52,11 @@ public abstract class FhirException : Exception
     /// <summary>
     /// Gets the OperationOutcome for this exception.
     /// </summary>
-    public virtual OperationOutcomeJsonNode OperationOutcome
+    public virtual OperationOutcome OperationOutcome
     {
         get
         {
-            var outcome = new OperationOutcomeJsonNode();
+            var outcome = new OperationOutcome();
             foreach (var issue in Issues)
             {
                 outcome.Issue.Add(issue);

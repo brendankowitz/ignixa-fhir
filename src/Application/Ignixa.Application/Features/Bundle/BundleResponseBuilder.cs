@@ -108,11 +108,11 @@ public class BundleResponseBuilder
                         response.StatusCode);
 
                     // Add OperationOutcome if parsing fails
-                    var outcome = new OperationOutcomeJsonNode();
-                    outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
+                    var outcome = new OperationOutcome();
+                    outcome.Issue.Add(new OperationOutcomeIssue()
                     {
-                        Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
-                        Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                        SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Warning,
+                        IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
                         Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
                     });
                     entry.Response.Outcome = outcome;

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.Abstractions;
 
@@ -22,10 +23,10 @@ public class ForbiddenException : FhirException
     public ForbiddenException(string message)
         : base(message)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Forbidden,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Forbidden,
             Diagnostics = message
         });
     }
@@ -33,10 +34,10 @@ public class ForbiddenException : FhirException
     public ForbiddenException(string message, Exception innerException)
         : base(message, innerException)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Forbidden,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Forbidden,
             Diagnostics = message
         });
     }

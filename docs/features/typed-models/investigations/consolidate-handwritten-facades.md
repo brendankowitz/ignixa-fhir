@@ -1,7 +1,7 @@
 # Investigation: Consolidate Hand-Written Facades
 
 **Feature**: typed-models
-**Status**: In Progress
+**Status**: Complete
 **Created**: 2026-07-09
 **Last re-scoped**: 2026-07-14
 
@@ -914,6 +914,84 @@ for merges where callers navigate through the type rather than naming it. Before
 "clean drop-in," re-sweep for the member-access pattern itself (`\.PropertyName\b`) across the whole repo,
 not just the declaring type's name -- and watch for regex substring false-positives when the property name
 is a common English word fragment (`Mode` inside `Models` cost one wasted grep pass here).
+
+## OperationOutcome merged (Phase 4, last of three — Phase 4 complete)
+
+Same no-generator-step starting position as `Parameters`/`Bundle` (Phase 0b already generated
+`OperationOutcome`/`OperationOutcomeIssue` as `VersionAgnosticContractTypes`), and — unlike `Bundle` —
+this merge needed no raw-escape-hatch pattern at all: the hand-written type's real surface collapses
+entirely into a version-agnostic wrapper, closer in shape to the `Composition.SetStatusRaw` precedent
+than to `Bundle.GetTypeRaw`.
+
+**Starting shape:** `OperationOutcomeJsonNode : ResourceJsonNode` held one nested type,
+`IssueComponent : BaseJsonNode`, exposing `Severity`/`Code` (hand-rolled `IssueSeverity`/`IssueType` enums
+with manual string switch-based parse/literal tables), `Diagnostics` (`string`), `Expression`
+(`MutablePrimitiveList<string>`), and `Details` (`CodeableConceptJsonNode`). The same source file also
+defined two **top-level, non-nested** `CodeableConceptJsonNode`/`CodingJsonNode` types — a second, ad hoc
+hand-written `CodeableConcept`/`Coding` pair distinct from the ones already covered by the generator, used
+only by this file's three real consumers (`ValidationIssue.cs`, `ValidationResult.cs`,
+`FhirGraphQlErrorFilter.cs`). Retiring `OperationOutcomeJsonNode.cs` retired this ad hoc pair too,
+redirecting all three consumers to the shared, generated `Ignixa.Models.CodeableConcept`/`Coding` — the
+same types `Composition.Type`/`.EmptyReason` already use — closing out a third source-of-truth for these
+two datatypes that predated this whole investigation and was never itself a tracked consolidation
+candidate.
+
+**`Severity`/`Code` renamed to `SeverityCode`/`IssueTypeCode`, not re-added under their old names**, per
+the naming rule this doc established during the `Extension` merge: the generated per-version
+`IssueSeverity`/`IssueType` enums on `Ignixa.Models.R4.OperationOutcomeIssue`/`R5.OperationOutcomeIssue`
+differ from each other (R5's real, generator-verified wire enums add literals neither R4 nor the old
+hand-written type's 4-/30-literal tables had), so a same-named hand-written property on the shared base
+would risk the same `new`-modifier shadowing hazard `Extension.ValueString` was rejected for. `SeverityCode`/
+`IssueTypeCode` are new, distinctly-named properties on a `Models/OperationOutcomeIssue.cs` partial,
+covering exactly the literals common to both versions' generated enums (4 severity, 30 issue-type) — every
+real caller in this codebase (all 13 `Ignixa.Domain` exception types plus `FhirExceptionMiddleware`,
+`MemberMatchHandler`, `BundleResponseBuilder`, `FhirGraphQlErrorFilter`, `ValidationResult`) only ever
+reads/writes literals from this common subset, confirmed by grepping every real `Severity =`/`Code =`
+assignment site before the rename. A dedicated regression test
+(`GivenOperationOutcomeIssue_WhenRawSeverityIsR5OnlyLiteral_ThenSeverityCodeIsNull`) locks in that an
+R5-only literal written directly to the underlying JSON (bypassing the wrapper) reads back as `null`
+through `SeverityCode` rather than throwing or silently misparsing — the same defensive shape
+`Bundle.GetTypeRaw`'s R5-only-literal test established.
+
+**Zero surviving business logic beyond the enum wrapper** — `OperationOutcomeJsonNode.cs` (423 lines,
+including both hand-rolled enums' full parse/literal switch tables) is deleted outright. This is the
+`Identifier`/`ConceptMap`/`SearchParameter` shape (full generator-fidelity, nothing left to carry forward
+as a raw escape hatch), not the `Bundle`/`Composition` shape — despite `OperationOutcome` being flagged as
+the highest-risk resource by call-site count, its actual API surface turned out to be the narrowest of any
+Phase 4 resource once traced to real usage.
+
+**57 files touched, 13 of them the `Ignixa.Domain` exception hierarchy this doc flagged since Phase 0b as
+the highest-risk failure mode of the three Phase 4 resources.** Every one of the 13 (`BadRequestException`,
+`ForbiddenException`, `ResourceNotFoundException`, `ResourceVersionConflictException`, and the rest) needed
+only the mechanical rename at its `Issues.Add(new OperationOutcomeIssue { SeverityCode = ..., IssueTypeCode
+= ... })` construction site — no exception-hierarchy redesign, since `FhirException`
+(`Ignixa.Serialization.Abstractions`), the single base every Domain exception derives from, is the actual
+choke point: its `Issues` collection and `OperationOutcome` property were retargeted once, and every
+subclass's construction-site rename followed mechanically from that. `ResourceTypeRegistry.cs`'s factory
+map entry is the same non-issue already established for `SearchParameter`/`Provenance`/`Parameters`:
+`FhirVersion` is never set at this construction point, so `OperationOutcome` carrying no
+`CompatibleFhirVersionsAttribute` (set back in Phase 0b) changes nothing here.
+
+Verified: `dotnet build All.sln` (0 warnings/errors); `Ignixa.Models.Tests` (124 passed, 5 new,
+`OperationOutcomeFacadeTests.cs` covering the shared-base round-trip, `SeverityCode`/`IssueTypeCode`
+literal round-trips, and the R5-only-literal-reads-as-null case); `Ignixa.Serialization.Tests` (82 passed,
+unchanged), `Ignixa.Application.Tests` (695 passed, 1 pre-existing unrelated skip, unchanged),
+`Ignixa.Api.Tests` (114 passed, unchanged), `Ignixa.Application.Experimental.Tests` (43 passed, unchanged)
+all green in isolation; full non-E2E `dotnet test All.sln` green (the same pre-existing, environment-scoped
+failures seen throughout this effort: 2 `Ignixa.SqlOnFhir.Tests` submodule failures from the
+uninitialized `sql-on-fhir-tests` submodule, and an `Ignixa.RepoGuards.Tests` x86-testhost/.NET-10-runtime
+mismatch specific to this machine, confirmed unrelated by reproducing it against the pre-merge baseline);
+full `Ignixa.Api.E2ETests` green (600 passed, 0 failed, 20 skipped, unchanged — exercising the 404/400/409/
+403 and other exception-hierarchy-driven response paths this merge touches most broadly of any Phase 4
+resource).
+
+**Phase 4 complete. Investigation complete.** All three load-bearing resources (`Parameters`, `Bundle`,
+`OperationOutcome`) are merged. 14 of the 15 originally-hand-written resource/datatype facades this
+investigation targeted (the Phase 0b structural-signature table's 15 candidates) are now merged into their
+generated `Ignixa.Models` counterparts: the 5 Phase 1 datatypes, the 6 Phase 2 contained resources, and
+these 3 Phase 4 load-bearing resources. `CapabilityStatement` (the 15th) remains excluded per the Phase 0b
+decision — not deferred, a permanent scope-out pending a real `Stu3.CapabilityStatement` type under
+ADR-2609.
 
 ## Verdict
 

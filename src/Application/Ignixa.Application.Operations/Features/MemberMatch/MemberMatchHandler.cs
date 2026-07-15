@@ -164,9 +164,9 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
     }
 
     /// <summary>
-    /// Builds an OperationOutcome for error responses using OperationOutcomeJsonNode.
+    /// Builds an OperationOutcome for error responses using OperationOutcome.
     /// </summary>
-    public static OperationOutcomeJsonNode BuildErrorOperationOutcome(MemberMatchResult result)
+    public static OperationOutcome BuildErrorOperationOutcome(MemberMatchResult result)
     {
         if (result.Success)
         {
@@ -175,17 +175,17 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
 
         var issueType = result.ErrorCode switch
         {
-            "no-match" => OperationOutcomeJsonNode.IssueType.NotFound,
-            "multiple-matches" => OperationOutcomeJsonNode.IssueType.MultipleMatches,
-            "invalid" => OperationOutcomeJsonNode.IssueType.Invalid,
-            _ => OperationOutcomeJsonNode.IssueType.Processing
+            "no-match" => OperationOutcomeIssue.IssueType.NotFound,
+            "multiple-matches" => OperationOutcomeIssue.IssueType.MultipleMatches,
+            "invalid" => OperationOutcomeIssue.IssueType.Invalid,
+            _ => OperationOutcomeIssue.IssueType.Processing
         };
 
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = issueType,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = issueType,
             Diagnostics = result.ErrorMessage ?? "Unknown error during member matching."
         });
 

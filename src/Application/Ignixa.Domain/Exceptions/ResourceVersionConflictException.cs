@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Domain.Exceptions;
@@ -36,10 +37,10 @@ public class ResourceVersionConflictException : FhirException
         ExistingSurrogateId = existingSurrogateId;
 
         // Add OperationOutcome issue with appropriate severity and code
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Conflict,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Conflict,
             Diagnostics = $"Resource {resourceType}/{resourceId} was modified by another concurrent operation. " +
                           $"Please retry the bundle. (Attempted SurrogateId: {attemptedSurrogateId}, " +
                           $"Existing SurrogateId: {existingSurrogateId})"

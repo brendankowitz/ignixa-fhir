@@ -782,7 +782,7 @@ public static class StreamingBundleSerializer
     private static void WriteCodeableConcept(
         FhirJsonWriter writer,
         string propertyName,
-        CodeableConceptJsonNode concept)
+        Ignixa.Models.CodeableConcept concept)
     {
         writer.WriteStartObject(propertyName);
 

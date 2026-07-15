@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Exceptions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
@@ -60,14 +61,14 @@ public class ConditionalOperationException : FhirException
         StatusCode = matchCount == 0 ? 404 : 412;
     }
 
-    private static OperationOutcomeJsonNode.IssueComponent CreateIssue(string message, int matchCount, string? searchCriteria)
+    private static OperationOutcomeIssue CreateIssue(string message, int matchCount, string? searchCriteria)
     {
-        var issueCode = matchCount == 0 ? OperationOutcomeJsonNode.IssueType.NotFound : OperationOutcomeJsonNode.IssueType.Duplicate;
+        var issueCode = matchCount == 0 ? OperationOutcomeIssue.IssueType.NotFound : OperationOutcomeIssue.IssueType.Duplicate;
 
-        var issue = new OperationOutcomeJsonNode.IssueComponent()
+        var issue = new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = issueCode,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = issueCode,
             Diagnostics = message
         };
 

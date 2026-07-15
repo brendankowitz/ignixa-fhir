@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
@@ -22,10 +23,10 @@ public class ResourceNotFoundException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotFound,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
             Diagnostics = message
         });
     }
@@ -35,10 +36,10 @@ public class ResourceNotFoundException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotFound,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.NotFound,
             Diagnostics = message
         });
     }

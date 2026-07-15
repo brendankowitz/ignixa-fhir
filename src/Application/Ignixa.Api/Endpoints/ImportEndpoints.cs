@@ -318,13 +318,13 @@ public static class ImportEndpoints
     /// <summary>
     /// Creates a FHIR OperationOutcome for error responses.
     /// </summary>
-    private static OperationOutcomeJsonNode CreateOperationOutcome(string message)
+    private static OperationOutcome CreateOperationOutcome(string message)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Invalid,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueType.Invalid,
             Diagnostics = message
         });
         return outcome;

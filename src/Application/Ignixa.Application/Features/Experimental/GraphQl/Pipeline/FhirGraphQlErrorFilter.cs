@@ -5,10 +5,10 @@
 
 using HotChocolate;
 using Ignixa.Application.Features.Experimental.Configuration;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using static Ignixa.Serialization.Models.OperationOutcomeJsonNode;
+using static Ignixa.Models.OperationOutcomeIssue;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Pipeline;
 
@@ -32,11 +32,11 @@ public sealed class FhirGraphQlErrorFilter(
             ? $"{message}: {error.Exception.GetType().Name}: {error.Exception.Message}"
             : message;
 
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = IssueSeverity.Error,
-            Code = issueType,
+            SeverityCode = IssueSeverityCode.Error,
+            IssueTypeCode = issueType,
             Diagnostics = diagnostics,
         });
 

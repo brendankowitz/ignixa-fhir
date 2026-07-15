@@ -81,8 +81,8 @@ public static class DeIdOperationEndpoints
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/$de-identify"));
         }
 
@@ -103,8 +103,8 @@ public static class DeIdOperationEndpoints
         if (memoryStream.Length == 0)
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Required,
                 "Request body must contain a FHIR Parameters resource with the resource to de-identify"));
         }
 
@@ -118,8 +118,8 @@ public static class DeIdOperationEndpoints
         catch (Exception ex)
         {
             return FhirResults.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Invalid,
                 $"Request body must be valid JSON: {ex.Message}"));
         }
 
@@ -139,8 +139,8 @@ public static class DeIdOperationEndpoints
             if (resourceParam is null)
             {
                 return FhirResults.BadRequest(CreateOperationOutcome(
-                    OperationOutcomeJsonNode.IssueSeverity.Error,
-                    OperationOutcomeJsonNode.IssueType.Required,
+                    OperationOutcomeIssue.IssueSeverityCode.Error,
+                    OperationOutcomeIssue.IssueType.Required,
                     "Required parameter 'resource' is missing"));
             }
 
@@ -166,8 +166,8 @@ public static class DeIdOperationEndpoints
             catch (ArgumentException ex)
             {
                 return FhirResults.BadRequest(CreateOperationOutcome(
-                    OperationOutcomeJsonNode.IssueSeverity.Error,
-                    OperationOutcomeJsonNode.IssueType.Invalid,
+                    OperationOutcomeIssue.IssueSeverityCode.Error,
+                    OperationOutcomeIssue.IssueType.Invalid,
                     ex.Message));
             }
         }
@@ -183,8 +183,8 @@ public static class DeIdOperationEndpoints
         return result.IsSuccess
             ? Results.Ok(result.OutputResource!.MutableNode)
             : FhirResults.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Processing,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueType.Processing,
                 result.ErrorMessage!));
     }
 
@@ -203,16 +203,16 @@ public static class DeIdOperationEndpoints
             options);
     }
 
-    private static OperationOutcomeJsonNode CreateOperationOutcome(
-        OperationOutcomeJsonNode.IssueSeverity severity,
-        OperationOutcomeJsonNode.IssueType code,
+    private static OperationOutcome CreateOperationOutcome(
+        OperationOutcomeIssue.IssueSeverityCode severity,
+        OperationOutcomeIssue.IssueType code,
         string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = severity,
-            Code = code,
+            SeverityCode = severity,
+            IssueTypeCode = code,
             Diagnostics = diagnostics
         });
         return outcome;

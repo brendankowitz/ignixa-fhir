@@ -89,14 +89,14 @@ public class SmartResourceJsonNodeConverterTests
     }
 
     [Fact]
-    public void GivenOperationOutcomeJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsOperationOutcomeJsonNodeInstance()
+    public void GivenOperationOutcomeJson_WhenParsingAsGenericResourceJsonNode_ThenReturnsOperationOutcomeInstance()
     {
         // Act
         var resource = ResourceJsonNode.Parse(_operationOutcomeJson);
 
         // Assert
         Assert.NotNull(resource);
-        Assert.IsType<OperationOutcomeJsonNode>(resource);
+        Assert.IsType<OperationOutcome>(resource);
         Assert.Equal("OperationOutcome", resource.ResourceType);
         Assert.Equal("example", resource.Id);
     }
@@ -197,7 +197,7 @@ public class SmartResourceJsonNodeConverterTests
         // Assert - Each resource type returns its specific class
         Assert.IsType<Parameters>(parameters);
         Assert.IsType<Bundle>(bundle);
-        Assert.IsType<OperationOutcomeJsonNode>(operationOutcome);
+        Assert.IsType<OperationOutcome>(operationOutcome);
     }
 
     [Fact]

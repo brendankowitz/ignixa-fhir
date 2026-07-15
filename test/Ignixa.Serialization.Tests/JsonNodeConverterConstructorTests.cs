@@ -76,9 +76,9 @@ public class JsonNodeConverterConstructorTests
     }
 
     [Fact]
-    public void OperationOutcomeJsonNode_ShouldDeserializeDirectly()
+    public void OperationOutcome_ShouldDeserializeDirectly()
     {
-        var outcome = JsonSourceNodeFactory.Parse<OperationOutcomeJsonNode>("""{"resourceType":"OperationOutcome"}""");
+        var outcome = JsonSourceNodeFactory.Parse<OperationOutcome>("""{"resourceType":"OperationOutcome"}""");
         outcome.ShouldNotBeNull();
         outcome.ResourceType.ShouldBe("OperationOutcome");
     }

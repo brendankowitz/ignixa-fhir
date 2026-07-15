@@ -12,6 +12,7 @@ using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using FhirBundle = Ignixa.Models.Bundle;
 using FhirBundleEntryResponse = Ignixa.Models.BundleEntryResponse;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -516,11 +517,11 @@ public class BundleProcessor
 
     private FhirBundle CreateErrorBundle(string message, string details)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new FhirOperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Processing,
+            SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueType.Processing,
             Diagnostics = $"{message}: {details}"
         });
 

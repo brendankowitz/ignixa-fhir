@@ -27,7 +27,7 @@ public static class ResourceTypeRegistry
     {
         ["Parameters"] = jsonObject => new Parameters(jsonObject),
         ["Bundle"] = jsonObject => new Bundle(jsonObject),
-        ["OperationOutcome"] = jsonObject => new OperationOutcomeJsonNode(jsonObject),
+        ["OperationOutcome"] = jsonObject => new OperationOutcome(jsonObject),
         ["Provenance"] = jsonObject => new Provenance(jsonObject),
         ["SearchParameter"] = jsonObject => new SearchParameter(jsonObject),
         // It can be registered separately by the Application layer if needed
