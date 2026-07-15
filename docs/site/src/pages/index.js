@@ -28,7 +28,7 @@ function ProjectStatus() {
             fontSize: '0.95rem',
             lineHeight: '1.6',
           }}>
-            <strong>Project Status:</strong> Advanced research / reference Implementation exploring
+            <strong>Project Status:</strong> Advanced research / reference implementation exploring
             "next-gen" architecture.
           </p>
         </div>

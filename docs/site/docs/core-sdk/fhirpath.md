@@ -23,15 +23,21 @@ Built using the [Superpower](https://github.com/datalust/superpower) parser comb
 
 ```bash
 dotnet add package Ignixa.FhirPath
+dotnet add package Ignixa.Serialization
+dotnet add package Ignixa.Specification
 ```
 
 ## Quick Start
 
 ```csharp
+using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
+using Ignixa.Specification.Extensions;
 
 // Parse FHIR JSON
+var patientJson = """{"resourceType":"Patient","active":true,"name":[{"given":["Jane"]}]}""";
+var schema = FhirVersion.R4.GetSchemaProvider();
 var element = JsonSourceNodeFactory.Parse(patientJson).ToElement(schema);
 
 // Evaluate FHIRPath (with automatic caching)

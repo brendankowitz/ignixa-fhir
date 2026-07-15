@@ -16,7 +16,7 @@
 
 ---
 
-> **Project Status:** Advanced research / reference Implementation exploring "next-gen" architecture. This project heavily uses the most advanced coding AI agents (with a lot of manual validation and code-reviews) to implement and iterate quickly.
+> **Project Status:** Advanced research / reference implementation exploring "next-gen" architecture. This project heavily uses the most advanced coding AI agents (with a lot of manual validation and code-reviews) to implement and iterate quickly.
 
 ---
 
