@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
@@ -17,7 +17,7 @@ public record CompleteJobInput
     public required int TotalResources { get; init; }
     public required int TotalErrors { get; init; }
     public required IReadOnlyList<ImportErrorLogEntry> ErrorLogEntries { get; init; }
-    public ParametersJsonNode? StorageDetail { get; init; }
+    public Parameters? StorageDetail { get; init; }
 
     /// <summary>
     /// Job start date/time for throughput calculation (resources/sec).

@@ -11,7 +11,7 @@ using Ignixa.Api.E2ETests._TestData.Scenarios;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 namespace Ignixa.Api.E2ETests.Search.Compartments;
 
@@ -314,7 +314,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
-        var bundle = Ignixa.Serialization.JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        var bundle = Ignixa.Serialization.JsonSourceNodeFactory.Parse<Bundle>(responseJson);
 
         var results = bundle.Entry
             .Where(e => e.Resource is not null)

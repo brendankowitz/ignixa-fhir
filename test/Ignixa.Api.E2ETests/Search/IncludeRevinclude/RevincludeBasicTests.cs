@@ -6,8 +6,8 @@
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -83,7 +83,7 @@ public class IncludeSearchTests_BasicRevinclude : IncludeTestBase
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
-        var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
 
         // Assert
         ValidateBundleContains(bundle, createdOrg.Id, createdLocation.Id);
@@ -337,7 +337,7 @@ public class IncludeSearchTests_BasicRevinclude : IncludeTestBase
         }
         foreach (var e in bundle.Entry)
         {
-            e.Search?.Mode.ShouldBe("match");
+            e.Search?.Mode?.GetLiteral().ShouldBe("match");
         }
     }
 }

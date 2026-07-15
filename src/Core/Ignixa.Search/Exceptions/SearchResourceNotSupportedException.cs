@@ -6,6 +6,7 @@
 using System.Globalization;
 using EnsureThat;
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Search.Exceptions;
@@ -29,10 +30,10 @@ public class SearchResourceNotSupportedException : FhirException
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType)
         });
     }
@@ -42,10 +43,10 @@ public class SearchResourceNotSupportedException : FhirException
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = string.Format(CultureInfo.CurrentCulture, "{0} not supported", resourceType)
         });
     }

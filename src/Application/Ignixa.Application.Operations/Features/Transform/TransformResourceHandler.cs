@@ -13,8 +13,8 @@ using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
@@ -249,7 +249,7 @@ public class TransformResourceHandler(
     /// <summary>
     /// Registers supporting maps in the MapRegistryCache for import resolution.
     /// </summary>
-    private void RegisterSupportingMaps(IReadOnlyList<StructureMapJsonNode> supportingMaps)
+    private void RegisterSupportingMaps(IReadOnlyList<StructureMap> supportingMaps)
     {
         logger.LogDebug("Registering {Count} supporting maps", supportingMaps.Count);
 

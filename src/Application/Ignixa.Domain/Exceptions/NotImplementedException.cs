@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.Abstractions;
 
@@ -22,10 +23,10 @@ public class NotImplementedException : FhirException
     public NotImplementedException(string message)
         : base(message)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = message
         });
     }
@@ -33,10 +34,10 @@ public class NotImplementedException : FhirException
     public NotImplementedException(string message, Exception innerException)
         : base(message, innerException)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = message
         });
     }

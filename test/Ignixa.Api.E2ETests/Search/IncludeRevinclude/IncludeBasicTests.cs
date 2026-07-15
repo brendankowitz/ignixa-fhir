@@ -7,8 +7,8 @@ using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.FhirFakes.Builders;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -128,7 +128,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
-        var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+        var bundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
 
         // Assert
         ValidateBundleContains(bundle, createdOrg.Id, createdLocation.Id);
@@ -164,8 +164,8 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var bundle = await Harness.SearchBundleAsync("Group", $"_include=Group:member:Patient&_tag={tag}");
 
         // Assert
-        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
 
         matchEntries.ShouldContain(e => e.Resource != null && e.Resource.Id == createdGroup.Id);
         includeEntries.ShouldContain(e => e.Resource != null && e.Resource.Id == createdPatient.Id);
@@ -503,7 +503,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
 
         // Assert - should include active org but not deleted org
         var includedOrgIds = bundle.Entry
-            .Where(e => e.Resource?.ResourceType == "Organization" && e.Search?.Mode == "include")
+            .Where(e => e.Resource?.ResourceType == "Organization" && e.Search?.Mode?.GetLiteral() == "include")
             .Select(e => e.Resource!.Id)
             .ToList();
 

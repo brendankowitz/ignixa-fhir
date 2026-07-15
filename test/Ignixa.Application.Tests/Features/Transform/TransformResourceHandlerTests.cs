@@ -13,8 +13,8 @@ using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.Registry;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
@@ -413,7 +413,7 @@ public class TransformResourceHandlerTests
                 ]
             }
             """;
-        var structureMap = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(structureMapJson);
+        var structureMap = JsonSourceNodeFactory.Parse<StructureMap>(structureMapJson);
 
         var command = new TransformResourceCommand(
             Source: null,

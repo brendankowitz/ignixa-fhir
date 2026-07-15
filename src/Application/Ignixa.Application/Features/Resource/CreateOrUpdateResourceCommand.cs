@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
@@ -37,7 +37,7 @@ public record CreateOrUpdateResourceCommand(
     DeferredWriteCoordinator? Coordinator = null,
     string? IfMatch = null,
     ValidationDepth? ValidationDepthOverride = null,
-    ProvenanceJsonNode? ProvenanceResource = null,
+    Provenance? ProvenanceResource = null,
     DateTimeOffset? ExpiresAt = null) : IRequest<UpdateResult>, IRequireCapability
 {
     /// <summary>

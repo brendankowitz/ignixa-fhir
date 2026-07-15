@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
@@ -22,10 +23,10 @@ public class RequestNotValidException : FhirException
     {
         EnsureArg.IsNotNull(message, nameof(message));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Invalid,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
             Diagnostics = message
         });
     }
@@ -35,10 +36,10 @@ public class RequestNotValidException : FhirException
     {
         EnsureArg.IsNotNull(message, nameof(message));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Invalid,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
             Diagnostics = message
         });
     }

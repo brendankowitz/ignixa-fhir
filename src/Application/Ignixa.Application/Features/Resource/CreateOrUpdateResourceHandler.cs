@@ -14,7 +14,7 @@ using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using System.Text.Json.Nodes;
@@ -256,7 +256,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Set initial meta values
         // For POST: Always version 1 (new resource)
         // For PUT: Start with version 1, repository will calculate actual version for updates
-        command.JsonNode.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        command.JsonNode.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
         command.JsonNode.Meta.VersionId = "1"; // Repository will update this for existing resources
 
         // Always set the ID on the JsonNode to match command.Id
@@ -270,7 +270,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.ResourceType,
             command.Id,
             command.JsonNode.Meta.VersionId, // Version will be determined by repository
-            command.JsonNode.Meta.LastUpdated.Value,
+            command.JsonNode.Meta.LastUpdatedOffset.Value,
             command.JsonNode, // Pass ResourceJsonNode directly (data layer serializes as needed)
             request,
             false) // isDeleted
@@ -293,7 +293,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// <param name="repository">The repository to persist the Provenance resource.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private async Task ProcessProvenanceAsync(
-        ProvenanceJsonNode provenanceTemplate,
+        Provenance provenanceTemplate,
         UpdateResult mainResourceResult,
         FhirVersion fhirVersion,
         IFhirSchemaProvider schemaProvider,
@@ -308,7 +308,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         provenanceTemplate.Id = provenanceId;
 
         // Add target reference with version-specific reference to the created/updated resource
-        // Uses type-safe AddTarget method from ProvenanceJsonNode
+        // Uses type-safe AddTarget method from Provenance
         provenanceTemplate.AddTarget(
             mainResourceResult.Key.ResourceType,
             mainResourceResult.Key.Id,
@@ -322,7 +322,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             mainResourceResult.Key.VersionId);
 
         // Set meta values
-        provenanceTemplate.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        provenanceTemplate.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
         provenanceTemplate.Meta.VersionId = "1";
 
         // Validate the Provenance resource before persisting
@@ -364,8 +364,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             "Provenance",
             provenanceId,
             provenanceTemplate.Meta.VersionId!,
-            provenanceTemplate.Meta.LastUpdated!.Value,
-            provenanceTemplate, // ProvenanceJsonNode extends ResourceJsonNode, so this works
+            provenanceTemplate.Meta.LastUpdatedOffset!.Value,
+            provenanceTemplate, // Provenance extends ResourceJsonNode, so this works
             request,
             false) // isDeleted
         {
@@ -391,7 +391,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// <param name="provenance">The Provenance resource to validate.</param>
     /// <param name="fhirVersion">The FHIR version to use for validation.</param>
     /// <exception cref="ValidationException">Thrown when validation fails.</exception>
-    private void ValidateProvenance(ProvenanceJsonNode provenance, FhirVersion fhirVersion)
+    private void ValidateProvenance(Provenance provenance, FhirVersion fhirVersion)
     {
         _logger.LogDebug("Validating Provenance resource from X-Provenance header");
 

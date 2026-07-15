@@ -23,6 +23,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -1117,7 +1118,7 @@ public static class FhirEndpoints
             logger.LogInformation("Using buffered processing (Transaction: {IsTransaction})",
                 options.Type == BundleType.Transaction);
 
-            BundleJsonNode responseBundle = await bundleProcessor.ProcessAsync(
+            Bundle responseBundle = await bundleProcessor.ProcessAsync(
                 bundleContext.Entries, options, ct);
 
             // Serialize response bundle with System.Text.Json
@@ -1434,11 +1435,11 @@ public static class FhirEndpoints
         else
         {
             // Multiple mode: 200 OK with verbose OperationOutcome
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Information,
+                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = result.IsPartialDelete
                     ? $"Partial delete: Deleted {result.DeletedCount} of {result.TotalMatches} matching resources (limit: {count}). " +
                       $"Deleted IDs: {string.Join(", ", result.DeletedIds)}"
@@ -1671,13 +1672,13 @@ public static class FhirEndpoints
     /// <summary>
     /// Creates a success OperationOutcome for write operations (create/update/delete).
     /// </summary>
-    private static OperationOutcomeJsonNode CreateSuccessOperationOutcome(string message)
+    private static OperationOutcome CreateSuccessOperationOutcome(string message)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-            Code = OperationOutcomeJsonNode.IssueType.Informational,
+            SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Information,
+            IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Informational,
             Diagnostics = message
         });
         return outcome;
@@ -1708,17 +1709,17 @@ public static class FhirEndpoints
             "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
             string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
 
-        var operationOutcome = new OperationOutcomeJsonNode();
+        var operationOutcome = new OperationOutcome();
         foreach (var param in searchOptions.UnsupportedParams)
         {
             var diagnostics = resourceType is not null
                 ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
                 : $"Search parameter '{param}' is not supported";
 
-            operationOutcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+                SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Error,
+                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.NotSupported,
                 Diagnostics = diagnostics
             });
         }

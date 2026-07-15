@@ -8,6 +8,7 @@ using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Domain.Exceptions;
 using Medino;
 using Microsoft.Extensions.Logging;
+using FhirBundle = Ignixa.Models.Bundle;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 
@@ -120,7 +121,7 @@ public class IpsGeneratorHandler(
         return parts.Length > 1 ? parts[1] : parts[0];
     }
 
-    private static int CountSections(Serialization.Models.BundleJsonNode bundle, bool withResources)
+    private static int CountSections(FhirBundle bundle, bool withResources)
     {
         var composition = bundle.Entry.FirstOrDefault()?.Resource;
         if (composition is null)

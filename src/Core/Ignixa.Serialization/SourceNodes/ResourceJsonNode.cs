@@ -9,7 +9,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 // For ToElement extension method
 
@@ -21,7 +21,7 @@ namespace Ignixa.Serialization.SourceNodes;
 public class ResourceJsonNode : BaseJsonNode, IResourceNode
 {
     // Cached wrapper for Meta property (reuse same instance)
-    private MetaJsonNode? _cachedMeta;
+    private Meta? _cachedMeta;
     private JsonNodeSourceNode? _cachedSourceNode;
     private IElement? _cachedElement;
     private ISchema? _cachedProvider;
@@ -88,7 +88,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     }
 
     [JsonIgnore]
-    public MetaJsonNode Meta
+    public Meta Meta
     {
         get
         {
@@ -105,7 +105,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
                 }
 
                 // Cache the wrapper (reuse same instance for subsequent accesses)
-                _cachedMeta = new MetaJsonNode(metaObject);
+                _cachedMeta = new Meta(metaObject);
             }
 
             return _cachedMeta;

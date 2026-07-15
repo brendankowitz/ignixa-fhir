@@ -9,8 +9,8 @@ using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using Xunit;
 
@@ -68,7 +68,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -135,7 +135,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -193,7 +193,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -258,7 +258,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R5
         };
@@ -325,7 +325,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R5
         };
@@ -390,7 +390,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson);
+        var structureMap = new StructureMap(structureMapJson);
         // Note: FhirVersion is NOT set
 
         // Act
@@ -450,7 +450,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson);
+        var structureMap = new StructureMap(structureMapJson);
         // Note: FhirVersion is NOT set
 
         // Act
@@ -522,7 +522,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -599,7 +599,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -644,7 +644,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(json);
+        var structureMap = new StructureMap(json);
         // Don't set FhirVersion on the node
 
         var parser = new StructureMapParser(FhirVersion.R4);
@@ -678,7 +678,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(json);
+        var structureMap = new StructureMap(json);
         structureMap.FhirVersion = FhirVersion.R5; // Already set
 
         var parser = new StructureMapParser(FhirVersion.R4); // Different expected version
@@ -711,7 +711,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(json);
+        var structureMap = new StructureMap(json);
         // Don't set FhirVersion on the node
 
         var parser = new StructureMapParser(); // No expected version
@@ -771,7 +771,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -831,7 +831,7 @@ public class StructureMapParserVersionTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };

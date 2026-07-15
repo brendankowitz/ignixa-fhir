@@ -9,8 +9,8 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.Registry;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -136,7 +136,7 @@ public class MapRegistryCache : IMapRegistry
         // Parse and cache
         var stopwatch = Stopwatch.StartNew();
 
-        var structureMap = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(
+        var structureMap = JsonSourceNodeFactory.Parse<StructureMap>(
             packageResource.ResourceJson);
 
         var map = _parser.Parse(structureMap);

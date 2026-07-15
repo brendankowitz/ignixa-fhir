@@ -6,6 +6,7 @@
 using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Abstractions;
 using Ignixa.Serialization.Models;
@@ -66,26 +67,26 @@ public class FhirExceptionMiddleware
 
         // Handle other exceptions with generic OperationOutcome
         var statusCode = HttpStatusCode.InternalServerError;
-        var severity = OperationOutcomeJsonNode.IssueSeverity.Error;
-        var code = OperationOutcomeJsonNode.IssueType.Exception;
+        var severity = OperationOutcomeIssue.IssueSeverityCode.Error;
+        var code = OperationOutcomeIssue.IssueTypeCommon.Exception;
 
         // Map specific exceptions to HTTP status codes
         if (exception is ArgumentException or ArgumentNullException)
         {
             statusCode = HttpStatusCode.BadRequest;
-            code = OperationOutcomeJsonNode.IssueType.Invalid;
+            code = OperationOutcomeIssue.IssueTypeCommon.Invalid;
         }
         else if (exception is InvalidOperationException)
         {
             statusCode = HttpStatusCode.BadRequest;
-            code = OperationOutcomeJsonNode.IssueType.Processing;
+            code = OperationOutcomeIssue.IssueTypeCommon.Processing;
         }
 
-        var operationOutcome = new OperationOutcomeJsonNode();
-        operationOutcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var operationOutcome = new OperationOutcome();
+        operationOutcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = severity,
-            Code = code,
+            SeverityCode = severity,
+            IssueTypeCode = code,
             Diagnostics = exception.Message
         });
 

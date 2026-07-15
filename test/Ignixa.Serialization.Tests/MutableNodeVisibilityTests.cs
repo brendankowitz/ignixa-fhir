@@ -5,7 +5,7 @@
 
 using System.Reflection;
 using System.Text.Json.Nodes;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
 using Xunit;
@@ -30,7 +30,7 @@ public class MutableNodeVisibilityTests
             .GetProperty("MutableNode", BindingFlags.Instance | BindingFlags.Public)
             .ShouldBeNull();
 
-        typeof(ParametersJsonNode)
+        typeof(Parameters)
             .GetProperty("MutableNode", BindingFlags.Instance | BindingFlags.Public)
             .ShouldBeNull();
     }

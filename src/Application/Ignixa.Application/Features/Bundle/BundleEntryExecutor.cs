@@ -15,8 +15,10 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
 
@@ -263,17 +265,17 @@ public class BundleEntryExecutor
                              ex.Message.Contains("constraint violation", StringComparison.OrdinalIgnoreCase);
 
             var statusCode = isConflict ? 409 : 500;
-            var severity = isConflict ? OperationOutcomeJsonNode.IssueSeverity.Error : OperationOutcomeJsonNode.IssueSeverity.Fatal;
-            var code = isConflict ? OperationOutcomeJsonNode.IssueType.Conflict : OperationOutcomeJsonNode.IssueType.Exception;
+            var severity = isConflict ? FhirOperationOutcomeIssue.IssueSeverityCode.Error : FhirOperationOutcomeIssue.IssueSeverityCode.Fatal;
+            var code = isConflict ? FhirOperationOutcomeIssue.IssueTypeCommon.Conflict : FhirOperationOutcomeIssue.IssueTypeCommon.Exception;
 
             // Create OperationOutcome with detailed diagnostics
-            var operationOutcome = new OperationOutcomeJsonNode();
-            var issueList = new List<OperationOutcomeJsonNode.IssueComponent>
+            var operationOutcome = new OperationOutcome();
+            var issueList = new List<FhirOperationOutcomeIssue>
             {
-                new OperationOutcomeJsonNode.IssueComponent()
+                new FhirOperationOutcomeIssue()
                 {
-                    Severity = severity,
-                    Code = code,
+                    SeverityCode = severity,
+                    IssueTypeCode = code,
                     Diagnostics = ex.Message
                 }
             };

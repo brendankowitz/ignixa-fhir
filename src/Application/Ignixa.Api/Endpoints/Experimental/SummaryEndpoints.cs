@@ -6,6 +6,7 @@
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Experimental.Ips.Generator;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -127,8 +128,8 @@ public static class SummaryEndpoints
         if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -164,16 +165,16 @@ public static class SummaryEndpoints
         if (string.IsNullOrEmpty(identifier))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Patient identifier is required when patient ID is not provided in URL"));
         }
 
         if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -219,7 +220,7 @@ public static class SummaryEndpoints
 
                 if (memoryStream.Length > 0)
                 {
-                    var parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+                    var parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
                     profile = parameters?.GetParameterStringValue("profile");
                 }
             }
@@ -233,8 +234,8 @@ public static class SummaryEndpoints
         if (profile is not null && !Uri.IsWellFormedUriString(profile, UriKind.Absolute))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Profile parameter must be a well-formed absolute URI"));
         }
 
@@ -255,16 +256,16 @@ public static class SummaryEndpoints
         return Results.Empty;
     }
 
-    private static OperationOutcomeJsonNode CreateOperationOutcome(
-        OperationOutcomeJsonNode.IssueSeverity severity,
-        OperationOutcomeJsonNode.IssueType code,
+    private static OperationOutcome CreateOperationOutcome(
+        OperationOutcomeIssue.IssueSeverityCode severity,
+        OperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = severity,
-            Code = code,
+            SeverityCode = severity,
+            IssueTypeCode = code,
             Diagnostics = diagnostics
         });
         return outcome;

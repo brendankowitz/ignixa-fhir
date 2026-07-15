@@ -39,7 +39,7 @@ public sealed class HttpTestRequestProvider(HttpClient httpClient) : ITestReques
         if (!string.IsNullOrWhiteSpace(responseBody))
         {
             try { body = JsonSourceNodeFactory.Parse(responseBody); }
-            catch (System.Text.Json.JsonException ex) { bodyParseError = ex.Message; }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException) { bodyParseError = ex.Message; }
         }
 
         var headers = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);

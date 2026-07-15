@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
@@ -27,10 +28,10 @@ public class PreconditionFailedException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Required,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Required,
             Diagnostics = message
         });
     }
@@ -40,10 +41,10 @@ public class PreconditionFailedException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Required,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Required,
             Diagnostics = message
         });
     }

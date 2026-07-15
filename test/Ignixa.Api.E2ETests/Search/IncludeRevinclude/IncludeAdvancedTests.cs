@@ -6,6 +6,7 @@
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
+using Ignixa.Serialization;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -55,7 +56,7 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
         GetCountBySearchMode(bundle, "include").ShouldBe(1);
 
         // Follow next link
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
@@ -103,7 +104,7 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
         GetCountBySearchMode(bundle, "include").ShouldBe(1);
 
         // Follow next link
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next")?.Url;
         nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
@@ -150,7 +151,7 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             $"_include=MedicationDispense:prescription&_sort=-whenPrepared&_count=3&_tag={tag}");
 
         // Assert - verify bundle link
-        bundle.Link.ShouldContain(l => l.Relation == "self");
+        bundle.Link.ShouldContain(l => l.GetRelationRaw() == "self");
 
         // Verify all expected resources are present
         ValidateBundleContains(bundle,
@@ -161,15 +162,15 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             smithMedRequest.Id);
 
         // Verify search modes
-        var matches = bundle.Entry.Where(e => e.Search?.Mode == "match").Select(e => e.Resource!.ResourceType).ToList();
+        var matches = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").Select(e => e.Resource!.ResourceType).ToList();
         matches.ShouldAllBe(x => x == "MedicationDispense");
 
-        var includes = bundle.Entry.Where(e => e.Search?.Mode == "include").Select(e => e.Resource!.ResourceType).ToList();
+        var includes = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").Select(e => e.Resource!.ResourceType).ToList();
         includes.ShouldAllBe(x => x == "MedicationRequest");
 
         // Verify sorting - matches should be sorted descending by whenPrepared
         var matchedDispenses = bundle.Entry
-            .Where(e => e.Search?.Mode == "match")
+            .Where(e => e.Search?.Mode?.GetLiteral() == "match")
             .Select(e => e.Resource)
             .ToList();
 
@@ -226,13 +227,13 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             smithMedDispense.Id);
 
         // Verify search modes
-        var matches = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
+        var matches = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
         foreach (var e in matches)
         {
             e.Resource!.ResourceType.ShouldBe("Patient");
         }
 
-        var includes = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var includes = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
         includes.ShouldNotBeEmpty();
 
         // Verify sorting - patient matches should be sorted ascending by birthdate
@@ -325,14 +326,14 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
         resourceTypeToIds["CareTeam"].ShouldContain(createdCareTeam.Id);
 
         // Verify search modes
-        var matches = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
+        var matches = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
         matches.Count.ShouldBe(2); // 2 Organizations
         foreach (var e in matches)
         {
             e.Resource!.ResourceType.ShouldBe("Organization");
         }
 
-        var includes = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var includes = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
         includes.Count.ShouldBe(6); // 1 Location + 2 Patients + 2 Observations + 1 CareTeam
 
         // Verify total count excludes includes (only counts main results)

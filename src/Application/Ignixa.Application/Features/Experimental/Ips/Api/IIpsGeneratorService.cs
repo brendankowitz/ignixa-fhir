@@ -3,7 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Serialization.Models;
+using FhirBundle = Ignixa.Models.Bundle;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Api;
 
@@ -19,7 +19,7 @@ public interface IIpsGeneratorService
     /// <param name="profile">Optional specific IPS profile to generate.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The generated IPS document bundle.</returns>
-    Task<BundleJsonNode> GenerateIpsAsync(
+    Task<FhirBundle> GenerateIpsAsync(
         string patientId,
         string? profile = null,
         CancellationToken cancellationToken = default);
@@ -32,7 +32,7 @@ public interface IIpsGeneratorService
     /// <param name="profile">Optional specific IPS profile to generate.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The generated IPS document bundle.</returns>
-    Task<BundleJsonNode> GenerateIpsByIdentifierAsync(
+    Task<FhirBundle> GenerateIpsByIdentifierAsync(
         string? identifierSystem,
         string identifierValue,
         string? profile = null,

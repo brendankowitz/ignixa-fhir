@@ -6,9 +6,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Domain.Exceptions;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -35,7 +35,7 @@ public static class ProvenanceHeaderHelper
     /// <param name="memoryStreamManager">Memory stream manager for efficient parsing.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Parsed Provenance resource as ProvenanceJsonNode, or null if header not present or invalid.</returns>
+    /// <returns>Parsed Provenance resource as Provenance, or null if header not present or invalid.</returns>
     /// <remarks>
     /// The provenance resource:
     /// - MUST be valid JSON
@@ -44,7 +44,7 @@ public static class ProvenanceHeaderHelper
     /// - SHOULD have required Provenance elements (recorded, agent)
     /// Validation of the Provenance resource structure is delegated to the validation pipeline.
     /// </remarks>
-    public static async Task<ProvenanceJsonNode?> TryParseProvenanceHeaderAsync(
+    public static async Task<Provenance?> TryParseProvenanceHeaderAsync(
         IHeaderDictionary headers,
         RecyclableMemoryStreamManager memoryStreamManager,
         ILogger logger,
@@ -87,7 +87,7 @@ public static class ProvenanceHeaderHelper
                 resourceNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
             }
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             logger.LogWarning(ex, "X-Provenance header contains invalid JSON");
             throw new BadRequestException("X-Provenance header contains invalid JSON", ex);
@@ -103,11 +103,11 @@ public static class ProvenanceHeaderHelper
                 $"X-Provenance header must contain a Provenance resource, got resourceType='{resourceNode.ResourceType}'");
         }
 
-        // Convert to strongly-typed ProvenanceJsonNode using extension method
-        var provenanceNode = resourceNode.As<ProvenanceJsonNode>();
+        // Convert to strongly-typed Provenance using extension method
+        var provenanceNode = resourceNode.As<Provenance>();
 
         // Validate that target is NOT specified (per FHIR spec for X-Provenance)
-        if (provenanceNode.HasTarget)
+        if (provenanceNode.Target.Count > 0)
         {
             logger.LogWarning("X-Provenance header should not contain 'target' property - server will auto-fill");
             throw new BadRequestException(
@@ -129,7 +129,7 @@ public static class ProvenanceHeaderHelper
     /// <param name="logger">Logger for diagnostic information.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Parsed Provenance resource, or null if not applicable.</returns>
-    public static async Task<ProvenanceJsonNode?> TryParseForStandaloneOperationAsync(
+    public static async Task<Provenance?> TryParseForStandaloneOperationAsync(
         IHeaderDictionary headers,
         object? coordinator,
         RecyclableMemoryStreamManager memoryStreamManager,

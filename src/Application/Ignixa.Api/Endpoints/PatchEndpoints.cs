@@ -11,9 +11,11 @@ using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
@@ -225,11 +227,11 @@ public static class PatchEndpoints
         else if (actualReturnPreference == ReturnPreference.OperationOutcome)
         {
             // return=OperationOutcome - return OperationOutcome with success message
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Information,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{id}"
             });
             return FhirResults.Ok(outcome, context);
@@ -363,11 +365,11 @@ public static class PatchEndpoints
         else if (actualReturnPreference == ReturnPreference.OperationOutcome)
         {
             // return=OperationOutcome - return OperationOutcome with success message
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Information,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{result.Resource.ResourceId}"
             });
             return FhirResults.Ok(outcome, context);

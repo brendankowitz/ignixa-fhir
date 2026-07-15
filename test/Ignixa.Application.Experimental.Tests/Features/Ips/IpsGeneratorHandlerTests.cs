@@ -6,7 +6,7 @@
 using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Application.Features.Experimental.Ips.Generator;
 using Ignixa.Domain.Exceptions;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -213,7 +213,7 @@ public class IpsGeneratorHandlerTests
             "patient-123",
             "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips",
             cts.Token)
-            .Returns(Task.FromCanceled<BundleJsonNode>(cts.Token));
+            .Returns(Task.FromCanceled<Bundle>(cts.Token));
 
         // Act & Assert
         await Should.ThrowAsync<TaskCanceledException>(
@@ -272,26 +272,27 @@ public class IpsGeneratorHandlerTests
         result.ShouldNotBeNull();
     }
 
-    private static BundleJsonNode CreateMockBundle()
+    private static Bundle CreateMockBundle()
     {
-        return new BundleJsonNode
+        var bundle = new Bundle
         {
             Id = Guid.NewGuid().ToString(),
-            Type = BundleJsonNode.BundleType.Document
         };
+        bundle.SetTypeRaw("document");
+        return bundle;
     }
 
-    private static BundleJsonNode CreateMockBundleWithEntries(int count)
+    private static Bundle CreateMockBundleWithEntries(int count)
     {
-        var bundle = new BundleJsonNode
+        var bundle = new Bundle
         {
             Id = Guid.NewGuid().ToString(),
-            Type = BundleJsonNode.BundleType.Document
         };
+        bundle.SetTypeRaw("document");
 
         for (int i = 0; i < count; i++)
         {
-            bundle.Entry.Add(new BundleComponentJsonNode
+            bundle.Entry.Add(new BundleEntry
             {
                 FullUrl = $"urn:uuid:{Guid.NewGuid()}"
             });

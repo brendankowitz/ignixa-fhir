@@ -7,7 +7,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Ips.Api;
 using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -26,12 +26,12 @@ public class SectionMetadataParser(
     /// <summary>
     /// Extracts all section slices from a Composition StructureDefinition.
     /// </summary>
-    public IReadOnlyList<Section> ParseSections(StructureDefinitionJsonNode compositionProfile)
+    public IReadOnlyList<Section> ParseSections(StructureDefinition compositionProfile)
     {
         ArgumentNullException.ThrowIfNull(compositionProfile);
 
         // Convert to IElement for FHIRPath evaluation
-        var structureDefElement = compositionProfile.ResourceNode.ToElement(schema);
+        var structureDefElement = compositionProfile.ToElement(schema);
 
         // Find all section slices using FHIRPath:
         // Filter for elements with both path starting with 'Composition.section:' AND a sliceName

@@ -5,8 +5,8 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -20,7 +20,7 @@ public static class ParametersExtensions
     /// <summary>
     /// Gets a single string parameter value by name.
     /// </summary>
-    public static string? GetParameterStringValue(this ParametersJsonNode parameters, string name)
+    public static string? GetParameterStringValue(this Parameters parameters, string name)
     {
         var param = parameters.FindParameter(name);
         return param?.GetValueAs<string>();
@@ -29,7 +29,7 @@ public static class ParametersExtensions
     /// <summary>
     /// Gets multiple string parameter values by name (for parameters that can repeat).
     /// </summary>
-    public static IEnumerable<string> GetParameterStringValues(this ParametersJsonNode parameters, string name)
+    public static IEnumerable<string> GetParameterStringValues(this Parameters parameters, string name)
     {
         return parameters.Parameter
             .Where(p => p.Name == name)
@@ -46,7 +46,7 @@ public static class ParametersExtensions
     /// <param name="logger">Optional logger for warning on deserialization failures.</param>
     /// <returns>The deserialized resource, or null if not found or deserialization fails.</returns>
     public static T? GetParameterResource<T>(
-        this ParametersJsonNode parameters,
+        this Parameters parameters,
         string name,
         ILogger? logger = null)
         where T : ResourceJsonNode
@@ -68,7 +68,7 @@ public static class ParametersExtensions
         {
             return JsonSourceNodeFactory.Parse<T>(param.Resource.MutableNode);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             logger?.LogWarning(
                 ex,
@@ -88,7 +88,7 @@ public static class ParametersExtensions
     /// <param name="logger">Optional logger for warning on deserialization failures.</param>
     /// <returns>An enumerable of deserialized resources. Invalid resources are skipped with a warning log.</returns>
     public static IEnumerable<T> GetParameterResources<T>(
-        this ParametersJsonNode parameters,
+        this Parameters parameters,
         string name,
         ILogger? logger = null)
         where T : ResourceJsonNode
@@ -113,7 +113,7 @@ public static class ParametersExtensions
                 {
                     return JsonSourceNodeFactory.Parse<T>(p.Resource.MutableNode);
                 }
-                catch (JsonException ex)
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
                 {
                     logger?.LogWarning(
                         ex,

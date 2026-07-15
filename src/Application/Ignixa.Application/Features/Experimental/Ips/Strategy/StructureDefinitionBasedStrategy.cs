@@ -6,7 +6,7 @@
 using System.Collections.Frozen;
 using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Application.Features.Experimental.Ips.Common;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Strategy;
@@ -17,14 +17,14 @@ namespace Ignixa.Application.Features.Experimental.Ips.Strategy;
 /// </summary>
 public class StructureDefinitionBasedStrategy : IIpsGenerationStrategy
 {
-    private readonly StructureDefinitionJsonNode _compositionProfile;
+    private readonly StructureDefinition _compositionProfile;
     private readonly IReadOnlyList<Section> _sections;
     private readonly FrozenDictionary<string, Section> _sectionByResourceType;
     private readonly string _bundleProfile;
     private readonly string _compositionProfileUrl;
 
     public StructureDefinitionBasedStrategy(
-        StructureDefinitionJsonNode compositionProfile,
+        StructureDefinition compositionProfile,
         IReadOnlyList<Section> sections,
         string bundleProfile)
     {

@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Xunit;
@@ -67,25 +68,25 @@ public class JsonNodeConverterConstructorTests
     /// Verify specific known types can be directly deserialized (regression test).
     /// </summary>
     [Fact]
-    public void BundleJsonNode_ShouldDeserializeDirectly()
+    public void Bundle_ShouldDeserializeDirectly()
     {
-        var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>("""{"resourceType":"Bundle","type":"searchset"}""");
+        var bundle = JsonSourceNodeFactory.Parse<Bundle>("""{"resourceType":"Bundle","type":"searchset"}""");
         bundle.ShouldNotBeNull();
-        bundle.Type.ShouldBe(BundleJsonNode.BundleType.Searchset);
+        bundle.GetTypeRaw().ShouldBe("searchset");
     }
 
     [Fact]
-    public void OperationOutcomeJsonNode_ShouldDeserializeDirectly()
+    public void OperationOutcome_ShouldDeserializeDirectly()
     {
-        var outcome = JsonSourceNodeFactory.Parse<OperationOutcomeJsonNode>("""{"resourceType":"OperationOutcome"}""");
+        var outcome = JsonSourceNodeFactory.Parse<OperationOutcome>("""{"resourceType":"OperationOutcome"}""");
         outcome.ShouldNotBeNull();
         outcome.ResourceType.ShouldBe("OperationOutcome");
     }
 
     [Fact]
-    public void ParametersJsonNode_ShouldDeserializeDirectly()
+    public void Parameters_ShouldDeserializeDirectly()
     {
-        var parameters = JsonSourceNodeFactory.Parse<ParametersJsonNode>("""{"resourceType":"Parameters"}""");
+        var parameters = JsonSourceNodeFactory.Parse<Parameters>("""{"resourceType":"Parameters"}""");
         parameters.ShouldNotBeNull();
         parameters.ResourceType.ShouldBe("Parameters");
     }

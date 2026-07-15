@@ -6,6 +6,7 @@
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Experimental.Transform;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -103,34 +104,34 @@ public static class TransformEndpoints
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         CancellationToken cancellationToken)
     {
-        ParametersJsonNode? parameters;
+        Parameters? parameters;
         try
         {
             await using var memoryStream = memoryStreamManager.GetStream("transform-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+            parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
         }
         catch
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Request body must be a valid FHIR Parameters resource"));
         }
 
         if (parameters == null)
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR Parameters resource"));
         }
 
         var source = parameters.GetParameterStringValue("source");
-        var sourceMap = parameters.GetParameterResource<StructureMapJsonNode>("sourceMap");
+        var sourceMap = parameters.GetParameterResource<StructureMap>("sourceMap");
         var srcMaps = parameters.GetParameterStringValues("srcMap").ToList();
-        var supportingMaps = parameters.GetParameterResources<StructureMapJsonNode>("supportingMap").ToList();
+        var supportingMaps = parameters.GetParameterResources<StructureMap>("supportingMap").ToList();
         var content = parameters.GetParameterResource<ResourceJsonNode>("content");
 
         var command = new TransformResourceCommand(
@@ -149,8 +150,8 @@ public static class TransformEndpoints
         catch (InvalidOperationException ex)
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Processing,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Processing,
                 $"Transformation failed: {ex.Message}"));
         }
     }
@@ -163,27 +164,27 @@ public static class TransformEndpoints
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         CancellationToken cancellationToken)
     {
-        ParametersJsonNode? parameters;
+        Parameters? parameters;
         try
         {
             await using var memoryStream = memoryStreamManager.GetStream("transform-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+            parameters = await JsonSourceNodeFactory.ParseAsync<Parameters>(memoryStream, cancellationToken);
         }
         catch
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Invalid,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 "Request body must be a valid FHIR Parameters resource"));
         }
 
         if (parameters == null)
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "Request body must contain a FHIR Parameters resource"));
         }
 
@@ -203,14 +204,14 @@ public static class TransformEndpoints
             if (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
             {
                 return Results.NotFound(CreateOperationOutcome(
-                    OperationOutcomeJsonNode.IssueSeverity.Error,
-                    OperationOutcomeJsonNode.IssueType.NotFound,
+                    OperationOutcomeIssue.IssueSeverityCode.Error,
+                    OperationOutcomeIssue.IssueTypeCommon.NotFound,
                     $"StructureMap/{id} not found"));
             }
 
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Processing,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Processing,
                 $"Transformation failed: {ex.Message}"));
         }
     }
@@ -224,8 +225,8 @@ public static class TransformEndpoints
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/StructureMap/$transform"));
         }
 
@@ -242,24 +243,24 @@ public static class TransformEndpoints
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                OperationOutcomeIssue.IssueSeverityCode.Error,
+                OperationOutcomeIssue.IssueTypeCommon.Required,
                 "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/StructureMap/{id}/$transform"));
         }
 
         return await HandleTransformInstance(context, tenantId, id, mediator, memoryStreamManager, cancellationToken);
     }
 
-    private static OperationOutcomeJsonNode CreateOperationOutcome(
-        OperationOutcomeJsonNode.IssueSeverity severity,
-        OperationOutcomeJsonNode.IssueType code,
+    private static OperationOutcome CreateOperationOutcome(
+        OperationOutcomeIssue.IssueSeverityCode severity,
+        OperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
         {
-            Severity = severity,
-            Code = code,
+            SeverityCode = severity,
+            IssueTypeCode = code,
             Diagnostics = diagnostics
         });
         return outcome;

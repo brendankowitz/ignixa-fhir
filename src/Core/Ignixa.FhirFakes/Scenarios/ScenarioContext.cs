@@ -5,7 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Scenarios;
@@ -551,8 +551,8 @@ public sealed class ScenarioContext
     /// Resources are added in generation order (Patient first, then others).
     /// Each entry uses urn:uuid references for client-assigned IDs.
     /// </summary>
-    /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
-    public BundleJsonNode ToBundle() => ResourceBundleComposer.ToTransactionBundle(_allResources);
+    /// <returns>A Bundle representing a FHIR transaction bundle.</returns>
+    public Bundle ToBundle() => ResourceBundleComposer.ToTransactionBundle(_allResources);
 
     /// <summary>
     /// Creates a batch Bundle containing all resources from this scenario.
@@ -560,14 +560,14 @@ public sealed class ScenarioContext
     /// Each entry uses resolved references (ResourceType/id format).
     /// Suitable for scenarios where resources are already created on the server.
     /// </summary>
-    /// <returns>A BundleJsonNode representing a FHIR batch bundle.</returns>
-    public BundleJsonNode ToBatchBundle() => ResourceBundleComposer.ToBatchBundle(_allResources);
+    /// <returns>A Bundle representing a FHIR batch bundle.</returns>
+    public Bundle ToBatchBundle() => ResourceBundleComposer.ToBatchBundle(_allResources);
 
     /// <summary>
     /// Alias for ToBundle(). Creates a transaction bundle with urn:uuid references.
     /// </summary>
-    /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
-    public BundleJsonNode ToTransactionBundle() => ToBundle();
+    /// <returns>A Bundle representing a FHIR transaction bundle.</returns>
+    public Bundle ToTransactionBundle() => ToBundle();
 
     /// <summary>
     /// Registers a resource created by a state with the given StateId.

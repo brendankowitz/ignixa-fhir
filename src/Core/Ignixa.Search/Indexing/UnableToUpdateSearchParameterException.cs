@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.Abstractions;
 
@@ -54,10 +55,10 @@ public class UnableToUpdateSearchParameterException : FhirException
 
     private void AddIssue(string diagnostics)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
+        Issues.Add(new OperationOutcomeIssue()
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
             Diagnostics = diagnostics
         });
     }

@@ -16,13 +16,13 @@ public static class ResourceJsonNodeExtensions
     /// Converts a ResourceJsonNode to a strongly-typed derived resource node.
     /// Uses the underlying MutableNode (JsonObject) to construct the specific type.
     /// </summary>
-    /// <typeparam name="T">The specific ResourceJsonNode type to convert to (e.g., ProvenanceJsonNode, BundleJsonNode).</typeparam>
+    /// <typeparam name="T">The specific ResourceJsonNode type to convert to (e.g., Provenance, BundleJsonNode).</typeparam>
     /// <param name="resource">The resource to convert.</param>
     /// <returns>A new instance of the specified type wrapping the same underlying JsonObject.</returns>
     /// <remarks>
     /// This method creates a new instance of the target type using the same underlying JsonObject,
     /// allowing you to access type-specific properties and methods.
-    /// Example: var provenance = resourceNode.As&lt;ProvenanceJsonNode&gt;();
+    /// Example: var provenance = resourceNode.As&lt;Provenance&gt;();
     /// </remarks>
     public static T As<T>(this ResourceJsonNode resource) where T : ResourceJsonNode
     {

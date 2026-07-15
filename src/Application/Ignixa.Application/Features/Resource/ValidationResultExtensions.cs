@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Validation;
 using System.Text.Json.Nodes;
@@ -19,19 +20,19 @@ public static class ValidationResultExtensions
     /// </summary>
     /// <param name="validationResult">The validation result to convert.</param>
     /// <returns>An OperationOutcome resource with issues from the validation result.</returns>
-    public static OperationOutcomeJsonNode ToOperationOutcome(this ValidationResult validationResult)
+    public static OperationOutcome ToOperationOutcome(this ValidationResult validationResult)
     {
         ArgumentNullException.ThrowIfNull(validationResult);
 
-        var outcome = new OperationOutcomeJsonNode();
-        var issueList = new List<OperationOutcomeJsonNode.IssueComponent>();
+        var outcome = new OperationOutcome();
+        var issueList = new List<OperationOutcomeIssue>();
 
         foreach (var issue in validationResult.Issues)
         {
-            var issueComponent = new OperationOutcomeJsonNode.IssueComponent()
+            var issueComponent = new OperationOutcomeIssue()
             {
-                Severity = MapSeverity(issue.Severity),
-                Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                SeverityCode = MapSeverity(issue.Severity),
+                IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Invalid,
                 Diagnostics = issue.Message
             };
             issueComponent.Expression.Add(issue.Path);
@@ -41,10 +42,10 @@ public static class ValidationResultExtensions
         // If no issues, add a success message
         if (issueList.Count == 0)
         {
-            issueList.Add(new OperationOutcomeJsonNode.IssueComponent()
+            issueList.Add(new OperationOutcomeIssue()
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Information,
+                IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = "Validation passed with no issues"
             });
         }
@@ -59,15 +60,15 @@ public static class ValidationResultExtensions
     /// <summary>
     /// Maps our internal IssueSeverity to FHIR OperationOutcome.IssueSeverity.
     /// </summary>
-    private static OperationOutcomeJsonNode.IssueSeverity MapSeverity(IssueSeverity severity)
+    private static OperationOutcomeIssue.IssueSeverityCode MapSeverity(IssueSeverity severity)
     {
         return severity switch
         {
-            IssueSeverity.Information => OperationOutcomeJsonNode.IssueSeverity.Information,
-            IssueSeverity.Warning => OperationOutcomeJsonNode.IssueSeverity.Warning,
-            IssueSeverity.Error => OperationOutcomeJsonNode.IssueSeverity.Error,
-            IssueSeverity.Fatal => OperationOutcomeJsonNode.IssueSeverity.Fatal,
-            _ => OperationOutcomeJsonNode.IssueSeverity.Error
+            IssueSeverity.Information => OperationOutcomeIssue.IssueSeverityCode.Information,
+            IssueSeverity.Warning => OperationOutcomeIssue.IssueSeverityCode.Warning,
+            IssueSeverity.Error => OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueSeverity.Fatal => OperationOutcomeIssue.IssueSeverityCode.Fatal,
+            _ => OperationOutcomeIssue.IssueSeverityCode.Error
         };
     }
 }

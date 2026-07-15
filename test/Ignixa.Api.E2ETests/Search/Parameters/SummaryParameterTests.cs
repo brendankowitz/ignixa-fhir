@@ -81,9 +81,9 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         }
 
         // Verify self link includes _summary parameter
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull();
-        selfLink!.Url.ShouldContain("_summary=false");
+        selfLink!.Url!.ShouldContain("_summary=false");
     }
 
     /// <summary>
@@ -126,9 +126,9 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         }
 
         // Verify self link includes _summary parameter
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull();
-        selfLink!.Url.ShouldContain("_summary=true");
+        selfLink!.Url!.ShouldContain("_summary=true");
     }
 
     /// <summary>
@@ -169,9 +169,9 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         }
 
         // Verify self link includes _summary parameter
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull();
-        selfLink!.Url.ShouldContain("_summary=text");
+        selfLink!.Url!.ShouldContain("_summary=text");
     }
 
     /// <summary>
@@ -214,9 +214,9 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         }
 
         // Verify self link includes _summary parameter
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull();
-        selfLink!.Url.ShouldContain("_summary=data");
+        selfLink!.Url!.ShouldContain("_summary=data");
     }
 
     /// <summary>
@@ -248,9 +248,9 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         bundle.Entry.ShouldBeEmpty("_summary=count should not include any resource entries");
 
         // Verify self link includes _summary parameter
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull();
-        selfLink!.Url.ShouldContain("_summary=count");
+        selfLink!.Url!.ShouldContain("_summary=count");
     }
 
     #endregion
@@ -308,9 +308,9 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         }
 
         // Verify self link includes _summary parameter
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull();
-        selfLink!.Url.ShouldContain($"_summary={summaryFlag}");
+        selfLink!.Url!.ShouldContain($"_summary={summaryFlag}");
     }
 
     /// <summary>
@@ -341,7 +341,7 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         bundle.Entry.ShouldBeEmpty("_summary=count overrides pagination and returns no entries");
 
         // Next link should not exist when using _summary=count
-        var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next");
+        var nextLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "next");
         nextLink.ShouldBeNull("_summary=count returns no entries, so no pagination needed");
     }
 
@@ -535,11 +535,11 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary={summaryFlag}");
 
         // Assert
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull("bundle should include a self link");
-        selfLink!.Url.ShouldContain($"_summary={summaryFlag}",
+        selfLink!.Url!.ShouldContain($"_summary={summaryFlag}",
             customMessage: "self link should preserve the _summary parameter");
-        selfLink.Url.ShouldContain($"_tag={tag}",
+        selfLink.Url!.ShouldContain($"_tag={tag}",
             customMessage: "self link should preserve all search parameters");
     }
 

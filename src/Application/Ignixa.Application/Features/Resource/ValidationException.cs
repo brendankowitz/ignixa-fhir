@@ -5,6 +5,7 @@
 
 using Ignixa.Domain.Exceptions;
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Validation;
 
@@ -16,7 +17,7 @@ namespace Ignixa.Application.Features.Resource;
 /// </summary>
 public class ValidationException : FhirException
 {
-    private readonly OperationOutcomeJsonNode _operationOutcome;
+    private readonly OperationOutcome _operationOutcome;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ValidationException"/> class.
@@ -37,5 +38,5 @@ public class ValidationException : FhirException
     /// <summary>
     /// Gets the OperationOutcome representation of the validation issues.
     /// </summary>
-    public override OperationOutcomeJsonNode OperationOutcome => _operationOutcome;
+    public override OperationOutcome OperationOutcome => _operationOutcome;
 }

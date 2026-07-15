@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using System.Text.Json.Nodes;
 
 namespace Ignixa.Validation;
@@ -76,7 +76,7 @@ public sealed record ValidationIssue
     /// Gets optional coded details for structured issue information (e.g., terminology issue types).
     /// Used for OperationOutcome.issue.details.coding.
     /// </summary>
-    public CodeableConceptJsonNode? Details { get; init; }
+    public CodeableConcept? Details { get; init; }
 
     /// <summary>
     /// Creates an invariant failure issue with HAPI-compatible formatting.
@@ -119,13 +119,13 @@ public sealed record ValidationIssue
             ? $"The provided code '{system}#{code}' was not found in the value set '{valueSet}'"
             : $"Unknown code '{code}' in the CodeSystem '{system}'";
 
-        var details = new CodeableConceptJsonNode()
+        var details = new CodeableConcept()
         {
             Text = message
         };
 
         // Add coding using the new method to ensure persistence
-        details.Coding.Add(new CodingJsonNode()
+        details.Coding.Add(new Coding()
         {
             System = "http://hl7.org/fhir/tools/CodeSystem/tx-issue-type",
             Code = issueType

@@ -8,7 +8,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Converters;
@@ -33,8 +33,8 @@ public class ResourceConverter : JsonConverter<ResourceJsonNode>
         var type = jsonObject["resourceType"]?.GetValue<string>();
         if (type == Searchparameter)
         {
-            // Directly construct SearchParameterJsonNode from JsonObject (not via Deserialize)
-            return new SearchParameterJsonNode(jsonObject);
+            // Directly construct SearchParameter from JsonObject (not via Deserialize)
+            return new SearchParameter(jsonObject);
         }
 
         // Directly construct ResourceJsonNode from the JsonObject to avoid infinite recursion

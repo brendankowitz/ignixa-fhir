@@ -10,8 +10,10 @@ using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Authorization.Smart;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
@@ -126,11 +128,11 @@ public class FhirAuthorizationFilter : IEndpointFilter
     /// </summary>
     private static IResult CreateForbiddenResponse(string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Forbidden,
+            SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Forbidden,
             Diagnostics = diagnostics
         });
 
@@ -145,11 +147,11 @@ public class FhirAuthorizationFilter : IEndpointFilter
     /// </summary>
     private static IResult CreateErrorResponse(string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Exception,
+            SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Exception,
             Diagnostics = diagnostics
         });
 
@@ -164,11 +166,11 @@ public class FhirAuthorizationFilter : IEndpointFilter
     /// </summary>
     private static IResult CreateServiceUnavailableResponse(string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
-            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.Transient,
+            SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Transient,
             Diagnostics = diagnostics
         });
 

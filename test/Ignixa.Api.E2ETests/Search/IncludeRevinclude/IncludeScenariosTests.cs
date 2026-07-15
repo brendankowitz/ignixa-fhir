@@ -6,6 +6,7 @@
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
+using Ignixa.Serialization;
 
 namespace Ignixa.Api.E2ETests.Search.IncludeRevinclude;
 
@@ -188,8 +189,8 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
             $"_tag={tag}&_include=Group:member:Patient");
 
         // Assert
-        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
+        var matchEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "match").ToList();
+        var includeEntries = bundle.Entry.Where(e => e.Search?.Mode?.GetLiteral() == "include").ToList();
 
         // Should have 1 match (the group) and 2 includes (both patients)
         matchEntries.Count.ShouldBe(1);
@@ -257,7 +258,7 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
         // Both locations match the tag search, so both should be "match"
         // The parent is both a match (has the tag) and an include (referenced by partOf)
         // but resources are deduplicated, and "match" takes precedence
-        var matchCount = bundle.Entry.Count(e => e.Search?.Mode == "match");
+        var matchCount = bundle.Entry.Count(e => e.Search?.Mode?.GetLiteral() == "match");
         matchCount.ShouldBe(2, "both locations have the tag");
 
         // Verify both locations are present

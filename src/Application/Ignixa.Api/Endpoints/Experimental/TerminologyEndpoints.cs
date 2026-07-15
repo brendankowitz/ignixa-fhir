@@ -9,9 +9,11 @@ using Ignixa.Application.Features.Experimental.Terminology.Expand;
 using Ignixa.Application.Features.Experimental.Terminology.Subsumes;
 using Ignixa.Application.Features.Experimental.Terminology.Translate;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 
 namespace Ignixa.Api.Endpoints.Experimental;
 
@@ -131,8 +133,8 @@ public static class TerminologyEndpoints
         if (string.IsNullOrWhiteSpace(url))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameter 'url' is required"));
         }
 
@@ -148,8 +150,8 @@ public static class TerminologyEndpoints
         catch (InvalidOperationException ex)
         {
             return Results.NotFound(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.NotFound,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
                 ex.Message));
         }
     }
@@ -172,8 +174,8 @@ public static class TerminologyEndpoints
         if (string.IsNullOrWhiteSpace(url))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameter 'url' is required"));
         }
 
@@ -187,8 +189,8 @@ public static class TerminologyEndpoints
         catch (InvalidOperationException ex)
         {
             return Results.NotFound(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.NotFound,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
                 ex.Message));
         }
     }
@@ -219,8 +221,8 @@ public static class TerminologyEndpoints
         if (string.IsNullOrWhiteSpace(body.Code) || string.IsNullOrWhiteSpace(body.System))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'code' and 'system' are required"));
         }
 
@@ -256,8 +258,8 @@ public static class TerminologyEndpoints
         if (string.IsNullOrWhiteSpace(body.Code) || string.IsNullOrWhiteSpace(body.System))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'code' and 'system' are required"));
         }
 
@@ -303,8 +305,8 @@ public static class TerminologyEndpoints
         if (string.IsNullOrWhiteSpace(body.CodeA) || string.IsNullOrWhiteSpace(body.CodeB) || string.IsNullOrWhiteSpace(body.System))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'codeA', 'codeB', and 'system' are required"));
         }
 
@@ -329,8 +331,8 @@ public static class TerminologyEndpoints
         if (string.IsNullOrWhiteSpace(body.CodeA) || string.IsNullOrWhiteSpace(body.CodeB) || string.IsNullOrWhiteSpace(body.System))
         {
             return Results.BadRequest(CreateOperationOutcome(
-                OperationOutcomeJsonNode.IssueSeverity.Error,
-                OperationOutcomeJsonNode.IssueType.Required,
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Required,
                 "Parameters 'codeA', 'codeB', and 'system' are required"));
         }
 
@@ -364,17 +366,17 @@ public static class TerminologyEndpoints
 
     #region Helper Methods
 
-    private static OperationOutcomeJsonNode CreateOperationOutcome(
-        OperationOutcomeJsonNode.IssueSeverity severity,
-        OperationOutcomeJsonNode.IssueType code,
+    private static OperationOutcome CreateOperationOutcome(
+        FhirOperationOutcomeIssue.IssueSeverityCode severity,
+        FhirOperationOutcomeIssue.IssueTypeCommon code,
         string diagnostics)
     {
-        var outcome = new OperationOutcomeJsonNode();
+        var outcome = new OperationOutcome();
 
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        outcome.Issue.Add(new FhirOperationOutcomeIssue
         {
-            Severity = severity,
-            Code = code,
+            SeverityCode = severity,
+            IssueTypeCode = code,
             Diagnostics = diagnostics
         });
 

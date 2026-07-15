@@ -6,7 +6,7 @@
 using System.Text.Json.Nodes;
 using EnsureThat;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 
@@ -32,10 +32,10 @@ public static class SourceNodeExtensions
     /// <summary>
     /// Removes an extension from the meta.extension array that matches the given URL.
     /// </summary>
-    /// <param name="node">The MetaJsonNode to remove the extension from.</param>
+    /// <param name="node">The Meta to remove the extension from.</param>
     /// <param name="url">The URL of the extension to remove.</param>
     /// <returns>True if an extension was removed, false if no matching extension was found.</returns>
-    public static bool RemoveExtension(this MetaJsonNode node, string url)
+    public static bool RemoveExtension(this Meta node, string url)
     {
         EnsureArg.IsNotNull(node, nameof(node));
         EnsureArg.IsNotNullOrWhiteSpace(url, nameof(url));

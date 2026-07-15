@@ -6,8 +6,8 @@
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -547,13 +547,20 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
             {
                 try
                 {
-                    var sdNode = StructureDefinitionJsonNode.Parse(sd.ResourceJson, _logger);
-                    if (sdNode == null)
+                    // BaseJsonNodeConverter doesn't validate resourceType against the target type, so
+                    // check it explicitly (defensive: the SQL query above already filters on it).
+                    var sdNode = JsonSourceNodeFactory.Parse<StructureDefinition>(sd.ResourceJson);
+                    if (!string.Equals(sdNode.ResourceType, "StructureDefinition", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning(
+                            "Expected resourceType='StructureDefinition', got '{ResourceType}' in package {PackageId}@{PackageVersion}",
+                            sdNode.ResourceType, sd.PackageId, sd.PackageVersion);
                         continue;
+                    }
 
                     // Case 1: kind='resource' AND derivation='specialization' = new custom resource type
-                    if (string.Equals(sdNode.Kind, "resource", StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(sdNode.Derivation, "specialization", StringComparison.OrdinalIgnoreCase))
+                    if (sdNode.Kind == StructureDefinitionKind.Resource &&
+                        sdNode.Derivation == TypeDerivationRule.Specialization)
                     {
                         var resourceType = sdNode.Name;
                         if (!string.IsNullOrWhiteSpace(resourceType))
@@ -566,7 +573,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
                         }
                     }
                     // Case 2: kind='logical' = logical model (custom data structure)
-                    else if (string.Equals(sdNode.Kind, "logical", StringComparison.OrdinalIgnoreCase))
+                    else if (sdNode.Kind == StructureDefinitionKind.Logical)
                     {
                         var resourceType = sdNode.Name;
                         if (!string.IsNullOrWhiteSpace(resourceType))

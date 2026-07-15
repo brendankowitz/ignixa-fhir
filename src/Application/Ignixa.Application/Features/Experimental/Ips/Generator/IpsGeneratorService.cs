@@ -21,15 +21,23 @@ using Ignixa.NarrativeGenerator;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
+using FhirBundle = Ignixa.Models.Bundle;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 
 /// <summary>
 /// Service for generating International Patient Summary (IPS) documents.
 /// </summary>
+/// <remarks>
+/// The IPS IG (v2.0.0, STU2) this service implements is permanently R4-based upstream, independent of
+/// the tenant's configured FhirVersion -- see docs/features/fhir-operations/investigations/ips-generator.md.
+/// The Composition it builds uses the shared, version-agnostic Ignixa.Models.Composition rather than
+/// Ignixa.Models.R4.Composition (this project deliberately avoids depending on the opt-in R4/R5
+/// packages), so the two fields that genuinely diverge between versions (status, subject) are set via
+/// Composition's internal SetStatusRaw/SetSubjectRaw escape hatches instead.
+/// </remarks>
 public class IpsGeneratorService(
     IEnumerable<IIpsGenerationStrategy> strategies,
     IQueryExecutionStrategy executionStrategy,
@@ -50,7 +58,7 @@ public class IpsGeneratorService(
         ?? strategies.First();
 
     /// <inheritdoc />
-    public async Task<BundleJsonNode> GenerateIpsAsync(
+    public async Task<FhirBundle> GenerateIpsAsync(
         string patientId,
         string? profile = null,
         CancellationToken cancellationToken = default)
@@ -114,7 +122,7 @@ public class IpsGeneratorService(
     /// TODO: Implement identifier-based patient lookup using token search parameter.
     /// This will require building a proper SearchParameterExpression for the identifier parameter.
     /// </remarks>
-    public Task<BundleJsonNode> GenerateIpsByIdentifierAsync(
+    public Task<FhirBundle> GenerateIpsByIdentifierAsync(
         string? identifierSystem,
         string identifierValue,
         string? profile = null,
@@ -250,26 +258,31 @@ public class IpsGeneratorService(
         resource.MutableNode["text"] = textNode;
     }
 
-    private CompositionJsonNode BuildComposition(
+    private Composition BuildComposition(
         IpsContext context,
         Dictionary<Section, List<ResourceJsonNode>> sectionResources)
     {
         var compositionId = Guid.NewGuid().ToString();
 
-        var composition = new CompositionJsonNode
+        var composition = new Composition
         {
             Id = compositionId,
-            Status = CompositionJsonNode.CompositionStatus.Final,
-            Date = context.GenerationTime,
+            Date = context.GenerationTime.ToString("o"),
             Title = context.Strategy.CreateTitle(context),
-            Subject = ReferenceJsonNode.FromResourceTypeAndId("Patient", context.PatientId),
             Type = CreateCompositionType()
         };
 
-        composition.Meta.Profiles.Add(IpsConstants.CompositionProfile);
+        // status/subject are version-tagged on the R4/R5 subclasses (real shape divergence -- R5's
+        // subject is a list), not the shared base. Set via the low-level raw setters instead of
+        // referencing Ignixa.Models.R4 directly, since the IPS IG this produces is permanently R4-based
+        // regardless of the tenant's configured FhirVersion (see this class's remarks).
+        composition.SetStatusRaw("final");
+        composition.SetSubjectRaw(Reference.FromResourceTypeAndId("Patient", context.PatientId));
+
+        composition.Meta.Profile.Add(IpsConstants.CompositionProfile);
 
         var author = context.Strategy.CreateAuthor(context);
-        composition.Author.Add(ReferenceJsonNode.FromResourceTypeAndId(author.ResourceType, author.Id));
+        composition.Author.Add(Reference.FromResourceTypeAndId(author.ResourceType, author.Id));
 
         foreach (var section in context.Strategy.GetSections())
         {
@@ -287,10 +300,10 @@ public class IpsGeneratorService(
         return composition;
     }
 
-    private static CodeableConceptJsonNode CreateCompositionType()
+    private static CodeableConcept CreateCompositionType()
     {
-        var type = new CodeableConceptJsonNode();
-        type.Coding.Add(new CodingJsonNode
+        var type = new CodeableConcept();
+        type.Coding.Add(new Coding
         {
             System = IpsConstants.LoincSystem,
             Code = IpsConstants.CompositionTypeCode,
@@ -299,11 +312,11 @@ public class IpsGeneratorService(
         return type;
     }
 
-    private CompositionJsonNode.SectionComponent CreateSectionComponent(
+    private CompositionSection CreateSectionComponent(
         Section section,
         List<ResourceJsonNode> resources)
     {
-        var sectionComponent = new CompositionJsonNode.SectionComponent
+        var sectionComponent = new CompositionSection
         {
             Title = section.Title,
             Code = CreateSectionCode(section)
@@ -313,7 +326,7 @@ public class IpsGeneratorService(
         {
             foreach (var resource in resources)
             {
-                sectionComponent.Entry.Add(ReferenceJsonNode.FromResourceTypeAndId(resource.ResourceType, resource.Id));
+                sectionComponent.Entry.Add(Reference.FromResourceTypeAndId(resource.ResourceType, resource.Id));
             }
 
             sectionComponent.Text = new Narrative
@@ -335,10 +348,10 @@ public class IpsGeneratorService(
         return sectionComponent;
     }
 
-    private static CodeableConceptJsonNode CreateSectionCode(Section section)
+    private static CodeableConcept CreateSectionCode(Section section)
     {
-        var code = new CodeableConceptJsonNode();
-        code.Coding.Add(new CodingJsonNode
+        var code = new CodeableConcept();
+        code.Coding.Add(new Coding
         {
             System = section.CodeSystem,
             Code = section.Code,
@@ -347,10 +360,10 @@ public class IpsGeneratorService(
         return code;
     }
 
-    private static CodeableConceptJsonNode CreateEmptyReason()
+    private static CodeableConcept CreateEmptyReason()
     {
-        var emptyReason = new CodeableConceptJsonNode();
-        emptyReason.Coding.Add(new CodingJsonNode
+        var emptyReason = new CodeableConcept();
+        emptyReason.Coding.Add(new Coding
         {
             System = IpsConstants.EmptyReasonSystem,
             Code = "unavailable",
@@ -400,18 +413,18 @@ public class IpsGeneratorService(
         return System.Net.WebUtility.HtmlEncode(display);
     }
 
-    private BundleJsonNode AssembleBundle(
+    private FhirBundle AssembleBundle(
         IpsContext context,
         ResourceJsonNode composition,
         Dictionary<Section, List<ResourceJsonNode>> sectionResources)
     {
         var bundleId = Guid.NewGuid().ToString();
 
-        var bundle = new BundleJsonNode
+        var bundle = new FhirBundle
         {
             Id = bundleId,
-            Type = BundleJsonNode.BundleType.Document,
         };
+        bundle.SetTypeRaw("document");
 
         bundle.MutableNode["identifier"] = new JsonObject
         {
@@ -427,14 +440,14 @@ public class IpsGeneratorService(
         };
 
         // First entry: Composition
-        bundle.Entry.Add(new BundleComponentJsonNode
+        bundle.Entry.Add(new BundleEntry
         {
             FullUrl = $"urn:uuid:{composition.Id}",
             Resource = composition
         });
 
         // Second entry: Patient
-        bundle.Entry.Add(new BundleComponentJsonNode
+        bundle.Entry.Add(new BundleEntry
         {
             FullUrl = $"Patient/{context.PatientId}",
             Resource = context.Patient
@@ -442,7 +455,7 @@ public class IpsGeneratorService(
 
         // Add author (Organization/Device)
         var author = context.Strategy.CreateAuthor(context);
-        bundle.Entry.Add(new BundleComponentJsonNode
+        bundle.Entry.Add(new BundleEntry
         {
             FullUrl = $"urn:uuid:{author.Id}",
             Resource = author
@@ -457,7 +470,7 @@ public class IpsGeneratorService(
                 var resourceKey = $"{resource.ResourceType}/{resource.Id}";
                 if (addedResources.Add(resourceKey))
                 {
-                    bundle.Entry.Add(new BundleComponentJsonNode
+                    bundle.Entry.Add(new BundleEntry
                     {
                         FullUrl = resourceKey,
                         Resource = resource

@@ -7,8 +7,10 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
+using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
 using Ignixa.Specification;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -83,11 +85,11 @@ public class ResourceTypeValidationFilter : IEndpointFilter
                 tenantConfig.FhirVersion);
 
             // Return 404 Not Found with FHIR OperationOutcome
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new FhirOperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.NotFound,
+                SeverityCode = FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
                 Diagnostics = $"Resource type '{resourceType}' is not supported by this server (FHIR {tenantConfig.FhirVersion})"
             });
 

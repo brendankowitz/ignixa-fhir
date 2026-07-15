@@ -3,8 +3,8 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Serialization.Models;
 using Medino;
+using FhirBundle = Ignixa.Models.Bundle;
 
 namespace Ignixa.Application.Features.Experimental.Ips.Generator;
 
@@ -25,7 +25,7 @@ public record IpsGeneratorQuery(
 /// <param name="IpsBundle">The generated IPS document bundle.</param>
 /// <param name="Metrics">Generation metrics.</param>
 public record IpsGeneratorResult(
-    BundleJsonNode IpsBundle,
+    FhirBundle IpsBundle,
     IpsGenerationMetrics Metrics);
 
 /// <summary>

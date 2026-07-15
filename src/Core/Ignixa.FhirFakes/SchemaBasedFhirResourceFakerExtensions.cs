@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes;
@@ -67,8 +67,8 @@ public static class SchemaBasedFhirResourceFakerExtensions
     /// <param name="observationCount">Number of observations to create (default: 2).</param>
     /// <param name="conditionCount">Number of conditions to create (default: 1).</param>
     /// <param name="encounterCount">Number of encounters to create (default: 1).</param>
-    /// <returns>A BundleJsonNode containing all the resources.</returns>
-    public static BundleJsonNode CreatePatientCompartmentBundle(
+    /// <returns>A Bundle containing all the resources.</returns>
+    public static Bundle CreatePatientCompartmentBundle(
         this SchemaBasedFhirResourceFaker faker,
         int observationCount = 2,
         int conditionCount = 1,
@@ -127,7 +127,7 @@ public static class SchemaBasedFhirResourceFakerExtensions
             ["entry"] = entries
         };
 
-        return new BundleJsonNode(bundleNode);
+        return new Bundle(bundleNode);
     }
 
     private static JsonObject CreateBundleEntry(ResourceJsonNode resource, string method, string resourceType)

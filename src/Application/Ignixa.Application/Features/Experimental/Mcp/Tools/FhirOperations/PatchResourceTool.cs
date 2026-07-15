@@ -13,8 +13,8 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Experimental.Mcp.Tools.FhirOperations;
@@ -235,9 +235,9 @@ public class PatchResourceTool : TenantAwareMcpTool
     /// Build a Parameters resource from patch operation DTOs.
     /// Each operation becomes an "operation" parameter with parts for type, path, value, and index.
     /// </summary>
-    private static ParametersJsonNode BuildPatchParameters(IReadOnlyList<PatchOperationDto> operations)
+    private static Parameters BuildPatchParameters(IReadOnlyList<PatchOperationDto> operations)
     {
-        var parameters = new ParametersJsonNode();
+        var parameters = new Parameters();
         var parameterArray = new JsonArray();
 
         foreach (var op in operations)

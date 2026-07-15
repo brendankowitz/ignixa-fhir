@@ -498,10 +498,10 @@ public class NotReferencedSearchTests : IncludeTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_not-referenced=*:*&_tag={tag}");
 
         // Assert
-        var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
+        var selfLink = bundle.Link.FirstOrDefault(l => l.GetRelationRaw() == "self");
         selfLink.ShouldNotBeNull("bundle should include a self link");
-        selfLink!.Url.ShouldContain("_not-referenced=*:*");
-        selfLink.Url.ShouldContain($"_tag={tag}");
+        selfLink!.Url!.ShouldContain("_not-referenced=*:*");
+        selfLink.Url!.ShouldContain($"_tag={tag}");
     }
 
     /// <summary>

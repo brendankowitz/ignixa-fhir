@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Models;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using Medino;
 
 namespace Ignixa.Application.BackgroundOperations.Import;
@@ -43,5 +43,5 @@ public record CreateImportJobCommand : IRequest<CreateImportJobResult>
     /// <summary>
     /// Optional storage detail parameters (for custom storage configurations).
     /// </summary>
-    public ParametersJsonNode? StorageDetail { get; init; }
+    public Parameters? StorageDetail { get; init; }
 }

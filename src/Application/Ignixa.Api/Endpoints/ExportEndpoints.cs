@@ -9,6 +9,7 @@ using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.Endpoints;
@@ -323,11 +324,11 @@ public static class ExportEndpoints
         }
         catch (ArgumentException ex)
         {
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var outcome = new OperationOutcome();
+            outcome.Issue.Add(new OperationOutcomeIssue
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+                SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+                IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.NotSupported,
                 Diagnostics = ex.Message
             });
             return Results.BadRequest(outcome);

@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Models;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
@@ -17,7 +17,7 @@ public record ImportOrchestrationInput
     public required int TenantId { get; init; }
     public required IReadOnlyList<InputFileInfo> InputFiles { get; init; }
     public required string Mode { get; init; } // "InitialLoad" or "IncrementalLoad"
-    public ParametersJsonNode? StorageDetail { get; init; } // SAS tokens, etc.
+    public Parameters? StorageDetail { get; init; } // SAS tokens, etc.
 
     // Per-import performance tuning
     /// <summary>

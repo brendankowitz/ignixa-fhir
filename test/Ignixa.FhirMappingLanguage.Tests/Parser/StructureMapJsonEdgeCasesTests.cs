@@ -9,7 +9,7 @@ using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
-using Ignixa.Serialization.Models;
+using Ignixa.Models;
 using System.Text.Json.Nodes;
 using Xunit;
 
@@ -79,7 +79,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -138,7 +138,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -204,7 +204,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -393,7 +393,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -500,7 +500,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -568,7 +568,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -653,7 +653,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -722,7 +722,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -816,7 +816,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -874,7 +874,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -932,7 +932,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -998,7 +998,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };
@@ -1061,7 +1061,7 @@ public class StructureMapJsonEdgeCasesTests
             }
         };
 
-        var structureMap = new StructureMapJsonNode(structureMapJson)
+        var structureMap = new StructureMap(structureMapJson)
         {
             FhirVersion = FhirVersion.R4
         };

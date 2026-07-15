@@ -17,7 +17,7 @@ namespace Ignixa.Models.R4;
 /// <summary>
 /// Entry points and version-aware registration for the FHIR R4 typed-model package.
 /// </summary>
-public static class R4
+public static class R4Package
 {
     /// <summary>The FHIR version this package targets.</summary>
     public const FhirVersion Version = FhirVersion.R4;
@@ -37,10 +37,16 @@ public static class R4
     public static void Register()
     {
         VersionedModelRegistry.Register("Bundle", Version, jsonObject => new Bundle(jsonObject));
+        VersionedModelRegistry.Register("Composition", Version, jsonObject => new Composition(jsonObject));
+        VersionedModelRegistry.Register("ConceptMap", Version, jsonObject => new ConceptMap(jsonObject));
         VersionedModelRegistry.Register("Observation", Version, jsonObject => new Observation(jsonObject));
         VersionedModelRegistry.Register("OperationOutcome", Version, jsonObject => new OperationOutcome(jsonObject));
         VersionedModelRegistry.Register("Parameters", Version, jsonObject => new Parameters(jsonObject));
         VersionedModelRegistry.Register("Patient", Version, jsonObject => new Patient(jsonObject));
+        VersionedModelRegistry.Register("Provenance", Version, jsonObject => new Provenance(jsonObject));
+        VersionedModelRegistry.Register("SearchParameter", Version, jsonObject => new SearchParameter(jsonObject));
+        VersionedModelRegistry.Register("StructureDefinition", Version, jsonObject => new StructureDefinition(jsonObject));
+        VersionedModelRegistry.Register("StructureMap", Version, jsonObject => new StructureMap(jsonObject));
     }
 }
 
@@ -53,7 +59,7 @@ public static class R4Extensions
         where T : ResourceJsonNode
     {
         ArgumentNullException.ThrowIfNull(node);
-        node.FhirVersion = R4.Version;
+        node.FhirVersion = R4Package.Version;
         return node.As<T>();
     }
 }
