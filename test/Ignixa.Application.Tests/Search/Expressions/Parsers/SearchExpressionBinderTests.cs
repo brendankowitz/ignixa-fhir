@@ -35,9 +35,12 @@ public class SearchExpressionBinderTests
         var result = binder.BindValue(parameter, null, syntax);
 
         var search = result.ShouldBeOfType<SearchParameterExpression>();
-        var value = search.Expression.ShouldBeOfType<StringExpression>();
-        value.Value.ShouldBe("Smith,Jones");
-        value.StringOperator.ShouldBe(StringOperator.StartsWith);
+        var predicate = search.Expression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        predicate.Parameter.ShouldBe(parameter);
+        predicate.Comparator.ShouldBe(SearchComparator.Eq);
+        predicate.Modifier.ShouldBeNull();
+        var value = predicate.Value.ShouldBeOfType<StringSearchValue>();
+        value.String.ShouldBe("Smith,Jones");
     }
 
     [Fact]
@@ -54,10 +57,13 @@ public class SearchExpressionBinderTests
         var result = binder.BindValue(parameter, null, syntax);
 
         var search = result.ShouldBeOfType<SearchParameterExpression>();
-        var comparison = search.Expression.ShouldBeOfType<BinaryExpression>();
-        comparison.BinaryOperator.ShouldBe(BinaryOperator.GreaterThan);
-        comparison.FieldName.ShouldBe(FieldName.Number);
-        comparison.Value.ShouldBe(120m);
+        var predicate = search.Expression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        predicate.Parameter.ShouldBe(parameter);
+        predicate.Comparator.ShouldBe(SearchComparator.Gt);
+        predicate.Modifier.ShouldBeNull();
+        var value = predicate.Value.ShouldBeOfType<NumberSearchValue>();
+        value.Low.ShouldBe(120m);
+        value.High.ShouldBe(120m);
     }
 
     [Fact]
@@ -94,11 +100,10 @@ public class SearchExpressionBinderTests
         var result = binder.BindValue(parameter, modifier, syntax);
 
         var search = result.ShouldBeOfType<SearchParameterExpression>();
-        var reference = search.Expression.ShouldBeOfType<MultiaryExpression>();
-        reference.Expressions
-            .OfType<StringExpression>()
-            .Single(expression => expression.FieldName == FieldName.ReferenceResourceType)
-            .Value.ShouldBe("Patient");
+        var predicate = search.Expression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        predicate.Modifier.ShouldBe(modifier);
+        var reference = predicate.Value.ShouldBeOfType<ReferenceSearchValue>();
+        reference.ResourceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -200,7 +205,8 @@ public class SearchExpressionBinderTests
         var search = result.ShouldBeOfType<SearchParameterExpression>();
         var alternatives = search.Expression.ShouldBeOfType<MultiaryExpression>();
         alternatives.Expressions.ShouldAllBe(
-            expression => expression.ShouldBeOfType<StringExpression>().StringOperator == StringOperator.Equals);
+            expression => expression.ShouldBeOfType<SearchParameterPredicateExpression>().Modifier
+                == new SearchModifier(SearchModifierCode.Exact));
     }
 
     [Fact]
@@ -342,11 +348,12 @@ public class SearchExpressionBinderTests
 
         var search = result.ShouldBeOfType<SearchParameterExpression>();
         var components = search.Expression.ShouldBeOfType<MultiaryExpression>();
-        var reference = components.Expressions[0].ShouldBeOfType<MultiaryExpression>();
-        reference.Expressions
-            .OfType<StringExpression>()
-            .Single(expression => expression.FieldName == FieldName.ReferenceResourceType)
-            .Value.ShouldBe("Patient");
+        var component = components.Expressions[0].ShouldBeOfType<CompositeComponentExpression>();
+        component.Position.ShouldBe(0);
+        component.ComponentSearchParameter.Type.ShouldBe(SearchParamType.Reference);
+        var predicate = component.WrappedExpression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        var reference = predicate.Value.ShouldBeOfType<ReferenceSearchValue>();
+        reference.ResourceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -366,9 +373,12 @@ public class SearchExpressionBinderTests
 
         var search = result.ShouldBeOfType<SearchParameterExpression>();
         var components = search.Expression.ShouldBeOfType<MultiaryExpression>();
-        var value = components.Expressions[0].ShouldBeOfType<StringExpression>();
-        value.Value.ShouldBe("gtSmith");
-        value.StringOperator.ShouldBe(StringOperator.StartsWith);
+        var component = components.Expressions[0].ShouldBeOfType<CompositeComponentExpression>();
+        var predicate = component.WrappedExpression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        predicate.Comparator.ShouldBe(SearchComparator.Eq);
+        predicate.Modifier.ShouldBeNull();
+        var value = predicate.Value.ShouldBeOfType<StringSearchValue>();
+        value.String.ShouldBe("gtSmith");
     }
 
     [Fact]

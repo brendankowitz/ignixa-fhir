@@ -27,7 +27,7 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
 
     private string _searchParameterName;
 
-    void ISearchValueVisitor.Visit(CompositeSearchValue composite)
+    void ISearchValueVisitor.Visit(CompositeIndexSearchValue composite)
     {
         throw new InvalidOperationException("The composite search value should have been broken down into components and handled individually.");
     }

@@ -6,8 +6,10 @@
 using EnsureThat;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 
 namespace Ignixa.Search.InMemory;
 
@@ -61,6 +63,68 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         first.AcceptVisitor(comparisonVisitor);
 
         return comparisonVisitor.Compare();
+    }
+
+    public SearchPredicate VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        return LowerAndVisit(expression.Parameter, expression.Modifier, expression.Comparator, componentIndex: null, expression.Value, context);
+    }
+
+    public SearchPredicate VisitCompositeComponent(CompositeComponentExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        // BindComposite (SearchExpressionBinder) only ever wraps a SearchParameterPredicateExpression here
+        // (confirmed by reading SearchExpressionBinder.BindComposite and LegacyExpressionLowerer, which relies
+        // on the same invariant) -- fail loudly rather than silently mis-evaluating an unexpected shape.
+        if (expression.WrappedExpression is not SearchParameterPredicateExpression predicate)
+        {
+            throw new SearchOperationNotSupportedException(
+                $"{nameof(SearchQueryInterpreter)} can only evaluate a {nameof(CompositeComponentExpression)} whose " +
+                $"{nameof(CompositeComponentExpression.WrappedExpression)} is a {nameof(SearchParameterPredicateExpression)}, " +
+                $"found {expression.WrappedExpression.GetType().Name}.");
+        }
+
+        // Note: context (in particular context.ParameterName, which drives index-entry matching in
+        // VisitBinary/VisitString below) is threaded through UNCHANGED here, matching this class's existing
+        // behavior: VisitBinary/VisitString have never read BinaryExpression/StringExpression.ComponentIndex --
+        // only context.ParameterName (set once, at the top, by VisitSearchParameter) drives which index entries
+        // are considered. This is a real, pre-existing (not introduced by this change) simplification of the
+        // in-memory backend: it does not disambiguate composite components by position. Replicated as-is, not
+        // strengthened, per this task's mandate to reproduce existing semantics rather than invent new ones.
+        return LowerAndVisit(predicate.Parameter, predicate.Modifier, predicate.Comparator, expression.Position, predicate.Value, context);
+    }
+
+    /// <summary>
+    /// Reconstructs the old field-level sub-expression for a single typed predicate via the same
+    /// <see cref="SearchValueExpressionBuilderHelper"/> the parser used before Task 4 and
+    /// <see cref="LegacyExpressionLowerer"/> still uses today, then evaluates it through this class's
+    /// own already-implemented, unmodified structural visit methods (<see cref="VisitBinary"/>,
+    /// <see cref="VisitString"/>, <see cref="VisitMultiary"/>, <see cref="VisitNotExpression"/>,
+    /// <see cref="VisitMissingField"/>). This guarantees the evaluated result is identical to what the
+    /// pre-Task-7 pipeline (parse-time decomposition via <see cref="SearchValueExpressionBuilderHelper"/>,
+    /// then this class's field-level visitors) produced -- including this class's pre-existing gaps (e.g.
+    /// <see cref="VisitMissingField"/> throwing <see cref="SearchOperationNotSupportedException"/> for
+    /// internal references or empty-system tokens; string-typed comparisons throwing for parameter types
+    /// <see cref="VisitString"/>'s internal switch does not enumerate) -- rather than re-deriving that
+    /// per-type comparator math by hand, which would risk silently changing behavior no test currently
+    /// exercises. See task-7-report.md "Before You Begin" / "Concerns" for the full analysis.
+    /// </summary>
+    private SearchPredicate LowerAndVisit(
+        SearchParameterInfo parameter,
+        SearchModifier modifier,
+        SearchComparator comparator,
+        int? componentIndex,
+        ISearchValue value,
+        Context context)
+    {
+        Expression lowered = new SearchValueExpressionBuilderHelper().Build(parameter.Code, modifier, comparator, componentIndex, value);
+
+        return lowered.AcceptVisitor(this, context);
     }
 
     public SearchPredicate VisitChained(ChainedExpression expression, Context context)

@@ -23,7 +23,7 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
     private string _searchParameterName;
 
-    void ISearchValueVisitor.Visit(CompositeSearchValue composite)
+    void ISearchValueVisitor.Visit(CompositeIndexSearchValue composite)
     {
         // Composite search values will be broken down into individual components,
         // and therefore this method should not be called.

@@ -116,4 +116,28 @@ public interface IExpressionVisitor<in TContext, out TOutput>
     /// <param name="expression">The expression to visit.</param>
     /// <param name="context">The input</param>
     TOutput VisitNotReferenced(NotReferencedExpression expression, TContext context);
+
+    /// <summary>
+    /// Visits a <see cref="SearchParameterPredicateExpression"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input.</param>
+    /// <remarks>
+    /// Default-implemented to throw for any implementor that hasn't overridden it, since adding a
+    /// required method to this public, IsPackable interface would be a binary-breaking change to
+    /// external implementors. See docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md, Risks.
+    /// </remarks>
+    TOutput VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, TContext context)
+        => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(VisitSearchParameterPredicate)}.");
+
+    /// <summary>
+    /// Visits a <see cref="CompositeComponentExpression"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input.</param>
+    /// <remarks>
+    /// Same binary-compatibility rationale as <see cref="VisitSearchParameterPredicate"/>.
+    /// </remarks>
+    TOutput VisitCompositeComponent(CompositeComponentExpression expression, TContext context)
+        => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(VisitCompositeComponent)}.");
 }

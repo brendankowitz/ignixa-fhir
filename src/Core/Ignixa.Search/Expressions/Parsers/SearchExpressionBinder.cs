@@ -222,11 +222,14 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             AtomicValueSyntax componentSyntax = NormalizeCompositeComparator(
                 effective.Type,
                 syntax.Components[index]);
-            expressions[index] = BindAtomic(
+            expressions[index] = new CompositeComponentExpression(
                 effective,
-                modifier: null,
                 index,
-                componentSyntax);
+                BindAtomic(
+                    effective,
+                    modifier: null,
+                    index,
+                    componentSyntax));
         }
 
         return Expression.And(expressions);
@@ -303,12 +306,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             syntax.RawText);
         value = ApplyReferenceTarget(searchParameter, modifier, value);
 
-        return new SearchValueExpressionBuilderHelper().Build(
-            searchParameter.Code,
-            modifier,
-            syntax.Comparator,
-            componentIndex,
-            value);
+        return new SearchPredicateExpressionBuilder().Build(searchParameter, modifier, syntax.Comparator, value);
     }
 
     private static ISearchValue ApplyReferenceTarget(

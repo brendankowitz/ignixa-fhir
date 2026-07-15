@@ -60,7 +60,7 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
 
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
-                if (searchIndex.Value is not CompositeSearchValue compositeValue)
+                if (searchIndex.Value is not CompositeIndexSearchValue compositeValue)
                     continue;
 
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))

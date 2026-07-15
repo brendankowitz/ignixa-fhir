@@ -69,10 +69,10 @@ public class CompositeSearchIndexingDiagnosticTests
     /// 1. FHIRPath expression for code-value-quantity should extract the root Observation
     /// 2. Component 0 (code) should extract TokenSearchValue from code.coding
     /// 3. Component 1 (value) should extract QuantitySearchValue from valueQuantity
-    /// 4. Both components should be combined into CompositeSearchValue
+    /// 4. Both components should be combined into CompositeIndexSearchValue
     /// </summary>
     [Fact]
-    public void GivenObservationWithCodeAndValueQuantity_WhenIndexing_ThenCompositeSearchValueExtracted()
+    public void GivenObservationWithCodeAndValueQuantity_WhenIndexing_ThenCompositeIndexSearchValueExtracted()
     {
         // Arrange: Create APGAR Observation (same as E2E test fixture [0])
         var observation = ObservationBuilder.Create(_schemaProvider)
@@ -148,14 +148,14 @@ public class CompositeSearchIndexingDiagnosticTests
 
         codeValueQuantityEntry.ShouldNotBeNull("code-value-quantity search parameter should be extracted");
 
-        // DIAGNOSTIC CHECK 2: Is it a CompositeSearchValue?
+        // DIAGNOSTIC CHECK 2: Is it a CompositeIndexSearchValue?
         Console.WriteLine("\n=== DIAGNOSTIC CHECK 2: Value Type ===");
         Console.WriteLine($"Value Type: {codeValueQuantityEntry.Value.GetType().Name}");
 
-        codeValueQuantityEntry.Value.ShouldBeOfType<CompositeSearchValue>(
-            "code-value-quantity should produce CompositeSearchValue");
+        codeValueQuantityEntry.Value.ShouldBeOfType<CompositeIndexSearchValue>(
+            "code-value-quantity should produce CompositeIndexSearchValue");
 
-        var compositeValue = (CompositeSearchValue)codeValueQuantityEntry.Value;
+        var compositeValue = (CompositeIndexSearchValue)codeValueQuantityEntry.Value;
 
         // DIAGNOSTIC CHECK 3: Component count
         Console.WriteLine("\n=== DIAGNOSTIC CHECK 3: Component Count ===");
@@ -374,7 +374,7 @@ public class CompositeSearchIndexingDiagnosticTests
     [InlineData("http://loinc.org|9272-6$gt15", SearchComparator.Gt, 15)]
     [InlineData("http://loinc.org|9272-6$ge20", SearchComparator.Ge, 20)]
     [InlineData("http://loinc.org|9272-6$10", SearchComparator.Eq, 10)]
-    public void GivenCompositeSearchValue_WhenParsing_ThenComparatorIsParsedCorrectly(
+    public void GivenCompositeIndexSearchValue_WhenParsing_ThenComparatorIsParsedCorrectly(
         string queryValue, SearchComparator expectedComparator, decimal expectedValue)
     {
         // Arrange: Get the code-value-quantity search parameter
@@ -409,55 +409,26 @@ public class CompositeSearchIndexingDiagnosticTests
         PrintExpression(searchParamExpr.Expression, 0);
 
         // For a single value composite, the inner expression should be:
-        // And(tokenExpr, quantityExpr)
-        // For comparator queries, quantityExpr should have just 1 BinaryExpression
-        // For equality queries, quantityExpr should have 2 BinaryExpressions (range)
+        // And(tokenComponent, quantityComponent), where each component is a
+        // CompositeComponentExpression wrapping a SearchParameterPredicateExpression whose
+        // typed ISearchValue (QuantitySearchValue here) carries the raw parsed value -- range
+        // widening for Eq now happens downstream of parsing (SearchQueryInterpreter/lowerer),
+        // not on this predicate node, so Low/High are the same raw value for every comparator.
 
         searchParamExpr.Expression.ShouldBeOfType<MultiaryExpression>();
         var andExpr = (MultiaryExpression)searchParamExpr.Expression;
         andExpr.MultiaryOperation.ShouldBe(MultiaryOperator.And);
         andExpr.Expressions.Count.ShouldBe(2, "Should have 2 component expressions");
 
-        // Second expression should be the quantity expression
-        var quantityExpr = andExpr.Expressions[1];
-        Console.WriteLine($"\nQuantity Expression Type: {quantityExpr.GetType().Name}");
+        // Second expression should be the quantity component
+        var quantityComponent = andExpr.Expressions[1].ShouldBeOfType<CompositeComponentExpression>();
+        var quantityPredicate = quantityComponent.WrappedExpression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        Console.WriteLine($"\nQuantity predicate: {quantityPredicate}");
 
-        // Count BinaryExpressions with FieldName.Quantity
-        var binaryExprs = new List<BinaryExpression>();
-        CollectBinaryExpressions(quantityExpr, binaryExprs);
-
-        Console.WriteLine($"\nQuantity BinaryExpressions count: {binaryExprs.Count}");
-        foreach (var binaryExpr in binaryExprs)
-        {
-            Console.WriteLine($"  Op: {binaryExpr.BinaryOperator}, Value: {binaryExpr.Value}");
-        }
-
-        if (expectedComparator == SearchComparator.Eq)
-        {
-            // Equality creates a range (2 expressions)
-            binaryExprs.Count.ShouldBe(2, "Eq comparator should create 2 BinaryExpressions (range)");
-        }
-        else
-        {
-            // Single comparator creates 1 expression
-            binaryExprs.Count.ShouldBe(1, $"{expectedComparator} comparator should create 1 BinaryExpression");
-            binaryExprs[0].Value.ShouldBe(expectedValue, $"Value should be {expectedValue}");
-        }
-    }
-
-    private void CollectBinaryExpressions(Expression expr, List<BinaryExpression> results)
-    {
-        if (expr is BinaryExpression binary && binary.FieldName == FieldName.Quantity)
-        {
-            results.Add(binary);
-        }
-        else if (expr is MultiaryExpression multiary)
-        {
-            foreach (var child in multiary.Expressions)
-            {
-                CollectBinaryExpressions(child, results);
-            }
-        }
+        quantityPredicate.Comparator.ShouldBe(expectedComparator);
+        var quantityValue = quantityPredicate.Value.ShouldBeOfType<QuantitySearchValue>();
+        quantityValue.Low.ShouldBe(expectedValue);
+        quantityValue.High.ShouldBe(expectedValue);
     }
 
     private void PrintExpression(Expression expr, int indent)

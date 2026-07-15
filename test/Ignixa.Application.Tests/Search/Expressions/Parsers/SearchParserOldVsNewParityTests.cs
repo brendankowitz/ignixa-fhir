@@ -80,7 +80,12 @@ public class SearchParserOldVsNewParityTests
     }
 
     /// <summary>
-    /// Old and new parser MUST agree: same success shape, or the same exception type.
+    /// Old and new parser MUST agree: same success shape, or the same exception type. The new
+    /// parser's success shape is routed through <see cref="LegacyExpressionLowerer"/> before
+    /// comparison -- since task 4, the new parser's canonical output is the typed predicate tree
+    /// (<see cref="SearchParameterPredicateExpression"/>/<see cref="CompositeComponentExpression"/>),
+    /// which is a different but equally correct shape from the old parser's untyped field-level
+    /// tree. Lowering first restores an apples-to-apples comparison rather than weakening it.
     /// </summary>
     private static void AssertIdenticalBehavior(SearchParserTestContext context, string[] resourceTypes, string key, string value)
     {
@@ -97,7 +102,8 @@ public class SearchParserOldVsNewParityTests
             return;
         }
 
-        newExpression!.ToString().ShouldBe(oldExpression!.ToString(), $"expression shape diverged for key='{key}' value='{value}'");
+        Expression loweredNewExpression = newExpression!.AcceptVisitor(new LegacyExpressionLowerer(), context: null);
+        loweredNewExpression.ToString().ShouldBe(oldExpression!.ToString(), $"expression shape diverged for key='{key}' value='{value}'");
     }
 
     private static void AssertIdenticalIncludeBehavior(SearchParserTestContext context, string[] resourceTypes, string includeValue, bool isReversed, bool iterate)
@@ -197,7 +203,8 @@ public class SearchParserOldVsNewParityTests
         static string NormalizeTimestamps(string s) =>
             System.Text.RegularExpressions.Regex.Replace(s, @"\d{4}-\d{2}-\d{2}T[\d:.]+\+\d{2}:\d{2}", "<timestamp>");
 
-        NormalizeTimestamps(newExpression!.ToString()).ShouldBe(NormalizeTimestamps(oldExpression!.ToString()));
+        Expression loweredNewExpression = newExpression!.AcceptVisitor(new LegacyExpressionLowerer(), context: null);
+        NormalizeTimestamps(loweredNewExpression.ToString()).ShouldBe(NormalizeTimestamps(oldExpression!.ToString()));
     }
 
     [Fact]

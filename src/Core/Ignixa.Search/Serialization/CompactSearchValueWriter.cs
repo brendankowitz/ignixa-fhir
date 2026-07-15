@@ -31,7 +31,7 @@ public class CompactSearchValueWriter : ISearchValueVisitor
     }
 
     /// <inheritdoc />
-    public void Visit(CompositeSearchValue composite)
+    public void Visit(CompositeIndexSearchValue composite)
     {
         // For composite values, we need to flatten the components into a single object
         // with indexed property names (e.g., "c_0", "c_1" for component indices)

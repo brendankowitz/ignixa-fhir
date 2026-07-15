@@ -25,7 +25,7 @@ internal class ComparisonValueVisitor : ISearchValueVisitor
         _second = EnsureArg.IsNotNull(second, nameof(second));
     }
 
-    public void Visit(CompositeSearchValue composite)
+    public void Visit(CompositeIndexSearchValue composite)
     {
         foreach (IReadOnlyList<ISearchValue> c in composite.Components)
         {

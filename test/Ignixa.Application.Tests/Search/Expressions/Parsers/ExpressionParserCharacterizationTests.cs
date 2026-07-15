@@ -7,6 +7,7 @@
 
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 
@@ -29,11 +30,12 @@ public class ExpressionParserCharacterizationTests
         var searchParameterExpression = expression.ShouldBeOfType<SearchParameterExpression>();
         searchParameterExpression.Parameter.ShouldBeSameAs(searchParameter);
 
-        var stringExpression = searchParameterExpression.Expression.ShouldBeOfType<StringExpression>();
-        stringExpression.StringOperator.ShouldBe(StringOperator.StartsWith);
-        stringExpression.FieldName.ShouldBe(FieldName.String);
-        stringExpression.Value.ShouldBe("Smith");
-        stringExpression.IgnoreCase.ShouldBeTrue();
+        var predicate = searchParameterExpression.Expression.ShouldBeOfType<SearchParameterPredicateExpression>();
+        predicate.Parameter.ShouldBeSameAs(searchParameter);
+        predicate.Comparator.ShouldBe(SearchComparator.Eq);
+        predicate.Modifier.ShouldBeNull();
+        var stringValue = predicate.Value.ShouldBeOfType<StringSearchValue>();
+        stringValue.String.ShouldBe("Smith");
     }
 
     [Fact]
@@ -81,29 +83,19 @@ public class ExpressionParserCharacterizationTests
         orExpression.MultiaryOperation.ShouldBe(MultiaryOperator.Or);
         orExpression.Expressions.Count.ShouldBe(2);
 
-        var firstAlternative = orExpression.Expressions[0].ShouldBeOfType<MultiaryExpression>();
-        firstAlternative.MultiaryOperation.ShouldBe(MultiaryOperator.And);
-        firstAlternative.Expressions.Count.ShouldBe(2);
+        var firstPredicate = orExpression.Expressions[0].ShouldBeOfType<SearchParameterPredicateExpression>();
+        firstPredicate.Comparator.ShouldBe(SearchComparator.Eq);
+        firstPredicate.Modifier.ShouldBeNull();
+        var firstToken = firstPredicate.Value.ShouldBeOfType<TokenSearchValue>();
+        firstToken.System.ShouldBe("http://example.org");
+        firstToken.Code.ShouldBe("a,b");
 
-        var firstSystem = firstAlternative.Expressions[0].ShouldBeOfType<StringExpression>();
-        firstSystem.FieldName.ShouldBe(FieldName.TokenSystem);
-        firstSystem.Value.ShouldBe("http://example.org");
-
-        var firstCode = firstAlternative.Expressions[1].ShouldBeOfType<StringExpression>();
-        firstCode.FieldName.ShouldBe(FieldName.TokenCode);
-        firstCode.Value.ShouldBe("a,b");
-
-        var secondAlternative = orExpression.Expressions[1].ShouldBeOfType<MultiaryExpression>();
-        secondAlternative.MultiaryOperation.ShouldBe(MultiaryOperator.And);
-        secondAlternative.Expressions.Count.ShouldBe(2);
-
-        var secondSystem = secondAlternative.Expressions[0].ShouldBeOfType<StringExpression>();
-        secondSystem.FieldName.ShouldBe(FieldName.TokenSystem);
-        secondSystem.Value.ShouldBe("http://example.org");
-
-        var secondCode = secondAlternative.Expressions[1].ShouldBeOfType<StringExpression>();
-        secondCode.FieldName.ShouldBe(FieldName.TokenCode);
-        secondCode.Value.ShouldBe("c");
+        var secondPredicate = orExpression.Expressions[1].ShouldBeOfType<SearchParameterPredicateExpression>();
+        secondPredicate.Comparator.ShouldBe(SearchComparator.Eq);
+        secondPredicate.Modifier.ShouldBeNull();
+        var secondToken = secondPredicate.Value.ShouldBeOfType<TokenSearchValue>();
+        secondToken.System.ShouldBe("http://example.org");
+        secondToken.Code.ShouldBe("c");
     }
 
     [Theory]
