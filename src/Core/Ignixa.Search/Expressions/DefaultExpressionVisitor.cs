@@ -118,4 +118,14 @@ internal abstract class DefaultExpressionVisitor<TContext, TOutput> : IExpressio
     {
         return default;
     }
+
+    public virtual TOutput VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, TContext context)
+    {
+        return default;
+    }
+
+    public virtual TOutput VisitCompositeComponent(CompositeComponentExpression expression, TContext context)
+    {
+        return expression.WrappedExpression.AcceptVisitor(this, context);
+    }
 }
