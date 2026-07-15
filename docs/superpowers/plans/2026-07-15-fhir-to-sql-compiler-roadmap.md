@@ -59,6 +59,8 @@ The design doc identifies several live, shipped bugs that are worth fixing regar
 
 ## Coordination checklist before Phase 1 starts
 
+**Decision (2026-07-15, revised from the original checklist item):** Keep `Ignixa.Search.Expressions.Parsers.Legacy.*` as-is. PR #332's own reviewed design already implements the "freeze, don't delete" migration pattern the design doc itself recommends, as a rollback lever until this compiler project reaches cutover (design doc step 9/10). Deleting it now would remove the one cheap rollback path for the *parser* rewrite while a much larger, riskier compiler rewrite is still in progress on top of it — the two migrations should not be coupled. Revisit deletion of `Legacy.*` at the same time the design doc's "freeze, do not delete" `SearchParameterQueryGenerator` guidance is revisited (i.e., step 9/10 cutover), not before.
+
 - [ ] Confirm whether PR #328 has merged to `main`, or merge/rebase its commits into this branch, before touching `SearchExpressionQueryBuilder.cs` or `SearchParameterQueryGenerator.cs`.
 - [ ] Read `worktree-sql-datalayer-architecture`'s Phase 2/3 commits (composite semantic leaf, data-driven catalog) in full — Phase 5 of this roadmap must build on `CompositeComponentExpression`, not reinvent it.
 - [ ] Get the two in-flight `IExpressionVisitor` binary-breaking changes (this design's semantic IR node; the other branch's composite node) agreed as one coordinated major-version bump.
