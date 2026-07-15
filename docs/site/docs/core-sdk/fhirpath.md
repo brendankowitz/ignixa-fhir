@@ -29,10 +29,10 @@ dotnet add package Ignixa.FhirPath
 
 ```csharp
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization;
 
 // Parse FHIR JSON
-var sourceNode = JsonSourceNavigator.Parse(patientJson);
-var element = sourceNode.ToElement(schema);
+var element = JsonSourceNodeFactory.Parse(patientJson).ToElement(schema);
 
 // Evaluate FHIRPath (with automatic caching)
 var names = element.Select("name.given");

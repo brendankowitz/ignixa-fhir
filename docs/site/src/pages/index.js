@@ -28,9 +28,8 @@ function ProjectStatus() {
             fontSize: '0.95rem',
             lineHeight: '1.6',
           }}>
-            <strong>Project Status:</strong> Advanced Research / Reference Implementation.
-            This is a personal project exploring "next-gen" architecture. It supports and tests
-            advanced parts of the FHIR specification but is not a supported enterprise product.
+            <strong>Project Status:</strong> Advanced research / reference Implementation exploring
+            "next-gen" architecture.
           </p>
         </div>
       </div>
