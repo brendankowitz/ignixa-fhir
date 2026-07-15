@@ -627,6 +627,18 @@ dotnet test All.sln --filter "FullyQualifiedName~LegacyExpressionLowererParityTe
 
 **Expected:** 0 warnings, 0 errors, all cases pass. If any fails, the failure tells you either `LegacyExpressionLowerer` has a bug or `SearchPredicateExpressionBuilder`/`SearchExpressionBinder`'s wiring from Task 3/4 has one — do not weaken the test to make it pass; fix the actual lowering/building logic.
 
+- [ ] **Step 6.5: Fix `SearchParserOldVsNewParityTests.cs` — 28 tests broken by Task 4, deferred to here on purpose**
+
+**Amended 2026-07-15 during execution.** Task 4's implementer found that PR #332's own `SearchParserOldVsNewParityTests.cs` (`test/Ignixa.Application.Tests/Search/Expressions/Parsers/SearchParserOldVsNewParityTests.cs`) broke — 28 tests, all failing on a raw `ToString()` (or equivalent) comparison in its `AssertIdenticalBehavior` helper between the frozen `Legacy.*` parser's output (still old field-level shape) and the live `SearchExpressionBinder`'s output (new typed-predicate shape, since Task 4). Both sides are correct; they're just no longer the same shape, which is exactly this task's problem to solve, so Task 4's implementer correctly left these 28 red rather than build a throwaway partial lowerer early. Fix now, using the real `LegacyExpressionLowerer` this task just built and proved correct in Step 6:
+
+Read `SearchParserOldVsNewParityTests.cs`'s `AssertIdenticalBehavior` helper (or equivalent comparison method) in full. Update it to route the new-parser side through `LegacyExpressionLowerer` before comparing against the Legacy parser's output — i.e., the same pattern this task's own `LegacyExpressionLowererParityTests.cs` (Step 5) just established, applied to PR #332's existing 28 test cases instead of this task's own smaller representative set. Do not weaken the comparison (e.g. don't switch to a looser equality) — route through the lowerer, then compare exactly as before.
+
+```bash
+dotnet test All.sln --filter "FullyQualifiedName~SearchParserOldVsNewParityTests" --nologo
+```
+
+**Expected:** all 28 (previously failing) tests pass once routed through `LegacyExpressionLowerer`. If any still fails after that change, treat it the same as Step 6's guidance: the failure is real (a `LegacyExpressionLowerer` or upstream bug), not something to paper over.
+
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -638,6 +650,11 @@ reusing SearchValueExpressionBuilderHelper unmodified -- no new flattening
 logic. Proven correct via a parity test against Ignixa.Search.Expressions.
 Parsers.Legacy.* (PR #332's frozen rollback-lever parser), the same oracle
 SearchParserOldVsNewParityTests.cs already established as trustworthy.
+
+Also fixes the 28 SearchParserOldVsNewParityTests.cs failures task 4
+introduced (expected: its comparison predates this lowerer's existence,
+so it compared two now-differently-but-correctly-shaped trees) by routing
+its new-parser side through this same lowerer.
 
 This is the proof task 6's SearchQueryInterpreter migration depends on."
 ```
