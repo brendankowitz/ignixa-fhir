@@ -173,6 +173,10 @@
   <data name="CompositeSeparatorNotFound" xml:space="preserve">
     <value>The composite separator cannot be found.</value>
   </data>
+  <data name="CompositeSearchParameterComponentNotResolved" xml:space="preserve">
+    <value>Composite search parameter '{0}' component {1} (definition: {2}) is not properly resolved. This indicates the search parameter was not properly built during initialization.</value>
+    <comment>{0} is the composite search parameter code. {1} is the zero-based component index. {2} is the component definition URL.</comment>
+  </data>
   <data name="ConditionalOperationNotSelectiveEnough" xml:space="preserve">
     <value>Conditional operation on {0} was not attempted because search criteria was not selective enough.</value>
   </data>
@@ -282,6 +286,10 @@
   <data name="JobNotFound" xml:space="preserve">
     <value>The requested job "{0}" was not found.</value>
     <comment>{0} is the job id</comment>
+  </data>
+  <data name="MalformedSearchSyntax" xml:space="preserve">
+    <value>Malformed {0} at line {1}, column {2}: {3}</value>
+    <comment>{0}=syntax subject, {1}=line, {2}=column, {3}=positioned syntax detail</comment>
   </data>
   <data name="MalformedSearchValue" xml:space="preserve">
     <value>Malformed search value '{0}'.</value>

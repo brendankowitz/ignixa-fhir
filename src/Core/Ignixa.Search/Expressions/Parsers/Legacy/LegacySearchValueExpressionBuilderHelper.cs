@@ -1,7 +1,10 @@
-﻿// -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation.All rights reserved.
-// Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+// See LegacyExpressionParser.cs for why this exists and how to use it as a rollback lever.
 
 using System.Diagnostics;
 using EnsureThat;
@@ -9,10 +12,11 @@ using Ignixa.Search.Extensions;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Expressions;
 
-namespace Ignixa.Search.Expressions.Parsers;
+namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
-internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
+internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
     private const decimal ApproximateMultiplier = .1M;
     private SearchComparator _comparator;
@@ -25,8 +29,6 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
     void ISearchValueVisitor.Visit(CompositeSearchValue composite)
     {
-        // Composite search values will be broken down into individual components,
-        // and therefore this method should not be called.
         throw new InvalidOperationException("The composite search value should have been broken down into components and handled individually.");
     }
 
@@ -36,34 +38,14 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
         if (_modifier != null) ThrowModifierNotSupported();
 
-        // Based on spec here: http://hl7.org/fhir/search.html#prefix
-        // FHIR spec says: eq = "the range of the search value fully contains the range of the target value"
-        // However, Microsoft FHIR Server (and this implementation) uses a practical interpretation:
-        // eq matches when target range OVERLAPS with or CONTAINS the search range.
-        // This means wider-precision values match narrower searches:
-        //   - date=1980-05-11 matches obs with "1980" (year precision) because the year contains the day
-        //   - date=1980-05-11 matches obs with "1980-05" (month) because the month contains the day
-        //   - date=1980-05-11 matches obs with "1980-05-11" (day) - exact match
-        // This is the intuitive behavior for date searches.
-        //
-        // ne (not equals) uses strict FHIR spec: "target is NOT fully contained within search range"
-        // This means ne matches when target extends outside the search boundaries:
-        //   - date=ne1980-05-11 matches obs with "1980" because the year extends beyond May 11
-        //   - date=ne1980-05-11 matches obs with "1980-05" because the month extends beyond May 11
-        //   - date=ne1980-05-11 does NOT match obs with "1980-05-11" because it's fully contained
         switch (_comparator)
         {
             case SearchComparator.Eq:
-                // Match if ranges overlap: target.Start <= search.End AND target.End >= search.Start
-                // This includes exact matches, target containing search, and search containing target
                 _outputExpression = Expression.And(
                     Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
                     Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
                 break;
             case SearchComparator.Ne:
-                // ne = target is NOT fully contained within search range
-                // NOT (target.Start >= search.Start AND target.End <= search.End)
-                // = target.Start < search.Start OR target.End > search.End
                 _outputExpression = Expression.Or(
                     Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
                     Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
@@ -123,8 +105,6 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
         var expressions = new List<Expression>(3);
 
-        // Based on spec http://hl7.org/fhir/Stu3/search.html#quantity,
-        // The system is handled differently in quantity than token.
         if (!string.IsNullOrWhiteSpace(quantity.System))
             expressions.Add(
                 Expression.StringEquals(FieldName.QuantitySystem, _componentIndex, quantity.System, false));
@@ -151,22 +131,18 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
         EnsureOnlyEqualComparatorIsSupported();
 
         if (reference.BaseUri != null)
-            // The reference is external.
             _outputExpression = Expression.And(
                 Expression.StringEquals(FieldName.ReferenceBaseUri, _componentIndex, reference.BaseUri.ToString(), false),
                 Expression.StringEquals(FieldName.ReferenceResourceType, _componentIndex, reference.ResourceType, false),
                 Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false));
         else if (reference.ResourceType == null)
-            // Only resource id is specified.
             _outputExpression = Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false);
         else if (reference.Kind == ReferenceKind.Internal)
-            // The reference must be internal.
             _outputExpression = Expression.And(
                 Expression.Missing(FieldName.ReferenceBaseUri, _componentIndex),
                 Expression.StringEquals(FieldName.ReferenceResourceType, _componentIndex, reference.ResourceType, false),
                 Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false));
         else
-            // The reference can be internal or external.
             _outputExpression = Expression.And(
                 Expression.StringEquals(FieldName.ReferenceResourceType, _componentIndex, reference.ResourceType, false),
                 Expression.StringEquals(FieldName.ReferenceResourceId, _componentIndex, reference.ResourceId, false));
@@ -179,14 +155,10 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
         EnsureOnlyEqualComparatorIsSupported();
 
         if (_modifier == null)
-            // Based on spec http://hl7.org/fhir/Stu3/search.html#string,
-            // is case-insensitive search so we will normalize into lower case for search.
             _outputExpression = Expression.StartsWith(FieldName.String, _componentIndex, s.String, true);
         else if (_modifier.SearchModifierCode == SearchModifierCode.Exact)
             _outputExpression = Expression.StringEquals(FieldName.String, _componentIndex, s.String, false);
         else if (_modifier.SearchModifierCode == SearchModifierCode.Contains)
-            // Based on spec http://hl7.org/fhir/Stu3/search.html#modifiers,
-            // contains is case-insensitive search so we will normalize into lower case for search.
             _outputExpression = Expression.Contains(FieldName.String, _componentIndex, s.String, true);
         else
             ThrowModifierNotSupported();
@@ -206,25 +178,19 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
                  _modifier.SearchModifierCode == SearchModifierCode.Below ||
                  _modifier.SearchModifierCode == SearchModifierCode.In ||
                  _modifier.SearchModifierCode == SearchModifierCode.NotIn)
-            // These modifiers are not supported yet but will be supported eventually.
             ThrowModifierNotSupported();
         else
             ThrowModifierNotSupported();
 
         Expression BuildEqualityExpression()
         {
-            // Based on spec http://hl7.org/fhir/search.html#token,
-            // we need to make sure to test if system is missing or not based on how it is supplied.
             if (token.System == null)
-                // If the system is not supplied, then the token code is matched irrespective of the value of system.
                 return Expression.StringEquals(FieldName.TokenCode, _componentIndex, token.Code, false);
             else if (token.System.Length == 0)
-                // If the system is empty, then the token is matched if there is no system property.
                 return Expression.And(
                     Expression.Missing(FieldName.TokenSystem, _componentIndex),
                     Expression.StringEquals(FieldName.TokenCode, _componentIndex, token.Code, false));
             else if (string.IsNullOrWhiteSpace(token.Code))
-                // If the code is empty, then the token is matched if system is matched.
                 return Expression.StringEquals(FieldName.TokenSystem, _componentIndex, token.System, false);
             else
                 return Expression.And(
@@ -232,7 +198,6 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
                     Expression.StringEquals(FieldName.TokenCode, _componentIndex, token.Code, false));
         }
     }
-
 
     void ISearchValueVisitor.Visit(OfTypeTokenSearchValue ofTypeToken)
     {
