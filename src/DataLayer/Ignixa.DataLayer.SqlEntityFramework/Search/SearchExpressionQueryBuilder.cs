@@ -72,6 +72,15 @@ public class SearchExpressionQueryBuilder
     {
         ArgumentNullException.ThrowIfNull(expression);
 
+        // Bridge: this class dispatches on the OLD field-level Expression shape via hand-written
+        // type-switch, not IExpressionVisitor. Since the semantic-IR work (2026-07-15), the parser's
+        // canonical output is the NEW typed predicate tree. Lower back to the shape this class already
+        // knows how to handle -- do not touch any Apply*Async method below to understand the new tree;
+        // that's explicitly out of scope here (this backend is slated for full replacement by
+        // Ignixa.Search.Sql in later phases, not migration). See
+        // docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md.
+        expression = expression.AcceptVisitor(new LegacyExpressionLowerer(), context: null);
+
         _logger.LogDebug(
             "ApplySearchExpressionAsync: ExpressionType={ExpressionType}, ResourceTypeId={ResourceTypeId}",
             expression.GetType().Name,
