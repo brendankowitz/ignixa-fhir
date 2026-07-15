@@ -122,16 +122,45 @@ below it — recovers essentially all of the measured gap to hand-written SQL. T
 PR against one file, not a justification for a multi-week compiler project. Recommend filing it
 independently of this roadmap, not as a Phase 1 task.
 
-**A finding not asked for by the plan, but too load-bearing to leave out:** none of the three arms came
-anywhere near the 180-second timeout `CompartmentSearchProblem.txt` documents. All three completed in
-under 1.5s cold and under 1.1s warm, at 555,000 result rows with one `SearchParamId` carrying 550,000 of
-them — the same skew profile the original bug report describes. Today's production
-`CompartmentSearchQueryGenerator`, unmodified (Arm A), does not reproduce the motivating timeout at all at
-this scale. Either the original stall requires a data scale/skew this experiment didn't reach, or it was
-already fixed by something else between the original bug report and today's code. Either way, the design
-doc's framing — "Ignixa's EF-generated compartment query times out where hand-written SQL doesn't" — is
-not currently true of the code as it stands, and that fact should carry equal weight with the timing
-numbers above when anyone reads this as a motivator for Phase 1.
+**A finding not asked for by the plan, but too load-bearing to leave out:** the three arms did not "come
+close" to a 180-second timeout, because there was never a 180-second timeout to come close to.
+`CompartmentSearchProblem.txt:855-856` reads `OPTION (RECOMPILE)` / `-- execution timeout = 180 sec.`, but
+per the design doc's own analysis
+(`docs/superpowers/specs/2026-07-14-fhir-to-sql-compiler-design.md`, "The confound: the working query is
+not only a different shape"), that text is diagnostic comment `SqlServerSearchService.cs:1723-1726` appends
+to a logging `StringBuilder` — so a human can paste it into SSMS for a sniffed plan — and it was never sent
+to SQL Server as part of the executed command. What the artifact actually records is a **compile-time
+plan-generation failure**, not a runtime timeout: `Microsoft.Data.SqlClient.SqlException`, SQL Server
+**Error 8623** — "The query processor ran out of internal resources and could not produce a query plan...
+only expected for extremely complex queries or queries that reference a very large number of tables or
+partitions" (`CompartmentSearchProblem.txt:3232`, `Error Number:8623,State:1,Class:16` at `:3265`) — thrown
+after the request had already run for **~7.8 seconds**
+(`Request finished HTTP/1.1 GET ... 7801.8557ms`, `:3289`), not 180. All three arms here completed in under
+1.5s cold and under 1.1s warm, at 555,000 result rows with one `SearchParamId` carrying 550,000 of them —
+the same skew profile the original bug report describes — and none of them threw 8623 or anything like it.
+Today's production `CompartmentSearchQueryGenerator`, unmodified (Arm A), does not reproduce the motivating
+failure at all at this scale.
+
+The better-evidenced explanation for that non-reproduction is structural, not data scale/skew, and it is
+directly measurable in the same artifact. `CompartmentSearchProblem.txt` never mentions
+`CompartmentSearchQueryGenerator` — the query that actually threw 8623 was built entirely by the older,
+per-branch `SearchParameterQueryGenerator` (166 "Generating query for search parameter" log lines between
+`:874` and `:3226`), which does not deduplicate by `SearchParamId`: it nests one subquery per (resource
+type, code) branch of the compartment's OR-of-AND expansion, producing roughly 422 nested table references
+(100 `ReferenceSearchParam` + 256 `Resource` + 66 `TokenSearchParam` joins, by direct count) even though
+only 23 distinct codes underlie those 166 branches — the same count of distinct `SearchParamId`s this
+benchmark's `searchParamMap` resolved for the same compartment (Task 4, above). That is exactly the "very
+large number of tables" Error 8623 names. Today's `CompartmentSearchQueryGenerator` — the code Arm A
+exercises unmodified, and the shape Arms B/C match — already dedupes to one CTE per distinct `SearchParamId`
+and `UNION`s them (23 CTEs here) instead of nesting, per the Finding at the top of this document. That
+dedup-and-`UNION` rewrite, shipped in commit `38a979df` before this benchmark ran, is a structural fix for
+precisely the defect Error 8623 describes — a more directly evidenced explanation for why none of the three
+arms reproduced any failure than an untested data-scale/skew hypothesis, though the latter remains a live,
+unfalsified possibility this experiment didn't reach either. Either way, the design doc's framing —
+"Ignixa's EF-generated compartment query times out where hand-written SQL doesn't" — is not currently true
+of the code as it stands: there was never a 180-second timeout to begin with, and the compile-time failure
+that did occur has a shipped structural fix already in place. That fact should carry equal weight with the
+timing numbers above when anyone reads this as a motivator for Phase 1.
 
 This conclusion is qualified, not undermined, by the three caveats above:
 - The 555,000-vs-576,800 row discrepancy is a test-seeder artifact (surrogate ID ranges colliding across
@@ -150,6 +179,7 @@ This conclusion is qualified, not undermined, by the three caveats above:
 not use compartment search as the motivating case for Phase 1 of the FHIR-to-SQL compiler. If Phase 1
 proceeds, its justification rests on the storage-convention-ownership, testability, and
 injection-safety-by-construction arguments made elsewhere in the design doc — not on a performance gap a
-one-line change already closes, and not on a timeout this experiment could not reproduce in the first
-place.
+one-line change already closes, and not on a 180-second timeout that never existed in the first place (the
+real failure — SQL Server Error 8623, a plan-compilation failure — already has a shipped structural fix in
+`CompartmentSearchQueryGenerator`, which is why this experiment could not reproduce it).
 
