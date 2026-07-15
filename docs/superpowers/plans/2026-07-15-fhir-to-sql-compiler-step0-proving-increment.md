@@ -110,7 +110,7 @@ git commit -m "docs(investigation): confirm compartment search motivating bug is
 - Read: `docker-compose.test.yml`
 - Read: `test/Ignixa.Api.E2ETests/_Infrastructure/IgnixaApiFixture.cs` (in full — this is the only place in the repo that currently seeds data into this schema against a real SQL Server; reuse its catalog/seed helpers rather than writing new ones)
 - Read: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/FhirDbContext.cs` (or equivalent — locate via `Glob "**/FhirDbContext.cs"` if the path differs) to confirm the `DbSet<ReferenceSearchParam>` / `DbSet<ResourceEntity>` / `DbSet<ResourceType>` names Task 3 will use.
-- Create: `test/Ignixa.DataLayer.SqlEntityFramework.Tests/Ignixa.DataLayer.SqlEntityFramework.Tests.csproj`
+- Create: `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.csproj`
 
 **Interfaces:**
 - Consumes: `TEST_SQL_CONNECTION_STRING` env var (same convention as `IgnixaApiFixture.cs:39-42`).
@@ -140,23 +140,36 @@ export TEST_SQL_CONNECTION_STRING="Server=localhost,1433;Database=CompartmentSte
 
 - [ ] **Step 3: Create the new test project**
 
+**Amended 2026-07-15 during execution:** `test/Ignixa.DataLayer.SqlEntityFramework.Tests/` already exists — an orphaned project (`Ignixa.DataLayer.LegacySqlEF.Tests.csproj`, in-memory EF Core unit tests, unreferenced in `All.sln`, dating to the initial commit). Discovered by Task 2's first implementer attempt via a `dotnet new xunit --dry-run`, which showed it would overwrite the existing project's tracked `UnitTest1.cs`, and confirmed two `.csproj` files in one directory would cross-compile each other's sources (SDK-style default globbing). Resolved by renaming the new project to `Ignixa.DataLayer.SqlEntityFramework.IntegrationTests` rather than touching the pre-existing, possibly-still-relevant legacy project — every path in this plan below already reflects that rename.
+
 ```bash
-dotnet new xunit -n Ignixa.DataLayer.SqlEntityFramework.Tests -o test/Ignixa.DataLayer.SqlEntityFramework.Tests
-dotnet sln All.sln add test/Ignixa.DataLayer.SqlEntityFramework.Tests/Ignixa.DataLayer.SqlEntityFramework.Tests.csproj
+dotnet new xunit -n Ignixa.DataLayer.SqlEntityFramework.IntegrationTests -o test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests
+dotnet sln All.sln add test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.csproj
 ```
 
 Add a project reference to `Ignixa.DataLayer.SqlEntityFramework` and package references matching sibling test projects' `Shouldly`/`Microsoft.Data.SqlClient` versions (check `Directory.Packages.props` for the pinned versions rather than floating `dotnet add package` — this repo centralizes versions there).
 
 - [ ] **Step 4: Apply the schema**
 
-Identify how `IgnixaApiFixture.cs` applies schema/migrations to a fresh test database (it must do this already, since it's the only existing real-SQL-Server test entry point) and reuse the same mechanism — do not hand-write DDL. If it's EF migrations, run `dotnet ef database update` against the new `CompartmentStep0` database using the same migration assembly. If it's a raw `Resources/*.sql` script runner, invoke that runner against `TEST_SQL_CONNECTION_STRING`.
+Use `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/DatabaseInitializer.cs` directly — confirmed (by Task 2's first implementer attempt) as the mechanism production code already uses (`SqlEntityFrameworkRepositoryFactory.cs:297-304`), and the same one `IgnixaApiFixture.cs` relies on transitively via its `WebApplicationFactory<Program>` host. Do not hand-write DDL or duplicate `IgnixaApiFixture`'s manual `CREATE DATABASE master` step.
+
+```csharp
+var options = new DbContextOptionsBuilder<FhirDbContext>()
+    .UseSqlServer(connectionString)
+    .Options;
+await using var context = new FhirDbContext(options);
+var initializer = new DatabaseInitializer(context, loggerFactory.CreateLogger<DatabaseInitializer>(), "Development");
+await initializer.InitializeAsync();
+```
+
+Passing `environment: "Development"` lets `DatabaseInitializer` create the `CompartmentStep0` database itself (`CanConnectAsync` fails → `CreateEmptyDatabaseAsync`), then applies the embedded `Resources/97.sql` baseline and any pending EF migrations. Confirmed `DbSet` names on `FhirDbContext`: `Resources` (`ResourceEntity`), `ResourceTypes` (`ResourceTypeEntity`), `ReferenceSearchParams` (`ReferenceSearchParamEntity`, mapped to `dbo.ReferenceSearchParam`).
 
 **Expected:** connecting to `CompartmentStep0` and running `SELECT COUNT(*) FROM dbo.ReferenceSearchParam` returns `0` with no error — schema is present, table is empty.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add test/Ignixa.DataLayer.SqlEntityFramework.Tests/ All.sln
+git add test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/ All.sln
 git commit -m "test(sql): add integration test project for the compartment-search step 0 experiment"
 ```
 
@@ -165,8 +178,8 @@ git commit -m "test(sql): add integration test project for the compartment-searc
 ### Task 3: Seed compartment-scale data
 
 **Files:**
-- Modify: `test/Ignixa.DataLayer.SqlEntityFramework.Tests/Ignixa.DataLayer.SqlEntityFramework.Tests.csproj`
-- Create: `test/Ignixa.DataLayer.SqlEntityFramework.Tests/CompartmentDataSeeder.cs`
+- Modify: `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.csproj`
+- Create: `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/CompartmentDataSeeder.cs`
 
 **Interfaces:**
 - Consumes: `FhirDbContext` (located in Task 2 Step 3), the exact entity property names from `ResourceEntity.cs` and the `ReferenceSearchParam` entity (read both files in full before writing this task's code — this plan does not fabricate their shape).
@@ -208,7 +221,7 @@ SELECT SearchParamId, COUNT(*) FROM dbo.ReferenceSearchParam WHERE ReferenceReso
 - [ ] **Step 5: Commit**
 
 ```bash
-git add test/Ignixa.DataLayer.SqlEntityFramework.Tests/CompartmentDataSeeder.cs
+git add test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/CompartmentDataSeeder.cs
 git commit -m "test(sql): seed skewed compartment-scale reference search param data for step 0"
 ```
 
@@ -217,7 +230,7 @@ git commit -m "test(sql): seed skewed compartment-scale reference search param d
 ### Task 4: Implement and run the three arms
 
 **Files:**
-- Create: `test/Ignixa.DataLayer.SqlEntityFramework.Tests/CompartmentSearchStep0Benchmark.cs`
+- Create: `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/CompartmentSearchStep0Benchmark.cs`
 
 **Interfaces:**
 - Consumes: `CompartmentDataSeeder` (Task 3), `CompartmentSearchQueryGenerator` (existing production class, `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Search/CompartmentSearchQueryGenerator.cs`).
@@ -340,7 +353,7 @@ public async Task Step0_ThreeArmComparison_RecordsElapsedTimes()
 - [ ] **Step 3: Run it**
 
 ```bash
-dotnet test test/Ignixa.DataLayer.SqlEntityFramework.Tests --filter "FullyQualifiedName~Step0_ThreeArmComparison" -- xunit.methodDisplay=method
+dotnet test test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests --filter "FullyQualifiedName~Step0_ThreeArmComparison" -- xunit.methodDisplay=method
 ```
 
 (Remove the `Skip` attribute locally to run it; keep it skipped when committed — this is a manual experiment, not a CI test.)
@@ -350,7 +363,7 @@ dotnet test test/Ignixa.DataLayer.SqlEntityFramework.Tests --filter "FullyQualif
 - [ ] **Step 4: Commit**
 
 ```bash
-git add test/Ignixa.DataLayer.SqlEntityFramework.Tests/CompartmentSearchStep0Benchmark.cs
+git add test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/CompartmentSearchStep0Benchmark.cs
 git commit -m "test(sql): implement three-arm compartment search timing comparison for step 0"
 ```
 
