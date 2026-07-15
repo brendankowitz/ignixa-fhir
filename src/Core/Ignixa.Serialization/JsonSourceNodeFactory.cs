@@ -37,15 +37,15 @@ public static class JsonSourceNodeFactory
     public static TResource Parse<TResource>(string json)
         where TResource : ResourceJsonNode
     {
-        TResource resource = JsonSerializer.Deserialize<TResource>(json, _jsonSerializerOptions);
-        return resource;
+        return JsonSerializer.Deserialize<TResource>(json, _jsonSerializerOptions)
+            ?? throw new InvalidOperationException($"Failed to deserialize JSON to {typeof(TResource).Name}");
     }
 
     public static async ValueTask<T> ParseAsync<T>(Stream jsonReader, CancellationToken cancellationToken)
         where T : ResourceJsonNode
     {
-        T resource = await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions, cancellationToken).ConfigureAwait(false);
-        return resource;
+        return await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Failed to deserialize JSON to {typeof(T).Name}");
     }
 
     public static ResourceJsonNode Parse(string json)
@@ -68,8 +68,8 @@ public static class JsonSourceNodeFactory
         where TResource : ResourceJsonNode
     {
         var reader = new Utf8JsonReader(jsonBytes.Span);
-        TResource resource = JsonSerializer.Deserialize<TResource>(ref reader, _jsonSerializerOptions);
-        return resource;
+        return JsonSerializer.Deserialize<TResource>(ref reader, _jsonSerializerOptions)
+            ?? throw new InvalidOperationException($"Failed to deserialize JSON to {typeof(TResource).Name}");
     }
 
     /// <summary>

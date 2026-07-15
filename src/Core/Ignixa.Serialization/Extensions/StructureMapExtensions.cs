@@ -32,10 +32,11 @@ public static class StructureMapExtensions
     {
         ArgumentNullException.ThrowIfNull(dependent);
 
-        if (dependent.MutableNode["parameter"] is JsonNode parameterNode)
+        if (dependent.MutableNode["parameter"] is JsonArray parameterArray)
         {
-            return parameterNode.AsArray()
-                .Select(p => new StructureMapGroupRuleTargetParameter((JsonObject)p!, dependent.FhirVersion).GetValueAs<string>())
+            return parameterArray
+                .OfType<JsonObject>()
+                .Select(p => new StructureMapGroupRuleTargetParameter(p, dependent.FhirVersion).GetValueAs<string>())
                 .Where(v => v != null)
                 .Select(v => v!);
         }
@@ -242,8 +243,13 @@ public static class StructureMapExtensions
             return Enumerable.Empty<StructureMapConst>();
         }
 
-        return structureMap.MutableNode["const"]?.AsArray()
-            .Select(n => new StructureMapConst((JsonObject)n!, structureMap.FhirVersion))
-            ?? Enumerable.Empty<StructureMapConst>();
+        if (structureMap.MutableNode["const"] is not JsonArray constArray)
+        {
+            return Enumerable.Empty<StructureMapConst>();
+        }
+
+        return constArray
+            .OfType<JsonObject>()
+            .Select(n => new StructureMapConst(n, structureMap.FhirVersion));
     }
 }
