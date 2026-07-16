@@ -20,7 +20,7 @@ using Ignixa.Serialization;
 
 namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
-public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpressionParser
+internal sealed class LegacySearchParameterExpressionParser : ISearchParameterExpressionParser
 {
     private static readonly Tuple<string, SearchComparator>[] SearchParamComparators = Enum.GetValues(typeof(SearchComparator))
         .Cast<SearchComparator>()

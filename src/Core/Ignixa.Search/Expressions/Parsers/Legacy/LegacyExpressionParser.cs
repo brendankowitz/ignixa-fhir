@@ -30,7 +30,7 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
-public sealed class LegacyExpressionParser : IExpressionParser
+internal sealed class LegacyExpressionParser : IExpressionParser
 {
     private const char SearchSplitChar = ':';
     private const char ChainParameter = '.';

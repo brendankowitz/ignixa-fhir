@@ -28,12 +28,13 @@ internal static class SearchValueSyntaxParser
         SearchModifier? modifier,
         string source)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
         if (modifier?.SearchModifierCode == SearchModifierCode.Missing)
         {
             return ParseMissing(source);
         }
 
-        ArgumentNullException.ThrowIfNull(source);
         ValidateEscapes(source);
 
         if (modifier?.SearchModifierCode == SearchModifierCode.Text)
@@ -162,21 +163,21 @@ internal static class SearchValueSyntaxParser
     private static OfTypeValueSyntax ParseOfTypeItem(string source, int start, int length)
     {
         int end = start + length;
-        int firstPipe = FindUnescaped(source, '|', start);
+        int firstPipe = FindUnescaped(source, '|', start, end);
 
-        if (firstPipe < 0 || firstPipe >= end)
+        if (firstPipe < 0)
         {
             throw SyntaxError(source, end, "of-type value with exactly two unescaped pipes");
         }
 
-        int secondPipe = FindUnescaped(source, '|', firstPipe + 1);
-        if (secondPipe < 0 || secondPipe >= end)
+        int secondPipe = FindUnescaped(source, '|', firstPipe + 1, end);
+        if (secondPipe < 0)
         {
             throw SyntaxError(source, end, "of-type value with exactly two unescaped pipes");
         }
 
-        int thirdPipe = FindUnescaped(source, '|', secondPipe + 1);
-        if (thirdPipe >= 0 && thirdPipe < end)
+        int thirdPipe = FindUnescaped(source, '|', secondPipe + 1, end);
+        if (thirdPipe >= 0)
         {
             throw SyntaxError(source, thirdPipe, "of-type value with exactly two unescaped pipes");
         }
