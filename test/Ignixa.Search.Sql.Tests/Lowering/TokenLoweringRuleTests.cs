@@ -47,4 +47,30 @@ public class TokenLoweringRuleTests
         Should.Throw<NotSupportedException>(() =>
             TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55)));
     }
+
+    [Fact]
+    public void GivenASystemMustBeAbsentToken_WhenLowered_ThenThrows()
+    {
+        // Arrange
+        var parameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, TokenSearchValue.Parse("|12345"));
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55)));
+    }
+
+    [Fact]
+    public void GivenATextOnlyToken_WhenLowered_ThenThrows()
+    {
+        // Arrange
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: null, text: "foo"));
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 44)));
+    }
 }
