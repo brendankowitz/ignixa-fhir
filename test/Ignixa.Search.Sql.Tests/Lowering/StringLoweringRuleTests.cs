@@ -56,18 +56,22 @@ public class StringLoweringRuleTests
     }
 
     [Fact]
-    public void GivenAContainsModifier_WhenLowered_ThenUsesLikeWithContainsMatch()
+    public void GivenAContainsModifierWithAValueLongerThanInlineWidth_WhenLowered_ThenUsesLikeWithContainsMatchAgainstTextOverflow()
     {
-        // Arrange
+        // Arrange -- :contains is only expressible correctly against TextOverflow (see class doc):
+        // the search value itself must exceed the inline width so a stored value that could match it
+        // is guaranteed to have overflowed too, and TextOverflow holds its true, whole value.
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var longValue = new string('m', 300);
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Contains), new StringSearchValue("mit"));
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Contains), new StringSearchValue(longValue));
 
         // Act
         var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
 
         // Assert
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
+        like.Column.Column.ShouldBe("TextOverflow");
         like.Match.ShouldBe(LikeMatch.Contains);
     }
 
@@ -87,5 +91,36 @@ public class StringLoweringRuleTests
         like.Column.Column.ShouldBe("TextOverflow");
         like.Match.ShouldBe(LikeMatch.StartsWith);
         like.Value.Value.ShouldBe(longValue);
+    }
+
+    [Fact]
+    public void GivenAContainsModifierWithAValueWithinInlineWidth_WhenLowered_ThenThrowsBecauseOverflowedRowsCouldBeMissed()
+    {
+        // Arrange
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Contains), new StringSearchValue("mit"));
+
+        // Act
+        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+
+        // Assert
+        Should.Throw<NotSupportedException>(act);
+    }
+
+    [Fact]
+    public void GivenAnExactModifierWithAValueOfExactlyTheInlineWidth_WhenLowered_ThenThrowsBecauseOverflowedRowsCouldFalsePositiveMatch()
+    {
+        // Arrange
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var valueAtInlineWidth = new string('A', 256);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(valueAtInlineWidth));
+
+        // Act
+        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+
+        // Assert
+        Should.Throw<NotSupportedException>(act);
     }
 }

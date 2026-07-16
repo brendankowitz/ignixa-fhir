@@ -20,7 +20,7 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
-            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.StringSearchParam\n" +
             "    WHERE SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
             ")\n" +
@@ -52,12 +52,12 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
-            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.StringSearchParam\n" +
             "    WHERE SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
             "),\n" +
             "cte1 AS (\n" +
-            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.TokenSearchParam\n" +
             "    WHERE SearchParamId = 44 AND Code = @p1\n" +
             "),\n" +
@@ -88,5 +88,28 @@ public class EmitTests
         // literal, which legitimately contains "100" and would make that value a false-positive probe).
         emitted.Sql.ShouldNotContain("Zorbaxil");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("%Zorbaxil\\%%"));
+    }
+
+    [Fact]
+    public void GivenALikePredicateWithCollation_WhenEmitted_ThenCollateAppliesToTheColumnNotTheEscapeClause()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Like(
+            new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), LikeMatch.StartsWith, "Latin1_General_100_CI_AI");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- COLLATE must bind to the column reference, immediately before LIKE, not to the
+        // ESCAPE clause's literal (a postfix COLLATE there would be a syntactic no-op on the match).
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE SearchParamId = 202 AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\'\n" +
+            ")\n" +
+            "SELECT T1, Sid1 FROM cte0");
     }
 }

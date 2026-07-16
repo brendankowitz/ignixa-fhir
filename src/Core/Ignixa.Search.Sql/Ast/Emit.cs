@@ -40,14 +40,14 @@ public static class Emit
     };
 
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
-        => $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+        => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
            $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
            $"    WHERE SearchParamId = {p.SearchParamId} AND {EmitPredicate(p.Predicate, parameters)}";
 
     private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch
     {
         Predicate.Equal e => $"{e.Column.Column} = {EmitParam(e.Value, parameters)}{EmitCollation(e.Collation)}",
-        Predicate.Like l => $"{l.Column.Column} LIKE {EmitParam(EscapeLike(l), parameters)} ESCAPE '\\'{EmitCollation(l.Collation)}",
+        Predicate.Like l => $"{l.Column.Column}{EmitCollation(l.Collation)} LIKE {EmitParam(EscapeLike(l), parameters)} ESCAPE '\\'",
         Predicate.And a => $"({EmitPredicate(a.Left, parameters)} AND {EmitPredicate(a.Right, parameters)})",
         _ => throw new NotSupportedException($"No Emit for {predicate.GetType().Name}."),
     };
