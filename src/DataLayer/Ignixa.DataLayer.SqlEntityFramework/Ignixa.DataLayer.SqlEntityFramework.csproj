@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\..\Application\Ignixa.Conformance.Events\Ignixa.Conformance.Events.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Search.Sql\Ignixa.Search.Sql.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\Application\Ignixa.Application\Ignixa.Application.csproj" />
