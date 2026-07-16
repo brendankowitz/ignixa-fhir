@@ -16,6 +16,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\Ignixa.Search.Sql.Generators\Ignixa.Search.Sql.Generators.csproj">
+      <OutputItemType>Analyzer</OutputItemType>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Resources\97.sql" />
   </ItemGroup>
 
 </Project>
