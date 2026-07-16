@@ -96,12 +96,11 @@ public class LowerTests
     [Fact]
     public void GivenAPredicateWithAnUnsupportedSearchValueType_WhenLowered_ThenThrowsRatherThanSilentlyDroppingIt()
     {
-        // Arrange -- DateSearchValue has no tier-1 lowering rule (Date/Number/Quantity/Uri and
-        // composites are out of scope for this plan); the dispatcher must throw, not fall through
-        // to one of the three handled rules.
-        var parameter = new SearchParameterInfo("birthdate", "birthdate", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Patient-birthdate"));
+        // Arrange -- CompositeIndexSearchValue has no tier-1 lowering rule (composites are out of
+        // scope for this plan); the dispatcher must throw, not fall through to one of the handled rules.
+        var parameter = new SearchParameterInfo("component-value-quantity", "component-value-quantity", SearchParamType.Composite, new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"));
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new DateTimeSearchValue(new PartialDateTime(DateTimeOffset.UtcNow)));
+            parameter, SearchComparator.Eq, modifier: null, new CompositeIndexSearchValue([[new QuantitySearchValue(system: null!, code: null!, 5.4m)]]));
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
 
         // Act & Assert

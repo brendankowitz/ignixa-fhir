@@ -75,4 +75,35 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
+
+    [Fact]
+    public async Task GivenAnObservationDateRangeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Observation?date=ge2023-01-01&value-quantity=gt5.4
+        var dateParam = new SearchParameterInfo("date", "date", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Observation-date"));
+        var quantityParam = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-quantity"));
+        var dateValue = new DateTimeSearchValue(new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterPredicateExpression(dateParam, SearchComparator.Ge, modifier: null, dateValue),
+            new SearchParameterPredicateExpression(quantityParam, SearchComparator.Gt, modifier: null, new QuantitySearchValue(system: null!, code: null!, 5.4m)),
+        ]);
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[dateParam.Url!.ToString()] = 203;
+        resolver.SearchParamIds[quantityParam.Url!.ToString()] = 204;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe(
+            "cte0 = DateTimeSearchParam[203]  EndDateTime >= @p0\n" +
+            "cte1 = QuantitySearchParam[204]  LowValue > @p1\n" +
+            "root = Intersect(cte0, cte1)");
+        emitted.Sql.ShouldNotContain("2023");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(5.4m));
+    }
 }
