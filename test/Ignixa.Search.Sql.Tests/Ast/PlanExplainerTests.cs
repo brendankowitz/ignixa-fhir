@@ -72,4 +72,21 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe("root = NumberSearchParam[99]  LowValue <= @p0 AND HighValue >= @p1");
     }
+
+    [Fact]
+    public void GivenAnOrOfTwoComparisons_WhenExplained_ThenPrintsBothConditionsJoinedByOrWithSequentialOrdinals()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("NumberSearchParam");
+        var predicate = new Predicate.Or(
+            new Predicate.LessThan(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)),
+            new Predicate.GreaterThan(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 99, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = NumberSearchParam[99]  HighValue < @p0 OR LowValue > @p1");
+    }
 }
