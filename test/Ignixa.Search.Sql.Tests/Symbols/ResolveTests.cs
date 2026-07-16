@@ -89,6 +89,25 @@ public class ResolveTests
         Should.Throw<KeyNotFoundException>(() => symbolTable.SearchParamId(parameter));
     }
 
+    [Fact]
+    public async Task GivenATreeWithAReferencePredicate_WhenResolved_ThenSymbolTableHasItsResourceTypeId()
+    {
+        // Arrange
+        var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null,
+            new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Patient", resourceId: "123"));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[parameter.Url.ToString()] = 77;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None);
+
+        // Assert
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+    }
+
     /// <summary>
     /// An in-memory, dictionary-backed <see cref="ISymbolResolver"/> -- not a mock, a real (if
     /// trivial) implementation, matching this repo's testing philosophy of exercising real

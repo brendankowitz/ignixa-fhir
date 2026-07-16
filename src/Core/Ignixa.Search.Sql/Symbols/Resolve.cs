@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing.SearchValues;
 
 namespace Ignixa.Search.Sql.Symbols;
 
@@ -25,12 +26,12 @@ namespace Ignixa.Search.Sql.Symbols;
 /// detail of *how* the id was found, invisible once resolved.
 /// </para>
 /// <para>
-/// <b>Resource-type resolution</b> is out of scope for this stage: see
-/// <see cref="SymbolCollectingVisitor"/>'s remarks. <see cref="RunAsync"/> always returns an empty
-/// resource-type map; Phase 5's Lower stage owns synthesizing <c>ResourceSource</c>/<c>ParamSource</c>
-/// nodes and will need to resolve <c>ResourceTypeId</c> from context (the query's own target
-/// resource type, chain target types, etc.) that does not exist on this <see cref="Expression"/>
-/// tree.
+/// <b>Resource-type resolution</b> is out of scope for this stage beyond one narrow exception: see
+/// <see cref="SymbolCollectingVisitor"/>'s remarks. <see cref="RunAsync"/> resolves
+/// <c>ResourceTypeId</c> for any resource type collected via <see cref="ReferenceSearchValue"/>
+/// leaves (task 8); it still does not resolve resource types touched only by chain/compartment
+/// context (the query's own target resource type, chain target types, etc.) that does not exist on
+/// this <see cref="Expression"/> tree -- that generalization is Phase 5/6/8's job.
 /// </para>
 /// </remarks>
 public static class Resolve
@@ -60,8 +61,18 @@ public static class Resolve
             // not to validate the tree is fully resolvable.
         }
 
-        // Resource-type resolution is Phase 5's concern -- see this type's remarks.
         var resourceTypeIds = new Dictionary<string, short>();
+        foreach (var resourceType in collector.ResourceTypes)
+        {
+            var id = await resolver.GetResourceTypeIdAsync(resourceType, cancellationToken);
+            if (id.HasValue)
+            {
+                resourceTypeIds[resourceType] = id.Value;
+            }
+
+            // Same non-error stance as the search-param loop above -- an unresolvable resource
+            // type is simply absent from the table until something downstream needs it.
+        }
 
         return new SymbolTable(searchParamIds, resourceTypeIds);
     }
