@@ -108,6 +108,30 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
+    public async Task GivenAnOrdinaryQueryWrappedInSearchParameterExpression_WhenCompiled_ThenUnwrapsToTheSamePlanAsTheBareLeaf()
+    {
+        // Arrange -- ValueSet?url=... as the real binder actually produces it: SearchParameterExpression(param, predicate),
+        // not the bare predicate GivenAValueSetUrlQuery_... hand-builds. Proves Lower's SearchParameterExpression case
+        // isn't only reachable for composites -- it's the general unwrap every real query goes through.
+        var urlParam = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
+        var predicate = new SearchParameterPredicateExpression(
+            urlParam, SearchComparator.Eq, modifier: null, new UriSearchValue("http://example.org/fhir/ValueSet/1", separateCanonicalComponents: false));
+        var tree = new SearchParameterExpression(urlParam, predicate);
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[urlParam.Url!.ToString()] = 88;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert -- identical plan shape to the bare-predicate case above (same table, same SearchParamId)
+        plan.Explain().ShouldBe("root = UriSearchParam[88]  Uri = @p0");
+        emitted.Sql.ShouldNotContain("example.org");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
+    }
+
+    [Fact]
     public async Task GivenAnObservationTokenTokenCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
     {
         // Arrange -- Observation?code-value-concept=8480-6$high
