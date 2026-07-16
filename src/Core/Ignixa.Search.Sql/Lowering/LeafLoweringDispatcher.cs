@@ -6,7 +6,7 @@ namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
 /// Dispatches a leaf predicate to its tier-1 lowering rule by the runtime type of its ISearchValue.
-/// Date/Number/Quantity/Uri and all composites throw -- out of scope for this plan (see this plan's
+/// Date/Number/Quantity and all composites throw -- out of scope for this plan (see this plan's
 /// global constraints).
 /// </summary>
 public static class LeafLoweringDispatcher
@@ -16,7 +16,8 @@ public static class LeafLoweringDispatcher
         StringSearchValue s => StringLoweringRule.Lower(predicate, s, context),
         TokenSearchValue t => TokenLoweringRule.Lower(predicate, t, context),
         ReferenceSearchValue r => ReferenceLoweringRule.Lower(predicate, r, context),
+        UriSearchValue u => UriLoweringRule.Lower(predicate, u, context),
         _ => throw new NotSupportedException(
-            $"No lowering rule for {predicate.Value.GetType().Name} -- Date/Number/Quantity/Uri and composites are out of scope for this plan."),
+            $"No lowering rule for {predicate.Value.GetType().Name} -- Date/Number/Quantity and composites are out of scope for this plan."),
     };
 }

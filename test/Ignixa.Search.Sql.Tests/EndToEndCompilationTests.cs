@@ -54,4 +54,25 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("true");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"Smith"), ("@p1", (object)"true")]);
     }
+
+    [Fact]
+    public async Task GivenAValueSetUrlQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- ValueSet?url=http://example.org/fhir/ValueSet/1
+        var urlParam = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
+        var predicate = new SearchParameterPredicateExpression(
+            urlParam, SearchComparator.Eq, modifier: null, new UriSearchValue("http://example.org/fhir/ValueSet/1", separateCanonicalComponents: false));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[urlParam.Url!.ToString()] = 88;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None);
+        var plan = Lower.Run(predicate, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe("root = UriSearchParam[88]  Uri = @p0");
+        emitted.Sql.ShouldNotContain("example.org");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
+    }
 }
