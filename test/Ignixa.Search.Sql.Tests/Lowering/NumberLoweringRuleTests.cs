@@ -21,7 +21,7 @@ public class NumberLoweringRuleTests
         => new("probability", "probability", SearchParamType.Number, new Uri("http://hl7.org/fhir/SearchParameter/RiskAssessment-probability"));
 
     [Fact]
-    public void GivenEqComparator_WhenLowered_ThenBuildsCompoundAndOfLowAndHighBounds()
+    public void GivenEqComparator_WhenLowered_ThenBuildsCompoundAndOfWidenedLowAndHighBounds()
     {
         // Arrange
         var parameter = Parameter();
@@ -33,16 +33,16 @@ public class NumberLoweringRuleTests
         // Assert
         cte.SearchParamId.ShouldBe((short)201);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
-        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        le.Column.Column.ShouldBe("LowValue");
-        le.Value.Value.ShouldBe(5.4m);
-        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        ge.Column.Column.ShouldBe("HighValue");
-        ge.Value.Value.ShouldBe(5.4m);
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(5.35m);
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(5.45m);
     }
 
     [Fact]
-    public void GivenNeComparator_WhenLowered_ThenBuildsOrOfLowAndHighBounds()
+    public void GivenNeComparator_WhenLowered_ThenBuildsOrOfWidenedLowAndHighBounds()
     {
         // Arrange
         var parameter = Parameter();
@@ -53,8 +53,12 @@ public class NumberLoweringRuleTests
 
         // Assert
         var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
-        or.Left.ShouldBeOfType<Predicate.LessThan>().Column.Column.ShouldBe("HighValue");
-        or.Right.ShouldBeOfType<Predicate.GreaterThan>().Column.Column.ShouldBe("LowValue");
+        var lt = or.Left.ShouldBeOfType<Predicate.LessThan>();
+        lt.Column.Column.ShouldBe("HighValue");
+        lt.Value.Value.ShouldBe(5.35m);
+        var gt = or.Right.ShouldBeOfType<Predicate.GreaterThan>();
+        gt.Column.Column.ShouldBe("LowValue");
+        gt.Value.Value.ShouldBe(5.45m);
     }
 
     [Fact]

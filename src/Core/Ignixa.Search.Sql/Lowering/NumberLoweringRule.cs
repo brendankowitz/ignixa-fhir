@@ -20,7 +20,7 @@ public static class NumberLoweringRule
 
         var comparisonValue = value.Low ?? value.High
             ?? throw new NotSupportedException("NumberSearchValue has neither Low nor High set.");
-        var predicateExpr = NumericRangeComparison.Build(lowColumn, highColumn, predicate.Comparator, context.Parameter(comparisonValue));
+        var predicateExpr = NumericRangeComparison.Build(context, lowColumn, highColumn, predicate.Comparator, comparisonValue);
 
         return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), predicateExpr);
     }
