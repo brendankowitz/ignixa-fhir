@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Symbols;
 
@@ -23,6 +24,13 @@ public sealed class StructuralContext
     public CteRef Lower(SearchParameterPredicateExpression predicate)
     {
         var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext);
+        _ctes.Add(cte);
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components)
+    {
+        var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
     }

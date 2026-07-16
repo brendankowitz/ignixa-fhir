@@ -106,4 +106,114 @@ public class EndToEndCompilationTests
         emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
         emitted.Parameters.ShouldContain(p => p.Value.Equals(5.4m));
     }
+
+    [Fact]
+    public async Task GivenAnObservationTokenTokenCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Observation?code-value-concept=8480-6$high
+        var compositeParam = new SearchParameterInfo(
+            "code-value-concept", "code-value-concept", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code-value-concept"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var valueParam = new SearchParameterInfo("value-concept", "value-concept", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
+                new CompositeComponentExpression(valueParam, 1,
+                    new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "high", text: null))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[301]  Code1 = @p0 AND Code2 = @p1");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Sql.ShouldNotContain("high");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6"), ("@p1", (object)"high")]);
+    }
+
+    [Fact]
+    public async Task GivenAnObservationTokenNumberNumberCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Observation?component-code-value-number-number=8480-6$ge5$le10
+        var compositeParam = new SearchParameterInfo(
+            "component-code-value-number-number", "component-code-value-number-number", SearchParamType.Composite,
+            new Uri("http://example.org/fhir/SearchParameter/Observation-component-code-value-number-number"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://example.org/fhir/SearchParameter/Observation-code"));
+        var lowParam = new SearchParameterInfo("low", "low", SearchParamType.Number, new Uri("http://example.org/fhir/SearchParameter/Observation-low"));
+        var highParam = new SearchParameterInfo("high", "high", SearchParamType.Number, new Uri("http://example.org/fhir/SearchParameter/Observation-high"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
+                new CompositeComponentExpression(lowParam, 1,
+                    new SearchParameterPredicateExpression(lowParam, SearchComparator.Ge, modifier: null, new NumberSearchValue(5m))),
+                new CompositeComponentExpression(highParam, 2,
+                    new SearchParameterPredicateExpression(highParam, SearchComparator.Le, modifier: null, new NumberSearchValue(10m))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 302;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[302]  Code1 = @p0 AND LowValue2 >= @p1 AND HighValue3 <= @p2");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6"), ("@p1", 5m), ("@p2", 10m)]);
+    }
+
+    [Fact]
+    public async Task GivenACommaSeparatedCompositeAlternatives_WhenCompiled_ThenUnionsOneParamSourcePerAlternative()
+    {
+        // Arrange -- Observation?code-value-concept=A$1,B$2 (two comma-separated composite values -- SearchParameterExpression(composite, Or(And(...), And(...))))
+        var compositeParam = new SearchParameterInfo(
+            "code-value-concept", "code-value-concept", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code-value-concept"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var valueParam = new SearchParameterInfo("value-concept", "value-concept", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"));
+
+        CompositeComponentExpression[] Alternative(string code, string value) =>
+        [
+            new(codeParam, 0, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code, text: null))),
+            new(valueParam, 1, new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: value, text: null))),
+        ];
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.Or,
+            [
+                new MultiaryExpression(MultiaryOperator.And, Alternative("A", "1")),
+                new MultiaryExpression(MultiaryOperator.And, Alternative("B", "2")),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+
+        // Assert -- two ParamSource CTEs (one per alternative), unioned at the root
+        plan.Explain().ShouldBe(
+            "cte0 = TokenTokenCompositeSearchParam[301]  Code1 = @p0 AND Code2 = @p1\n" +
+            "cte1 = TokenTokenCompositeSearchParam[301]  Code1 = @p2 AND Code2 = @p3\n" +
+            "root = Union(cte0, cte1)");
+    }
 }
