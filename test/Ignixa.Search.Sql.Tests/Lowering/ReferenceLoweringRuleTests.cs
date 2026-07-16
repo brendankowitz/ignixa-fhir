@@ -59,4 +59,22 @@ public class ReferenceLoweringRuleTests
         var idEqual = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         idEqual.Column.Column.ShouldBe("ReferenceResourceId");
     }
+
+    [Fact]
+    public void GivenAnAbsoluteReferenceWithBaseUri_WhenLowered_ThenThrows()
+    {
+        // Arrange
+        var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null,
+            new ReferenceSearchValue(ReferenceKind.External, baseUri: new Uri("http://example.org/fhir/"), resourceType: "Patient", resourceId: "123"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 77 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var context = new LeafContext(symbols);
+
+        // Act / Assert
+        Should.Throw<NotSupportedException>(() =>
+            ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context));
+    }
 }
