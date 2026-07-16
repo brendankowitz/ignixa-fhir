@@ -13,4 +13,14 @@ public abstract record Predicate
     public sealed record Like(SqlColumnRef Column, SqlParameterRef Value, LikeMatch Match, string? Collation = null) : Predicate;
 
     public sealed record And(Predicate Left, Predicate Right) : Predicate;
+
+    public sealed record LessThan(SqlColumnRef Column, SqlParameterRef Value) : Predicate;
+
+    public sealed record LessThanOrEqual(SqlColumnRef Column, SqlParameterRef Value) : Predicate;
+
+    public sealed record GreaterThan(SqlColumnRef Column, SqlParameterRef Value) : Predicate;
+
+    public sealed record GreaterThanOrEqual(SqlColumnRef Column, SqlParameterRef Value) : Predicate;
+
+    public sealed record Or(Predicate Left, Predicate Right) : Predicate;
 }

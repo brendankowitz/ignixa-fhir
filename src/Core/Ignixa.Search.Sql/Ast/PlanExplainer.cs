@@ -42,6 +42,11 @@ public static class PlanExplainer
         Predicate.Equal e => $"{e.Column.Column} = @p{parameterOrdinal++}{PrintCollation(e.Collation)}",
         Predicate.Like l => $"{l.Column.Column} LIKE @p{parameterOrdinal++} ({l.Match}){PrintCollation(l.Collation)}",
         Predicate.And a => $"{PrintPredicate(a.Left, ref parameterOrdinal)} AND {PrintPredicate(a.Right, ref parameterOrdinal)}",
+        Predicate.LessThan lt => $"{lt.Column.Column} < @p{parameterOrdinal++}",
+        Predicate.LessThanOrEqual le => $"{le.Column.Column} <= @p{parameterOrdinal++}",
+        Predicate.GreaterThan gt => $"{gt.Column.Column} > @p{parameterOrdinal++}",
+        Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= @p{parameterOrdinal++}",
+        Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {predicate.GetType().Name}."),
     };
 

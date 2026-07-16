@@ -112,4 +112,39 @@ public class EmitTests
             ")\n" +
             "SELECT T1, Sid1 FROM cte0");
     }
+
+    [Fact]
+    public void GivenACompoundAndOfTwoComparisons_WhenEmitted_ThenProducesBothConditionsJoinedByAnd()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("NumberSearchParam");
+        var predicate = new Predicate.And(
+            new Predicate.LessThanOrEqual(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)),
+            new Predicate.GreaterThanOrEqual(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 99, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("LowValue <= @p0 AND HighValue >= @p1");
+        emitted.Parameters.Select(p => p.Value).ShouldBe([5m, 5m]);
+    }
+
+    [Fact]
+    public void GivenAnOrOfTwoComparisons_WhenEmitted_ThenProducesBothConditionsJoinedByOrInParens()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("NumberSearchParam");
+        var predicate = new Predicate.Or(
+            new Predicate.LessThan(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)),
+            new Predicate.GreaterThan(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 99, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("(HighValue < @p0 OR LowValue > @p1)");
+    }
 }

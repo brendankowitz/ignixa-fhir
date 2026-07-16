@@ -55,4 +55,21 @@ public class PlanExplainerTests
             "cte1 = TokenSearchParam[44]  Code = @p1\n" +
             "root = Intersect(cte0, cte1)");
     }
+
+    [Fact]
+    public void GivenACompoundAndOfTwoComparisons_WhenExplained_ThenPrintsBothConditions()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("NumberSearchParam");
+        var predicate = new Predicate.And(
+            new Predicate.LessThanOrEqual(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)),
+            new Predicate.GreaterThanOrEqual(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 99, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = NumberSearchParam[99]  LowValue <= @p0 AND HighValue >= @p1");
+    }
 }
