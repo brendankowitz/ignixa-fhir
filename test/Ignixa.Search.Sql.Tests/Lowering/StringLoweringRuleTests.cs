@@ -38,7 +38,7 @@ public class StringLoweringRuleTests
     }
 
     [Fact]
-    public void GivenNoModifier_WhenLowered_ThenComparesTextWithCaseInsensitiveCollation()
+    public void GivenNoModifier_WhenLowered_ThenUsesLikeWithStartsWithMatchAndCaseInsensitiveCollation()
     {
         // Arrange
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
@@ -48,8 +48,11 @@ public class StringLoweringRuleTests
         var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
 
         // Assert
-        var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
-        equal.Collation.ShouldBe("Latin1_General_100_CI_AI");
+        var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
+        like.Column.Column.ShouldBe("Text");
+        like.Match.ShouldBe(LikeMatch.StartsWith);
+        like.Collation.ShouldBe("Latin1_General_100_CI_AI");
+        like.Value.Value.ShouldBe("Smith");
     }
 
     [Fact]
@@ -80,8 +83,9 @@ public class StringLoweringRuleTests
         var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
 
         // Assert
-        var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
-        equal.Column.Column.ShouldBe("TextOverflow");
-        equal.Value.Value.ShouldBe(longValue);
+        var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
+        like.Column.Column.ShouldBe("TextOverflow");
+        like.Match.ShouldBe(LikeMatch.StartsWith);
+        like.Value.Value.ShouldBe(longValue);
     }
 }

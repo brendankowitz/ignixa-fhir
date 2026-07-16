@@ -35,7 +35,7 @@ public static class StringLoweringRule
         {
             (true, _) => new Predicate.Equal(column, context.Parameter(value.String), collation),
             (false, true) => new Predicate.Like(column, context.Parameter(value.String), LikeMatch.Contains, collation),
-            _ => new Predicate.Equal(column, context.Parameter(value.String), collation),
+            _ => new Predicate.Like(column, context.Parameter(value.String), LikeMatch.StartsWith, collation),
         };
 
         return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), p);
