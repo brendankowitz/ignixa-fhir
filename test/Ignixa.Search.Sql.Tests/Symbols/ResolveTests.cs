@@ -29,7 +29,7 @@ public class ResolveTests
     }
 
     [Fact]
-    public async Task GivenACompositeTree_WhenResolved_ThenBothComponentsAreResolved()
+    public async Task GivenACompositeTree_WhenResolved_ThenTheCompositeAndBothComponentsAreResolved()
     {
         // Arrange -- matches the tree shape SearchExpressionBinder builds for a composite parameter:
         // SearchParameterExpression(composite, MultiaryExpression(And, [CompositeComponentExpression...]))
@@ -61,11 +61,13 @@ public class ResolveTests
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code"] = 401;
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"] = 402;
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"] = 400;
 
         // Act
         var symbolTable = await Resolve.RunAsync(composite, resolver, CancellationToken.None);
 
         // Assert
+        symbolTable.SearchParamId(compositeParam).ShouldBe((short)400);
         symbolTable.SearchParamId(codeParam).ShouldBe((short)401);
         symbolTable.SearchParamId(quantityParam).ShouldBe((short)402);
     }
