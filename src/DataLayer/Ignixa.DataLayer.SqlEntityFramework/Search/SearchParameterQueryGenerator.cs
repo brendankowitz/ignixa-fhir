@@ -1552,8 +1552,8 @@ public class SearchParameterQueryGenerator
         // - :contains: case-insensitive, accent-insensitive
         //
         // Implementation approach:
-        // - Text column stores ORIGINAL case text (first 256 chars)
-        // - TextOverflow stores remaining chars for strings > 256 chars
+        // - Text column stores a redundant first-256-char prefix of ORIGINAL case text
+        // - TextOverflow stores the WHOLE value (not just the remainder) for strings > 256 chars
         // - Query-time collation handles case-sensitivity:
         //   - Case-insensitive: Latin1_General_100_CI_AI
         //   - Case-sensitive (:exact): Latin1_General_100_CS_AS
@@ -1565,8 +1565,8 @@ public class SearchParameterQueryGenerator
         // CS_AS = Case-Sensitive, Accent-Sensitive (FHIR :exact modifier)
         var collation = ignoreCase ? "Latin1_General_100_CI_AI" : "Latin1_General_100_CS_AS";
 
-        // For long strings (those with TextOverflow), we need to search the combined text
-        // Text contains first 256 chars, TextOverflow contains the rest
+        // For long strings (those with TextOverflow), we need to search the whole value.
+        // Text contains a redundant first-256-char prefix; TextOverflow contains the whole value.
         switch (stringOperator)
         {
             case StringOperator.StartsWith:
@@ -1576,12 +1576,10 @@ public class SearchParameterQueryGenerator
 
                     if (searchText.Length > 256)
                     {
-                        // Search value is longer than 256 chars - need to match against concatenated text
+                        // Search value is longer than 256 chars - need to match against the whole value
                         query = baseQuery
-                            .Where(sp => sp.TextOverflow != null &&
-                                EF.Functions.Like(
-                                    EF.Functions.Collate(sp.Text + sp.TextOverflow, collation),
-                                    pattern))
+                            .Where(sp => sp.TextOverflow != null && EF.Functions.Like(
+                                EF.Functions.Collate(sp.TextOverflow, collation), pattern))
                             .Select(sp => sp.ResourceSurrogateId);
                     }
                     else
@@ -1601,11 +1599,11 @@ public class SearchParameterQueryGenerator
                     // Build contains pattern
                     var pattern = $"%{searchText}%";
 
-                    // For contains, we need to search the full text including overflow
+                    // For contains, prefer TextOverflow (the whole value) when present, else Text
                     query = baseQuery
                         .Where(sp => EF.Functions.Like(
                             EF.Functions.Collate(
-                                sp.TextOverflow != null ? sp.Text + sp.TextOverflow : sp.Text,
+                                sp.TextOverflow != null ? sp.TextOverflow : sp.Text,
                                 collation),
                             pattern))
                         .Select(sp => sp.ResourceSurrogateId);
@@ -1617,11 +1615,11 @@ public class SearchParameterQueryGenerator
                     // Build ends-with pattern
                     var pattern = $"%{searchText}";
 
-                    // For ends-with, we need to search the full text including overflow
+                    // For ends-with, prefer TextOverflow (the whole value) when present, else Text
                     query = baseQuery
                         .Where(sp => EF.Functions.Like(
                             EF.Functions.Collate(
-                                sp.TextOverflow != null ? sp.Text + sp.TextOverflow : sp.Text,
+                                sp.TextOverflow != null ? sp.TextOverflow : sp.Text,
                                 collation),
                             pattern))
                         .Select(sp => sp.ResourceSurrogateId);
@@ -1630,10 +1628,10 @@ public class SearchParameterQueryGenerator
 
             case StringOperator.Equals:
                 {
-                    // For exact match, compare full concatenated text with collation
+                    // For exact match, prefer TextOverflow (the whole value) when present, else Text
                     query = baseQuery
                         .Where(sp => EF.Functions.Collate(
-                            sp.TextOverflow != null ? sp.Text + sp.TextOverflow : sp.Text,
+                            sp.TextOverflow != null ? sp.TextOverflow : sp.Text,
                             collation) == searchText)
                         .Select(sp => sp.ResourceSurrogateId);
                     break;
