@@ -125,4 +125,166 @@ public class SqlCatalogTests
         // Act & Assert
         Should.Throw<KeyNotFoundException>(() => table.Column("NotARealColumn"));
     }
+
+    [Fact]
+    public void GivenDateTimeSearchParam_WhenLookedUp_ThenStartDateTimeColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("DateTimeSearchParam");
+        var column = table.Column("StartDateTime");
+
+        // Assert
+        column.SqlType.ShouldBe("datetime2");
+        column.MaxLength.ShouldBe(7);
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenNumberSearchParam_WhenLookedUp_ThenLowValueColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("NumberSearchParam");
+        var column = table.Column("LowValue");
+
+        // Assert
+        column.SqlType.ShouldBe("decimal");
+        column.MaxLength.ShouldBe(36);
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenQuantitySearchParam_WhenLookedUp_ThenSystemIdColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("QuantitySearchParam");
+        var column = table.Column("SystemId");
+
+        // Assert
+        column.SqlType.ShouldBe("int");
+        column.IsNullable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenUriSearchParam_WhenLookedUp_ThenUriColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("UriSearchParam");
+        var column = table.Column("Uri");
+
+        // Assert
+        column.SqlType.ShouldBe("varchar");
+        column.MaxLength.ShouldBe(256);
+        column.Collation.ShouldBe("Latin1_General_100_CS_AS");
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTokenTokenCompositeSearchParam_WhenLookedUp_ThenCode1ColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("TokenTokenCompositeSearchParam");
+        var column = table.Column("Code1");
+
+        // Assert
+        column.SqlType.ShouldBe("varchar");
+        column.MaxLength.ShouldBe(256);
+        column.Collation.ShouldBe("Latin1_General_100_CS_AS");
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTokenQuantityCompositeSearchParam_WhenLookedUp_ThenLowValue2ColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("TokenQuantityCompositeSearchParam");
+        var column = table.Column("LowValue2");
+
+        // Assert
+        column.SqlType.ShouldBe("decimal");
+        column.MaxLength.ShouldBe(36);
+        column.IsNullable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenTokenStringCompositeSearchParam_WhenLookedUp_ThenText2ColumnCollationMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("TokenStringCompositeSearchParam");
+        var column = table.Column("Text2");
+
+        // Assert
+        column.SqlType.ShouldBe("nvarchar");
+        column.MaxLength.ShouldBe(256);
+        column.Collation.ShouldBe("Latin1_General_CI_AI");
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTokenDateTimeCompositeSearchParam_WhenLookedUp_ThenStartDateTime2ColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("TokenDateTimeCompositeSearchParam");
+        var column = table.Column("StartDateTime2");
+
+        // Assert
+        column.SqlType.ShouldBe("datetime2");
+        column.MaxLength.ShouldBe(7);
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTokenNumberNumberCompositeSearchParam_WhenLookedUp_ThenHasRangeColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("TokenNumberNumberCompositeSearchParam");
+        var column = table.Column("HasRange");
+
+        // Assert
+        column.SqlType.ShouldBe("bit");
+        column.IsNullable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenReferenceTokenCompositeSearchParam_WhenLookedUp_ThenReferenceResourceId1ColumnMatchesRealDdl()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("ReferenceTokenCompositeSearchParam");
+        var column = table.Column("ReferenceResourceId1");
+
+        // Assert
+        column.SqlType.ShouldBe("varchar");
+        column.MaxLength.ShouldBe(64);
+        column.Collation.ShouldBe("Latin1_General_100_CS_AS");
+        column.IsNullable.ShouldBeFalse();
+    }
 }
