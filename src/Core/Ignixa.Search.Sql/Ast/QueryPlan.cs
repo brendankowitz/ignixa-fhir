@@ -7,4 +7,7 @@ namespace Ignixa.Search.Sql.Ast;
 /// IncludeStage/SortSpec/full PageSpec (tier-3 result-shape stages) are not included yet -- nothing in
 /// scope here produces or consumes them.
 /// </summary>
-public sealed record QueryPlan(IReadOnlyList<CteDefinition> Ctes, CteRef Match, int? Top = null);
+public sealed record QueryPlan(IReadOnlyList<CteDefinition> Ctes, CteRef Match, int? Top = null)
+{
+    public string Explain() => PlanExplainer.Print(this);
+}
