@@ -14,4 +14,8 @@
     <Description>FHIR search-to-SQL compiler infrastructure</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+  </ItemGroup>
+
 </Project>
