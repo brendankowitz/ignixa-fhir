@@ -74,10 +74,11 @@ public class TokenTokenLoweringRuleTests
     {
         // Arrange
         var composite = CompositeParameter();
+        var valueParam = ComponentParameter("value-concept");
         var components = new[]
         {
             TokenComponent("code", system: null, tokenCode: "8480-6"),
-            TokenComponent("value-concept", system: null, tokenCode: null),
+            new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: null, text: "High")),
         };
 
         // Act & Assert
