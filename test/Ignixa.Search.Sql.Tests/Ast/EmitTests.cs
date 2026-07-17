@@ -12,7 +12,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), "Latin1_General_100_CS_AS");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 202, predicate)], new CteRef(0), Top: 10);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
 
         // Act
         var emitted = Emit.Run(plan);
@@ -22,7 +22,7 @@ public class EmitTests
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.StringSearchParam\n" +
-            "    WHERE SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
             ")\n" +
             "SELECT TOP (10) T1, Sid1 FROM cte0");
         emitted.Parameters.Count.ShouldBe(1);
@@ -40,8 +40,8 @@ public class EmitTests
         var tokenPredicate = new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"));
         var plan = new QueryPlan(
             [
-                new CteDefinition.ParamSource(stringTable, 202, stringPredicate),
-                new CteDefinition.ParamSource(tokenTable, 44, tokenPredicate),
+                new CteDefinition.ParamSource(stringTable, 103, 202, stringPredicate),
+                new CteDefinition.ParamSource(tokenTable, 103, 44, tokenPredicate),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
             ],
             new CteRef(2));
@@ -54,12 +54,12 @@ public class EmitTests
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.StringSearchParam\n" +
-            "    WHERE SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
             "),\n" +
             "cte1 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.TokenSearchParam\n" +
-            "    WHERE SearchParamId = 44 AND Code = @p1\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND Code = @p1\n" +
             "),\n" +
             "cte2 AS (\n" +
             "    SELECT cte0.T1, cte0.Sid1\n" +
@@ -77,7 +77,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Like(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Zorbaxil%"), LikeMatch.Contains, "Latin1_General_100_CI_AI");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
 
         // Act
         var emitted = Emit.Run(plan);
@@ -97,7 +97,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Like(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), LikeMatch.StartsWith, "Latin1_General_100_CI_AI");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
 
         // Act
         var emitted = Emit.Run(plan);
@@ -108,7 +108,7 @@ public class EmitTests
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.StringSearchParam\n" +
-            "    WHERE SearchParamId = 202 AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\'\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\'\n" +
             ")\n" +
             "SELECT T1, Sid1 FROM cte0");
     }
@@ -121,7 +121,7 @@ public class EmitTests
         var predicate = new Predicate.And(
             new Predicate.LessThanOrEqual(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)),
             new Predicate.GreaterThanOrEqual(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 99, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
 
         // Act
         var emitted = Emit.Run(plan);
@@ -139,7 +139,7 @@ public class EmitTests
         var predicate = new Predicate.Or(
             new Predicate.LessThan(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)),
             new Predicate.GreaterThan(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 99, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
 
         // Act
         var emitted = Emit.Run(plan);
@@ -171,7 +171,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [
                 new CteDefinition.ResourceSource(103),
-                new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
+                new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
                 new CteDefinition.Except(new CteRef(0), new CteRef(1)),
             ],
             new CteRef(2));
@@ -192,7 +192,7 @@ public class EmitTests
     {
         // Arrange
         var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
+            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
             new CteRef(0),
             OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
 
@@ -211,7 +211,7 @@ public class EmitTests
     {
         // Arrange
         var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
+            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
             new CteRef(0));
 
         // Act

@@ -10,15 +10,15 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class LeafLoweringDispatcher
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context) => predicate.Value switch
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context, short resourceTypeId) => predicate.Value switch
     {
-        StringSearchValue s => StringLoweringRule.Lower(predicate, s, context),
-        TokenSearchValue t => TokenLoweringRule.Lower(predicate, t, context),
-        ReferenceSearchValue r => ReferenceLoweringRule.Lower(predicate, r, context),
-        UriSearchValue u => UriLoweringRule.Lower(predicate, u, context),
-        NumberSearchValue n => NumberLoweringRule.Lower(predicate, n, context),
-        QuantitySearchValue q => QuantityLoweringRule.Lower(predicate, q, context),
-        DateTimeSearchValue d => DateTimeLoweringRule.Lower(predicate, d, context),
+        StringSearchValue s => StringLoweringRule.Lower(predicate, s, context, resourceTypeId),
+        TokenSearchValue t => TokenLoweringRule.Lower(predicate, t, context, resourceTypeId),
+        ReferenceSearchValue r => ReferenceLoweringRule.Lower(predicate, r, context, resourceTypeId),
+        UriSearchValue u => UriLoweringRule.Lower(predicate, u, context, resourceTypeId),
+        NumberSearchValue n => NumberLoweringRule.Lower(predicate, n, context, resourceTypeId),
+        QuantitySearchValue q => QuantityLoweringRule.Lower(predicate, q, context, resourceTypeId),
+        DateTimeSearchValue d => DateTimeLoweringRule.Lower(predicate, d, context, resourceTypeId),
         _ => throw new NotSupportedException(
             $"No lowering rule for {predicate.Value.GetType().Name} -- composites are out of scope for this plan."),
     };

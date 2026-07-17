@@ -22,10 +22,10 @@ public class LowerTests
             parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"));
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
-            new Dictionary<string, short>());
+            new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(predicate, symbols);
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient");
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -46,10 +46,10 @@ public class LowerTests
         var tree = new MultiaryExpression(MultiaryOperator.And, [namePredicate, activePredicate]);
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [nameParam.Url.ToString()] = 202, [activeParam.Url.ToString()] = 44 },
-            new Dictionary<string, short>());
+            new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, top: 10);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", top: 10);
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -69,10 +69,10 @@ public class LowerTests
         var tree = new MultiaryExpression(MultiaryOperator.And, [predicate]);
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
-            new Dictionary<string, short>());
+            new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient");
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -87,35 +87,15 @@ public class LowerTests
         // SearchParameterExpression case), which the real binder always uses to carry a
         // NotExpression. A bare, unwrapped NotExpression matches none of LowerNode's switch arms
         // (it isn't a SearchParameterPredicateExpression, SearchParameterExpression, or
-        // MultiaryExpression), so it falls to the generic "Lower does not support X yet" throw --
-        // this happens regardless of targetResourceType, which this call deliberately omits to
-        // keep that irrelevant. (A prior version of this test/comment incorrectly attributed the
-        // throw to a missing targetResourceType; that path is covered separately below.)
+        // MultiaryExpression), so it falls to the generic "Lower does not support X yet" throw.
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
         var notExpression = Expression.Not(predicate);
-        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
+        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols))
+        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient"))
             .Message.ShouldContain("does not support");
-    }
-
-    [Fact]
-    public void GivenAProperlyWrappedNotExpressionWithNoTargetResourceTypeSupplied_WhenLowered_ThenThrowsBecauseResourceSourceNeedsIt()
-    {
-        // Arrange -- name:not=Smith as the real binder actually produces it (SearchParameterExpression
-        // wrapping a NotExpression). This genuinely reaches :not's ResourceSource/Except wiring, whose
-        // ResourceSource seed needs a targetResourceType -- Lower.Run's 2-arg overload defaults it to
-        // null, so StructuralContext.ResolveTargetResourceTypeId throws.
-        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
-        var tree = new SearchParameterExpression(parameter, Expression.Not(predicate));
-        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
-
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(tree, symbols))
-            .Message.ShouldContain("target resource type");
     }
 
     [Fact]
@@ -130,10 +110,10 @@ public class LowerTests
         // unwrapped shape too.
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new StringSearchValue("Smith"));
-        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
+        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols));
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient"));
     }
 
     [Fact]
@@ -144,9 +124,9 @@ public class LowerTests
         var parameter = new SearchParameterInfo("component-value-quantity", "component-value-quantity", SearchParamType.Composite, new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"));
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, modifier: null, new CompositeIndexSearchValue([[new QuantitySearchValue(system: null!, code: null!, 5.4m)]]));
-        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
+        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols));
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation"));
     }
 }

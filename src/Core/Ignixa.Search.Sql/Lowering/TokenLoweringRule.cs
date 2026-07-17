@@ -14,7 +14,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class TokenLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, TokenSearchValue value, LeafContext context)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, TokenSearchValue value, LeafContext context, short resourceTypeId)
     {
         if (value.System is not null)
         {
@@ -35,6 +35,6 @@ public static class TokenLoweringRule
         var column = new SqlColumnRef(table.TableName, "Code");
         var predicateExpr = new Predicate.Equal(column, context.Parameter(value.Code));
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), predicateExpr);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), predicateExpr);
     }
 }

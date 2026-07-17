@@ -18,7 +18,8 @@ public static class CompositeLoweringDispatcher
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,
         IReadOnlyList<CompositeComponentExpression> components,
-        LeafContext context)
+        LeafContext context,
+        short resourceTypeId)
     {
         var ordered = components.OrderBy(c => c.Position).ToList();
         var predicates = new SearchParameterPredicateExpression[ordered.Count];

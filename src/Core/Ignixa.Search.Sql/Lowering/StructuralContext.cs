@@ -13,9 +13,9 @@ public sealed class StructuralContext
 {
     private readonly List<CteDefinition> _ctes = [];
     private readonly LeafContext _leafContext;
-    private readonly string? _targetResourceType;
+    private readonly string _targetResourceType;
 
-    public StructuralContext(SymbolTable symbols, string? targetResourceType = null)
+    public StructuralContext(SymbolTable symbols, string targetResourceType)
     {
         _leafContext = new LeafContext(symbols);
         _targetResourceType = targetResourceType;
@@ -26,7 +26,8 @@ public sealed class StructuralContext
     public CteRef Lower(SearchParameterPredicateExpression predicate)
     {
         RejectResourceColumnCode(predicate.Parameter.Code);
-        var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext);
+        var resourceTypeId = _leafContext.ResourceTypeId(_targetResourceType);
+        var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
     }
@@ -38,7 +39,8 @@ public sealed class StructuralContext
             RejectResourceColumnCode(component.ComponentSearchParameter.Code);
         }
 
-        var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext);
+        var resourceTypeId = _leafContext.ResourceTypeId(_targetResourceType);
+        var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
     }
@@ -84,10 +86,5 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
-    private short ResolveTargetResourceTypeId()
-        => _targetResourceType is not null
-            ? _leafContext.ResourceTypeId(_targetResourceType)
-            : throw new NotSupportedException(
-                "This query needs a target resource type (:not, or a resource-column-only match) but " +
-                "Lower.Run was not given one -- pass targetResourceType.");
+    private short ResolveTargetResourceTypeId() => _leafContext.ResourceTypeId(_targetResourceType);
 }

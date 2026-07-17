@@ -26,15 +26,18 @@ namespace Ignixa.Search.Sql.Symbols;
 /// detail of *how* the id was found, invisible once resolved.
 /// </para>
 /// <para>
-/// <b>Resource-type resolution</b> is out of scope for this stage beyond two narrow exceptions:
-/// see <see cref="SymbolCollectingVisitor"/>'s remarks. <see cref="RunAsync"/> resolves
-/// <c>ResourceTypeId</c> for any resource type collected via <see cref="ReferenceSearchValue"/>
-/// leaves (task 8), and for the caller-supplied <c>targetResourceType</c> (if provided), which
-/// represents the query's own target resource type (e.g., "Patient" for a Patient?... search).
+/// <b>Resource-type resolution</b> is out of scope for this stage beyond the caller-supplied
+/// <c>targetResourceType</c>, which is mandatory and always resolved: it represents the query's own
+/// target resource type (e.g., "Patient" for a Patient?... search), and every ordinary leaf/composite
+/// predicate needs it to constrain <see cref="Ignixa.Search.Sql.Ast.CteDefinition.ParamSource"/>'s
+/// <c>ResourceTypeId</c> (a <c>SearchParamId</c> is assigned per search-parameter-definition URL, not
+/// per resource type, so a shared definition could otherwise match rows of the wrong resource type).
 /// Since the query's own target type does not appear anywhere on the <see cref="Expression"/> tree
-/// itself, callers needing ResourceSource (task 5's :not, task 6's resource-column predicates)
-/// must supply it explicitly. Resolve still does not resolve resource types touched only by
-/// chain/compartment context (chain target types, etc.) that do not exist on this
+/// itself, callers must always supply it explicitly. Beyond that mandatory case, resolution extends
+/// to only one further narrow exception: see <see cref="SymbolCollectingVisitor"/>'s remarks --
+/// <see cref="RunAsync"/> also resolves <c>ResourceTypeId</c> for any resource type collected via
+/// <see cref="ReferenceSearchValue"/> leaves (task 8). Resolve still does not resolve resource types
+/// touched only by chain/compartment context (chain target types, etc.) that do not exist on this
 /// <see cref="Expression"/> tree -- that generalization is Phase 5/6/8's job.
 /// </para>
 /// </remarks>
@@ -43,11 +46,12 @@ public static class Resolve
     public static async Task<SymbolTable> RunAsync(
         Expression expression,
         ISymbolResolver resolver,
-        CancellationToken cancellationToken,
-        string? targetResourceType = null)
+        string targetResourceType,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(expression);
         ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(targetResourceType);
 
         var collector = new SymbolCollectingVisitor();
         expression.AcceptVisitor(collector, context: null);
@@ -67,10 +71,7 @@ public static class Resolve
         }
 
         var resourceTypes = new HashSet<string>(collector.ResourceTypes);
-        if (targetResourceType is not null)
-        {
-            resourceTypes.Add(targetResourceType);
-        }
+        resourceTypes.Add(targetResourceType);
 
         var resourceTypeIds = new Dictionary<string, short>();
         foreach (var resourceType in resourceTypes)

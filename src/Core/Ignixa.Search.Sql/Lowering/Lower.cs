@@ -13,7 +13,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class Lower
 {
-    public static QueryPlan Run(Expression expression, SymbolTable symbols, int? top = null, string? targetResourceType = null)
+    public static QueryPlan Run(Expression expression, SymbolTable symbols, string targetResourceType, int? top = null)
     {
         var leafContext = new LeafContext(symbols);
         var (remaining, outerPredicate) = ExtractResourceColumnPredicates(expression, leafContext);

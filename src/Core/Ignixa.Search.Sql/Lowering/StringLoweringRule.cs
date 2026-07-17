@@ -30,7 +30,7 @@ public static class StringLoweringRule
     private const string CaseInsensitiveCollation = "Latin1_General_100_CI_AI";
     private const string CaseSensitiveCollation = "Latin1_General_100_CS_AS";
 
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, StringSearchValue value, LeafContext context)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, StringSearchValue value, LeafContext context, short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var inlineWidth = table.Column("Text").MaxLength
@@ -69,6 +69,6 @@ public static class StringLoweringRule
             _ => new Predicate.Like(column, context.Parameter(value.String), LikeMatch.StartsWith, collation),
         };
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), p);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), p);
     }
 }

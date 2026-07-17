@@ -22,7 +22,7 @@ public class ResolveTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Patient-name"] = 202;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.SearchParamId(parameter).ShouldBe((short)202);
@@ -64,7 +64,7 @@ public class ResolveTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"] = 400;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(composite, resolver, CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(composite, resolver, "Observation", CancellationToken.None);
 
         // Assert
         symbolTable.SearchParamId(compositeParam).ShouldBe((short)400);
@@ -85,7 +85,7 @@ public class ResolveTests
         var resolver = new FakeSymbolResolver();
 
         // Act -- Resolve itself must not throw for an unresolvable parameter.
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Observation", CancellationToken.None);
 
         // Assert -- the miss only surfaces when something actually looks the parameter up later.
         Should.Throw<KeyNotFoundException>(() => symbolTable.SearchParamId(parameter));
@@ -104,7 +104,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Observation", CancellationToken.None);
 
         // Assert
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
@@ -124,7 +124,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
@@ -141,7 +141,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
