@@ -558,4 +558,40 @@ public class EndToEndCompilationTests
         var expectedTicks = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks;
         emitted.Parameters.ShouldContain(p => p.Value.Equals(expectedTicks << 3));
     }
+
+    [Fact]
+    public async Task GivenAPatientIdAndNameNotQuery_WhenCompiled_ThenCombinesTheOuterFilterAndTheExceptResult()
+    {
+        // Arrange -- Patient?_id=123&name:not=Smith
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null))),
+            new SearchParameterExpression(
+                nameParam,
+                new NotExpression(new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith")))),
+        ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the :not's ResourceSource+Except becomes the match CTE; _id becomes the outer WHERE.
+        // StringSearchParam consumes @p0 for its Text parameter. ResourceSource's ResourceTypeId consumes
+        // @p1 (implicit counter increment). The outer WHERE ResourceId filter consumes @p2.
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte1 = ResourceSource[103]\n" +
+            "root = Except(cte1, cte0) WHERE ResourceId = @p2");
+        emitted.Sql.ShouldContain("NOT EXISTS");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
+        emitted.Sql.ShouldNotContain("Smith");
+        emitted.Sql.ShouldNotContain("123");
+    }
 }
