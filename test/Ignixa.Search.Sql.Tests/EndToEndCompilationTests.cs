@@ -632,4 +632,38 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("Smith");
         emitted.Sql.ShouldNotContain("123");
     }
+
+    [Fact]
+    public async Task GivenAForwardChainQuery_WhenCompiled_ThenChainJoinsThroughTheReferenceTranslation()
+    {
+        // Arrange -- Patient?organization.name=Acme
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var innerPredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"));
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, new SearchParameterExpression(nameParam, innerPredicate));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the target-side match (Organization.name=Acme) becomes cte0, the ChainJoin is root.
+        // No modifier on `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI) --
+        // same as the unmodified `name` predicate in GivenAPatientNameNotQuery above -- not a plain Equal.
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
+        emitted.Sql.ShouldContain("FROM dbo.ReferenceSearchParam rsp");
+        emitted.Sql.ShouldContain("SELECT DISTINCT");
+        emitted.Sql.ShouldNotContain("Acme");
+        // Bound as "Acme%" (LikeMatch.StartsWith's escaped pattern), not a bare "Acme" -- StringLoweringRule's
+        // default arm (no :exact modifier) always produces a LIKE, never a plain Equal; see the divergence note above.
+        emitted.Parameters.ShouldContain(p => p.Value.Equals("Acme%"));
+    }
 }

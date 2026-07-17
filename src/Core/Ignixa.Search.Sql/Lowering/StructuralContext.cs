@@ -83,4 +83,29 @@ public sealed class StructuralContext
         _ctes.Add(new CteDefinition.Except(baseRef, innerMatch));
         return new CteRef(_ctes.Count - 1);
     }
+
+    public CteRef LowerChain(ChainedExpression chain, Func<Expression, StructuralContext, string, CteRef> lowerNode)
+    {
+        if (chain.Reversed)
+        {
+            throw new NotSupportedException("Reverse chain is not implemented yet -- see this plan's Task 9.");
+        }
+
+        var targetResourceType = chain.TargetResourceTypes switch
+        {
+            [var single] => single,
+            _ => throw new NotSupportedException(
+                $"Forward chain resolved to {chain.TargetResourceTypes.Length} candidate target types -- the real binder " +
+                "always resolves forward chains to exactly one target type before this point (SearchKeyBinder.BindForward " +
+                "throws ChainedParameterSpecifyType on genuine ambiguity), so this is unexpected input."),
+        };
+
+        var innerMatch = lowerNode(chain.Expression, this, targetResourceType);
+        var referenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
+        var innerResourceTypeId = _leafContext.ResourceTypeId(targetResourceType);
+        var outputResourceTypeIds = chain.ResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+
+        _ctes.Add(new CteDefinition.ChainJoin(innerMatch, referenceSearchParamId, innerResourceTypeId, outputResourceTypeIds, ChainDirection.Forward));
+        return new CteRef(_ctes.Count - 1);
+    }
 }

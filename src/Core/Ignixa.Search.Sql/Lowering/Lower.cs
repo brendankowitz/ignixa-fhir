@@ -36,6 +36,7 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
+        ChainedExpression chain => context.LowerChain(chain, LowerNode),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };
