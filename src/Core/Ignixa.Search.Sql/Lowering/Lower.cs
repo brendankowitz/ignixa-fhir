@@ -12,9 +12,9 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class Lower
 {
-    public static QueryPlan Run(Expression expression, SymbolTable symbols, int? top = null)
+    public static QueryPlan Run(Expression expression, SymbolTable symbols, int? top = null, string? targetResourceType = null)
     {
-        var context = new StructuralContext(symbols);
+        var context = new StructuralContext(symbols, targetResourceType);
         var match = LowerNode(expression, context);
         return new QueryPlan(context.Ctes, match, top);
     }
@@ -32,6 +32,11 @@ public static class Lower
 
     private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context)
     {
+        if (sp.Expression is NotExpression not)
+        {
+            return context.LowerNot(LowerNode(not.Expression, context));
+        }
+
         if (TryGetCompositeComponents(sp.Expression, out var components))
         {
             return context.LowerComposite(sp.Parameter, components!);

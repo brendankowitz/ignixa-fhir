@@ -13,10 +13,12 @@ public sealed class StructuralContext
 {
     private readonly List<CteDefinition> _ctes = [];
     private readonly LeafContext _leafContext;
+    private readonly string? _targetResourceType;
 
-    public StructuralContext(SymbolTable symbols)
+    public StructuralContext(SymbolTable symbols, string? targetResourceType = null)
     {
         _leafContext = new LeafContext(symbols);
+        _targetResourceType = targetResourceType;
     }
 
     public IReadOnlyList<CteDefinition> Ctes => _ctes;
@@ -46,4 +48,25 @@ public sealed class StructuralContext
         _ctes.Add(new CteDefinition.Union(parts));
         return new CteRef(_ctes.Count - 1);
     }
+
+    public CteRef LowerResourceSource()
+    {
+        var resourceTypeId = ResolveTargetResourceTypeId();
+        _ctes.Add(new CteDefinition.ResourceSource(resourceTypeId));
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    public CteRef LowerNot(CteRef innerMatch)
+    {
+        var baseRef = LowerResourceSource();
+        _ctes.Add(new CteDefinition.Except(baseRef, innerMatch));
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    private short ResolveTargetResourceTypeId()
+        => _targetResourceType is not null
+            ? _leafContext.ResourceTypeId(_targetResourceType)
+            : throw new NotSupportedException(
+                "This query needs a target resource type (:not, or a resource-column-only match) but " +
+                "Lower.Run was not given one -- pass targetResourceType.");
 }

@@ -381,4 +381,66 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("replaces");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)(short)55), ("@p1", (object)"456"), ("@p2", (object)"replaces")]);
     }
+
+    [Fact]
+    public async Task GivenAPatientNameNotQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Patient?name:not=Smith
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var tree = new SearchParameterExpression(
+            nameParam,
+            new NotExpression(new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"))));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte1 = ResourceSource[103]\n" +
+            "root = Except(cte1, cte0)");
+        emitted.Sql.ShouldContain("NOT EXISTS");
+        emitted.Sql.ShouldNotContain("Smith");
+    }
+
+    [Fact]
+    public async Task GivenAPatientActiveAndNameNotQuery_WhenCompiled_ThenIntersectsTheExceptResult()
+    {
+        // Arrange -- Patient?active=true&name:not=Smith
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null)),
+            new SearchParameterExpression(
+                nameParam,
+                new NotExpression(new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith")))),
+        ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- one CTE for `active`, three for the :not (StringSearchParam, ResourceSource, Except), then an outer Intersect
+        plan.Explain().ShouldBe(
+            "cte0 = TokenSearchParam[44]  Code = @p0\n" +
+            "cte1 = StringSearchParam[202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
+            "cte2 = ResourceSource[103]\n" +
+            "cte3 = Except(cte2, cte1)\n" +
+            "root = Intersect(cte0, cte3)");
+        emitted.Sql.ShouldNotContain("Smith");
+        emitted.Sql.ShouldNotContain("true");
+    }
 }
