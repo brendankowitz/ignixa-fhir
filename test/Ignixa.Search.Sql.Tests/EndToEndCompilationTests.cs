@@ -695,4 +695,65 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("1234-5");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("1234-5"));
     }
+
+    [Fact]
+    public async Task GivenANestedChainTwoLevelsDeep_WhenCompiled_ThenComposesTwoChainJoins()
+    {
+        // Arrange -- Patient?organization.partof.name=Acme (Organization.partOf is itself a reference to Organization)
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var partOfParam = new SearchParameterInfo("partof", "partof", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Organization-partof"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var innerPredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"));
+        var innerChain = new ChainedExpression(["Organization"], partOfParam, ["Organization"], reversed: false, new SearchParameterExpression(nameParam, innerPredicate));
+        var outerChain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, innerChain);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[partOfParam.Url!.ToString()] = 56;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(outerChain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(outerChain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the innermost match (Organization.name=Acme) becomes cte0, the inner ChainJoin
+        // (partof) becomes cte1 and is itself InnerMatch for the outer ChainJoin (organization).
+        // No modifier on `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI) --
+        // same as the unmodified `name` predicate in GivenAForwardChainQuery above -- not a plain Equal.
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte1 = ChainJoin(cte0, ref=56, inner=105, output=[105], Forward)\n" +
+            "root = ChainJoin(cte1, ref=55, inner=105, output=[103], Forward)");
+        emitted.Sql.ShouldNotContain("Acme");
+    }
+
+    [Fact]
+    public void GivenAChainNestedMoreThan10LevelsDeep_WhenCompiled_ThenThrows()
+    {
+        // Arrange -- build a chain 11 levels deep by wrapping a leaf predicate in ChainedExpression 11 times
+        var refParam = new SearchParameterInfo("ref", "ref", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Organization-ref"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var innerPredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"));
+        Expression current = new SearchParameterExpression(nameParam, innerPredicate);
+        for (var i = 0; i < 11; i++)
+        {
+            current = new ChainedExpression(["Organization"], refParam, ["Organization"], reversed: false, current);
+        }
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[refParam.Url!.ToString()] = 60;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act & Assert -- Resolve doesn't need to run for this test; Lower's depth guard is what's under test
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short> { [refParam.Url!.ToString()] = 60, [nameParam.Url!.ToString()] = 202 },
+            new Dictionary<string, short> { ["Organization"] = 105 });
+
+        Should.Throw<NotSupportedException>(() => Lower.Run(current, symbolTable, targetResourceType: "Organization"))
+            .Message.ShouldContain("10");
+    }
 }
