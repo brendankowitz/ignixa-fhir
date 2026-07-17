@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
@@ -62,5 +63,25 @@ public class ResourceColumnLoweringRuleTests
         var equal = result.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Column.ShouldBe("ResourceTypeId");
         equal.Value.Value.ShouldBe((short)103);
+    }
+
+    [Fact]
+    public void GivenAnIdParameterWithANotModifier_WhenTried_ThenThrowsRatherThanSilentlyDroppingTheNegation()
+    {
+        // Arrange -- _id:not=123. Without this guard, the modifier would be silently discarded and
+        // this would lower to a POSITIVE match (WHERE ResourceId = '123'), the exact opposite of what
+        // :not means -- the same bug class Lower.LowerSearchParameter's own :not handling exists to
+        // prevent, just reachable here through the resource-column extraction path instead.
+        var predicate = new SearchParameterPredicateExpression(IdParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "123", text: null));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    [Fact]
+    public void GivenATypeParameterWithANotModifier_WhenTried_ThenThrows()
+    {
+        var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "Patient", text: null));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
     }
 }

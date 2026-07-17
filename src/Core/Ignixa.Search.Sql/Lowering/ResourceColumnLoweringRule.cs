@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Lowering;
 
@@ -24,6 +25,7 @@ public static class ResourceColumnLoweringRule
 
     private static Predicate IdEquals(SearchParameterPredicateExpression predicate, LeafContext context)
     {
+        RequireNoModifierOrComparator(predicate, "_id");
         var value = (TokenSearchValue)predicate.Value;
         if (value.System is not null)
         {
@@ -41,6 +43,7 @@ public static class ResourceColumnLoweringRule
 
     private static Predicate TypeEquals(SearchParameterPredicateExpression predicate, LeafContext context)
     {
+        RequireNoModifierOrComparator(predicate, "_type");
         var value = (TokenSearchValue)predicate.Value;
         if (value.System is not null)
         {
@@ -54,5 +57,24 @@ public static class ResourceColumnLoweringRule
 
         var table = SqlCatalog.Default.Table("Resource");
         return new Predicate.Equal(new SqlColumnRef(table.TableName, "ResourceTypeId"), context.Parameter(context.ResourceTypeId(value.Code)));
+    }
+
+    /// <summary>
+    /// This rule only implements plain equality -- a modifier (most importantly ":not", which would
+    /// otherwise be silently dropped here and produce a positive match instead of a negation, exactly
+    /// the bug Lower's own :not handling exists to prevent) or a non-Eq comparator would need semantics
+    /// this rule doesn't have. Throwing rather than silently ignoring either.
+    /// </summary>
+    private static void RequireNoModifierOrComparator(SearchParameterPredicateExpression predicate, string code)
+    {
+        if (predicate.Modifier is not null)
+        {
+            throw new NotSupportedException($"{code} does not support the ':{predicate.Modifier.SearchModifierCode}' modifier yet.");
+        }
+
+        if (predicate.Comparator != SearchComparator.Eq)
+        {
+            throw new NotSupportedException($"{code} only supports the 'eq' comparator, not '{predicate.Comparator}'.");
+        }
     }
 }
