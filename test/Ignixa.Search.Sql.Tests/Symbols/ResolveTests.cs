@@ -147,6 +147,31 @@ public class ResolveTests
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
     }
 
+    [Fact]
+    public async Task GivenAChainedExpression_WhenResolved_ThenSymbolTableHasTheReferenceParamAndBothResourceTypes()
+    {
+        // Arrange -- Patient?organization.name=Acme
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var innerPredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"));
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, new SearchParameterExpression(nameParam, innerPredicate));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+
+        // Assert
+        symbolTable.SearchParamId(orgParam).ShouldBe((short)55);
+        symbolTable.SearchParamId(nameParam).ShouldBe((short)202);
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+        symbolTable.ResourceTypeId("Organization").ShouldBe((short)105);
+    }
+
     /// <summary>
     /// An in-memory, dictionary-backed <see cref="ISymbolResolver"/> -- not a mock, a real (if
     /// trivial) implementation, matching this repo's testing philosophy of exercising real

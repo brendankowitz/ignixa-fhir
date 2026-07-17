@@ -63,4 +63,20 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         Parameters.Add(expression.Parameter);
         return base.VisitSearchParameter(expression, context);
     }
+
+    public override Expression VisitChained(ChainedExpression expression, object? context)
+    {
+        Parameters.Add(expression.ReferenceSearchParameter);
+        foreach (var resourceType in expression.ResourceTypes)
+        {
+            ResourceTypes.Add(resourceType);
+        }
+
+        foreach (var resourceType in expression.TargetResourceTypes)
+        {
+            ResourceTypes.Add(resourceType);
+        }
+
+        return base.VisitChained(expression, context);
+    }
 }
