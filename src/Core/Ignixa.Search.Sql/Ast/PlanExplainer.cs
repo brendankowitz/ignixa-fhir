@@ -34,6 +34,8 @@ public static class PlanExplainer
             $"Intersect(cte{x.Left.Index}, cte{x.Right.Index}){PrintTop(top)}",
         CteDefinition.Union u =>
             $"Union({string.Join(", ", u.Parts.Select(r => $"cte{r.Index}"))}){PrintTop(top)}",
+        CteDefinition.ResourceSource rs => $"ResourceSource[{rs.ResourceTypeId}]{PrintTop(top)}",
+        CteDefinition.Except ex => $"Except(cte{ex.Left.Index}, cte{ex.Right.Index}){PrintTop(top)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
 

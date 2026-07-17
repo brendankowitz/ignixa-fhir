@@ -89,4 +89,29 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe("root = NumberSearchParam[99]  HighValue < @p0 OR LowValue > @p1");
     }
+
+    [Fact]
+    public void GivenAResourceSourceCte_WhenExplained_ThenRendersResourceTypeId()
+    {
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+
+        plan.Explain().ShouldBe("root = ResourceSource[103]");
+    }
+
+    [Fact]
+    public void GivenAnExceptCte_WhenExplained_ThenRendersBothOperands()
+    {
+        var plan = new QueryPlan(
+        [
+            new CteDefinition.ResourceSource(103),
+            new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
+            new CteDefinition.Except(new CteRef(0), new CteRef(1)),
+        ],
+        new CteRef(2));
+
+        plan.Explain().ShouldBe(
+            "cte0 = ResourceSource[103]\n" +
+            "cte1 = StringSearchParam[202]  Text = @p0\n" +
+            "root = Except(cte0, cte1)");
+    }
 }
