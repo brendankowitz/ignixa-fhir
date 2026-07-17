@@ -40,10 +40,21 @@ public static class PlanExplainer
             $"Intersect(cte{x.Left.Index}, cte{x.Right.Index}){PrintTop(top)}",
         CteDefinition.Union u =>
             $"Union({string.Join(", ", u.Parts.Select(r => $"cte{r.Index}"))}){PrintTop(top)}",
-        CteDefinition.ResourceSource rs => $"ResourceSource[{rs.ResourceTypeId}]{PrintTop(top)}",
+        CteDefinition.ResourceSource rs => PrintResourceSource(rs, top, ref parameterOrdinal),
         CteDefinition.Except ex => $"Except(cte{ex.Left.Index}, cte{ex.Right.Index}){PrintTop(top)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
+
+    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)
+    {
+        // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource), so this must consume
+        // an ordinal too -- otherwise Explain()'s @pN numbering silently diverges from the emitted
+        // SQL's real parameter numbering for any plan mixing a ResourceSource with another
+        // parameterized CTE or an OuterPredicate. The literal ResourceTypeId is still shown inline
+        // (not "@pN") because it reads better in a human-facing summary; only the counter is shared.
+        parameterOrdinal++;
+        return $"ResourceSource[{rs.ResourceTypeId}]{PrintTop(top)}";
+    }
 
     private static string PrintPredicate(Predicate predicate, ref int parameterOrdinal) => predicate switch
     {

@@ -121,7 +121,7 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe(
             "cte0 = ResourceSource[103]\n" +
-            "cte1 = StringSearchParam[202]  Text = @p0\n" +
+            "cte1 = StringSearchParam[202]  Text = @p1\n" +
             "root = Except(cte0, cte1)");
     }
 
