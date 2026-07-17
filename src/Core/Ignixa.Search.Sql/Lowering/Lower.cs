@@ -31,6 +31,13 @@ public static class Lower
             "the real binder never produces this shape (LowerSearchParameter handles :not for both the single-value " +
             "and comma-separated cases), so this is unexpected input. Throwing rather than silently lowering it as a " +
             "positive match, which is exactly the bug this guard exists to prevent."),
+        SearchParameterPredicateExpression { Parameter.Code: "_id" or "_type" or "_lastUpdated" } => throw new NotSupportedException(
+            "A resource-column predicate (_id/_type/_lastUpdated) reached the generic leaf dispatcher -- only " +
+            "Lower.Run's top-level extraction pass handles these, for a bare SearchParameterExpression-wrapped " +
+            "predicate at the top level of a conjunction. This shape (e.g. one alternative of a multi-value " +
+            ":not, or anything nested one level deeper inside an Or/And) is not supported yet. Throwing rather " +
+            "than silently routing a resource column into an unrelated leaf rule's table (e.g. TokenSearchParam), " +
+            "which would silently produce a wrong-scope or always-empty match."),
         SearchParameterPredicateExpression leaf => context.Lower(leaf),
         SearchParameterExpression sp => LowerSearchParameter(sp, context),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context),

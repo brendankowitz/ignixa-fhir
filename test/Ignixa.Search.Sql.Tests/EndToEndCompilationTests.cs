@@ -506,4 +506,31 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("123");
         emitted.Sql.ShouldNotContain("true");
     }
+
+    [Fact]
+    public async Task GivenAMultiValueIdNotQuery_WhenCompiled_ThenThrowsRatherThanSilentlyRoutingIntoTokenSearchParam()
+    {
+        // Arrange -- Patient?_id:not=1,2 (comma-separated, so the binder wraps it as
+        // SearchParameterExpression(idParam, NotExpression(Or([pred("1", Modifier:null), pred("2", Modifier:null)])))
+        // -- the top-level extraction pass only recognizes a BARE SearchParameterPredicateExpression, so this
+        // shape is never extracted; each Or alternative reaches LowerNode's generic leaf dispatch directly,
+        // where it must throw (a resource column has no TokenSearchParam row to match) rather than silently
+        // routing "_id" into TokenSearchParam via the generic Token dispatch, which would silently produce
+        // an always-empty (or always-true, once Except negates it) match instead of a loud failure.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new NotExpression(new MultiaryExpression(MultiaryOperator.Or,
+            [
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "1", text: null)),
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "2", text: null)),
+            ])));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act & Assert
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        Should.Throw<NotSupportedException>(() => Lower.Run(tree, symbolTable, targetResourceType: "Patient"));
+    }
 }
