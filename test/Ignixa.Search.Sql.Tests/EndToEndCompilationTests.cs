@@ -756,4 +756,42 @@ public class EndToEndCompilationTests
         Should.Throw<NotSupportedException>(() => Lower.Run(current, symbolTable, targetResourceType: "Organization"))
             .Message.ShouldContain("10");
     }
+
+    [Fact]
+    public async Task GivenAForwardChainWithAMultiaryTargetExpression_WhenCompiled_ThenIntersectsBothTargetPredicates()
+    {
+        // Arrange -- Patient?organization.name=Acme&organization.active=true
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Organization-active"));
+        var targetExpression = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterExpression(nameParam, new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"))),
+            new SearchParameterExpression(activeParam, new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))),
+        ]);
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, targetExpression);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- both target predicates intersect into one InnerMatch before the ChainJoin.
+        // No modifier on `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI) --
+        // same as the unmodified `name` predicate in GivenAForwardChainQuery above -- not a plain Equal.
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte1 = TokenSearchParam[105,44]  Code = @p1\n" +
+            "cte2 = Intersect(cte0, cte1)\n" +
+            "root = ChainJoin(cte2, ref=55, inner=105, output=[103], Forward)");
+        emitted.Sql.ShouldNotContain("Acme");
+        emitted.Sql.ShouldNotContain("true");
+    }
 }
