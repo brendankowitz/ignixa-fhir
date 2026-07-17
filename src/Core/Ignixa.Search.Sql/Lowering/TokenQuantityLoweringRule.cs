@@ -11,8 +11,10 @@ namespace Ignixa.Search.Sql.Lowering;
 /// components[0] is the token slot (Code1), components[1] is the quantity slot (LowValue2/HighValue2,
 /// value comparison only -- SystemId2/QuantityCodeId2 need SystemId/QuantityCodeId resolution, the same
 /// gap QuantityLoweringRule already defers). LowValue2/HighValue2 are nullable in this composite table
-/// (unlike the base QuantitySearchParam's NOT NULL columns), which needs no special handling here: SQL
-/// NULL comparison semantics already exclude a non-matching row correctly.
+/// (unlike the base QuantitySearchParam's NOT NULL columns), which needs no special handling here:
+/// TokenQuantityCompositeRowGenerator always populates both columns for every row it writes (mirroring
+/// the base table's write-time invariant), so a NULL-Low/High row is not a real case this rule needs
+/// to account for.
 /// </summary>
 public static class TokenQuantityLoweringRule
 {
