@@ -59,6 +59,12 @@ public static class Emit
 
     private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters)
     {
+        // Deliberately hand-rolled string interpolation, not Predicate.Equal/Predicate.Or routed
+        // through EmitPredicate -- Predicate.Equal's Value is a SqlParameterRef, and EmitPredicate's
+        // Equal arm always calls EmitParam, which would bind a real @pN. Every id ChainJoin carries
+        // (like ParamSource's SearchParamId/ResourceTypeId) must render as a literal, so building
+        // real Predicate nodes here would silently reintroduce bound parameters and break the
+        // parameter-ordinal invariant PlanExplainer relies on for ChainJoin.
         var outputFilter = string.Join(
             " OR ",
             cj.OutputResourceTypeIds.Select(id => $"{OutputTypeColumn(cj.Direction)} = {id}"));
