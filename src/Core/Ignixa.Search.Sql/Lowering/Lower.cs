@@ -22,6 +22,11 @@ public static class Lower
 
     private static CteRef LowerNode(Expression expression, StructuralContext context) => expression switch
     {
+        SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
+            "A :not-modified predicate reached leaf dispatch directly, outside a SearchParameterExpression wrapper -- " +
+            "the real binder never produces this shape (LowerSearchParameter handles :not for both the single-value " +
+            "and comma-separated cases), so this is unexpected input. Throwing rather than silently lowering it as a " +
+            "positive match, which is exactly the bug this guard exists to prevent."),
         SearchParameterPredicateExpression leaf => context.Lower(leaf),
         SearchParameterExpression sp => LowerSearchParameter(sp, context),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context),

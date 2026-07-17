@@ -81,9 +81,12 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenAnUnsupportedExpressionShape_WhenLowered_ThenThrowsRatherThanSilentlyDroppingIt()
+    public void GivenANotExpressionWithNoTargetResourceTypeSupplied_WhenLowered_ThenThrowsRatherThanSilentlyDroppingIt()
     {
-        // Arrange -- NotExpression is out of scope (":not" needs ResourceTypeId-based seed synthesis, not built yet)
+        // Arrange -- NotExpression itself IS supported by Lower now (see :not's ResourceSource/Except
+        // wiring), but its ResourceSource seed needs a targetResourceType, and this call uses the
+        // 2-arg Lower.Run overload, which defaults it to null -- still throws, now for that reason
+        // rather than "NotExpression is unsupported".
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
         var notExpression = Expression.Not(predicate);
@@ -91,6 +94,24 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols));
+    }
+
+    [Fact]
+    public void GivenABareNotModifiedPredicateOutsideASearchParameterExpressionWrapper_WhenLowered_ThenThrowsRatherThanSilentlyMatchingPositively()
+    {
+        // Arrange -- the real binder always wraps a :not-modified predicate in SearchParameterExpression
+        // (LowerSearchParameter is where :not is actually handled), so this shape never occurs in
+        // practice. This is a defense-in-depth guard: if it ever did occur (a hand-built tree, or a
+        // future binder change), the old bug this test guards against was LowerNode's leaf case
+        // silently lowering it as a positive match instead of a negation -- a real bug this plan's
+        // Task 5 review caught for the SearchParameterExpression-wrapped shape, closed here for the
+        // unwrapped shape too.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols));
     }
 
     [Fact]
