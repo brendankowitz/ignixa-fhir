@@ -47,6 +47,7 @@ public class TokenDateTimeLoweringRuleTests
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var tokenPredicate = and.Left.ShouldBeOfType<Predicate.Equal>();
         tokenPredicate.Column.Column.ShouldBe("Code1");
+        tokenPredicate.Value.Value.ShouldBe("8480-6");
         var datePredicate = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         datePredicate.Column.Column.ShouldBe("EndDateTime2");
         datePredicate.Value.Value.ShouldBe(dateValue.Start);
