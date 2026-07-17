@@ -240,4 +240,145 @@ public class EndToEndCompilationTests
             "cte1 = TokenTokenCompositeSearchParam[301]  Code1 = @p2 AND Code2 = @p3\n" +
             "root = Union(cte0, cte1)");
     }
+
+    [Fact]
+    public async Task GivenAnObservationTokenStringCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Observation?code-value-string=8480-6$Elevated
+        var compositeParam = new SearchParameterInfo(
+            "code-value-string", "code-value-string", SearchParamType.Composite,
+            new Uri("http://example.org/fhir/SearchParameter/Observation-code-value-string"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://example.org/fhir/SearchParameter/Observation-code"));
+        var valueParam = new SearchParameterInfo("value-string", "value-string", SearchParamType.String, new Uri("http://example.org/fhir/SearchParameter/Observation-value-string"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
+                new CompositeComponentExpression(valueParam, 1,
+                    new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Elevated"))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 401;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe("root = TokenStringCompositeSearchParam[401]  Code1 = @p0 AND Text2 LIKE @p1 (StartsWith) collate CI_AI");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Sql.ShouldNotContain("Elevated");
+    }
+
+    [Fact]
+    public async Task GivenAnObservationTokenQuantityCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Observation?component-code-value-quantity=8480-6$120
+        var compositeParam = new SearchParameterInfo(
+            "component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"));
+        var codeParam = new SearchParameterInfo("component-code", "component-code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code"));
+        var quantityParam = new SearchParameterInfo("component-value-quantity", "component-value-quantity", SearchParamType.Quantity, new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
+                new CompositeComponentExpression(quantityParam, 1,
+                    new SearchParameterPredicateExpression(quantityParam, SearchComparator.Ge, modifier: null, new QuantitySearchValue(system: null!, code: null!, 120m))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 402;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert -- Ge (not Eq) so the raw value is used directly, no precision-widening bounds to compute
+        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[402]  Code1 = @p0 AND LowValue2 >= @p1");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(120m));
+    }
+
+    [Fact]
+    public async Task GivenAnObservationTokenDateTimeCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- Observation?code-value-date=8480-6$ge2023-01-01
+        var compositeParam = new SearchParameterInfo(
+            "code-value-date", "code-value-date", SearchParamType.Composite,
+            new Uri("http://example.org/fhir/SearchParameter/Observation-code-value-date"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://example.org/fhir/SearchParameter/Observation-code"));
+        var dateParam = new SearchParameterInfo("value-date", "value-date", SearchParamType.Date, new Uri("http://example.org/fhir/SearchParameter/Observation-value-date"));
+        var dateValue = new DateTimeSearchValue(new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
+                new CompositeComponentExpression(dateParam, 1,
+                    new SearchParameterPredicateExpression(dateParam, SearchComparator.Ge, modifier: null, dateValue)),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 403;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe("root = TokenDateTimeCompositeSearchParam[403]  Code1 = @p0 AND EndDateTime2 >= @p1");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
+    }
+
+    [Fact]
+    public async Task GivenADocumentReferenceRelatesToCompositeQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
+    {
+        // Arrange -- DocumentReference?relatesto=replaces$DocumentReference/456
+        var compositeParam = new SearchParameterInfo(
+            "relatesto", "relatesto", SearchParamType.Composite,
+            new Uri("http://example.org/fhir/SearchParameter/DocumentReference-relatesto"));
+        var targetParam = new SearchParameterInfo("target", "target", SearchParamType.Reference, new Uri("http://example.org/fhir/SearchParameter/DocumentReference-target"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://example.org/fhir/SearchParameter/DocumentReference-code"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(targetParam, 0,
+                    new SearchParameterPredicateExpression(targetParam, SearchComparator.Eq, modifier: null,
+                        new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "DocumentReference", resourceId: "456"))),
+                new CompositeComponentExpression(codeParam, 1,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "replaces", text: null))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 404;
+        resolver.ResourceTypeIds["DocumentReference"] = 55;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable);
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        plan.Explain().ShouldBe(
+            "root = ReferenceTokenCompositeSearchParam[404]  ReferenceResourceTypeId1 = @p0 AND ReferenceResourceId1 = @p1 AND Code2 = @p2");
+        emitted.Sql.ShouldNotContain("456");
+        emitted.Sql.ShouldNotContain("replaces");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)(short)55), ("@p1", (object)"456"), ("@p2", (object)"replaces")]);
+    }
 }
