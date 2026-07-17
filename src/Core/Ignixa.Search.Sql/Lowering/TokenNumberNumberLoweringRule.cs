@@ -18,7 +18,8 @@ public static class TokenNumberNumberLoweringRule
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
-        LeafContext context)
+        LeafContext context,
+        short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenNumberNumberCompositeSearchParam");
 
@@ -27,7 +28,7 @@ public static class TokenNumberNumberLoweringRule
         var number2Predicate = NumberRangePredicate(table, "LowValue3", "HighValue3", components[2], context);
 
         var predicate = new Predicate.And(new Predicate.And(tokenPredicate, number1Predicate), number2Predicate);
-        return new CteDefinition.ParamSource(table, context.SearchParamId(compositeParameter), predicate);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);
     }
 
     private static Predicate NumberRangePredicate(

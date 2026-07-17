@@ -21,7 +21,8 @@ public static class TokenQuantityLoweringRule
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
-        LeafContext context)
+        LeafContext context,
+        short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenQuantityCompositeSearchParam");
 
@@ -29,7 +30,7 @@ public static class TokenQuantityLoweringRule
         var quantityPredicate = QuantityRangePredicate(table, components[1], context);
 
         var predicate = new Predicate.And(tokenPredicate, quantityPredicate);
-        return new CteDefinition.ParamSource(table, context.SearchParamId(compositeParameter), predicate);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);
     }
 
     private static Predicate QuantityRangePredicate(TableDescriptor table, SearchParameterPredicateExpression component, LeafContext context)

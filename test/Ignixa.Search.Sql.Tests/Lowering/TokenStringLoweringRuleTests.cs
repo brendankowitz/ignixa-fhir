@@ -38,7 +38,7 @@ public class TokenStringLoweringRuleTests
         };
 
         // Act
-        var cte = TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401));
+        var cte = TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401), 104);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)401);
@@ -68,7 +68,7 @@ public class TokenStringLoweringRuleTests
         };
 
         // Act
-        var cte = TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401));
+        var cte = TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401), 104);
 
         // Assert
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
@@ -91,6 +91,6 @@ public class TokenStringLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401)));
+            TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401), 104));
     }
 }

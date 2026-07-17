@@ -165,7 +165,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[301]  Code1 = @p0 AND Code2 = @p1");
+        plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[104,301]  Code1 = @p0 AND Code2 = @p1");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Sql.ShouldNotContain("high");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6"), ("@p1", (object)"high")]);
@@ -204,7 +204,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[302]  Code1 = @p0 AND LowValue2 >= @p1 AND HighValue3 <= @p2");
+        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[104,302]  Code1 = @p0 AND LowValue2 >= @p1 AND HighValue3 <= @p2");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6"), ("@p1", 5m), ("@p2", 10m)]);
     }
@@ -243,8 +243,8 @@ public class EndToEndCompilationTests
 
         // Assert -- two ParamSource CTEs (one per alternative), unioned at the root
         plan.Explain().ShouldBe(
-            "cte0 = TokenTokenCompositeSearchParam[301]  Code1 = @p0 AND Code2 = @p1\n" +
-            "cte1 = TokenTokenCompositeSearchParam[301]  Code1 = @p2 AND Code2 = @p3\n" +
+            "cte0 = TokenTokenCompositeSearchParam[104,301]  Code1 = @p0 AND Code2 = @p1\n" +
+            "cte1 = TokenTokenCompositeSearchParam[104,301]  Code1 = @p2 AND Code2 = @p3\n" +
             "root = Union(cte0, cte1)");
     }
 
@@ -278,7 +278,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = TokenStringCompositeSearchParam[401]  Code1 = @p0 AND Text2 LIKE @p1 (StartsWith) collate CI_AI");
+        plan.Explain().ShouldBe("root = TokenStringCompositeSearchParam[104,401]  Code1 = @p0 AND Text2 LIKE @p1 (StartsWith) collate CI_AI");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Sql.ShouldNotContain("Elevated");
     }
@@ -313,7 +313,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert -- Ge (not Eq) so the raw value is used directly, no precision-widening bounds to compute
-        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[402]  Code1 = @p0 AND LowValue2 >= @p1");
+        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,402]  Code1 = @p0 AND LowValue2 >= @p1");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(120m));
     }
@@ -349,7 +349,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = TokenDateTimeCompositeSearchParam[403]  Code1 = @p0 AND EndDateTime2 >= @p1");
+        plan.Explain().ShouldBe("root = TokenDateTimeCompositeSearchParam[104,403]  Code1 = @p0 AND EndDateTime2 >= @p1");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
     }
@@ -386,7 +386,7 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldBe(
-            "root = ReferenceTokenCompositeSearchParam[404]  ReferenceResourceTypeId1 = @p0 AND ReferenceResourceId1 = @p1 AND Code2 = @p2");
+            "root = ReferenceTokenCompositeSearchParam[55,404]  ReferenceResourceTypeId1 = @p0 AND ReferenceResourceId1 = @p1 AND Code2 = @p2");
         emitted.Sql.ShouldNotContain("456");
         emitted.Sql.ShouldNotContain("replaces");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)(short)55), ("@p1", (object)"456"), ("@p2", (object)"replaces")]);

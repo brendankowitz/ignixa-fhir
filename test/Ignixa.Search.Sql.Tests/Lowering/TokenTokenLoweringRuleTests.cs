@@ -39,7 +39,7 @@ public class TokenTokenLoweringRuleTests
         };
 
         // Act
-        var cte = TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301));
+        var cte = TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301), 104);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)301);
@@ -66,7 +66,7 @@ public class TokenTokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301)));
+            TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301), 104));
     }
 
     [Fact]
@@ -83,6 +83,6 @@ public class TokenTokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301)));
+            TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301), 104));
     }
 }

@@ -38,7 +38,7 @@ public class TokenQuantityLoweringRuleTests
         };
 
         // Act
-        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402));
+        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402), 104);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)402);
@@ -66,6 +66,6 @@ public class TokenQuantityLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402)));
+            TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402), 104));
     }
 }

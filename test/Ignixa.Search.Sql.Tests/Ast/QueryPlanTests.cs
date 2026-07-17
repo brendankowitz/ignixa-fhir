@@ -20,8 +20,8 @@ public class QueryPlanTests
         // Act
         var plan = new QueryPlan(
             [
-                new CteDefinition.ParamSource(stringTable, 202, stringPredicate),
-                new CteDefinition.ParamSource(tokenTable, 44, tokenPredicate),
+                new CteDefinition.ParamSource(stringTable, 103, 202, stringPredicate),
+                new CteDefinition.ParamSource(tokenTable, 103, 44, tokenPredicate),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
             ],
             Match: new CteRef(2),

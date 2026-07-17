@@ -19,7 +19,8 @@ public static class ReferenceTokenLoweringRule
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
-        LeafContext context)
+        LeafContext context,
+        short resourceTypeId)
     {
         var referenceComponent = components.FirstOrDefault(c => c.Value is ReferenceSearchValue)
             ?? throw new NotSupportedException($"ReferenceToken composite '{compositeParameter.Code}' has no Reference-typed component.");
@@ -32,7 +33,7 @@ public static class ReferenceTokenLoweringRule
         var tokenPredicate = TokenColumnEquality.Build(table, "Code2", (TokenSearchValue)tokenComponent.Value, context);
 
         var predicate = new Predicate.And(referencePredicate, tokenPredicate);
-        return new CteDefinition.ParamSource(table, context.SearchParamId(compositeParameter), predicate);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);
     }
 
     private static Predicate ReferenceColumnEquality(ReferenceSearchValue value, TableDescriptor table, LeafContext context)

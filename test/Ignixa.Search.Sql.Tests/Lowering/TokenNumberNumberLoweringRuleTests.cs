@@ -37,7 +37,7 @@ public class TokenNumberNumberLoweringRuleTests
         };
 
         // Act
-        var cte = TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302));
+        var cte = TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302), 104);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)302);
@@ -67,6 +67,6 @@ public class TokenNumberNumberLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302)));
+            TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302), 104));
     }
 }

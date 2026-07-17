@@ -84,7 +84,7 @@ public class CompositeLoweringDispatcherTests
         };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 301));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 301), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("TokenTokenCompositeSearchParam");
@@ -103,7 +103,7 @@ public class CompositeLoweringDispatcherTests
         };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 302));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 302), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("TokenNumberNumberCompositeSearchParam");
@@ -126,7 +126,7 @@ public class CompositeLoweringDispatcherTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 303)));
+            CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 303), 104));
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class CompositeLoweringDispatcherTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 301)));
+            CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 301), 104));
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public class CompositeLoweringDispatcherTests
         var components = new[] { TokenComponentAt(0, "code", "8480-6"), StringComponentAt(1, "value-string", "Elevated") };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 401));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 401), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("TokenStringCompositeSearchParam");
@@ -171,7 +171,7 @@ public class CompositeLoweringDispatcherTests
         var components = new[] { TokenComponentAt(0, "component-code", "8480-6"), QuantityComponentAt(1, "component-value-quantity", 120m) };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 402));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 402), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("TokenQuantityCompositeSearchParam");
@@ -185,7 +185,7 @@ public class CompositeLoweringDispatcherTests
         var components = new[] { TokenComponentAt(0, "code", "8480-6"), DateComponentAt(1, "value-date", new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero)) };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 403));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 403), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("TokenDateTimeCompositeSearchParam");
@@ -199,7 +199,7 @@ public class CompositeLoweringDispatcherTests
         var components = new[] { ReferenceComponentAt(0, "target"), TokenComponentAt(1, "code", "replaces") };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
@@ -213,7 +213,7 @@ public class CompositeLoweringDispatcherTests
         var components = new[] { TokenComponentAt(0, "code", "replaces"), ReferenceComponentAt(1, "target") };
 
         // Act
-        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404));
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404), 104);
 
         // Assert
         cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");

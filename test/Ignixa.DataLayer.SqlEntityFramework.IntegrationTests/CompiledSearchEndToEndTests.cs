@@ -70,8 +70,8 @@ public class CompiledSearchEndToEndTests
         var resolver = new SqlEntityFrameworkSymbolResolver(cache);
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None);
-        var plan = Lower.Run(predicate, symbolTable);
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient");
         var emitted = Emit.Run(plan);
 
         // CA2100 suppressed: emitted.Sql is Emit.Run's compiler-generated, fully parameterized T-SQL

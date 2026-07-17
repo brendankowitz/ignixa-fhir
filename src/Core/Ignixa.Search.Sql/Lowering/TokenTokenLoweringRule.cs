@@ -15,13 +15,14 @@ public static class TokenTokenLoweringRule
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
-        LeafContext context)
+        LeafContext context,
+        short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenTokenCompositeSearchParam");
         var predicate = new Predicate.And(
             TokenColumnEquality.Build(table, "Code1", (TokenSearchValue)components[0].Value, context),
             TokenColumnEquality.Build(table, "Code2", (TokenSearchValue)components[1].Value, context));
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(compositeParameter), predicate);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);
     }
 }

@@ -40,7 +40,7 @@ public class ReferenceTokenLoweringRuleTests
         var components = new[] { ReferenceComponent("target"), TokenComponent("code") };
 
         // Act
-        var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55));
+        var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)404);
@@ -68,7 +68,7 @@ public class ReferenceTokenLoweringRuleTests
         var components = new[] { TokenComponent("code"), ReferenceComponent("target") };
 
         // Act
-        var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55));
+        var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55);
 
         // Assert -- identical shape AND identical bound values to the non-swapped case, proving
         // the reference's id/type land on the reference columns and the token's code lands on
@@ -97,7 +97,7 @@ public class ReferenceTokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55)));
+            ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55));
     }
 
     [Fact]
@@ -109,6 +109,6 @@ public class ReferenceTokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55)));
+            ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55));
     }
 }

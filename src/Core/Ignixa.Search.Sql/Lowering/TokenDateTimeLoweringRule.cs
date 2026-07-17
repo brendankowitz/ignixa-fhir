@@ -17,7 +17,8 @@ public static class TokenDateTimeLoweringRule
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
-        LeafContext context)
+        LeafContext context,
+        short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenDateTimeCompositeSearchParam");
 
@@ -30,6 +31,6 @@ public static class TokenDateTimeLoweringRule
         var datePredicate = DateTimeRangeComparison.Build(context, startColumn, endColumn, dateComponent.Comparator, dateValue);
 
         var predicate = new Predicate.And(tokenPredicate, datePredicate);
-        return new CteDefinition.ParamSource(table, context.SearchParamId(compositeParameter), predicate);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);
     }
 }

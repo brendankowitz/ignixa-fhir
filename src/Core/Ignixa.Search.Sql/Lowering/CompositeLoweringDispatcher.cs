@@ -38,13 +38,13 @@ public static class CompositeLoweringDispatcher
 
         return predicates.Select(p => p.Value).ToArray() switch
         {
-            [TokenSearchValue, TokenSearchValue] => TokenTokenLoweringRule.Lower(compositeParameter, predicates, context),
-            [TokenSearchValue, NumberSearchValue, NumberSearchValue] => TokenNumberNumberLoweringRule.Lower(compositeParameter, predicates, context),
-            [TokenSearchValue, StringSearchValue] => TokenStringLoweringRule.Lower(compositeParameter, predicates, context),
-            [TokenSearchValue, QuantitySearchValue] => TokenQuantityLoweringRule.Lower(compositeParameter, predicates, context),
-            [TokenSearchValue, DateTimeSearchValue] => TokenDateTimeLoweringRule.Lower(compositeParameter, predicates, context),
-            [ReferenceSearchValue, TokenSearchValue] => ReferenceTokenLoweringRule.Lower(compositeParameter, predicates, context),
-            [TokenSearchValue, ReferenceSearchValue] => ReferenceTokenLoweringRule.Lower(compositeParameter, predicates, context),
+            [TokenSearchValue, TokenSearchValue] => TokenTokenLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
+            [TokenSearchValue, NumberSearchValue, NumberSearchValue] => TokenNumberNumberLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
+            [TokenSearchValue, StringSearchValue] => TokenStringLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
+            [TokenSearchValue, QuantitySearchValue] => TokenQuantityLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
+            [TokenSearchValue, DateTimeSearchValue] => TokenDateTimeLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
+            [ReferenceSearchValue, TokenSearchValue] => ReferenceTokenLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
+            [TokenSearchValue, ReferenceSearchValue] => ReferenceTokenLoweringRule.Lower(compositeParameter, predicates, context, resourceTypeId),
             var values => throw new NotSupportedException(
                 $"No composite lowering rule for component value types [{string.Join(", ", values.Select(v => v.GetType().Name))}] " +
                 $"on composite parameter '{compositeParameter.Code}'."),

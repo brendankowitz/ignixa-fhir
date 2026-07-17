@@ -39,7 +39,7 @@ public class TokenDateTimeLoweringRuleTests
         };
 
         // Act
-        var cte = TokenDateTimeLoweringRule.Lower(composite, components, ContextResolving(composite, 403));
+        var cte = TokenDateTimeLoweringRule.Lower(composite, components, ContextResolving(composite, 403), 104);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)403);
@@ -68,6 +68,6 @@ public class TokenDateTimeLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenDateTimeLoweringRule.Lower(composite, components, ContextResolving(composite, 403)));
+            TokenDateTimeLoweringRule.Lower(composite, components, ContextResolving(composite, 403), 104));
     }
 }
