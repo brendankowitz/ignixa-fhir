@@ -666,4 +666,33 @@ public class EndToEndCompilationTests
         // default arm (no :exact modifier) always produces a LIKE, never a plain Equal; see the divergence note above.
         emitted.Parameters.ShouldContain(p => p.Value.Equals("Acme%"));
     }
+
+    [Fact]
+    public async Task GivenAReverseChainQuery_WhenCompiled_ThenChainJoinsWithOutputOnTheReferencedSide()
+    {
+        // Arrange -- Patient?_has:Observation:patient:code=1234-5
+        var patientRefParam = new SearchParameterInfo("patient", "patient", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-patient"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var innerPredicate = new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "1234-5", text: null));
+        var chain = new ChainedExpression(["Observation"], patientRefParam, ["Patient"], reversed: true, new SearchParameterExpression(codeParam, innerPredicate));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[patientRefParam.Url!.ToString()] = 77;
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["Observation"] = 106;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the referencing-side match (Observation.code=1234-5) becomes cte0, the ChainJoin is root
+        plan.Explain().ShouldBe(
+            "cte0 = TokenSearchParam[106,88]  Code = @p0\n" +
+            "root = ChainJoin(cte0, ref=77, inner=106, output=[103], Reverse)");
+        emitted.Sql.ShouldContain("FROM dbo.ReferenceSearchParam rsp");
+        emitted.Sql.ShouldNotContain("1234-5");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals("1234-5"));
+    }
 }

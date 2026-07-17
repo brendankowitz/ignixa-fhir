@@ -88,7 +88,22 @@ public sealed class StructuralContext
     {
         if (chain.Reversed)
         {
-            throw new NotSupportedException("Reverse chain is not implemented yet -- see this plan's Task 9.");
+            var referencingResourceType = chain.ResourceTypes switch
+            {
+                [var single] => single,
+                _ => throw new NotSupportedException(
+                    $"Reverse chain's referencing side resolved to {chain.ResourceTypes.Length} types -- the real binder " +
+                    "always binds a reverse chain's target expression against a single referencing type " +
+                    "(SearchKeyBinder.BindReverse's syntax.SourceResourceType), so this is unexpected input."),
+            };
+
+            var innerMatch = lowerNode(chain.Expression, this, referencingResourceType);
+            var referenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
+            var innerResourceTypeId = _leafContext.ResourceTypeId(referencingResourceType);
+            var outputResourceTypeIds = chain.TargetResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+
+            _ctes.Add(new CteDefinition.ChainJoin(innerMatch, referenceSearchParamId, innerResourceTypeId, outputResourceTypeIds, ChainDirection.Reverse));
+            return new CteRef(_ctes.Count - 1);
         }
 
         var targetResourceType = chain.TargetResourceTypes switch
@@ -100,12 +115,12 @@ public sealed class StructuralContext
                 "throws ChainedParameterSpecifyType on genuine ambiguity), so this is unexpected input."),
         };
 
-        var innerMatch = lowerNode(chain.Expression, this, targetResourceType);
-        var referenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
-        var innerResourceTypeId = _leafContext.ResourceTypeId(targetResourceType);
-        var outputResourceTypeIds = chain.ResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+        var forwardInnerMatch = lowerNode(chain.Expression, this, targetResourceType);
+        var forwardReferenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
+        var forwardInnerResourceTypeId = _leafContext.ResourceTypeId(targetResourceType);
+        var forwardOutputResourceTypeIds = chain.ResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
 
-        _ctes.Add(new CteDefinition.ChainJoin(innerMatch, referenceSearchParamId, innerResourceTypeId, outputResourceTypeIds, ChainDirection.Forward));
+        _ctes.Add(new CteDefinition.ChainJoin(forwardInnerMatch, forwardReferenceSearchParamId, forwardInnerResourceTypeId, forwardOutputResourceTypeIds, ChainDirection.Forward));
         return new CteRef(_ctes.Count - 1);
     }
 }
