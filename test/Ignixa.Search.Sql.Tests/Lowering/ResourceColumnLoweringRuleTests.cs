@@ -84,4 +84,47 @@ public class ResourceColumnLoweringRuleTests
 
         Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
     }
+
+    private static SearchParameterInfo LastUpdatedParameter()
+        => new("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+
+    [Fact]
+    public void GivenAnExactInstantLastUpdatedParameter_WhenTried_ThenComparesResourceSurrogateId()
+    {
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, modifier: null, value);
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        var ge = result.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("ResourceSurrogateId");
+        // 2023-06-15T12:30:00.000Z truncated-to-millisecond ticks, left-shifted 3 bits
+        var expectedTicks = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks;
+        ge.Value.Value.ShouldBe(expectedTicks << 3);
+    }
+
+    [Fact]
+    public void GivenAPartialPrecisionLastUpdatedParameter_WhenTried_ThenThrows()
+    {
+        // Arrange -- "_lastUpdated=2023" (year-only precision). DateTimeSearchValue.Parse("2023") runs
+        // it through PartialDateTime.Parse (only Year is set) and widens it to a non-degenerate range
+        // ([2023-01-01T00:00:00.0000000Z, 2023-12-31T23:59:59.9999999Z]), not a single instant.
+        var value = DateTimeSearchValue.Parse("2023");
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, modifier: null, value);
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    [Fact]
+    public void GivenALastUpdatedParameterWithAModifier_WhenTried_ThenThrowsRatherThanSilentlyIgnoringIt()
+    {
+        // Arrange -- no modifier is supported on _lastUpdated yet. Without this guard the modifier
+        // would be silently dropped and the query would run as if it were never specified -- the same
+        // bug class already found and fixed twice this increment for _id/_type, just for a different
+        // parameter and modifier.
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Missing), new DateTimeSearchValue(DateTimeOffset.UtcNow));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
 }
