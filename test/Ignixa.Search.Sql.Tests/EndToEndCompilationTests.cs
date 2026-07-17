@@ -896,4 +896,43 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("org-1");
         emitted.Sql.ShouldNotContain("Acme");
     }
+
+    [Fact]
+    public async Task GivenAForwardChainCombinedWithAnOrdinaryPredicateAndResourceColumnOnTheOuterQuery_WhenCompiled_ThenComposesAllThreeMechanisms()
+    {
+        // Arrange -- Patient?_id=pt-1&active=true&organization.name=Acme
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false,
+            new SearchParameterExpression(nameParam, new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"))));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "pt-1", text: null))),
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null)),
+            chain,
+        ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- _id is extracted to the outer WHERE (top-level mechanism, unchanged); active and
+        // the chain intersect into the match CTE.
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1");
+        emitted.Sql.ShouldContain("FROM dbo.ReferenceSearchParam rsp");
+        plan.OuterPredicate.ShouldNotBeNull();
+        emitted.Sql.ShouldNotContain("pt-1");
+        emitted.Sql.ShouldNotContain("true");
+        emitted.Sql.ShouldNotContain("Acme");
+    }
 }
