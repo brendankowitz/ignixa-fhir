@@ -9,9 +9,9 @@ namespace Ignixa.Search.Sql.Lowering;
 /// Dispatches a composite's ordered components to their tier-1 composite lowering rule, by the
 /// runtime type of each component's wrapped ISearchValue. Orders by Position first -- callers
 /// (real binder output, and this plan's own tests) are not required to hand components in order.
-/// Only TokenToken and TokenNumberNumber are wired; every other composite table (TokenString,
-/// TokenQuantity, TokenDateTime, ReferenceToken) throws NotSupportedException, matching
-/// LeafLoweringDispatcher's precedent of a loud, explicit gap over a silent wrong answer.
+/// TokenToken, TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken
+/// (in both component orders) are wired; every other composite table throws NotSupportedException,
+/// matching LeafLoweringDispatcher's precedent of a loud, explicit gap over a silent wrong answer.
 /// </summary>
 public static class CompositeLoweringDispatcher
 {
@@ -39,6 +39,11 @@ public static class CompositeLoweringDispatcher
         {
             [TokenSearchValue, TokenSearchValue] => TokenTokenLoweringRule.Lower(compositeParameter, predicates, context),
             [TokenSearchValue, NumberSearchValue, NumberSearchValue] => TokenNumberNumberLoweringRule.Lower(compositeParameter, predicates, context),
+            [TokenSearchValue, StringSearchValue] => TokenStringLoweringRule.Lower(compositeParameter, predicates, context),
+            [TokenSearchValue, QuantitySearchValue] => TokenQuantityLoweringRule.Lower(compositeParameter, predicates, context),
+            [TokenSearchValue, DateTimeSearchValue] => TokenDateTimeLoweringRule.Lower(compositeParameter, predicates, context),
+            [ReferenceSearchValue, TokenSearchValue] => ReferenceTokenLoweringRule.Lower(compositeParameter, predicates, context),
+            [TokenSearchValue, ReferenceSearchValue] => ReferenceTokenLoweringRule.Lower(compositeParameter, predicates, context),
             var values => throw new NotSupportedException(
                 $"No composite lowering rule for component value types [{string.Join(", ", values.Select(v => v.GetType().Name))}] " +
                 $"on composite parameter '{compositeParameter.Code}'."),

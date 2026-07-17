@@ -15,7 +15,7 @@ public class CompositeLoweringDispatcherTests
     private static LeafContext ContextResolving(SearchParameterInfo compositeParameter, short searchParamId)
         => new(new SymbolTable(
             new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
-            new Dictionary<string, short>()));
+            new Dictionary<string, short> { ["DocumentReference"] = 123 }));
 
     private static SearchParameterInfo CompositeParameter(string code)
         => new(code, code, SearchParamType.Composite, new Uri($"http://example.org/fhir/SearchParameter/Observation-{code}"));
@@ -37,6 +37,31 @@ public class CompositeLoweringDispatcherTests
         return new CompositeComponentExpression(
             parameter, position,
             new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new NumberSearchValue(value)));
+    }
+
+    private static CompositeComponentExpression StringComponentAt(int position, string paramCode, string text)
+    {
+        var parameter = ComponentParameter(paramCode);
+        return new CompositeComponentExpression(
+            parameter, position,
+            new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue(text)));
+    }
+
+    private static CompositeComponentExpression DateComponentAt(int position, string paramCode, DateTimeOffset value)
+    {
+        var parameter = ComponentParameter(paramCode);
+        return new CompositeComponentExpression(
+            parameter, position,
+            new SearchParameterPredicateExpression(parameter, SearchComparator.Ge, modifier: null, new DateTimeSearchValue(value)));
+    }
+
+    private static CompositeComponentExpression ReferenceComponentAt(int position, string paramCode)
+    {
+        var parameter = ComponentParameter(paramCode);
+        return new CompositeComponentExpression(
+            parameter, position,
+            new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null,
+                new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "DocumentReference", resourceId: "456")));
     }
 
     [Fact]
@@ -114,5 +139,61 @@ public class CompositeLoweringDispatcherTests
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
             CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 301)));
+    }
+
+    [Fact]
+    public void GivenATokenThenAStringComponent_WhenDispatched_ThenRoutesToTokenString()
+    {
+        // Arrange
+        var composite = CompositeParameter("code-value-string");
+        var components = new[] { TokenComponentAt(0, "code", "8480-6"), StringComponentAt(1, "value-string", "Elevated") };
+
+        // Act
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 401));
+
+        // Assert
+        cte.Table.TableName.ShouldBe("TokenStringCompositeSearchParam");
+    }
+
+    [Fact]
+    public void GivenATokenThenADateComponent_WhenDispatched_ThenRoutesToTokenDateTime()
+    {
+        // Arrange
+        var composite = CompositeParameter("code-value-date");
+        var components = new[] { TokenComponentAt(0, "code", "8480-6"), DateComponentAt(1, "value-date", new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero)) };
+
+        // Act
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 403));
+
+        // Assert
+        cte.Table.TableName.ShouldBe("TokenDateTimeCompositeSearchParam");
+    }
+
+    [Fact]
+    public void GivenAReferenceThenATokenComponent_WhenDispatched_ThenRoutesToReferenceToken()
+    {
+        // Arrange
+        var composite = CompositeParameter("relatesto");
+        var components = new[] { ReferenceComponentAt(0, "target"), TokenComponentAt(1, "code", "replaces") };
+
+        // Act
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404));
+
+        // Assert
+        cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
+    }
+
+    [Fact]
+    public void GivenATokenThenAReferenceComponent_WhenDispatched_ThenStillRoutesToReferenceToken()
+    {
+        // Arrange -- swapped order, proving the dispatcher's second arm for this type also works
+        var composite = CompositeParameter("relatesto");
+        var components = new[] { TokenComponentAt(0, "code", "replaces"), ReferenceComponentAt(1, "target") };
+
+        // Act
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404));
+
+        // Assert
+        cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
     }
 }
