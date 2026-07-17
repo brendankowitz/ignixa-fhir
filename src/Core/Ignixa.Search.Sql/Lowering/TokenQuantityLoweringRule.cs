@@ -9,7 +9,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// <summary>
 /// Lowers a TokenQuantity composite to a single ParamSource over TokenQuantityCompositeSearchParam --
 /// components[0] is the token slot (Code1), components[1] is the quantity slot (LowValue2/HighValue2,
-/// value comparison only -- System2/QuantityCodeId2 need SystemId/QuantityCodeId resolution, the same
+/// value comparison only -- SystemId2/QuantityCodeId2 need SystemId/QuantityCodeId resolution, the same
 /// gap QuantityLoweringRule already defers). LowValue2/HighValue2 are nullable in this composite table
 /// (unlike the base QuantitySearchParam's NOT NULL columns), which needs no special handling here: SQL
 /// NULL comparison semantics already exclude a non-matching row correctly.
