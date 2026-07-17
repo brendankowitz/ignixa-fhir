@@ -26,7 +26,7 @@ public class TokenLoweringRuleTests
             parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null));
 
         // Act
-        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 44));
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 44), 103);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)44);
@@ -45,7 +45,7 @@ public class TokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55)));
+            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103));
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class TokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55)));
+            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103));
     }
 
     [Fact]
@@ -71,6 +71,6 @@ public class TokenLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 44)));
+            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 44), 103));
     }
 }

@@ -12,7 +12,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class NumberLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, NumberSearchValue value, LeafContext context)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, NumberSearchValue value, LeafContext context, short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("NumberSearchParam");
         var lowColumn = new SqlColumnRef(table.TableName, "LowValue");
@@ -22,6 +22,6 @@ public static class NumberLoweringRule
             ?? throw new NotSupportedException("NumberSearchValue has neither Low nor High set.");
         var predicateExpr = NumericRangeComparison.Build(context, lowColumn, highColumn, predicate.Comparator, comparisonValue);
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), predicateExpr);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), predicateExpr);
     }
 }

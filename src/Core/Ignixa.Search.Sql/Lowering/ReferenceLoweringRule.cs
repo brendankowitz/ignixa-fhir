@@ -15,7 +15,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class ReferenceLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, ReferenceSearchValue value, LeafContext context)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, ReferenceSearchValue value, LeafContext context, short resourceTypeId)
     {
         if (value.BaseUri is not null)
         {
@@ -36,6 +36,6 @@ public static class ReferenceLoweringRule
                     context.Parameter(context.ResourceTypeId(value.ResourceType))),
                 idPredicate);
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), combined);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), combined);
     }
 }

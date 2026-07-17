@@ -28,7 +28,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)201);
@@ -49,7 +49,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ne, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
@@ -69,7 +69,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ge, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
@@ -85,7 +85,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Gt, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
@@ -101,7 +101,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Sa, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
@@ -117,7 +117,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Le, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
@@ -133,7 +133,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Lt, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
@@ -149,7 +149,7 @@ public class NumberLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eb, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201));
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
@@ -166,6 +166,6 @@ public class NumberLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201)));
+            NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103));
     }
 }

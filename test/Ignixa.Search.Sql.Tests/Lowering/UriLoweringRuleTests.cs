@@ -27,7 +27,7 @@ public class UriLoweringRuleTests
             parameter, SearchComparator.Eq, modifier: null, new UriSearchValue("http://example.org/fhir/ValueSet/1", separateCanonicalComponents: false));
 
         // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88));
+        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)88);
@@ -46,7 +46,7 @@ public class UriLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88)));
+            UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105));
     }
 
     [Fact]
@@ -59,6 +59,6 @@ public class UriLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88)));
+            UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105));
     }
 }

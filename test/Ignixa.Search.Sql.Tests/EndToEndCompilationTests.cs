@@ -73,7 +73,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = UriSearchParam[88]  Uri = @p0");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
@@ -102,8 +102,8 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldBe(
-            "cte0 = DateTimeSearchParam[203]  EndDateTime >= @p0\n" +
-            "cte1 = QuantitySearchParam[204]  LowValue > @p1\n" +
+            "cte0 = DateTimeSearchParam[104,203]  EndDateTime >= @p0\n" +
+            "cte1 = QuantitySearchParam[104,204]  LowValue > @p1\n" +
             "root = Intersect(cte0, cte1)");
         emitted.Sql.ShouldNotContain("2023");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
@@ -130,7 +130,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert -- identical plan shape to the bare-predicate case above (same table, same SearchParamId)
-        plan.Explain().ShouldBe("root = UriSearchParam[88]  Uri = @p0");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
@@ -414,7 +414,7 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldBe(
-            "cte0 = StringSearchParam[202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte0 = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
             "cte1 = ResourceSource[103]\n" +
             "root = Except(cte1, cte0)");
         emitted.Sql.ShouldContain("NOT EXISTS");
@@ -453,9 +453,9 @@ public class EndToEndCompilationTests
 
         // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, ResourceSource, Except, then an outer Intersect
         plan.Explain().ShouldBe(
-            "cte0 = TokenSearchParam[44]  Code = @p0\n" +
-            "cte1 = StringSearchParam[202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
-            "cte2 = StringSearchParam[202]  Text LIKE @p2 (StartsWith) collate CI_AI\n" +
+            "cte0 = TokenSearchParam[103,44]  Code = @p0\n" +
+            "cte1 = StringSearchParam[103,202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
+            "cte2 = StringSearchParam[103,202]  Text LIKE @p2 (StartsWith) collate CI_AI\n" +
             "cte3 = Union(cte1, cte2)\n" +
             "cte4 = ResourceSource[103]\n" +
             "cte5 = Except(cte4, cte3)\n" +
@@ -539,7 +539,7 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert -- only `active` becomes a CTE; `_id` becomes the outer WHERE
-        plan.Explain().ShouldBe("root = TokenSearchParam[44]  Code = @p0 WHERE ResourceId = @p1");
+        plan.Explain().ShouldBe("root = TokenSearchParam[103,44]  Code = @p0 WHERE ResourceId = @p1");
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
         emitted.Sql.ShouldNotContain("123");
         emitted.Sql.ShouldNotContain("true");
@@ -624,7 +624,7 @@ public class EndToEndCompilationTests
         // StringSearchParam consumes @p0 for its Text parameter. ResourceSource's ResourceTypeId consumes
         // @p1 (implicit counter increment). The outer WHERE ResourceId filter consumes @p2.
         plan.Explain().ShouldBe(
-            "cte0 = StringSearchParam[202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte0 = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
             "cte1 = ResourceSource[103]\n" +
             "root = Except(cte1, cte0) WHERE ResourceId = @p2");
         emitted.Sql.ShouldContain("NOT EXISTS");

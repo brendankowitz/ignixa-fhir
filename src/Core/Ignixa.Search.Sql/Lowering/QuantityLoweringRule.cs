@@ -14,7 +14,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class QuantityLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, QuantitySearchValue value, LeafContext context)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, QuantitySearchValue value, LeafContext context, short resourceTypeId)
     {
         if (!string.IsNullOrEmpty(value.System) || !string.IsNullOrEmpty(value.Code))
         {
@@ -31,6 +31,6 @@ public static class QuantityLoweringRule
             ?? throw new NotSupportedException("QuantitySearchValue has neither Low nor High set.");
         var predicateExpr = NumericRangeComparison.Build(context, lowColumn, highColumn, predicate.Comparator, comparisonValue);
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), predicateExpr);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), predicateExpr);
     }
 }

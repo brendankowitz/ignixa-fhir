@@ -15,7 +15,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class UriLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, UriSearchValue value, LeafContext context)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, UriSearchValue value, LeafContext context, short resourceTypeId)
     {
         if (predicate.Modifier?.SearchModifierCode is SearchModifierCode.Above or SearchModifierCode.Below)
         {
@@ -28,6 +28,6 @@ public static class UriLoweringRule
         var column = new SqlColumnRef(table.TableName, "Uri");
         var predicateExpr = new Predicate.Equal(column, context.Parameter(value.Uri));
 
-        return new CteDefinition.ParamSource(table, context.SearchParamId(predicate.Parameter), predicateExpr);
+        return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), predicateExpr);
     }
 }

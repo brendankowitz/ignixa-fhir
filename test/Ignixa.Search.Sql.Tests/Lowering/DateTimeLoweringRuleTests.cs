@@ -37,7 +37,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)203);
@@ -59,7 +59,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ne, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
@@ -80,7 +80,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Lt, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
@@ -97,7 +97,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Gt, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
@@ -114,7 +114,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Le, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
@@ -131,7 +131,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ge, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
@@ -148,7 +148,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Sa, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
@@ -165,7 +165,7 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eb, modifier: null, value);
 
         // Act
-        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203));
+        var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
@@ -183,6 +183,6 @@ public class DateTimeLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203)));
+            DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103));
     }
 }

@@ -27,7 +27,7 @@ public class StringLoweringRuleTests
             parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"));
 
         // Act
-        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)202);
@@ -45,7 +45,7 @@ public class StringLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
 
         // Act
-        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
@@ -67,7 +67,7 @@ public class StringLoweringRuleTests
             parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Contains), new StringSearchValue(longValue));
 
         // Act
-        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
@@ -84,7 +84,7 @@ public class StringLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue(longValue));
 
         // Act
-        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
@@ -102,7 +102,7 @@ public class StringLoweringRuleTests
             parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Contains), new StringSearchValue("mit"));
 
         // Act
-        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         Should.Throw<NotSupportedException>(act);
@@ -118,7 +118,7 @@ public class StringLoweringRuleTests
             parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(valueAtInlineWidth));
 
         // Act
-        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         Should.Throw<NotSupportedException>(act);

@@ -26,7 +26,7 @@ public class ReferenceLoweringRuleTests
         var context = new LeafContext(symbols);
 
         // Act
-        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context);
+        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context, 104);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)77);
@@ -53,7 +53,7 @@ public class ReferenceLoweringRuleTests
         var context = new LeafContext(symbols);
 
         // Act
-        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context);
+        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context, 104);
 
         // Assert
         var idEqual = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
@@ -75,6 +75,6 @@ public class ReferenceLoweringRuleTests
 
         // Act / Assert
         Should.Throw<NotSupportedException>(() =>
-            ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context));
+            ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context, 104));
     }
 }

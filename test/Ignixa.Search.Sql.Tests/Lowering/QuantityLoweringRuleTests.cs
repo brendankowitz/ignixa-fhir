@@ -29,7 +29,7 @@ public class QuantityLoweringRuleTests
             parameter, SearchComparator.Eq, modifier: null, new QuantitySearchValue(system: null!, code: null!, 5.4m));
 
         // Act
-        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202));
+        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
         cte.SearchParamId.ShouldBe((short)202);
@@ -48,7 +48,7 @@ public class QuantityLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202)));
+            QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202), 103));
     }
 
     [Fact]
@@ -61,6 +61,6 @@ public class QuantityLoweringRuleTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202)));
+            QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202), 103));
     }
 }
