@@ -513,10 +513,10 @@ public class EndToEndCompilationTests
         // Arrange -- Patient?_id:not=1,2 (comma-separated, so the binder wraps it as
         // SearchParameterExpression(idParam, NotExpression(Or([pred("1", Modifier:null), pred("2", Modifier:null)])))
         // -- the top-level extraction pass only recognizes a BARE SearchParameterPredicateExpression, so this
-        // shape is never extracted; each Or alternative reaches LowerNode's generic leaf dispatch directly,
-        // where it must throw (a resource column has no TokenSearchParam row to match) rather than silently
-        // routing "_id" into TokenSearchParam via the generic Token dispatch, which would silently produce
-        // an always-empty (or always-true, once Except negates it) match instead of a loud failure.
+        // shape is never extracted; each Or alternative reaches StructuralContext.Lower's dispatch choke point
+        // directly, where it must throw (a resource column has no TokenSearchParam row to match) rather than
+        // silently routing "_id" into TokenSearchParam via the generic Token dispatch, which would silently
+        // produce an always-empty (or always-true, once Except negates it) match instead of a loud failure.
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var tree = new SearchParameterExpression(
             idParam,

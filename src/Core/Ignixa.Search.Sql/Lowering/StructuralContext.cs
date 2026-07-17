@@ -25,6 +25,7 @@ public sealed class StructuralContext
 
     public CteRef Lower(SearchParameterPredicateExpression predicate)
     {
+        RejectResourceColumnCode(predicate.Parameter.Code);
         var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
@@ -32,9 +33,29 @@ public sealed class StructuralContext
 
     public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components)
     {
+        foreach (var component in components)
+        {
+            RejectResourceColumnCode(component.ComponentSearchParameter.Code);
+        }
+
         var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
+    }
+
+    private static void RejectResourceColumnCode(string parameterCode)
+    {
+        if (parameterCode is "_id" or "_type" or "_lastUpdated")
+        {
+            throw new NotSupportedException(
+                $"A resource-column predicate ('{parameterCode}') reached the leaf/composite dispatch choke point -- " +
+                "only Lower.Run's top-level extraction pass (via ResourceColumnLoweringRule) handles these. This " +
+                "guard exists at StructuralContext's dispatch choke points (not just at LowerNode's generic leaf " +
+                "arm) so every current and future caller of Lower/LowerComposite is covered structurally, rather " +
+                "than relying on each caller happening to route through LowerNode first. Throwing rather than " +
+                "silently routing a resource column into an unrelated leaf or composite rule's table, which would " +
+                "silently produce a wrong-scope or always-empty match.");
+        }
     }
 
     public CteRef Intersect(CteRef left, CteRef right)
