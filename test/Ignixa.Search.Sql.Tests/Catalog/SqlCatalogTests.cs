@@ -287,4 +287,22 @@ public class SqlCatalogTests
         column.Collation.ShouldBe("Latin1_General_100_CS_AS");
         column.IsNullable.ShouldBeFalse();
     }
+
+    [Fact]
+    public void GivenTheResourceTable_WhenLookedUp_ThenHasResourceTypeIdAndResourceIdAndResourceSurrogateIdColumns()
+    {
+        // Arrange
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("Resource");
+
+        // Assert
+        table.TableName.ShouldBe("Resource");
+        table.Column("ResourceTypeId").ShouldNotBeNull();
+        table.Column("ResourceId").ShouldNotBeNull();
+        table.Column("ResourceSurrogateId").ShouldNotBeNull();
+        table.Column("IsHistory").ShouldNotBeNull();
+        table.Column("IsDeleted").ShouldNotBeNull();
+    }
 }

@@ -18,8 +18,10 @@ public static class DdlTableParser
         @"^(?<name>\w+)\s+(?<type>\w+)\s*(\((?<args>[^)]*)\))?" +
         @"(\s+COLLATE\s+(?<collation>\S+))?" +
         @"(\s+CONSTRAINT\s+\S+\s+DEFAULT\s+\S+)?" +
+        @"(\s+DEFAULT\s+\S+)?" +
         @"(\s+IDENTITY\s*\([^)]*\))?" +
-        @"\s+(?<nullability>NOT\s+NULL|NULL)\s*$",
+        @"\s+(?<nullability>NOT\s+NULL|NULL)" +
+        @"(\s+CONSTRAINT\s+.+)?$",
         RegexOptions.IgnoreCase);
 
     public static IReadOnlyList<DdlTable> ParseTables(string ddlText, Func<string, bool> tableNameFilter)
