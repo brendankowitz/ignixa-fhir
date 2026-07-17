@@ -1,13 +1,14 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
 /// The compiler's Lower stage: turns a bound Expression tree of ANDed/ORed
 /// SearchParameterPredicateExpression leaves and SearchParameterExpression-wrapped composites into a
-/// QueryPlan. Chain, include, sort, and :not are not handled -- see this plan's global constraints
+/// QueryPlan. Chain, include, and sort are not handled -- see this plan's global constraints
 /// for the full list and why.
 /// </summary>
 public static class Lower
@@ -35,6 +36,12 @@ public static class Lower
         if (sp.Expression is NotExpression not)
         {
             return context.LowerNot(LowerNode(not.Expression, context));
+        }
+
+        if (sp.Expression is SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } predicate)
+        {
+            var positiveMatch = new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value);
+            return context.LowerNot(context.Lower(positiveMatch));
         }
 
         if (TryGetCompositeComponents(sp.Expression, out var components))

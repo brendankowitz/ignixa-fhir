@@ -385,11 +385,13 @@ public class EndToEndCompilationTests
     [Fact]
     public async Task GivenAPatientNameNotQuery_WhenCompiled_ThenProducesTheExpectedPlanAndSql()
     {
-        // Arrange -- Patient?name:not=Smith
+        // Arrange -- Patient?name:not=Smith (single value -- the binder gives this a bare predicate
+        // with Modifier.SearchModifierCode == Not, NOT a NotExpression wrapper; confirmed against
+        // SearchPredicateExpressionBuilder.cs and the real binder's single-value path)
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var tree = new SearchParameterExpression(
             nameParam,
-            new NotExpression(new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"))));
+            new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new StringSearchValue("Smith")));
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -412,7 +414,9 @@ public class EndToEndCompilationTests
     [Fact]
     public async Task GivenAPatientActiveAndNameNotQuery_WhenCompiled_ThenIntersectsTheExceptResult()
     {
-        // Arrange -- Patient?active=true&name:not=Smith
+        // Arrange -- Patient?active=true&name:not=Smith,Jones (comma-separated -- the binder wraps
+        // this as NotExpression(Or([predicate-per-alternative])), each alternative losing its own
+        // modifier per BindAlternatives' itemModifier: null)
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var tree = new MultiaryExpression(MultiaryOperator.And,
@@ -420,7 +424,11 @@ public class EndToEndCompilationTests
             new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null)),
             new SearchParameterExpression(
                 nameParam,
-                new NotExpression(new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith")))),
+                new NotExpression(new MultiaryExpression(MultiaryOperator.Or,
+                [
+                    new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith")),
+                    new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Jones")),
+                ]))),
         ]);
 
         var resolver = new FakeSymbolResolver();
@@ -433,14 +441,17 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
         var emitted = Emit.Run(plan);
 
-        // Assert -- one CTE for `active`, three for the :not (StringSearchParam, ResourceSource, Except), then an outer Intersect
+        // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, ResourceSource, Except, then an outer Intersect
         plan.Explain().ShouldBe(
             "cte0 = TokenSearchParam[44]  Code = @p0\n" +
             "cte1 = StringSearchParam[202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
-            "cte2 = ResourceSource[103]\n" +
-            "cte3 = Except(cte2, cte1)\n" +
-            "root = Intersect(cte0, cte3)");
+            "cte2 = StringSearchParam[202]  Text LIKE @p2 (StartsWith) collate CI_AI\n" +
+            "cte3 = Union(cte1, cte2)\n" +
+            "cte4 = ResourceSource[103]\n" +
+            "cte5 = Except(cte4, cte3)\n" +
+            "root = Intersect(cte0, cte5)");
         emitted.Sql.ShouldNotContain("Smith");
+        emitted.Sql.ShouldNotContain("Jones");
         emitted.Sql.ShouldNotContain("true");
     }
 }
