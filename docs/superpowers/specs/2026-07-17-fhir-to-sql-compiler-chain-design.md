@@ -2,7 +2,7 @@
 
 **Builds on:** Phases 1-5 of `docs/superpowers/plans/2026-07-15-fhir-to-sql-compiler-roadmap.md` (complete, merged to `feature/fhir-to-sql-compiler`). The semantic IR (`Ignixa.Search.Expressions`), `Resolve`, and `Lower`/`Emit`'s CTE-graph (`QueryPlan`/`CteDefinition`/`Predicate`) all exist and are feature-complete for leaf types, composites, `:not`, and resource-column predicates.
 
-**Scope of this document:** forward chain (`Patient?organization.name=Acme`) and reverse chain / `_has` (`Patient?_has:Observation:patient:code=1234-5`), including nested chains and multiary (`And`/`Or`) target expressions, and resource-column predicates (`_id`/`_type`/`_lastUpdated`) inside a chain's target expression. `_include`/`_revinclude`/`:iterate` (Phase 7) and SMART/compartment scope enforcement (Phase 8) are explicitly out of scope — see the appendices for how this design accounts for them without implementing them.
+**Scope of this document:** forward chain (`Patient?organization.name=Acme`) and reverse chain / `_has` (`Patient?_has:Observation:patient:code=1234-5`), including nested chains and multiary (`And`/`Or`) target expressions, and resource-column predicates (`_id`/`_type`/`_lastUpdated`) inside a chain's target expression. Also in scope, discovered while re-reviewing this design (§5): a pre-existing, already-merged correctness bug where `ParamSource` never constrains `ResourceTypeId`, which a `SearchParamId` shared across multiple resource types can exploit to return wrong-type resources from an ordinary (non-chain) query — folded in here because it needs the same resource-type-scope-threading mechanism this design already builds for chain. `_include`/`_revinclude`/`:iterate` (Phase 7) and SMART/compartment scope enforcement (Phase 8) are explicitly out of scope — see the appendices for how this design accounts for them without implementing them.
 
 ---
 
@@ -67,7 +67,7 @@ CteDefinition.ChainJoin(
 
 **Forward** (`InnerMatch` = the target-side match set):
 ```sql
-cteN = SELECT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1
+cteN = SELECT DISTINCT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1
        FROM dbo.ReferenceSearchParam rsp
        INNER JOIN dbo.Resource r
            ON r.ResourceTypeId = rsp.ReferenceResourceTypeId
@@ -76,13 +76,14 @@ cteN = SELECT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1
        INNER JOIN cteInnerMatch m
            ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId
        WHERE rsp.SearchParamId = @refParamId
+         AND rsp.ReferenceResourceTypeId = @innerTypeId
          AND (rsp.ResourceTypeId = @p1 OR rsp.ResourceTypeId = @p2 OR ...)   -- see note below
          AND rsp.BaseUri IS NULL
 ```
 
 **Reverse** (`InnerMatch` = the referencing-side match set):
 ```sql
-cteN = SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1
+cteN = SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1
        FROM dbo.ReferenceSearchParam rsp
        INNER JOIN cteInnerMatch m
            ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId
@@ -91,11 +92,18 @@ cteN = SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1
           AND r.ResourceId = rsp.ReferenceResourceId
           AND r.IsHistory = 0 AND r.IsDeleted = 0
        WHERE rsp.SearchParamId = @refParamId
+         AND rsp.ResourceTypeId = @innerTypeId
          AND (rsp.ReferenceResourceTypeId = @p1 OR rsp.ReferenceResourceTypeId = @p2 OR ...)   -- see note below
          AND rsp.BaseUri IS NULL
 ```
 
-**`OutputResourceTypeIds` rendering — no new `Predicate` type needed.** This IR has no IN-list predicate today (`Predicate.cs` has `Equal`/`Like`/`And`/`Or`/the four comparisons, nothing list-shaped). Rather than add one, `ChainJoin`'s output-type filter renders as an `Or`-chain of `Equal` predicates over `OutputResourceTypeIds` — reusing existing, already-tested `Predicate`/`Emit` machinery with zero new predicate shapes. `N=1` (the common case for both directions per §1) degenerates to a single bare `Equal`, no `Or` involved. `InnerResourceTypeId` filters `InnerMatch`'s own side as a single `Equal` (or folded into the `m.T1 =` join condition for reverse) — always exactly one type, per §1, never an `Or`-chain.
+**`DISTINCT` is mandatory, not stylistic** (Fable's spec re-review, finding 1). Without it, a resource referenced by N matching rows on the inner side produces N duplicate output rows: `Intersect` emits `INNER JOIN` (multiplies duplicates further), `Except` is `NOT EXISTS` (passes them through unchanged), and only `Union` deduplicates — so a `ChainJoin` feeding into anything but a bare `Union` leaks its duplicates outward. `ParamSource` already uses `SELECT DISTINCT` for exactly this reason (`Emit.cs:54-58`); `ChainJoin` must match that precedent.
+
+**The explicit `rsp.ReferenceResourceTypeId = @innerTypeId` (forward) / `rsp.ResourceTypeId = @innerTypeId` (reverse) filter is load-bearing correctness, not redundant** (Fable's spec re-review, finding 2 — an earlier draft of this section said this constraint was "folded into the `m.T1 =` join condition," which is wrong: `InnerMatch` is not type-pure. A `SearchParamId` is assigned per search-parameter-definition URL, not per resource type — `ResolveCommonSearchParameter`'s `ReferenceEquals` check confirms one `SearchParameterInfo`/one `SearchParamId` can be shared across resource types whose FHIR search parameter definitions coincide, e.g. `clinical-code`/`clinical-patient` span Condition/Observation/... . A `ParamSource`-derived `InnerMatch` CTE can therefore legitimately contain surrogate ids from more than one resource type sharing that `SearchParamId`, and without this explicit filter a `ChainJoin` would join through a same-`SearchParamId`, wrong-type row and silently return an unrelated resource. This is the same root cause as §5 below — both need the currently-nonexistent "which resource type is this CTE's content actually scoped to" fact made explicit at emission time.)
+
+**`OutputResourceTypeIds` rendering — no new `Predicate` type needed.** This IR has no IN-list predicate today (`Predicate.cs` has `Equal`/`Like`/`And`/`Or`/the four comparisons, nothing list-shaped). Rather than add one, `ChainJoin`'s output-type filter renders as an `Or`-chain of `Equal` predicates over `OutputResourceTypeIds` — reusing existing, already-tested `Predicate`/`Emit` machinery with zero new predicate shapes. `N=1` (the common case for both directions per §1) degenerates to a single bare `Equal`, no `Or` involved. `InnerResourceTypeId` filters `InnerMatch`'s own side as a single, always-present `Equal` — never an `Or`-chain, and never optional (see above).
+
+**`SearchParamId` renders as a bound parameter above for readability; it should actually render as a literal**, matching `ParamSource`'s own precedent (`Emit.cs`'s `EmitParamSource` inlines `SearchParamId`, not `@p`) and keeping `PlanExplainer`'s parameter-ordinal accounting consistent with `Emit`'s real numbering (the same class of bug Task 6 of the `:not`/resource-column-predicates increment found and fixed for `ResourceSource`'s `ResourceTypeId`). The implementer must also remember: `ResourceSource`'s new optional `Predicate` field (§5) consumes parameter ordinals whenever present, and `PlanExplainer`'s `PrintResourceSource`-style ordinal bookkeeping must account for it — a golden-string trap if missed, per the same precedent.
 
 **`BaseUri IS NULL`** — a deliberate addition beyond fhir-server's own chain join, which has no equivalent filter. Neither the live EF processor nor fhir-server's `SqlQueryGenerator` filters `BaseUri`; an external reference (`BaseUri` set, pointing outside this database) whose `ReferenceResourceId` happens to collide with a local resource's natural id would silently mis-join in both implementations today. Chains only ever mean to follow *local* references, so this filter is free correctness, not a behavior change for any query that was already working. Documented here as a deliberate, minor improvement over fhir-server, not an oversight.
 
@@ -111,7 +119,22 @@ cteN = SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1
 
 **Impact on existing code:** this touches `StructuralContext.cs` and `Lower.cs`'s `LowerNode`/`LowerSearchParameter`/`LowerAnd` signatures, all of which were built and tested in prior increments (Tasks 5-9 of the `:not`/resource-column-predicates increment). Every call site gains a scope parameter; behavior at the top level is unchanged (the top-level scope is just the first value threaded in, exactly what `_targetResourceType` held before).
 
-## 5. Resource-column predicates inside a chain's target expression
+## 5. `ParamSource` has no resource-type filter — a pre-existing correctness bug this phase now fixes
+
+Discovered while re-reviewing the finished spec (not originally part of the chain design), and confirmed as a real, already-merged defect, independent of chain: `CteDefinition.ParamSource(TableDescriptor Table, short SearchParamId, Predicate Predicate)` (`CteDefinition.cs:15`) has **no `ResourceTypeId` field at all**, and `Emit.EmitParamSource` (`Emit.cs:54-58`) never constrains one — it selects `ResourceTypeId AS T1` (a passthrough projection) but never filters by it. `LeafContext` (tier 1) has no access to the current resource-type scope today, so no leaf or composite lowering rule can add this filter even if it wanted to.
+
+**Why this is a real bug, not a hypothetical:** `SearchParamId` is assigned per search-parameter-definition URL, not per resource type (`SearchIndexReferenceDataCache` keys its cache purely by URI, `SearchIndexReferenceDataCache.cs:66-71`). FHIR routinely defines one search parameter across multiple resource types — e.g. `individual-email` spans `Patient`/`Practitioner`/`PractitionerRole`/`RelatedPerson` as one definition, one `SearchParamId`, one shared table. Verified against the currently-live, production path: `SearchParameterQueryGenerator.GenerateStringQueryAsync` (`src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Search/SearchParameterQueryGenerator.cs:1546`) filters `sp.ResourceTypeId == resourceTypeId.Value` on every leaf query — the new compiler dropped this constraint somewhere across Phases 4-5, and it passed every task review and both prior whole-branch reviews because no existing test happens to involve two resource types sharing a `SearchParamId`. As compiled today, `Patient?email=X` would match a same-`SearchParamId`, matching-value Practitioner or RelatedPerson row too.
+
+**Fix, folded into this phase's plan** (per the user's explicit decision) because it needs the exact same mechanism §4 already builds — resource-type scope threaded into the lowering recursion, just one tier deeper than §4 alone requires:
+- `ParamSource` gains a `short ResourceTypeId` field (required, not optional — mirrors `ResourceSource`'s existing non-nullable `ResourceTypeId`, and matches this codebase's established "unrepresentable defect classes" precedent from the original design doc: a leaf rule building a `ParamSource` without a resource type should not compile, the same way `ParamSource` without a `SearchParamId` already cannot).
+- `LeafContext` (or its caller) needs the current scope's resolved `ResourceTypeId` — threading this down from `StructuralContext`'s (now-parameterized, per §4) scope into every leaf/composite lowering rule call site that constructs a `ParamSource`.
+- `Emit.EmitParamSource` adds `AND ResourceTypeId = <value>` to its `WHERE` clause (literal, matching `SearchParamId`'s existing literal-not-parameter precedent in the same method).
+- `PlanExplainer` needs the corresponding rendering update.
+- Every existing golden-string test in `Ignixa.Search.Sql.Tests` that asserts a `ParamSource`-derived `Explain()`/SQL string needs updating to include the new filter — this is the majority of the suite (~147 tests), since `ParamSource` underlies every ordinary leaf-type and composite-type query built in Phases 4-5.
+
+This closes the same underlying gap that §3's inner-type-filter note (above) depends on for `ChainJoin`'s own correctness — a `ChainJoin`'s `InnerMatch` is frequently a `ParamSource`-derived CTE, so fixing `ParamSource` at the root is what makes `ChainJoin`'s explicit `rsp.ResourceTypeId = @innerTypeId` filter meaningful rather than papering over a gap one layer up.
+
+## 6. Resource-column predicates inside a chain's target expression
 
 `Patient?organization._id=X` and `Patient?_has:Observation:patient:_id=X` are both legal, common FHIR that must not silently mis-lower. Today, `Lower.Run`'s `ExtractResourceColumnPredicates` only runs at the true top level, routing hits into `QueryPlan.OuterPredicate` — a mechanism that only makes sense once, at the outermost query (no "outer" WHERE is available for a sub-CTE that itself becomes another node's `InnerMatch`).
 
@@ -124,7 +147,7 @@ This is deliberately **direction-agnostic**: the same "lower this expression in 
 
 `ResourceSource`'s new `Predicate` field is unused (`null`) at the top level, which keeps the top level's existing outer-WHERE mechanism — a deliberate, user-confirmed choice made for SQL Server TOP+CTE-inlining performance reasons during the `:not`/resource-column-predicates increment — completely unchanged.
 
-## 6. `SymbolCollectingVisitor` — new `VisitChained` override
+## 7. `SymbolCollectingVisitor` — new `VisitChained` override
 
 No override exists today; the base `ExpressionRewriter.VisitChained` (`ExpressionRewriter.cs:28-34`) only recurses into `.Expression`, so `ReferenceSearchParameter`'s `SearchParamId` and both sides' `ResourceTypeId`s never resolve. New override:
 
@@ -140,7 +163,7 @@ public override Expression VisitChained(ChainedExpression expression, object? co
 
 Closes the visitor's own remarks-block IOU: "Chain/compartment target-type resolution remains Phase 6/8's job" (`SymbolCollectingVisitor.cs`).
 
-## 7. Complexity guard
+## 8. Complexity guard
 
 fhir-server's own history (researched against `microsoft/fhir-server` GitHub, not assumed) surfaces two real, still-open-in-spirit failure classes:
 
@@ -149,11 +172,14 @@ fhir-server's own history (researched against `microsoft/fhir-server` GitHub, no
 
 This design's `Lower`-time CTE ordering is already deterministic and derived purely from the expression tree's own shape (never from incidental query-string parameter order), which avoids #2540's failure class by construction — worth stating explicitly as a design property, not just an accident.
 
-For #2818's class: add a nested-chain-depth guard of **10 levels** (a `ChainedExpression` whose `.Expression` is itself a `ChainedExpression`, recursively) — a cheap, named `NotSupportedException` thrown at `Lower` time rather than letting SQL Server discover the problem at execution time with an opaque error. 10 is deliberately generous against realistic FHIR chains (2-3 levels covers nearly every real query; fhir-server's own precedent of depth 100 governs its whole rewrite-pass recursion including includes/`:not`/sort, not chain nesting specifically, so it is not a directly comparable number) while still being a real, enforced ceiling rather than an unbounded recursion. This guards nesting depth only — it does not attempt to bound total CTE count from multiary target expressions or `:not` combined with chain, which is a separate, harder-to-bound concern left to future `Lower` normalization work (CTE coalescing, already named as future work in the original design doc) if it turns out to matter in practice.
+**Relabeled per Fable's spec re-review:** the depth guard below addresses one real axis of complexity (nesting depth) cheaply; it does not, by itself, address #2818's actual trigger (CTE *breadth* — many codes plus includes plus `:not` piling up), which this increment does not attempt to bound (multiary target expressions and `:not` combined with chain are both unbounded by this guard, same as everywhere else in this compiler today). It is a general robustness ceiling on one axis, not a solution to #2818's failure class — this increment's real, structural answer to #2818's class is the deterministic-ordering property above (the #2540 answer), which removes one entire *cause* of plan-quality variance rather than capping a symptom.
 
-## 8. Explicitly in scope / explicitly deferred
+Guard: add a nested-chain-depth guard of **10 levels** (a `ChainedExpression` whose `.Expression` is itself a `ChainedExpression`, recursively) — a cheap, named `NotSupportedException` thrown at `Lower` time rather than letting SQL Server discover the problem at execution time with an opaque error. 10 is deliberately generous against realistic FHIR chains (2-3 levels covers nearly every real query; fhir-server's own precedent of depth 100 governs its whole rewrite-pass recursion including includes/`:not`/sort, not chain nesting specifically, so it is not a directly comparable number) while still being a real, enforced ceiling rather than an unbounded recursion. This guards nesting depth only — it does not attempt to bound total CTE count from multiary target expressions or `:not` combined with chain, which is a separate, harder-to-bound concern left to future `Lower` normalization work (CTE coalescing, already named as future work in the original design doc) if it turns out to matter in practice.
+
+## 9. Explicitly in scope / explicitly deferred
 
 **In scope for this increment:**
+- `ParamSource`'s missing `ResourceTypeId` filter (§5) — a pre-existing correctness bug in already-merged Phase 4-5 code, folded in here since it needs the same resource-type-scope-threading mechanism §4 builds for chain, and `ChainJoin`'s own inner-type filter (§3) depends on it being fixed at the root
 - Forward chain (`organization.name=Acme`)
 - Reverse chain / `_has` (`_has:Observation:patient:code=X`)
 - Nested chains, up to 10 levels deep (§7's guard) (`organization.partof.name=X`)
