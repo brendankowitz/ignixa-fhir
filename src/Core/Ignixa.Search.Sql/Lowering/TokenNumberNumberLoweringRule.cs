@@ -22,33 +22,12 @@ public static class TokenNumberNumberLoweringRule
     {
         var table = SqlCatalog.Default.Table("TokenNumberNumberCompositeSearchParam");
 
-        var tokenPredicate = TokenColumnEquals(table, (TokenSearchValue)components[0].Value, context);
+        var tokenPredicate = TokenColumnEquality.Build(table, "Code1", (TokenSearchValue)components[0].Value, context);
         var number1Predicate = NumberRangePredicate(table, "LowValue2", "HighValue2", components[1], context);
         var number2Predicate = NumberRangePredicate(table, "LowValue3", "HighValue3", components[2], context);
 
         var predicate = new Predicate.And(new Predicate.And(tokenPredicate, number1Predicate), number2Predicate);
         return new CteDefinition.ParamSource(table, context.SearchParamId(compositeParameter), predicate);
-    }
-
-    private static Predicate TokenColumnEquals(TableDescriptor table, TokenSearchValue value, LeafContext context)
-    {
-        if (value.System is not null)
-        {
-            throw new NotSupportedException(
-                "System-qualified token components are not supported yet -- same SystemId resolution gap as " +
-                "TokenLoweringRule (ISymbolResolver has no SystemId lookup). This includes System = string.Empty " +
-                "(\"|code\" syntax, meaning system must be absent), which this rule cannot express either.");
-        }
-
-        if (string.IsNullOrEmpty(value.Code))
-        {
-            throw new NotSupportedException(
-                "This rule only supports code-bearing token components -- text-only components (Code is null/empty) " +
-                "are not supported yet.");
-        }
-
-        var column = new SqlColumnRef(table.TableName, "Code1");
-        return new Predicate.Equal(column, context.Parameter(value.Code));
     }
 
     private static Predicate NumberRangePredicate(
