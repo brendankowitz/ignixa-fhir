@@ -75,12 +75,7 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
-    public CteRef LowerResourceSource(string resourceType)
-    {
-        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
-        _ctes.Add(new CteDefinition.ResourceSource(resourceTypeId));
-        return new CteRef(_ctes.Count - 1);
-    }
+    public CteRef LowerResourceSource(string resourceType) => LowerResourceSourceWithPredicate(resourceType, predicate: null);
 
     public CteRef LowerResourceSourceWithPredicate(string resourceType, Predicate? predicate)
     {

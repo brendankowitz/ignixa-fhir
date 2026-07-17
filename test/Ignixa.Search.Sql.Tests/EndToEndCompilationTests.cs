@@ -856,4 +856,44 @@ public class EndToEndCompilationTests
             "root = ChainJoin(cte0, ref=77, inner=106, output=[103], Reverse)");
         emitted.Sql.ShouldNotContain("obs-1");
     }
+
+    [Fact]
+    public async Task GivenAForwardChainWithBothAResourceColumnAndAnOrdinaryPredicateOnTheTarget_WhenCompiled_ThenIntersectsTheFilteredResourceSourceWithTheOrdinaryMatch()
+    {
+        // Arrange -- Patient?organization._id=org-1&organization.name=Acme -- exercises LowerScopedExpression's
+        // Intersect branch (the two tests above only cover the remaining-is-null / predicate-only case). A task
+        // review flagged this as untested given this codebase's history of the "predicate silently dropped"
+        // bug class recurring across multiple prior increments.
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var targetExpression = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "org-1", text: null))),
+            new SearchParameterExpression(nameParam, new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"))),
+        ]);
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, targetExpression);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the ordinary predicate (name) lowers first as an ordinary ParamSource, then the
+        // resource-column predicate (_id) becomes a filtered ResourceSource, Intersected together
+        // (ResourceSource left, ordinary match right) before feeding ChainJoin's InnerMatch.
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "cte1 = ResourceSource[105] WHERE ResourceId = @p2\n" +
+            "cte2 = Intersect(cte1, cte0)\n" +
+            "root = ChainJoin(cte2, ref=55, inner=105, output=[103], Forward)");
+        emitted.Sql.ShouldNotContain("org-1");
+        emitted.Sql.ShouldNotContain("Acme");
+    }
 }
