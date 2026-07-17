@@ -55,6 +55,14 @@ public class CompositeLoweringDispatcherTests
             new SearchParameterPredicateExpression(parameter, SearchComparator.Ge, modifier: null, new DateTimeSearchValue(value)));
     }
 
+    private static CompositeComponentExpression QuantityComponentAt(int position, string paramCode, decimal value)
+    {
+        var parameter = ComponentParameter(paramCode);
+        return new CompositeComponentExpression(
+            parameter, position,
+            new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new QuantitySearchValue(system: null!, code: null!, value)));
+    }
+
     private static CompositeComponentExpression ReferenceComponentAt(int position, string paramCode)
     {
         var parameter = ComponentParameter(paramCode);
@@ -153,6 +161,20 @@ public class CompositeLoweringDispatcherTests
 
         // Assert
         cte.Table.TableName.ShouldBe("TokenStringCompositeSearchParam");
+    }
+
+    [Fact]
+    public void GivenATokenThenAQuantityComponent_WhenDispatched_ThenRoutesToTokenQuantity()
+    {
+        // Arrange
+        var composite = CompositeParameter("component-code-value-quantity");
+        var components = new[] { TokenComponentAt(0, "component-code", "8480-6"), QuantityComponentAt(1, "component-value-quantity", 120m) };
+
+        // Act
+        var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 402));
+
+        // Assert
+        cte.Table.TableName.ShouldBe("TokenQuantityCompositeSearchParam");
     }
 
     [Fact]
