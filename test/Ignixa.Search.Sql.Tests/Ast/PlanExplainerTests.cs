@@ -93,14 +93,20 @@ public class PlanExplainerTests
     [Fact]
     public void GivenAResourceSourceCte_WhenExplained_ThenRendersResourceTypeId()
     {
+        // Arrange
         var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
 
-        plan.Explain().ShouldBe("root = ResourceSource[103]");
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = ResourceSource[103]");
     }
 
     [Fact]
     public void GivenAnExceptCte_WhenExplained_ThenRendersBothOperands()
     {
+        // Arrange
         var plan = new QueryPlan(
         [
             new CteDefinition.ResourceSource(103),
@@ -109,7 +115,11 @@ public class PlanExplainerTests
         ],
         new CteRef(2));
 
-        plan.Explain().ShouldBe(
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe(
             "cte0 = ResourceSource[103]\n" +
             "cte1 = StringSearchParam[202]  Text = @p0\n" +
             "root = Except(cte0, cte1)");
