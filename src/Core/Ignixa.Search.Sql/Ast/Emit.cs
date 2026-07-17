@@ -113,9 +113,12 @@ public static class Emit
     };
 
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
-        => $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-           $"    FROM dbo.Resource\n" +
-           $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0";
+    {
+        var predicateClause = rs.Predicate is null ? string.Empty : $" AND {EmitPredicate(rs.Predicate, parameters)}";
+        return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+               $"    FROM dbo.Resource\n" +
+               $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0{predicateClause}";
+    }
 
     private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch
     {

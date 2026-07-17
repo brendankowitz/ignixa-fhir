@@ -36,7 +36,7 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
-        ChainedExpression chain => context.LowerChain(chain, LowerNode),
+        ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };
@@ -136,4 +136,18 @@ public static class Lower
         => expression is SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate }
             ? ResourceColumnLoweringRule.TryLower(predicate, leafContext)
             : null;
+
+    private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string resourceType)
+    {
+        var (remaining, nestedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
+        if (remaining is null)
+        {
+            return context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate);
+        }
+
+        var ordinaryMatch = LowerNode(remaining, context, resourceType);
+        return nestedPredicate is null
+            ? ordinaryMatch
+            : context.Intersect(context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate), ordinaryMatch);
+    }
 }

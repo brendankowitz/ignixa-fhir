@@ -802,4 +802,58 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("Acme");
         emitted.Sql.ShouldNotContain("true");
     }
+
+    [Fact]
+    public async Task GivenAForwardChainWithAResourceColumnPredicateOnTheTarget_WhenCompiled_ThenIntersectsAFilteredResourceSource()
+    {
+        // Arrange -- Patient?organization._id=org-1
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var targetExpression = new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "org-1", text: null)));
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, targetExpression);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the target scope's _id predicate becomes a filtered ResourceSource (not OuterPredicate,
+        // which only applies at the true top level), the ChainJoin's InnerMatch is that ResourceSource directly
+        // (no Intersect needed since _id was the target expression's only predicate).
+        plan.Explain().ShouldBe(
+            "cte0 = ResourceSource[105] WHERE ResourceId = @p1\n" +
+            "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
+        emitted.Sql.ShouldNotContain("org-1");
+    }
+
+    [Fact]
+    public async Task GivenAReverseChainWithAResourceColumnPredicateOnTheReferencingSide_WhenCompiled_ThenIntersectsAFilteredResourceSource()
+    {
+        // Arrange -- Patient?_has:Observation:patient:_id=obs-1
+        var patientRefParam = new SearchParameterInfo("patient", "patient", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-patient"));
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var targetExpression = new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "obs-1", text: null)));
+        var chain = new ChainedExpression(["Observation"], patientRefParam, ["Patient"], reversed: true, targetExpression);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[patientRefParam.Url!.ToString()] = 77;
+        resolver.ResourceTypeIds["Observation"] = 106;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- identical mechanism to the forward case, just on the referencing (inner) side this time
+        plan.Explain().ShouldBe(
+            "cte0 = ResourceSource[106] WHERE ResourceId = @p1\n" +
+            "root = ChainJoin(cte0, ref=77, inner=106, output=[103], Reverse)");
+        emitted.Sql.ShouldNotContain("obs-1");
+    }
 }

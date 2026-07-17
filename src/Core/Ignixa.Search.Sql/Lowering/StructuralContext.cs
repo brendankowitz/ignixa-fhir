@@ -24,6 +24,8 @@ public sealed class StructuralContext
 
     public IReadOnlyList<CteDefinition> Ctes => _ctes;
 
+    public LeafContext LeafContext => _leafContext;
+
     public CteRef Lower(SearchParameterPredicateExpression predicate, string resourceType)
     {
         RejectResourceColumnCode(predicate.Parameter.Code);
@@ -77,6 +79,13 @@ public sealed class StructuralContext
     {
         var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         _ctes.Add(new CteDefinition.ResourceSource(resourceTypeId));
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    public CteRef LowerResourceSourceWithPredicate(string resourceType, Predicate? predicate)
+    {
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        _ctes.Add(new CteDefinition.ResourceSource(resourceTypeId, predicate));
         return new CteRef(_ctes.Count - 1);
     }
 
