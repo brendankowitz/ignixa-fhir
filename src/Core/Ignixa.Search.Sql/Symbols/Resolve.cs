@@ -34,11 +34,12 @@ namespace Ignixa.Search.Sql.Symbols;
 /// per resource type, so a shared definition could otherwise match rows of the wrong resource type).
 /// Since the query's own target type does not appear anywhere on the <see cref="Expression"/> tree
 /// itself, callers must always supply it explicitly. Beyond that mandatory case, resolution extends
-/// to only one further narrow exception: see <see cref="SymbolCollectingVisitor"/>'s remarks --
-/// <see cref="RunAsync"/> also resolves <c>ResourceTypeId</c> for any resource type collected via
-/// <see cref="ReferenceSearchValue"/> leaves (task 8). Resolve still does not resolve resource types
-/// touched only by chain/compartment context (chain target types, etc.) that do not exist on this
-/// <see cref="Expression"/> tree -- that generalization is Phase 5/6/8's job.
+/// to whatever <see cref="SymbolCollectingVisitor"/> collects into <c>ResourceTypes</c> -- see that
+/// type's remarks for the full list, which now includes <see cref="ReferenceSearchValue"/> leaves, a
+/// <c>_type</c> predicate's own value, and (as of Phase 6) a <see cref="ChainedExpression"/>'s
+/// <c>ReferenceSearchParameter</c> and both its <c>ResourceTypes</c>/<c>TargetResourceTypes</c> arrays.
+/// Resolve still does not resolve resource types touched only by compartment context that does not
+/// exist anywhere on this <see cref="Expression"/> tree -- that generalization is Phase 8's job.
 /// </para>
 /// </remarks>
 public static class Resolve

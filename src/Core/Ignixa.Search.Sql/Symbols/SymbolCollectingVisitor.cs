@@ -21,14 +21,17 @@ namespace Ignixa.Search.Sql.Symbols;
 /// deliberately not collected here: the design doc's <c>ResourceSource</c>/<c>ParamSource</c> nodes that
 /// need it are synthesized by Lower (Phase 5) from context this visitor does not have -- notably the
 /// query's own target resource type, which lives on the surrounding SemanticQuery, not anywhere in this
-/// <see cref="Expression"/> tree. Two narrow exceptions collect resource-type identity directly from a
+/// <see cref="Expression"/> tree. Three exceptions collect resource-type identity directly from a
 /// leaf this visitor already walks: <see cref="ReferenceSearchValue.ResourceType"/>, when present (task
-/// 8); and a <c>_type</c> predicate's own <see cref="TokenSearchValue.Code"/> -- unlike <c>_id</c>'s
+/// 8); a <c>_type</c> predicate's own <see cref="TokenSearchValue.Code"/> -- unlike <c>_id</c>'s
 /// value (an opaque string, never a resource-type identity) or <c>_lastUpdated</c>'s (a timestamp),
 /// <c>_type</c>'s value names the very resource type <c>ResourceColumnLoweringRule.TryLower</c>'s
 /// <c>TypeEquals</c> arm needs to resolve, so without collecting it here every <c>_type</c> value other
-/// than the query's own <c>targetResourceType</c> would throw. Chain/compartment target-type resolution
-/// remains Phase 6/8's job. See Resolve's remarks for the full argument.
+/// than the query's own <c>targetResourceType</c> would throw; and <see cref="VisitChained"/>, which
+/// collects a <see cref="ChainedExpression"/>'s <c>ReferenceSearchParameter</c> and every type in both
+/// <c>ResourceTypes</c> and <c>TargetResourceTypes</c> -- forward and reverse chains alike, since which
+/// array carries the "source" vs. "target" side flips with <c>Reversed</c>. Compartment target-type
+/// resolution remains Phase 8's job. See Resolve's remarks for the full argument.
 /// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 {
