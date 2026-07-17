@@ -220,4 +220,60 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldNotContain("dbo.Resource");
     }
+
+    [Fact]
+    public void GivenAForwardChainJoin_WhenEmitted_ThenTranslatesTheOutputSideThroughResource()
+    {
+        // Arrange -- cte0 is some pre-existing target-side match; ChainJoin wraps it as InnerMatch
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
+                new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
+            ],
+            new CteRef(1));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("SELECT DISTINCT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1");
+        emitted.Sql.ShouldContain("FROM dbo.ReferenceSearchParam rsp");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r");
+        emitted.Sql.ShouldContain("ON r.ResourceTypeId = rsp.ReferenceResourceTypeId");
+        emitted.Sql.ShouldContain("AND r.ResourceId = rsp.ReferenceResourceId");
+        emitted.Sql.ShouldContain("AND r.IsHistory = 0 AND r.IsDeleted = 0");
+        emitted.Sql.ShouldContain("INNER JOIN cte0 m");
+        emitted.Sql.ShouldContain("ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId");
+        emitted.Sql.ShouldContain("WHERE rsp.SearchParamId = 55");
+        emitted.Sql.ShouldContain("AND rsp.ReferenceResourceTypeId = 105");
+        emitted.Sql.ShouldContain("AND rsp.ResourceTypeId = 103");
+        emitted.Sql.ShouldContain("AND rsp.BaseUri IS NULL");
+    }
+
+    [Fact]
+    public void GivenAReverseChainJoinWithPluralOutputTypes_WhenEmitted_ThenOrsTheOutputTypeFilter()
+    {
+        // Arrange -- cte0 is the referencing-side match; output can be more than one type
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(SqlCatalog.Default.Table("TokenSearchParam"), ResourceTypeId: 106, SearchParamId: 88, new Predicate.Equal(new SqlColumnRef("TokenSearchParam", "Code"), new SqlParameterRef("1234-5"))),
+                new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 77, InnerResourceTypeId: 106, OutputResourceTypeIds: [103, 108], ChainDirection.Reverse),
+            ],
+            new CteRef(1));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1");
+        emitted.Sql.ShouldContain("FROM dbo.ReferenceSearchParam rsp");
+        emitted.Sql.ShouldContain("INNER JOIN cte0 m");
+        emitted.Sql.ShouldContain("ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r");
+        emitted.Sql.ShouldContain("ON r.ResourceTypeId = rsp.ReferenceResourceTypeId");
+        emitted.Sql.ShouldContain("WHERE rsp.SearchParamId = 77");
+        emitted.Sql.ShouldContain("AND rsp.ResourceTypeId = 106");
+        emitted.Sql.ShouldContain("AND (rsp.ReferenceResourceTypeId = 103 OR rsp.ReferenceResourceTypeId = 108)");
+        emitted.Sql.ShouldContain("AND rsp.BaseUri IS NULL");
+    }
 }

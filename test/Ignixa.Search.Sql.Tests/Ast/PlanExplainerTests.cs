@@ -140,4 +140,19 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe("root = StringSearchParam[103,202]  Text = @p0 WHERE ResourceId = @p1");
     }
+
+    [Fact]
+    public void GivenAForwardChainJoin_WhenExplained_ThenRendersTheJoinShape()
+    {
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
+                new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
+            ],
+            new CteRef(1));
+
+        plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[105,202]  Text = @p0\n" +
+            "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
+    }
 }

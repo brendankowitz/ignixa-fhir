@@ -11,7 +11,8 @@ namespace Ignixa.Search.Sql.Ast;
 /// constrains which resource type's rows this CTE can return -- a SearchParamId is assigned per
 /// search-parameter-definition URL, not per resource type, so a shared definition (e.g. one search
 /// parameter spanning Patient/Practitioner) would otherwise let a ParamSource CTE return rows from the
-/// wrong resource type.
+/// wrong resource type. ChainJoin represents a chain (forward or reverse) as a join through
+/// dbo.ReferenceSearchParam and dbo.Resource -- see the chain design doc for the full derivation.
 /// </summary>
 public abstract record CteDefinition
 {
@@ -24,4 +25,11 @@ public abstract record CteDefinition
     public sealed record ResourceSource(short ResourceTypeId) : CteDefinition;
 
     public sealed record Except(CteRef Left, CteRef Right) : CteDefinition;
+
+    public sealed record ChainJoin(
+        CteRef InnerMatch,
+        short ReferenceSearchParamId,
+        short InnerResourceTypeId,
+        IReadOnlyList<short> OutputResourceTypeIds,
+        ChainDirection Direction) : CteDefinition;
 }

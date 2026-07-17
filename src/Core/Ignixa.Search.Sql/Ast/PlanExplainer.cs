@@ -42,6 +42,8 @@ public static class PlanExplainer
             $"Union({string.Join(", ", u.Parts.Select(r => $"cte{r.Index}"))}){PrintTop(top)}",
         CteDefinition.ResourceSource rs => PrintResourceSource(rs, top, ref parameterOrdinal),
         CteDefinition.Except ex => $"Except(cte{ex.Left.Index}, cte{ex.Right.Index}){PrintTop(top)}",
+        CteDefinition.ChainJoin cj =>
+            $"ChainJoin(cte{cj.InnerMatch.Index}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
 

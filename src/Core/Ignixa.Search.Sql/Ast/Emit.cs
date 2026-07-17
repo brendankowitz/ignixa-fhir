@@ -48,6 +48,7 @@ public static class Emit
             $"    WHERE NOT EXISTS (\n" +
             $"        SELECT 1 FROM cte{ex.Right.Index}\n" +
             $"        WHERE cte{ex.Right.Index}.T1 = cte{ex.Left.Index}.T1 AND cte{ex.Right.Index}.Sid1 = cte{ex.Left.Index}.Sid1)",
+        CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -55,6 +56,55 @@ public static class Emit
         => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
            $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
            $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId} AND {EmitPredicate(p.Predicate, parameters)}";
+
+    private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters)
+    {
+        var outputFilter = string.Join(
+            " OR ",
+            cj.OutputResourceTypeIds.Select(id => $"{OutputTypeColumn(cj.Direction)} = {id}"));
+        if (cj.OutputResourceTypeIds.Count > 1)
+        {
+            outputFilter = $"({outputFilter})";
+        }
+
+        return cj.Direction switch
+        {
+            ChainDirection.Forward =>
+                $"    SELECT DISTINCT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
+                $"    FROM dbo.ReferenceSearchParam rsp\n" +
+                $"    INNER JOIN dbo.Resource r\n" +
+                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+                $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+                $"    INNER JOIN cte{cj.InnerMatch.Index} m\n" +
+                $"        ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
+                $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
+                $"      AND rsp.ReferenceResourceTypeId = {cj.InnerResourceTypeId}\n" +
+                $"      AND {outputFilter}\n" +
+                $"      AND rsp.BaseUri IS NULL",
+            ChainDirection.Reverse =>
+                $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+                $"    FROM dbo.ReferenceSearchParam rsp\n" +
+                $"    INNER JOIN cte{cj.InnerMatch.Index} m\n" +
+                $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+                $"    INNER JOIN dbo.Resource r\n" +
+                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+                $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+                $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
+                $"      AND rsp.ResourceTypeId = {cj.InnerResourceTypeId}\n" +
+                $"      AND {outputFilter}\n" +
+                $"      AND rsp.BaseUri IS NULL",
+            _ => throw new NotSupportedException($"Unknown ChainDirection '{cj.Direction}'."),
+        };
+    }
+
+    private static string OutputTypeColumn(ChainDirection direction) => direction switch
+    {
+        ChainDirection.Forward => "rsp.ResourceTypeId",
+        ChainDirection.Reverse => "rsp.ReferenceResourceTypeId",
+        _ => throw new NotSupportedException($"Unknown ChainDirection '{direction}'."),
+    };
 
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
         => $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
