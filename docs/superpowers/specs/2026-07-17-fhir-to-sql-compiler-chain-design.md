@@ -183,7 +183,7 @@ Guard: add a nested-chain-depth guard of **10 levels** (a `ChainedExpression` wh
 - Forward chain (`organization.name=Acme`)
 - Reverse chain / `_has` (`_has:Observation:patient:code=X`)
 - Nested chains, up to 10 levels deep (§7's guard) (`organization.partof.name=X`)
-- Multiary (`And`/`Or`) target expressions (`organization.name=X&organization.active=true`)
+- Multiary (`And`/`Or`) target expressions, at the `Lower`/IR level -- `ChainedExpression.Expression` is typed as a plain `Expression`, so `Lower` handles an `And`/`Or`-composed target correctly regardless of binder input. **Caveat found during Task 11's review:** the real binder (`SearchOptionsBuilder.cs`) parses each top-level query parameter independently and ANDs the results *above* any chain, so a query like `organization.name=X&organization.active=true` today produces two separate `ChainedExpression`/`ChainJoin` nodes ANDed at the top level, not one chain with an And-composed target -- this mechanism is proven at the IR level, not (yet) reachable via that specific literal query string.
 - Resource-column predicates (`_id`/`_type`/`_lastUpdated`) inside a chain's target expression, either direction, any nesting depth
 - `BaseUri IS NULL` (documented improvement over fhir-server)
 

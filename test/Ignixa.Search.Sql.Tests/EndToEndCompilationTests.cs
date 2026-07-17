@@ -760,7 +760,15 @@ public class EndToEndCompilationTests
     [Fact]
     public async Task GivenAForwardChainWithAMultiaryTargetExpression_WhenCompiled_ThenIntersectsBothTargetPredicates()
     {
-        // Arrange -- Patient?organization.name=Acme&organization.active=true
+        // Arrange -- proves Lower's Intersect/ChainJoin composition mechanism for a multiary chain
+        // target directly at the IR level. Note: the real binder does NOT produce this shape for the
+        // query string "Patient?organization.name=Acme&organization.active=true" today --
+        // SearchOptionsBuilder.cs parses each top-level query parameter independently and ANDs the
+        // results above/outside any chain (STEP 2, Expression.And(searchExpressions)), so that query
+        // actually yields two separate ChainedExpression/ChainJoin nodes ANDed at the top level, not
+        // one chain with an And-composed target. ChainedExpression.Expression is still typed as a
+        // plain Expression, so Lower must handle a multiary target correctly regardless of whether
+        // today's binder currently constructs one -- this test proves that mechanism in isolation.
         var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Organization-active"));
