@@ -31,6 +31,7 @@ public class StringLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)202);
+        cte.ResourceTypeId.ShouldBe((short)103);
         var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Column.ShouldBe("Text");
         equal.Collation.ShouldBe("Latin1_General_100_CS_AS");
@@ -48,6 +49,7 @@ public class StringLoweringRuleTests
         var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
         like.Column.Column.ShouldBe("Text");
         like.Match.ShouldBe(LikeMatch.StartsWith);
@@ -70,6 +72,7 @@ public class StringLoweringRuleTests
         var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
         like.Column.Column.ShouldBe("TextOverflow");
         like.Match.ShouldBe(LikeMatch.Contains);
@@ -87,6 +90,7 @@ public class StringLoweringRuleTests
         var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
         like.Column.Column.ShouldBe("TextOverflow");
         like.Match.ShouldBe(LikeMatch.StartsWith);

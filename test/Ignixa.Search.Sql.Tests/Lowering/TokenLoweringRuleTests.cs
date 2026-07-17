@@ -30,6 +30,7 @@ public class TokenLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)44);
+        cte.ResourceTypeId.ShouldBe((short)103);
         var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Column.ShouldBe("Code");
         equal.Value.Value.ShouldBe("true");

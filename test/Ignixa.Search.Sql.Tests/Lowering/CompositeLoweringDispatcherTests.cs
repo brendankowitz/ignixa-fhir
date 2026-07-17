@@ -87,6 +87,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 301), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenTokenCompositeSearchParam");
     }
 
@@ -106,6 +107,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 302), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenNumberNumberCompositeSearchParam");
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var inner = outer.Left.ShouldBeOfType<Predicate.And>();
@@ -160,6 +162,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 401), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenStringCompositeSearchParam");
     }
 
@@ -174,6 +177,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 402), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenQuantityCompositeSearchParam");
     }
 
@@ -188,6 +192,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 403), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenDateTimeCompositeSearchParam");
     }
 
@@ -202,6 +207,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
     }
 
@@ -216,6 +222,7 @@ public class CompositeLoweringDispatcherTests
         var cte = CompositeLoweringDispatcher.Lower(composite, components, ContextResolving(composite, 404), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
     }
 }

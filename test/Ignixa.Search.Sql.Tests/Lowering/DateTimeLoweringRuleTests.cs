@@ -41,6 +41,7 @@ public class DateTimeLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)203);
+        cte.ResourceTypeId.ShouldBe((short)103);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
         le.Column.Column.ShouldBe("StartDateTime");
@@ -62,6 +63,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
         var lt = or.Left.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("StartDateTime");
@@ -83,6 +85,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("StartDateTime");
         lt.Value.Value.ShouldBe(value.Start);
@@ -100,6 +103,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
         gt.Column.Column.ShouldBe("EndDateTime");
         gt.Value.Value.ShouldBe(value.End);
@@ -117,6 +121,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
         le.Column.Column.ShouldBe("StartDateTime");
         le.Value.Value.ShouldBe(value.End);
@@ -134,6 +139,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         ge.Column.Column.ShouldBe("EndDateTime");
         ge.Value.Value.ShouldBe(value.Start);
@@ -151,6 +157,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
         gt.Column.Column.ShouldBe("StartDateTime");
         gt.Value.Value.ShouldBe(value.End);
@@ -168,6 +175,7 @@ public class DateTimeLoweringRuleTests
         var cte = DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("EndDateTime");
         lt.Value.Value.ShouldBe(value.Start);

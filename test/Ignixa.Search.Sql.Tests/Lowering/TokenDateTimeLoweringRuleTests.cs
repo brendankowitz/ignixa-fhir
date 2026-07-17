@@ -43,6 +43,7 @@ public class TokenDateTimeLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)403);
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenDateTimeCompositeSearchParam");
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var tokenPredicate = and.Left.ShouldBeOfType<Predicate.Equal>();

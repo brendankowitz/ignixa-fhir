@@ -42,6 +42,7 @@ public class TokenStringLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)401);
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenStringCompositeSearchParam");
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var tokenPredicate = and.Left.ShouldBeOfType<Predicate.Equal>();
@@ -71,6 +72,7 @@ public class TokenStringLoweringRuleTests
         var cte = TokenStringLoweringRule.Lower(composite, components, ContextResolving(composite, 401), 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var stringPredicate = and.Right.ShouldBeOfType<Predicate.Like>();
         stringPredicate.Column.Column.ShouldBe("TextOverflow2");

@@ -33,6 +33,7 @@ public class QuantityLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)202);
+        cte.ResourceTypeId.ShouldBe((short)103);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Column.Column.ShouldBe("LowValue");
         and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>().Column.Column.ShouldBe("HighValue");

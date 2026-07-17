@@ -31,6 +31,7 @@ public class UriLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)88);
+        cte.ResourceTypeId.ShouldBe((short)105);
         var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Column.ShouldBe("Uri");
         equal.Value.Value.ShouldBe("http://example.org/fhir/ValueSet/1");

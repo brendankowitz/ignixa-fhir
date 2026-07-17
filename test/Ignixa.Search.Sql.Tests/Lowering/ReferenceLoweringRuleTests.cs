@@ -30,6 +30,7 @@ public class ReferenceLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)77);
+        cte.ResourceTypeId.ShouldBe((short)104);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var typeEqual = and.Left.ShouldBeOfType<Predicate.Equal>();
         typeEqual.Column.Column.ShouldBe("ReferenceResourceTypeId");
@@ -56,6 +57,7 @@ public class ReferenceLoweringRuleTests
         var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context, 104);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)104);
         var idEqual = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         idEqual.Column.Column.ShouldBe("ReferenceResourceId");
     }

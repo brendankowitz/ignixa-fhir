@@ -32,6 +32,7 @@ public class NumberLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)201);
+        cte.ResourceTypeId.ShouldBe((short)103);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         ge.Column.Column.ShouldBe("LowValue");
@@ -52,6 +53,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
         var lt = or.Left.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("HighValue");
@@ -72,6 +74,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         ge.Column.Column.ShouldBe("LowValue");
         ge.Value.Value.ShouldBe(5.4m);
@@ -88,6 +91,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
         gt.Column.Column.ShouldBe("LowValue");
         gt.Value.Value.ShouldBe(5.4m);
@@ -104,6 +108,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
         gt.Column.Column.ShouldBe("LowValue");
         gt.Value.Value.ShouldBe(5.4m);
@@ -120,6 +125,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
         le.Column.Column.ShouldBe("HighValue");
         le.Value.Value.ShouldBe(5.4m);
@@ -136,6 +142,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("HighValue");
         lt.Value.Value.ShouldBe(5.4m);
@@ -152,6 +159,7 @@ public class NumberLoweringRuleTests
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
+        cte.ResourceTypeId.ShouldBe((short)103);
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("HighValue");
         lt.Value.Value.ShouldBe(5.4m);

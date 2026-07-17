@@ -41,6 +41,7 @@ public class TokenNumberNumberLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)302);
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenNumberNumberCompositeSearchParam");
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var inner = outer.Left.ShouldBeOfType<Predicate.And>();

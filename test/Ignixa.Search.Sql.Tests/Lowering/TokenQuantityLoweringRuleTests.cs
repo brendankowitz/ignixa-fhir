@@ -42,6 +42,7 @@ public class TokenQuantityLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)402);
+        cte.ResourceTypeId.ShouldBe((short)104);
         cte.Table.TableName.ShouldBe("TokenQuantityCompositeSearchParam");
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var tokenPredicate = and.Left.ShouldBeOfType<Predicate.Equal>();

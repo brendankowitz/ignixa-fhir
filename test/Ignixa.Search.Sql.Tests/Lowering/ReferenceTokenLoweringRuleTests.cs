@@ -44,6 +44,7 @@ public class ReferenceTokenLoweringRuleTests
 
         // Assert
         cte.SearchParamId.ShouldBe((short)404);
+        cte.ResourceTypeId.ShouldBe((short)55);
         cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var referencePredicate = outer.Left.ShouldBeOfType<Predicate.And>();
@@ -73,6 +74,7 @@ public class ReferenceTokenLoweringRuleTests
         // Assert -- identical shape AND identical bound values to the non-swapped case, proving
         // the reference's id/type land on the reference columns and the token's code lands on
         // Code2 regardless of which array position each component started at.
+        cte.ResourceTypeId.ShouldBe((short)55);
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var referencePredicate = outer.Left.ShouldBeOfType<Predicate.And>();
         referencePredicate.Left.ShouldBeOfType<Predicate.Equal>().Value.Value.ShouldBe((short)55);
