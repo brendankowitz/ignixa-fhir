@@ -7,9 +7,10 @@ namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
 /// The compiler's Lower stage: turns a bound Expression tree of ANDed/ORed
-/// SearchParameterPredicateExpression leaves and SearchParameterExpression-wrapped composites into a
-/// QueryPlan. Chain, include, and sort are not handled -- see this plan's global constraints
-/// for the full list and why.
+/// SearchParameterPredicateExpression leaves, SearchParameterExpression-wrapped composites, and
+/// ChainedExpression (forward and reverse chain, any nesting depth, dispatched to
+/// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan. Include and sort are not handled --
+/// see this plan's global constraints for the full list and why.
 /// </summary>
 public static class Lower
 {
