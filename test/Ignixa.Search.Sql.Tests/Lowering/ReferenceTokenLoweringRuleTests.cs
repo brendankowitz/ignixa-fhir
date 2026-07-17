@@ -47,10 +47,15 @@ public class ReferenceTokenLoweringRuleTests
         cte.Table.TableName.ShouldBe("ReferenceTokenCompositeSearchParam");
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var referencePredicate = outer.Left.ShouldBeOfType<Predicate.And>();
-        referencePredicate.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceTypeId1");
-        referencePredicate.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceId1");
+        var typePredicate = referencePredicate.Left.ShouldBeOfType<Predicate.Equal>();
+        typePredicate.Column.Column.ShouldBe("ReferenceResourceTypeId1");
+        typePredicate.Value.Value.ShouldBe((short)55);
+        var idPredicate = referencePredicate.Right.ShouldBeOfType<Predicate.Equal>();
+        idPredicate.Column.Column.ShouldBe("ReferenceResourceId1");
+        idPredicate.Value.Value.ShouldBe("456");
         var tokenPredicate = outer.Right.ShouldBeOfType<Predicate.Equal>();
         tokenPredicate.Column.Column.ShouldBe("Code2");
+        tokenPredicate.Value.Value.ShouldBe("replaces");
     }
 
     [Fact]
@@ -65,11 +70,18 @@ public class ReferenceTokenLoweringRuleTests
         // Act
         var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55));
 
-        // Assert -- identical shape to the non-swapped case
+        // Assert -- identical shape AND identical bound values to the non-swapped case, proving
+        // the reference's id/type land on the reference columns and the token's code lands on
+        // Code2 regardless of which array position each component started at.
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var referencePredicate = outer.Left.ShouldBeOfType<Predicate.And>();
-        referencePredicate.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceId1");
-        outer.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("Code2");
+        referencePredicate.Left.ShouldBeOfType<Predicate.Equal>().Value.Value.ShouldBe((short)55);
+        var idPredicate = referencePredicate.Right.ShouldBeOfType<Predicate.Equal>();
+        idPredicate.Column.Column.ShouldBe("ReferenceResourceId1");
+        idPredicate.Value.Value.ShouldBe("456");
+        var tokenPredicate = outer.Right.ShouldBeOfType<Predicate.Equal>();
+        tokenPredicate.Column.Column.ShouldBe("Code2");
+        tokenPredicate.Value.Value.ShouldBe("replaces");
     }
 
     [Fact]
