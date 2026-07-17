@@ -186,4 +186,38 @@ public class EmitTests
             "        WHERE cte1.T1 = cte0.T1 AND cte1.Sid1 = cte0.Sid1)");
         emitted.Sql.ShouldNotContain("Smith");
     }
+
+    [Fact]
+    public void GivenAnOuterPredicate_WhenEmitted_ThenJoinsToDboResourceAndAppliesTheWhereClause()
+    {
+        // Arrange
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
+            new CteRef(0),
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
+        emitted.Sql.ShouldContain("ResourceId =");
+        emitted.Sql.ShouldNotContain("123");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals("123"));
+    }
+
+    [Fact]
+    public void GivenNoOuterPredicate_WhenEmitted_ThenNoJoinToDboResourceAppears()
+    {
+        // Arrange
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
+            new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldNotContain("dbo.Resource");
+    }
 }

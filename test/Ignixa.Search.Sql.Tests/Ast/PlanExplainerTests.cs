@@ -124,4 +124,20 @@ public class PlanExplainerTests
             "cte1 = StringSearchParam[202]  Text = @p0\n" +
             "root = Except(cte0, cte1)");
     }
+
+    [Fact]
+    public void GivenAnOuterPredicate_WhenExplained_ThenAppendsWhereToTheRootLine()
+    {
+        // Arrange
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
+            new CteRef(0),
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = StringSearchParam[202]  Text = @p0 WHERE ResourceId = @p1");
+    }
 }

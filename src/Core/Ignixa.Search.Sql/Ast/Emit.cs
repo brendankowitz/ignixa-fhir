@@ -21,8 +21,13 @@ public static class Emit
         }
 
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
-        var sql = $";WITH {string.Join(",\n", cteBlocks)}\n" +
-                  $"SELECT {top}T1, Sid1 FROM cte{plan.Match.Index}";
+        var withClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
+        var sql = plan.OuterPredicate is null
+            ? withClause + $"SELECT {top}T1, Sid1 FROM cte{plan.Match.Index}"
+            : withClause +
+              $"SELECT {top}m.T1, m.Sid1 FROM cte{plan.Match.Index} m\n" +
+              $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
+              $"WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
 
         return new EmittedSql(sql, parameters);
     }

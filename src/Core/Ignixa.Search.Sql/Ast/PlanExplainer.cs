@@ -20,7 +20,13 @@ public static class PlanExplainer
             var isRoot = i == plan.Match.Index;
             var label = isRoot ? "root" : $"cte{i}";
             var top = isRoot ? plan.Top : null;
-            lines.Add($"{label} = {PrintCte(plan.Ctes[i], top, ref parameterOrdinal)}");
+            var line = $"{label} = {PrintCte(plan.Ctes[i], top, ref parameterOrdinal)}";
+            if (isRoot && plan.OuterPredicate is not null)
+            {
+                line += $" WHERE {PrintPredicate(plan.OuterPredicate, ref parameterOrdinal)}";
+            }
+
+            lines.Add(line);
         }
 
         return string.Join('\n', lines);
