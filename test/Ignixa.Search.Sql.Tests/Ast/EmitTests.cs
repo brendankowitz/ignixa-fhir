@@ -147,4 +147,40 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldContain("(HighValue < @p0 OR LowValue > @p1)");
     }
+
+    [Fact]
+    public void GivenAResourceSourceCte_WhenEmitted_ThenSelectsFromDboResourceFilteredByType()
+    {
+        // Arrange
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("FROM dbo.Resource");
+        emitted.Sql.ShouldContain("IsHistory = 0");
+        emitted.Sql.ShouldContain("IsDeleted = 0");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals((short)103));
+    }
+
+    [Fact]
+    public void GivenAnExceptCte_WhenEmitted_ThenUsesNotExistsAntiJoin()
+    {
+        // Arrange
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
+                new CteDefinition.Except(new CteRef(0), new CteRef(1)),
+            ],
+            new CteRef(2));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("NOT EXISTS");
+        emitted.Sql.ShouldNotContain("Smith");
+    }
 }

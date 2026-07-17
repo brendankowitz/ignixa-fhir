@@ -36,6 +36,13 @@ public static class Emit
             $"    INNER JOIN cte{x.Right.Index} ON cte{x.Left.Index}.T1 = cte{x.Right.Index}.T1 AND cte{x.Left.Index}.Sid1 = cte{x.Right.Index}.Sid1",
         CteDefinition.Union u =>
             string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM cte{r.Index}")),
+        CteDefinition.ResourceSource rs => EmitResourceSource(rs, parameters),
+        CteDefinition.Except ex =>
+            $"    SELECT cte{ex.Left.Index}.T1, cte{ex.Left.Index}.Sid1\n" +
+            $"    FROM cte{ex.Left.Index}\n" +
+            $"    WHERE NOT EXISTS (\n" +
+            $"        SELECT 1 FROM cte{ex.Right.Index}\n" +
+            $"        WHERE cte{ex.Right.Index}.T1 = cte{ex.Left.Index}.T1 AND cte{ex.Right.Index}.Sid1 = cte{ex.Left.Index}.Sid1)",
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -43,6 +50,11 @@ public static class Emit
         => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
            $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
            $"    WHERE SearchParamId = {p.SearchParamId} AND {EmitPredicate(p.Predicate, parameters)}";
+
+    private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
+        => $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+           $"    FROM dbo.Resource\n" +
+           $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0";
 
     private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch
     {
