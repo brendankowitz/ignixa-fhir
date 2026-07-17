@@ -179,8 +179,11 @@ public class EmitTests
         // Act
         var emitted = Emit.Run(plan);
 
-        // Assert
-        emitted.Sql.ShouldContain("NOT EXISTS");
+        // Assert -- correlates on BOTH T1 and Sid1, not Sid1 alone (matters once cross-resource-type
+        // queries exist; correct by construction here, not by accident of this test's single-type scope)
+        emitted.Sql.ShouldContain("WHERE NOT EXISTS (\n" +
+            "        SELECT 1 FROM cte1\n" +
+            "        WHERE cte1.T1 = cte0.T1 AND cte1.Sid1 = cte0.Sid1)");
         emitted.Sql.ShouldNotContain("Smith");
     }
 }
