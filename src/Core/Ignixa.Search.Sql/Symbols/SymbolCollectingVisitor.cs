@@ -21,10 +21,14 @@ namespace Ignixa.Search.Sql.Symbols;
 /// deliberately not collected here: the design doc's <c>ResourceSource</c>/<c>ParamSource</c> nodes that
 /// need it are synthesized by Lower (Phase 5) from context this visitor does not have -- notably the
 /// query's own target resource type, which lives on the surrounding SemanticQuery, not anywhere in this
-/// <see cref="Expression"/> tree. The one narrow exception is <see cref="ReferenceSearchValue.ResourceType"/>,
-/// which -- when present -- lives directly on a leaf this visitor already walks, so it is collected here too
-/// (task 8); chain/compartment target-type resolution remains Phase 6/8's job. See Resolve's remarks for
-/// the full argument.
+/// <see cref="Expression"/> tree. Two narrow exceptions collect resource-type identity directly from a
+/// leaf this visitor already walks: <see cref="ReferenceSearchValue.ResourceType"/>, when present (task
+/// 8); and a <c>_type</c> predicate's own <see cref="TokenSearchValue.Code"/> -- unlike <c>_id</c>'s
+/// value (an opaque string, never a resource-type identity) or <c>_lastUpdated</c>'s (a timestamp),
+/// <c>_type</c>'s value names the very resource type <c>ResourceColumnLoweringRule.TryLower</c>'s
+/// <c>TypeEquals</c> arm needs to resolve, so without collecting it here every <c>_type</c> value other
+/// than the query's own <c>targetResourceType</c> would throw. Chain/compartment target-type resolution
+/// remains Phase 6/8's job. See Resolve's remarks for the full argument.
 /// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 {
@@ -38,6 +42,11 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         if (expression.Value is ReferenceSearchValue { ResourceType: { Length: > 0 } resourceType })
         {
             ResourceTypes.Add(resourceType);
+        }
+
+        if (expression.Parameter.Code == "_type" && expression.Value is TokenSearchValue { Code: { Length: > 0 } typeCode })
+        {
+            ResourceTypes.Add(typeCode);
         }
 
         return expression;

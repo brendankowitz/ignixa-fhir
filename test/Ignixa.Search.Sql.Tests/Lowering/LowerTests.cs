@@ -81,19 +81,41 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenANotExpressionWithNoTargetResourceTypeSupplied_WhenLowered_ThenThrowsRatherThanSilentlyDroppingIt()
+    public void GivenABareNotExpressionOutsideASearchParameterExpressionWrapper_WhenLowered_ThenThrowsBecauseTheGenericDispatcherRejectsIt()
     {
-        // Arrange -- NotExpression itself IS supported by Lower now (see :not's ResourceSource/Except
-        // wiring), but its ResourceSource seed needs a targetResourceType, and this call uses the
-        // 2-arg Lower.Run overload, which defaults it to null -- still throws, now for that reason
-        // rather than "NotExpression is unsupported".
+        // Arrange -- :not is only wired up inside LowerSearchParameter (reached via the
+        // SearchParameterExpression case), which the real binder always uses to carry a
+        // NotExpression. A bare, unwrapped NotExpression matches none of LowerNode's switch arms
+        // (it isn't a SearchParameterPredicateExpression, SearchParameterExpression, or
+        // MultiaryExpression), so it falls to the generic "Lower does not support X yet" throw --
+        // this happens regardless of targetResourceType, which this call deliberately omits to
+        // keep that irrelevant. (A prior version of this test/comment incorrectly attributed the
+        // throw to a missing targetResourceType; that path is covered separately below.)
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
         var notExpression = Expression.Not(predicate);
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols));
+        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols))
+            .Message.ShouldContain("does not support");
+    }
+
+    [Fact]
+    public void GivenAProperlyWrappedNotExpressionWithNoTargetResourceTypeSupplied_WhenLowered_ThenThrowsBecauseResourceSourceNeedsIt()
+    {
+        // Arrange -- name:not=Smith as the real binder actually produces it (SearchParameterExpression
+        // wrapping a NotExpression). This genuinely reaches :not's ResourceSource/Except wiring, whose
+        // ResourceSource seed needs a targetResourceType -- Lower.Run's 2-arg overload defaults it to
+        // null, so StructuralContext.ResolveTargetResourceTypeId throws.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var tree = new SearchParameterExpression(parameter, Expression.Not(predicate));
+        var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => Lower.Run(tree, symbols))
+            .Message.ShouldContain("target resource type");
     }
 
     [Fact]

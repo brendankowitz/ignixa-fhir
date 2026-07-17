@@ -111,6 +111,26 @@ public class ResolveTests
     }
 
     [Fact]
+    public async Task GivenATypePredicate_WhenResolved_ThenSymbolTableHasItsOwnValuesResourceTypeId()
+    {
+        // Arrange -- _type=Observation, where the query's own targetResourceType is a DIFFERENT type
+        // ("Patient") than the _type value being searched for -- a non-tautological case. Without
+        // collecting _type's own TokenSearchValue.Code, ResourceColumnLoweringRule.TypeEquals would
+        // find no "Observation" entry in the SymbolTable and throw KeyNotFoundException.
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        var predicate = new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Observation", text: null));
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None, targetResourceType: "Patient");
+
+        // Assert
+        symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
+    }
+
+    [Fact]
     public async Task GivenATargetResourceType_WhenResolved_ThenSymbolTableHasItsResourceTypeIdEvenWithNoReferenceInTheTree()
     {
         // Arrange -- a plain String predicate, nothing in the tree itself mentions "Patient"

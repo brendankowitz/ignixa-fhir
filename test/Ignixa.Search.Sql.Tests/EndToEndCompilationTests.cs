@@ -480,6 +480,34 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
+    public async Task GivenATypeQueryForADifferentResourceTypeThanTheTarget_WhenCompiled_ThenResolvesTheValuesOwnResourceTypeId()
+    {
+        // Arrange -- Patient?_type=Observation. Non-tautological on purpose: the query's own
+        // targetResourceType ("Patient") differs from _type's value ("Observation"), so this only
+        // compiles if Resolve collects _type's own TokenSearchValue.Code into the SymbolTable's
+        // resource-type set -- targetResourceType alone would only ever resolve "Patient".
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        var tree = new SearchParameterExpression(
+            typeParam,
+            new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Observation", text: null)));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- ResourceSource seeds from the query's own target (Patient, 103); the outer WHERE
+        // filters on _type's resolved value (Observation, 104) -- two different resolved ids in one plan.
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceTypeId = @p1");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals((short)104));
+    }
+
+    [Fact]
     public async Task GivenAPatientIdAndActiveQuery_WhenCompiled_ThenLowersActiveNormallyAndAppliesIdAsAnOuterFilter()
     {
         // Arrange -- Patient?_id=123&active=true
