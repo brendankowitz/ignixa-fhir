@@ -13,33 +13,31 @@ public sealed class StructuralContext
 {
     private readonly List<CteDefinition> _ctes = [];
     private readonly LeafContext _leafContext;
-    private readonly string _targetResourceType;
 
-    public StructuralContext(SymbolTable symbols, string targetResourceType)
+    public StructuralContext(SymbolTable symbols)
     {
         _leafContext = new LeafContext(symbols);
-        _targetResourceType = targetResourceType;
     }
 
     public IReadOnlyList<CteDefinition> Ctes => _ctes;
 
-    public CteRef Lower(SearchParameterPredicateExpression predicate)
+    public CteRef Lower(SearchParameterPredicateExpression predicate, string resourceType)
     {
         RejectResourceColumnCode(predicate.Parameter.Code);
-        var resourceTypeId = _leafContext.ResourceTypeId(_targetResourceType);
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
     }
 
-    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components)
+    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string resourceType)
     {
         foreach (var component in components)
         {
             RejectResourceColumnCode(component.ComponentSearchParameter.Code);
         }
 
-        var resourceTypeId = _leafContext.ResourceTypeId(_targetResourceType);
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
@@ -72,19 +70,17 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
-    public CteRef LowerResourceSource()
+    public CteRef LowerResourceSource(string resourceType)
     {
-        var resourceTypeId = ResolveTargetResourceTypeId();
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         _ctes.Add(new CteDefinition.ResourceSource(resourceTypeId));
         return new CteRef(_ctes.Count - 1);
     }
 
-    public CteRef LowerNot(CteRef innerMatch)
+    public CteRef LowerNot(CteRef innerMatch, string resourceType)
     {
-        var baseRef = LowerResourceSource();
+        var baseRef = LowerResourceSource(resourceType);
         _ctes.Add(new CteDefinition.Except(baseRef, innerMatch));
         return new CteRef(_ctes.Count - 1);
     }
-
-    private short ResolveTargetResourceTypeId() => _leafContext.ResourceTypeId(_targetResourceType);
 }

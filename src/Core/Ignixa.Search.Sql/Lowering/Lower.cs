@@ -17,45 +17,45 @@ public static class Lower
     {
         var leafContext = new LeafContext(symbols);
         var (remaining, outerPredicate) = ExtractResourceColumnPredicates(expression, leafContext);
-        var context = new StructuralContext(symbols, targetResourceType);
+        var context = new StructuralContext(symbols);
         var match = remaining is null
-            ? context.LowerResourceSource()
-            : LowerNode(remaining, context);
+            ? context.LowerResourceSource(targetResourceType)
+            : LowerNode(remaining, context, targetResourceType);
         return new QueryPlan(context.Ctes, match, top, outerPredicate);
     }
 
-    private static CteRef LowerNode(Expression expression, StructuralContext context) => expression switch
+    private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
             "A :not-modified predicate reached leaf dispatch directly, outside a SearchParameterExpression wrapper -- " +
             "the real binder never produces this shape (LowerSearchParameter handles :not for both the single-value " +
             "and comma-separated cases), so this is unexpected input. Throwing rather than silently lowering it as a " +
             "positive match, which is exactly the bug this guard exists to prevent."),
-        SearchParameterPredicateExpression leaf => context.Lower(leaf),
-        SearchParameterExpression sp => LowerSearchParameter(sp, context),
-        MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context),
+        SearchParameterPredicateExpression leaf => context.Lower(leaf, resourceType),
+        SearchParameterExpression sp => LowerSearchParameter(sp, context, resourceType),
+        MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
-            or.Expressions.Select(e => LowerNode(e, context)).ToList()),
+            or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };
 
-    private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context)
+    private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string resourceType)
     {
         if (sp.Expression is NotExpression not)
         {
-            return context.LowerNot(LowerNode(not.Expression, context));
+            return context.LowerNot(LowerNode(not.Expression, context, resourceType), resourceType);
         }
 
         if (sp.Expression is SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } predicate)
         {
             var positiveMatch = new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value);
-            return context.LowerNot(context.Lower(positiveMatch));
+            return context.LowerNot(context.Lower(positiveMatch, resourceType), resourceType);
         }
 
         if (TryGetCompositeComponents(sp.Expression, out var components))
         {
-            return context.LowerComposite(sp.Parameter, components!);
+            return context.LowerComposite(sp.Parameter, components!, resourceType);
         }
 
         if (sp.Expression is MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or
@@ -66,13 +66,13 @@ public static class Lower
                 .Select(e =>
                 {
                     TryGetCompositeComponents(e, out var alt);
-                    return context.LowerComposite(sp.Parameter, alt!);
+                    return context.LowerComposite(sp.Parameter, alt!, resourceType);
                 })
                 .ToList();
             return context.Union(refs);
         }
 
-        return LowerNode(sp.Expression, context);
+        return LowerNode(sp.Expression, context, resourceType);
     }
 
     private static bool TryGetCompositeComponents(Expression expression, out IReadOnlyList<CompositeComponentExpression>? components)
@@ -89,9 +89,9 @@ public static class Lower
         return false;
     }
 
-    private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context)
+    private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string resourceType)
     {
-        var refs = and.Expressions.Select(e => LowerNode(e, context)).ToList();
+        var refs = and.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList();
         var result = refs[0];
         for (var i = 1; i < refs.Count; i++)
         {
