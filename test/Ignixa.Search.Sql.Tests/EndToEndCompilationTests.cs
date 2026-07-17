@@ -454,4 +454,56 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("Jones");
         emitted.Sql.ShouldNotContain("true");
     }
+
+    [Fact]
+    public async Task GivenAPatientIdOnlyQuery_WhenCompiled_ThenUsesResourceSourceAsTheBaseSetWithAnOuterIdFilter()
+    {
+        // Arrange -- Patient?_id=123 (no other search parameters)
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null)));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- ResourceSource's own ResourceTypeId consumes @p0 (it's a real bound parameter in
+        // Emit, and PlanExplainer's ordinal counter now accounts for it too), so the outer predicate is @p1
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceId = @p1");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
+        emitted.Sql.ShouldNotContain("123");
+    }
+
+    [Fact]
+    public async Task GivenAPatientIdAndActiveQuery_WhenCompiled_ThenLowersActiveNormallyAndAppliesIdAsAnOuterFilter()
+    {
+        // Arrange -- Patient?_id=123&active=true
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null))),
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null)),
+        ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(tree, resolver, CancellationToken.None, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
+        var emitted = Emit.Run(plan);
+
+        // Assert -- only `active` becomes a CTE; `_id` becomes the outer WHERE
+        plan.Explain().ShouldBe("root = TokenSearchParam[44]  Code = @p0 WHERE ResourceId = @p1");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
+        emitted.Sql.ShouldNotContain("123");
+        emitted.Sql.ShouldNotContain("true");
+    }
 }

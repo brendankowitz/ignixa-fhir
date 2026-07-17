@@ -15,9 +15,13 @@ public static class Lower
 {
     public static QueryPlan Run(Expression expression, SymbolTable symbols, int? top = null, string? targetResourceType = null)
     {
+        var leafContext = new LeafContext(symbols);
+        var (remaining, outerPredicate) = ExtractResourceColumnPredicates(expression, leafContext);
         var context = new StructuralContext(symbols, targetResourceType);
-        var match = LowerNode(expression, context);
-        return new QueryPlan(context.Ctes, match, top);
+        var match = remaining is null
+            ? context.LowerResourceSource()
+            : LowerNode(remaining, context);
+        return new QueryPlan(context.Ctes, match, top, outerPredicate);
     }
 
     private static CteRef LowerNode(Expression expression, StructuralContext context) => expression switch
@@ -95,4 +99,40 @@ public static class Lower
         }
         return result;
     }
+
+    private static (Expression? Remaining, Predicate? OuterPredicate) ExtractResourceColumnPredicates(Expression expression, LeafContext leafContext)
+    {
+        if (expression is MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and)
+        {
+            var kept = new List<Expression>();
+            Predicate? outer = null;
+            foreach (var child in and.Expressions)
+            {
+                var resourcePredicate = TryExtractResourceColumnPredicate(child, leafContext);
+                outer = resourcePredicate is null
+                    ? outer
+                    : outer is null ? resourcePredicate : new Predicate.And(outer, resourcePredicate);
+                if (resourcePredicate is null)
+                {
+                    kept.Add(child);
+                }
+            }
+
+            Expression? remaining = kept.Count switch
+            {
+                0 => null,
+                1 => kept[0],
+                _ => new MultiaryExpression(MultiaryOperator.And, kept),
+            };
+            return (remaining, outer);
+        }
+
+        var single = TryExtractResourceColumnPredicate(expression, leafContext);
+        return single is null ? (expression, null) : (null, single);
+    }
+
+    private static Predicate? TryExtractResourceColumnPredicate(Expression expression, LeafContext leafContext)
+        => expression is SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate }
+            ? ResourceColumnLoweringRule.TryLower(predicate, leafContext)
+            : null;
 }

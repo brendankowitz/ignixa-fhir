@@ -1080,8 +1080,9 @@ Add to `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs`:
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
         var emitted = Emit.Run(plan);
 
-        // Assert
-        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceId = @p0");
+        // Assert -- ResourceSource's own ResourceTypeId consumes @p0 (it's a real bound parameter in
+        // Emit, and PlanExplainer's ordinal counter now accounts for it too), so the outer predicate is @p1
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceId = @p1");
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
         emitted.Sql.ShouldNotContain("123");
     }
@@ -1292,8 +1293,8 @@ Add to `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs`:
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
         var emitted = Emit.Run(plan);
 
-        // Assert
-        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceSurrogateId >= @p0");
+        // Assert -- ResourceSource's own ResourceTypeId consumes @p0, so the outer predicate is @p1
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceSurrogateId >= @p1");
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
         var expectedTicks = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks;
         emitted.Parameters.ShouldContain(p => p.Value.Equals(expectedTicks << 3));
@@ -1364,11 +1365,12 @@ Add to `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs`:
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient");
         var emitted = Emit.Run(plan);
 
-        // Assert -- the :not's ResourceSource+Except becomes the match CTE; _id becomes the outer WHERE
+        // Assert -- the :not's ResourceSource+Except becomes the match CTE; _id becomes the outer WHERE.
+        // ResourceSource's own ResourceTypeId consumes @p0, so Text is @p1 and the outer ResourceId is @p2.
         plan.Explain().ShouldBe(
             "cte0 = ResourceSource[103]\n" +
-            "cte1 = StringSearchParam[202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
-            "root = Except(cte0, cte1) WHERE ResourceId = @p1");
+            "cte1 = StringSearchParam[202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
+            "root = Except(cte0, cte1) WHERE ResourceId = @p2");
         emitted.Sql.ShouldContain("NOT EXISTS");
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
         emitted.Sql.ShouldNotContain("Smith");
