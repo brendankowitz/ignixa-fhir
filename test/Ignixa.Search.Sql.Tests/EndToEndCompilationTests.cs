@@ -927,7 +927,17 @@ public class EndToEndCompilationTests
         var emitted = Emit.Run(plan);
 
         // Assert -- _id is extracted to the outer WHERE (top-level mechanism, unchanged); active and
-        // the chain intersect into the match CTE.
+        // the chain intersect into the match CTE. Explain() pins the exact shape (a task review found
+        // the ShouldContain checks below, on their own, would pass identically whether `active` was
+        // correctly compiled or silently dropped from the AND entirely -- the exact "predicate
+        // silently dropped" bug class this codebase has hit repeatedly. The Explain() assertion is
+        // what actually proves all three mechanisms survived into the plan, not just that compilation
+        // didn't throw.)
+        plan.Explain().ShouldBe(
+            "cte0 = TokenSearchParam[103,44]  Code = @p0\n" +
+            "cte1 = StringSearchParam[105,202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
+            "cte2 = ChainJoin(cte1, ref=55, inner=105, output=[103], Forward)\n" +
+            "root = Intersect(cte0, cte2) WHERE ResourceId = @p2");
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1");
         emitted.Sql.ShouldContain("FROM dbo.ReferenceSearchParam rsp");
         plan.OuterPredicate.ShouldNotBeNull();
