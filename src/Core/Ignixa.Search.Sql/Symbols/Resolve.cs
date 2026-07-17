@@ -26,12 +26,16 @@ namespace Ignixa.Search.Sql.Symbols;
 /// detail of *how* the id was found, invisible once resolved.
 /// </para>
 /// <para>
-/// <b>Resource-type resolution</b> is out of scope for this stage beyond one narrow exception: see
-/// <see cref="SymbolCollectingVisitor"/>'s remarks. <see cref="RunAsync"/> resolves
+/// <b>Resource-type resolution</b> is out of scope for this stage beyond two narrow exceptions:
+/// see <see cref="SymbolCollectingVisitor"/>'s remarks. <see cref="RunAsync"/> resolves
 /// <c>ResourceTypeId</c> for any resource type collected via <see cref="ReferenceSearchValue"/>
-/// leaves (task 8); it still does not resolve resource types touched only by chain/compartment
-/// context (the query's own target resource type, chain target types, etc.) that does not exist on
-/// this <see cref="Expression"/> tree -- that generalization is Phase 5/6/8's job.
+/// leaves (task 8), and for the caller-supplied <c>targetResourceType</c> (if provided), which
+/// represents the query's own target resource type (e.g., "Patient" for a Patient?... search).
+/// Since the query's own target type does not appear anywhere on the <see cref="Expression"/> tree
+/// itself, callers needing ResourceSource (task 5's :not, task 6's resource-column predicates)
+/// must supply it explicitly. Resolve still does not resolve resource types touched only by
+/// chain/compartment context (chain target types, etc.) that do not exist on this
+/// <see cref="Expression"/> tree -- that generalization is Phase 5/6/8's job.
 /// </para>
 /// </remarks>
 public static class Resolve
@@ -39,7 +43,8 @@ public static class Resolve
     public static async Task<SymbolTable> RunAsync(
         Expression expression,
         ISymbolResolver resolver,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? targetResourceType = null)
     {
         ArgumentNullException.ThrowIfNull(expression);
         ArgumentNullException.ThrowIfNull(resolver);
@@ -61,8 +66,14 @@ public static class Resolve
             // not to validate the tree is fully resolvable.
         }
 
+        var resourceTypes = new HashSet<string>(collector.ResourceTypes);
+        if (targetResourceType is not null)
+        {
+            resourceTypes.Add(targetResourceType);
+        }
+
         var resourceTypeIds = new Dictionary<string, short>();
-        foreach (var resourceType in collector.ResourceTypes)
+        foreach (var resourceType in resourceTypes)
         {
             var id = await resolver.GetResourceTypeIdAsync(resourceType, cancellationToken);
             if (id.HasValue)

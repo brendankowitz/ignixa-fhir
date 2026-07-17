@@ -110,6 +110,23 @@ public class ResolveTests
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
     }
 
+    [Fact]
+    public async Task GivenATargetResourceType_WhenResolved_ThenSymbolTableHasItsResourceTypeIdEvenWithNoReferenceInTheTree()
+    {
+        // Arrange -- a plain String predicate, nothing in the tree itself mentions "Patient"
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[parameter.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(predicate, resolver, CancellationToken.None, targetResourceType: "Patient");
+
+        // Assert
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+    }
+
     /// <summary>
     /// An in-memory, dictionary-backed <see cref="ISymbolResolver"/> -- not a mock, a real (if
     /// trivial) implementation, matching this repo's testing philosophy of exercising real
