@@ -7,6 +7,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
+using SortOrder = Ignixa.Search.Expressions.SortOrder;
 
 namespace Ignixa.Search.Sql.Tests;
 
@@ -1278,6 +1279,177 @@ public class EndToEndCompilationTests
         Should.Throw<NotSupportedException>(() =>
             Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("zero membership");
+    }
+
+    [Fact]
+    public async Task GivenAPatientSearchSortedByName_WhenCompiledEndToEnd_ThenTheMatchGainsAnIsMinJoinAndAnOrderBy()
+    {
+        // Arrange -- Patient?name=Smith&_sort=name, first page.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            predicate, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 10);
+
+        // Assert
+        plan.Explain().ShouldContain("sort = SortSpec([String:202 ASC], Valued)");
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenAPatientSearchSortedByNameWithAnInclude_WhenCompiledEndToEnd_ThenIncludeStageMachineryIsUnchangedAndTheOuterUnionCarriesTheSortValue()
+    {
+        // Arrange -- Patient?_sort=name&_include=Patient:organization, proving §4's "IncludeStage
+        // needs zero changes" composability claim through the real pipeline, not just Emit in isolation.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            expression: null, includes: [include], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000,
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 50);
+
+        // Assert -- IncludeStage's own fields are exactly what Phase 7 already produces; no new field.
+        plan.Includes!.Count.ShouldBe(1);
+        plan.Includes[0].SeedFromMatch.ShouldBeTrue();
+        plan.Includes[0].SeedStages.ShouldBeEmpty();
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("cteMatchPage AS (");
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain(
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
+        emitted.Sql.ShouldContain("SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenAPatientSearchSortedByNameAscendingThenBirthdateDescending_WhenCompiledEndToEnd_ThenBothKeysAppearWithTheCorrectJoinTypesAndDirections()
+    {
+        // Arrange -- Patient?_sort=name,-birthdate.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var birthDateParam = new SearchParameterInfo("birthdate", "birthdate", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Patient-birthdate"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[birthDateParam.Url!.ToString()] = 303;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        var sortExpressions = new List<SortExpression>
+        {
+            new(nameParam, SortOrder.Ascending),
+            new(birthDateParam, SortOrder.Descending),
+        };
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            expression: null, includes: [], revIncludes: [], sort: sortExpressions, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: sortExpressions, sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Sort!.Keys.Count.ShouldBe(2);
+        plan.Sort.Keys[0].Kind.ShouldBe(SortKeyKind.String);
+        plan.Sort.Keys[1].Kind.ShouldBe(SortKeyKind.Date);
+        plan.Sort.Keys[1].Direction.ShouldBe(SortOrder.Descending);
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain("LEFT JOIN dbo.DateTimeSearchParam sk1");
+        emitted.Sql.ShouldContain("sk1.IsMax = 1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenACompartmentSearchSortedByName_WhenCompiledEndToEnd_ThenTheSortDecorationComposesWithTheCompartmentUnionRoot()
+    {
+        // Arrange -- GET /Patient/123/Observation?_sort=name -- proves the #5672-class fhir-server bug
+        // (SMART compartment + _sort by a parameter returning empty results) does not apply here: a
+        // compartment match root is just another Union CteRef, sort-agnostic, composed for free.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Observation-name"));
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Observation", CancellationToken.None, compartmentManager, searchParamManager);
+        var plan = Lower.Run(
+            compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert -- the match is the compartment's own Union; sort still decorates cleanly on top.
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenTheMissingPrimaryPhaseWithAPageBoundary_WhenCompiledEndToEnd_ThenTheSeekPredicateIsSidOnly()
+    {
+        // Arrange -- Patient?_sort=name, second (missing-name) phase, resuming after a prior page.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            expression: null, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Patient", CancellationToken.None);
+        var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(7000L));
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.MissingPrimary, page: page, top: 10);
+
+        // Assert -- ResourceSource's own ResourceTypeId is itself a bound parameter (@p0, same accounting
+        // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's own two
+        // boundary parameters are @p1/@p2, not @p0/@p1.
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain("WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)");
+        emitted.Sql.ShouldContain("(m.T1 = @p1 AND m.Sid1 > @p2)");
+        emitted.Sql.ShouldContain("(m.T1 > @p1)");
     }
 
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
