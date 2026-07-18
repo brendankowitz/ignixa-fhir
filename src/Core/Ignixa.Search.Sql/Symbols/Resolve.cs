@@ -30,20 +30,22 @@ namespace Ignixa.Search.Sql.Symbols;
 /// </para>
 /// <para>
 /// <b>Resource-type resolution</b> is out of scope for this stage beyond the caller-supplied
-/// <c>targetResourceType</c>, which is mandatory and always resolved: it represents the query's own
+/// <c>targetResourceType</c>, which is now nullable (matching Lower.Run's own Phase 8 part 1 widening
+/// for the wildcard-compartment-search case): when not null, it represents the query's own
 /// target resource type (e.g., "Patient" for a Patient?... search), and every ordinary leaf/composite
 /// predicate needs it to constrain <see cref="Ignixa.Search.Sql.Ast.CteDefinition.ParamSource"/>'s
 /// <c>ResourceTypeId</c> (a <c>SearchParamId</c> is assigned per search-parameter-definition URL, not
 /// per resource type, so a shared definition could otherwise match rows of the wrong resource type).
-/// Since the query's own target type does not appear anywhere on the <see cref="Expression"/> tree
-/// itself, callers must always supply it explicitly. Beyond that mandatory case, resolution extends
-/// to whatever <see cref="SymbolCollectingVisitor"/> collects into <c>ResourceTypes</c> -- see that
-/// type's remarks for the full list, which now includes <see cref="ReferenceSearchValue"/> leaves, a
-/// <c>_type</c> predicate's own value, and (as of Phase 6) a <see cref="ChainedExpression"/>'s
-/// <c>ReferenceSearchParameter</c> and both its <c>ResourceTypes</c>/<c>TargetResourceTypes</c> arrays.
-/// As of Phase 7, resolution also extends to every <see cref="IncludeExpression"/> passed via the
-/// includes/revIncludes parameters -- see SymbolCollectingVisitor.CollectInclude's remarks for the
-/// exact fields collected.
+/// When null, only resource types collected from the tree/includes/sort/compartments are resolved,
+/// with no forced addition. Beyond that, resolution extends to whatever <see cref="SymbolCollectingVisitor"/>
+/// collects into <c>ResourceTypes</c> -- see that type's remarks for the full list, which now includes
+/// <see cref="ReferenceSearchValue"/> leaves, a <c>_type</c> predicate's own value, and (as of Phase 6)
+/// a <see cref="ChainedExpression"/>'s <c>ReferenceSearchParameter</c> and both its
+/// <c>ResourceTypes</c>/<c>TargetResourceTypes</c> arrays. As of Phase 7, resolution also extends to
+/// every <see cref="IncludeExpression"/> passed via the includes/revIncludes parameters -- see
+/// SymbolCollectingVisitor.CollectInclude's remarks for the exact fields collected.
+/// As of Phase 8 part 2, resolution also extends to every <see cref="SortExpression"/> passed via the
+/// sort parameter -- see SymbolCollectingVisitor.CollectSort's remarks.
 /// As of Phase 8, Resolve also expands every SymbolCollectingVisitor.Compartments entry via
 /// ICompartmentDefinitionManager/ISearchParameterDefinitionManager (both optional, required only when
 /// a compartment search is actually present) into SymbolTable.CompartmentMembership -- see that
@@ -56,16 +58,17 @@ public static class Resolve
         Expression? expression,
         IReadOnlyList<IncludeExpression> includes,
         IReadOnlyList<IncludeExpression> revIncludes,
+        IReadOnlyList<SortExpression> sort,
         ISymbolResolver resolver,
-        string targetResourceType,
+        string? targetResourceType,
         CancellationToken cancellationToken,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null)
     {
         ArgumentNullException.ThrowIfNull(includes);
         ArgumentNullException.ThrowIfNull(revIncludes);
+        ArgumentNullException.ThrowIfNull(sort);
         ArgumentNullException.ThrowIfNull(resolver);
-        ArgumentNullException.ThrowIfNull(targetResourceType);
 
         var collector = new SymbolCollectingVisitor();
         if (expression is not null)
@@ -83,6 +86,11 @@ public static class Resolve
             collector.CollectInclude(revInclude);
         }
 
+        foreach (var sortExpression in sort)
+        {
+            collector.CollectSort(sortExpression);
+        }
+
         var compartmentMembership = ResolveCompartmentMembership(collector, compartmentDefinitionManager, searchParameterDefinitionManager);
 
         var searchParamIds = new Dictionary<string, short>();
@@ -96,7 +104,10 @@ public static class Resolve
         }
 
         var resourceTypes = new HashSet<string>(collector.ResourceTypes);
-        resourceTypes.Add(targetResourceType);
+        if (targetResourceType is not null)
+        {
+            resourceTypes.Add(targetResourceType);
+        }
 
         var resourceTypeIds = new Dictionary<string, short>();
         foreach (var resourceType in resourceTypes)

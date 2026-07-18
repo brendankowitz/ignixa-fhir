@@ -10,11 +10,13 @@ namespace Ignixa.Search.Sql.Lowering;
 /// SearchParameterPredicateExpression leaves, SearchParameterExpression-wrapped composites, and
 /// ChainedExpression (forward and reverse chain, any nesting depth, dispatched to
 /// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan, and includes/revIncludes (via
-/// BuildIncludeStages, Phase 7) into QueryPlan.Includes. Sort is not handled -- see this plan's global
-/// constraints for why. As of Phase 8, CompartmentSearchExpression is also handled, via
+/// BuildIncludeStages, Phase 7) into QueryPlan.Includes. As of Phase 8, CompartmentSearchExpression is also handled, via
 /// StructuralContext.LowerCompartment, dispatched both from Run's top-level switch (the wildcard,
 /// no-single-scope case) and from LowerNode's ordinary switch (the non-wildcard case, reachable
-/// standalone or nested inside an And alongside ordinary predicates).
+/// standalone or nested inside an And alongside ordinary predicates). As of Phase 8 part 2,
+/// SortExpression/SortPhase/PageSpec are also handled, via BuildSortSpec -- SortPhase is a caller
+/// input (the executor drives the two-phase transition, matching fhir-server's own model), not
+/// something Lower computes by inspecting the query.
 /// </summary>
 public static class Lower
 {
@@ -25,6 +27,9 @@ public static class Lower
         IReadOnlyList<IncludeExpression> includes,
         IReadOnlyList<IncludeExpression> revIncludes,
         int includeLimit,
+        IReadOnlyList<SortExpression> sort,
+        SortPhase sortPhase,
+        PageSpec? page,
         int? top = null)
     {
         var context = new StructuralContext(symbols);
@@ -53,6 +58,14 @@ public static class Lower
             };
         }
 
+        if (targetResourceType is null && sort.Count > 0)
+        {
+            throw new NotSupportedException(
+                "_sort combined with a wildcard compartment search (no single target resource type) is not " +
+                "supported -- a SortSpec needs a single ResourceTypeId scope for its joins, the same reasoning " +
+                "already established for typed leaves and _include/_revinclude under a null scope.");
+        }
+
         IReadOnlyList<IncludeStage>? includeStages;
         if (targetResourceType is null)
         {
@@ -71,7 +84,9 @@ public static class Lower
             includeStages = BuildIncludeStages(includes, revIncludes, symbols, targetResourceType, includeLimit);
         }
 
-        return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages);
+        var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
+
+        return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page);
     }
 
     private static string RequireResourceType(string? targetResourceType)
@@ -277,6 +292,54 @@ public static class Lower
         // resolves) -- QueryPlan.Includes must stay null in that case, not an empty-but-non-null list,
         // to preserve "no Includes byte-identical to before this field existed" (QueryPlan.cs remarks).
         return stages.Count == 0 ? null : stages;
+    }
+
+    private static SortSpec? BuildSortSpec(IReadOnlyList<SortExpression> sort, SortPhase phase, SymbolTable symbols)
+    {
+        if (sort.Count == 0)
+        {
+            return null;
+        }
+
+        if (sort.Count > 3)
+        {
+            throw new NotSupportedException(
+                $"_sort supports at most 3 keys this phase (got {sort.Count}) -- a cap on per-request join cost " +
+                "and plan-shape risk, not an architectural limit. Rewrite the search to use 3 or fewer sort keys.");
+        }
+
+        var keys = sort.Select(s => BuildSortKey(s, symbols)).ToList();
+
+        if (phase == SortPhase.MissingPrimary && keys[0].Kind == SortKeyKind.LastUpdated)
+        {
+            throw new NotSupportedException(
+                "_lastUpdated is a resource-column sort key derived directly from ResourceSurrogateId -- " +
+                "it is never \"missing,\" so there is no MissingPrimary segment for it. Only a search-" +
+                "parameter-table primary key (String or Date) has a MissingPrimary phase.");
+        }
+
+        return new SortSpec(keys, phase);
+    }
+
+    private static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
+    {
+        if (sortExpression.Parameter.Code == "_lastUpdated")
+        {
+            return new SortKey(null, SortKeyKind.LastUpdated, sortExpression.SortOrder);
+        }
+
+        var kind = sortExpression.Parameter.Type switch
+        {
+            SearchParamType.String => SortKeyKind.String,
+            SearchParamType.Date => SortKeyKind.Date,
+            _ => throw new NotSupportedException(
+                $"Sorting by a '{sortExpression.Parameter.Type}' search parameter ('{sortExpression.Parameter.Code}') " +
+                "is not supported this phase -- only String, Date, and _lastUpdated sort keys are handled. " +
+                "Token/Number/Quantity/Reference/Uri sort is deferred."),
+        };
+
+        var searchParamId = symbols.SearchParamId(sortExpression.Parameter);
+        return new SortKey(searchParamId, kind, sortExpression.SortOrder);
     }
 
     private static ResolvedInclude ResolveInclude(IncludeExpression expression, IncludeDirection direction, SymbolTable symbols)

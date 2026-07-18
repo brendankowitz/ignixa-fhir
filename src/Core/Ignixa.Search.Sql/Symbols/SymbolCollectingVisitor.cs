@@ -38,7 +38,7 @@ namespace Ignixa.Search.Sql.Symbols;
 /// predicate needs it to filter ReferenceResourceTypeId) and records the full (CompartmentType,
 /// FilteredResourceTypes) pair into Compartments for Resolve to expand via
 /// ICompartmentDefinitionManager/ISearchParameterDefinitionManager -- see Resolve's remarks for the
-/// full argument.
+/// full argument. As of Phase 8 part 2, CollectSort collects a SortExpression's own SearchParameterInfo the same way CollectInclude does -- a direct method, not a visitor override, since SortExpression is also never part of this Expression tree.
 /// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 {
@@ -139,6 +139,23 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         foreach (var referencedType in include.ReferencedTypes ?? [])
         {
             AddResourceType(referencedType);
+        }
+    }
+
+    /// <summary>
+    /// Collects a SortExpression's own SearchParameterInfo for the existing SearchParamId resolution
+    /// loop -- _lastUpdated needs no SearchParamId at all (it lowers to a direct ResourceSurrogateId
+    /// ordering, matching the compiler's existing precedent that treats _lastUpdated as a derived
+    /// function of the surrogate id, per the sixth increment's ResourceColumnLoweringRule), so it is
+    /// deliberately skipped here rather than added and later failing SymbolTable.SearchParamId. Not a
+    /// visitor override: SortExpression lives on SearchOptions.Sort, never on the Expression tree this
+    /// visitor walks, so Resolve calls this directly per sort key.
+    /// </summary>
+    public void CollectSort(SortExpression sort)
+    {
+        if (sort.Parameter.Code != "_lastUpdated")
+        {
+            Parameters.Add(sort.Parameter);
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Text;
+using Ignixa.Search.Expressions;
 
 namespace Ignixa.Search.Sql.Ast;
 
@@ -37,7 +38,37 @@ public static class PlanExplainer
             }
         }
 
+        if (plan.Sort is { } sort)
+        {
+            lines.Add($"sort = {PrintSortSpec(sort)}");
+        }
+
+        if (plan.Page is { } page)
+        {
+            lines.Add($"page = {PrintPageSpec(page, ref parameterOrdinal)}");
+        }
+
         return string.Join('\n', lines);
+    }
+
+    private static string PrintSortSpec(SortSpec sort)
+    {
+        var keys = sort.Keys.Select(k =>
+            $"{k.Kind}:{(k.SearchParamId is { } id ? id.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")} {(k.Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
+        return $"SortSpec([{string.Join(", ", keys)}], {sort.Phase})";
+    }
+
+    private static string PrintPageSpec(PageSpec page, ref int parameterOrdinal)
+    {
+        var boundary = new List<string>();
+        for (var i = 0; i < page.Boundary.Count; i++)
+        {
+            boundary.Add($"@p{parameterOrdinal++}");
+        }
+
+        var typeParam = $"@p{parameterOrdinal++}";
+        var sidParam = $"@p{parameterOrdinal++}";
+        return $"PageSpec(boundary=[{string.Join(",", boundary)}], type={typeParam}, sid={sidParam})";
     }
 
     private static string PrintIncludeStage(IncludeStage stage)
