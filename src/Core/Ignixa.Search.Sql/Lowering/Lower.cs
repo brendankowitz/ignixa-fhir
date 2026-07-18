@@ -239,8 +239,8 @@ public static class Lower
             return null;
         }
 
-        var resolved = includes.Select(e => ResolveInclude(e, IncludeDirection.Forward, symbols))
-            .Concat(revIncludes.Select(e => ResolveInclude(e, IncludeDirection.Reverse, symbols)))
+        var resolved = includes.Select(e => ResolveInclude(e, symbols))
+            .Concat(revIncludes.Select(e => ResolveInclude(e, symbols)))
             .ToList();
 
         var nonIterate = resolved.Where(e => !e.Expression.Iterate).ToList();
@@ -342,8 +342,12 @@ public static class Lower
         return new SortKey(searchParamId, kind, sortExpression.SortOrder);
     }
 
-    private static ResolvedInclude ResolveInclude(IncludeExpression expression, IncludeDirection direction, SymbolTable symbols)
-        => new(expression, direction, ResolveTypeIds(expression.Requires, symbols), ResolveTypeIds(expression.Produces, symbols));
+    private static ResolvedInclude ResolveInclude(IncludeExpression expression, SymbolTable symbols)
+        => new(
+            expression,
+            expression.Reversed ? IncludeDirection.Reverse : IncludeDirection.Forward,
+            ResolveTypeIds(expression.Requires, symbols),
+            ResolveTypeIds(expression.Produces, symbols));
 
     private static IReadOnlyList<short>? ResolveTypeIds(IReadOnlyCollection<string> types, SymbolTable symbols)
         => types.Contains("*") ? null : types.Select(symbols.ResourceTypeId).ToList();
