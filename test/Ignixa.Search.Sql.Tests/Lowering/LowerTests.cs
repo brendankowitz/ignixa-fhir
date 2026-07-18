@@ -301,6 +301,38 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenAWildcardCompartmentSearchWithAResourceColumnPredicate_WhenLowered_ThenTheCompartmentUnionIsTheMatchAndTheColumnPredicateBecomesTheOuterPredicate()
+    {
+        // Arrange -- GET /Patient/123/*?_id=456 -- a wildcard compartment search (no single target
+        // resource type) combined with an _id resource-column predicate. ExtractResourceColumnPredicates
+        // pulls the _id predicate out of the And, leaving a lone CompartmentSearchExpression as the
+        // single surviving child (kept.Count == 1); the `kept[0]` unwrap in Lower.cs must hand that
+        // child back directly (not re-wrapped in a spurious single-element And) so the remaining
+        // switch's CompartmentSearchExpression arm matches and dispatches to LowerCompartment, rather
+        // than falling into the "no single resource type" throw meant for ordinary typed predicates.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var idPredicate = new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "456", text: null));
+        var idExpression = new SearchParameterExpression(idParam, idPredicate);
+        var tree = new MultiaryExpression(MultiaryOperator.And, [compartment, idExpression]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 77 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(subjectParam, ["Observation"])],
+            });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0);
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        plan.OuterPredicate.ShouldNotBeNull();
+    }
+
+    [Fact]
     public void GivenAWildcardCompartmentSearchWithIncludes_WhenLowered_ThenThrowsNotSupportedException()
     {
         // Arrange -- GET /Patient/123/*?_include=Observation:encounter
