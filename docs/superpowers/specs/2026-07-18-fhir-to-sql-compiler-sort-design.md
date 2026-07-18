@@ -39,7 +39,7 @@
 
 ### 1.4 Two new, real gaps found in Ignixa's live system while researching this phase
 
-1. **`IsMin`/`IsMax` are never populated anywhere in this codebase.** The schema has the columns (`97.sql`), the row generators faithfully copy `ISupportSortSearchValue.IsMin`/`IsMax` into the TVPs, and `StringSearchValue`/`DateTimeSearchValue` implement the comparison interface — but nothing at write time ever sets the flags to `true` (confirmed by a repo-wide search: zero hits for `.IsMin = true` outside the fhir-server reference checkout). A compiled sort that naively filters `IsMin = 1` the way fhir-server does would return **zero rows against every real Ignixa database**. This is the same disease class as the previously-found never-called `CreateResourceSearchParamStats` sproc and the un-set composite-string overflow width — machinery ported from fhir-server, nothing left to own calling it. §3.2 resolves this for the compiled path without waiting for a write-side fix; the write-side fix + backfill is recorded as an independent, blocking-for-Phase-9-performance ticket (§7), not built here.
+1. **`IsMin`/`IsMax` are never populated anywhere in this codebase — a decision, not a deferral.** The schema has the columns (`97.sql`), the row generators faithfully copy `ISupportSortSearchValue.IsMin`/`IsMax` into the TVPs, and `StringSearchValue`/`DateTimeSearchValue` implement the comparison interface — but nothing at write time ever sets the flags to `true` (confirmed by a repo-wide search: zero hits for `.IsMin = true` outside the fhir-server reference checkout). This is the same disease class as the previously-found never-called `CreateResourceSearchParamStats` sproc and the un-set composite-string overflow width — machinery ported from fhir-server, nothing left to own calling it. **Unlike those two, this one is being fixed as a prerequisite to this phase, not deferred**: Ignixa has no production data yet, so there is no backfill to design or run — the write-path fix (setting `IsMin`/`IsMax` at ingestion, mirroring `ResourceWrapperFactory.ExtractMinAndMaxValues`) is a self-contained, low-risk change, scoped as its own small plan in `Ignixa.DataLayer.SqlEntityFramework` (a different tier than this compiler, sequenced before this phase's SDD execution, not inside it). §3.1/§3.3 below target the resulting `WHERE IsMin = 1`/`IsMax = 1` shape directly — the compiler is written once, for the correct target shape, not written twice (an aggregation interim, then a flag-filter follow-up).
 2. **`cteMatchPage`'s `TOP` has no `ORDER BY` today.** Harmless while nothing consumes ordering (the compiled path isn't wired to production yet), but it is precisely PR #5362's precondition: an unordered `TOP` selects an arbitrary page. §4 makes "every `TOP` this compiler emits is paired with an `ORDER BY` in the same `SELECT`" a stated `Emit` invariant, pinned by a golden test.
 
 ## 2. The keyset continuation token
@@ -98,19 +98,16 @@ public sealed record QueryPlan(
 
 ```sql
 ;WITH <existing ctes...>
-SELECT TOP (11) m.T1, m.Sid1, sk0.SK0 AS SortValue0
+SELECT TOP (11) m.T1, m.Sid1, sk0.Text AS SortValue0
 FROM cte{Match} m
-INNER JOIN (
-    SELECT ResourceTypeId, ResourceSurrogateId, MIN(Text) AS SK0
-    FROM dbo.StringSearchParam
-    WHERE SearchParamId = 202
-    GROUP BY ResourceTypeId, ResourceSurrogateId
-) sk0 ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1
-WHERE (sk0.SK0 = @p0 AND m.Sid1 > @p1) OR sk0.SK0 > @p0     -- only when Page is non-null
-ORDER BY sk0.SK0 ASC, m.Sid1 ASC
+INNER JOIN dbo.StringSearchParam sk0
+    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1
+   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1
+WHERE (sk0.Text = @p0 AND m.Sid1 > @p1) OR sk0.Text > @p0     -- only when Page is non-null
+ORDER BY sk0.Text ASC, m.Sid1 ASC
 ```
 
-`MIN`/`MAX` per direction (ascending/descending) — **query-time aggregation, not an `IsMin`/`IsMax` flag filter**, resolving §1.4's gap: an `INNER JOIN` against a `GROUP BY`-aggregated derived table (one row per resource that has the parameter at all) is both correct today and index-friendly enough for a primary key (it drives off `(SearchParamId, Text)` per the `INNER JOIN`'s own filter/group). Write-side `IsMin`/`IsMax` population is a documented future optimization (§7), not a blocker — it would let this same shape drop the `GROUP BY` in favor of `WHERE IsMin = 1`, an internal `Emit` change with no IR-shape impact. `_lastUpdated` as a sort key needs no join at all — it renders directly as `m.Sid1 {ASC|DESC}` (the compiler's own existing precedent already treats `_lastUpdated` as a derived function of the surrogate id, per the sixth increment's `ResourceColumnLoweringRule`), which is also exactly fhir-server's own "the surrogate id is the timestamp" reasoning for `_lastUpdated` sort.
+`IsMin = 1` for ascending, `IsMax = 1` for descending — the write-time flag (§1.4, being fixed as a prerequisite to this phase, not deferred) marks exactly the one row per (resource, parameter) holding that direction's "best" value for a multi-valued parameter, so this is a plain filtered `INNER JOIN` against the base table — no derived table, no `GROUP BY`, riding the `(SearchParamId, Text)` index directly, matching fhir-server's `AppendMinOrMax` shape exactly (`SqlQueryGenerator.cs`). `_lastUpdated` as a sort key needs no join at all — it renders directly as `m.Sid1 {ASC|DESC}` (the compiler's own existing precedent already treats `_lastUpdated` as a derived function of the surrogate id, per the sixth increment's `ResourceColumnLoweringRule`), which is also exactly fhir-server's own "the surrogate id is the timestamp" reasoning for `_lastUpdated` sort.
 
 **No-sort case**: the seek degenerates to `(m.T1 > @t) OR (m.T1 = @t AND m.Sid1 > @sid)` (or `Sid1 > @sid` alone for a single-scoped-type query), `ORDER BY m.T1, m.Sid1` — this is the existing no-includes/no-sort shape *plus* an `ORDER BY`, which §1.4 already established as a required `Emit` invariant regardless of whether sort is present, since an unordered `TOP` is `PR #5362`'s exact precondition.
 
@@ -120,7 +117,7 @@ Same site, `INNER JOIN` replaced by `NOT EXISTS (SELECT 1 FROM dbo.StringSearchP
 
 ### 3.3 Multi-key sort — validated design, capped at 3 keys this increment
 
-Two rounds of adversarial validation (broad research, then a focused hand-traced follow-up after the user pushed back on an initial recommendation to defer multi-key entirely) converged on: **phase-segment only the primary key** (exactly as §3.1/§3.2 — 2 segments total, never 2^N), and **treat every secondary key as an ordinary tie-breaker via `LEFT JOIN` plus SQL Server's standard "seek method" pattern for nullable columns**: `ISNULL(col, sentinel)` used identically in both `ORDER BY` and the seek predicate, so a secondary key's SQL `NULL` never has to survive into a raw `>`/`<` comparison (which is always false against `NULL` in T-SQL and would silently break seek resumption).
+Two rounds of adversarial validation (broad research, then a focused hand-traced follow-up after the user pushed back on an initial recommendation to defer multi-key entirely) converged on: **phase-segment only the primary key** (exactly as §3.1/§3.2 — 2 segments total, never 2^N), and **treat every secondary key as an ordinary tie-breaker via `LEFT JOIN` plus SQL Server's standard "seek method" pattern for nullable columns**: `ISNULL(col, sentinel)` used identically in both `ORDER BY` and the seek predicate, so a secondary key's SQL `NULL` never has to survive into a raw `>`/`<` comparison (which is always false against `NULL` in T-SQL and would silently break seek resumption). The secondary join uses the same `IsMin = 1`/`IsMax = 1` filter as the primary key (§3.1) — only `INNER` becomes `LEFT`, since presence isn't gating for a tie-breaker: `LEFT JOIN dbo.StringSearchParam sk1 ON sk1.ResourceTypeId = m.T1 AND sk1.ResourceSurrogateId = m.Sid1 AND sk1.SearchParamId = <literal> AND sk1.IsMin = 1` (descending: `IsMax = 1`) — a NULL `sk1.Text` after this join means "resource has no value for this parameter," exactly the case the `ISNULL`/sentinel machinery below exists to handle.
 
 **Verified, not assumed**: SQL Server's `ORDER BY` places `NULL` first ascending, last descending — documented, deterministic behavior (Microsoft Learn), unaffected by `COLLATE` (which governs only non-`NULL` ordering) and identical for base, joined, or expression columns. This confirms the *default* `ORDER BY` behavior is already correct for a raw nullable column — but the seek predicate is not automatically correct alongside it (next paragraph), which is why the design still needs the `ISNULL` wrapper.
 
@@ -177,10 +174,11 @@ This phase adds no new predicate/filter surface — sort decorates *ordering*, n
 - The two-phase (valued/missing-primary) segmentation, with secondary-key tie-breaking within each phase
 - Sort composing with `_include`/`_revinclude` via `cteMatchPage`, with zero changes to `IncludeStage`
 - The `Emit` "every `TOP` needs an `ORDER BY`" invariant (closes §1.4's live gap in the compiled path)
-- Query-time `MIN`/`MAX` aggregation as the sort-source mechanism (works against real Ignixa data today, unlike a naive `IsMin`/`IsMax` port)
+- `IsMin`/`IsMax` as the sort-source mechanism (§3.1/§3.3), matching fhir-server's shape exactly
+
+**Prerequisite, sequenced before this phase's SDD execution, not inside it (§1.4):** write-time `IsMin`/`IsMax` population in `Ignixa.DataLayer.SqlEntityFramework` (a different tier than this compiler). **No backfill** — Ignixa has no production data yet, so this is a self-contained forward fix, not a migration. Its own small plan/worktree, sequenced first because this document's SQL shapes (§3.1/§3.3) target the fixed behavior directly rather than an aggregation interim.
 
 **Explicitly deferred, named so Phase 9 inherits them as known requirements, not surprises:**
-- Write-time `IsMin`/`IsMax` population + backfill (§1.4) — an independent, blocking-for-Phase-9-*performance* ticket (not correctness — §3.1's aggregation is correct without it), structurally identical to the earlier `TextOverflow` reindex follow-up
 - The live executor's three-way inconsistent fallback ordering (§1.1) and the legacy `{Offset,Count}` token's silent-truncation-on-garbage-input behavior — both real, both independent of this compiler
 - Token/Number/Quantity/Reference/Uri sort types, and sort keys beyond the 3-key cap — named `NotSupportedException`s, not silent truncation
 - The `$includes` operation's own re-execute-and-discard pattern (§1.1) — a real weakness, out of this Core-tier project's scope to fix directly; the seat this design leaves for a future fix (a pinned surrogate-id-range match-page boundary plus phase, matching fhir-server's own `IncludesContinuationToken` shape) is additive to `PageSpec`, not foreclosed
