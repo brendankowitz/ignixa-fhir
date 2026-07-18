@@ -41,7 +41,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, top: 10);
         var emitted = Emit.Run(plan);
 
@@ -69,7 +69,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["ValueSet"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "ValueSet", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None);
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -97,7 +97,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -126,7 +126,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["ValueSet"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "ValueSet", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -161,7 +161,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -200,7 +200,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -239,7 +239,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
 
         // Assert -- two ParamSource CTEs (one per alternative), unioned at the root
@@ -274,7 +274,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -309,7 +309,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -345,7 +345,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -381,7 +381,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["DocumentReference"] = 55;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "DocumentReference", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "DocumentReference", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "DocumentReference", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -409,7 +409,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -448,7 +448,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -479,7 +479,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -507,7 +507,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -535,7 +535,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -569,7 +569,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act & Assert
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         Should.Throw<NotSupportedException>(() => Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0));
     }
 
@@ -587,7 +587,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -617,7 +617,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -650,7 +650,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -684,7 +684,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -716,7 +716,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(outerChain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(outerChain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(outerChain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -788,7 +788,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -819,7 +819,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -847,7 +847,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -882,7 +882,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -923,7 +923,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
@@ -965,7 +965,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbols = await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, top: 50);
 
         // Assert -- structure via Explain(), full SQL text via Emit for the whole shape. No modifier on
@@ -1000,7 +1000,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbols = await Resolve.RunAsync(predicate, includes: [], revIncludes: [revInclude], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbols = await Resolve.RunAsync(predicate, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000);
 
         // Assert -- same StringLoweringRule default-arm shape as the forward-include test above.
@@ -1028,7 +1028,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbols = await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, top: 50);
 
         // Assert
@@ -1054,7 +1054,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Practitioner"] = 107;
 
         // Act
-        var symbols = await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbols = await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000);
 
         // Assert
@@ -1078,7 +1078,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Condition"] = 106;
 
         // Act
-        var symbols = await Resolve.RunAsync(expression: null, includes: [], revIncludes: [revInclude], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbols = await Resolve.RunAsync(expression: null, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000);
 
         // Assert
@@ -1113,7 +1113,7 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = await Resolve.RunAsync(expression: null, includes: [iterate, nonIterate], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbols = await Resolve.RunAsync(expression: null, includes: [iterate, nonIterate], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000);
 
         // Assert -- non-iterate always sorts first regardless of its position in the input list.
@@ -1154,7 +1154,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbols = await Resolve.RunAsync(
-            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None,
+            compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None,
             compartmentManager, searchParamManager);
         var plan = Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0);
 
@@ -1199,7 +1199,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbols = await Resolve.RunAsync(
-            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
             compartmentManager, searchParamManager);
         var plan = Lower.Run(compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
 
@@ -1242,7 +1242,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbols = await Resolve.RunAsync(
-            tree, includes: [], revIncludes: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
             compartmentManager, searchParamManager);
         var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
 
@@ -1271,7 +1271,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbols = await Resolve.RunAsync(
-            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None,
+            compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None,
             compartmentManager, searchParamManager);
 
         // Assert

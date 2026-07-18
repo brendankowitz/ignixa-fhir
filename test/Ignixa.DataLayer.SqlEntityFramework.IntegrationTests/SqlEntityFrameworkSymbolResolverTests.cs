@@ -77,7 +77,7 @@ public class SqlEntityFrameworkSymbolResolverTests
             parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.SearchParamId(parameter).ShouldBe(seededSearchParamId);
