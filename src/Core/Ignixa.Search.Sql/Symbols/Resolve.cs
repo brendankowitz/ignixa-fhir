@@ -1,5 +1,8 @@
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Symbols;
 
@@ -41,8 +44,10 @@ namespace Ignixa.Search.Sql.Symbols;
 /// As of Phase 7, resolution also extends to every <see cref="IncludeExpression"/> passed via the
 /// includes/revIncludes parameters -- see SymbolCollectingVisitor.CollectInclude's remarks for the
 /// exact fields collected.
-/// Resolve still does not resolve resource types touched only by compartment context that does not
-/// exist anywhere on this <see cref="Expression"/> tree -- that generalization is Phase 8's job.
+/// As of Phase 8, Resolve also expands every SymbolCollectingVisitor.Compartments entry via
+/// ICompartmentDefinitionManager/ISearchParameterDefinitionManager (both optional, required only when
+/// a compartment search is actually present) into SymbolTable.CompartmentMembership -- see that
+/// method's remarks for the exact shape.
 /// </para>
 /// </remarks>
 public static class Resolve
@@ -53,7 +58,9 @@ public static class Resolve
         IReadOnlyList<IncludeExpression> revIncludes,
         ISymbolResolver resolver,
         string targetResourceType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ICompartmentDefinitionManager? compartmentDefinitionManager = null,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null)
     {
         ArgumentNullException.ThrowIfNull(includes);
         ArgumentNullException.ThrowIfNull(revIncludes);
@@ -75,6 +82,8 @@ public static class Resolve
         {
             collector.CollectInclude(revInclude);
         }
+
+        var compartmentMembership = ResolveCompartmentMembership(collector, compartmentDefinitionManager, searchParameterDefinitionManager);
 
         var searchParamIds = new Dictionary<string, short>();
         foreach (var parameter in collector.Parameters)
@@ -99,6 +108,85 @@ public static class Resolve
             }
         }
 
-        return new SymbolTable(searchParamIds, resourceTypeIds);
+        return new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership);
+    }
+
+    private static Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? ResolveCompartmentMembership(
+        SymbolCollectingVisitor collector,
+        ICompartmentDefinitionManager? compartmentDefinitionManager,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager)
+    {
+        if (collector.Compartments.Count == 0)
+        {
+            return null;
+        }
+
+        var membership = new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>();
+        foreach (var (compartmentType, _) in collector.Compartments)
+        {
+            if (membership.ContainsKey(compartmentType))
+            {
+                continue;
+            }
+
+            if (compartmentDefinitionManager is null || searchParameterDefinitionManager is null)
+            {
+                throw new InvalidOperationException(
+                    $"Resolve encountered a compartment search for '{compartmentType}' but no " +
+                    "ICompartmentDefinitionManager/ISearchParameterDefinitionManager was supplied -- both are " +
+                    "required to resolve compartment membership.");
+            }
+
+            if (!Enum.TryParse<CompartmentType>(compartmentType, out var compartmentTypeEnum))
+            {
+                throw new InvalidOperationException($"Invalid compartment type: {compartmentType}");
+            }
+
+            var groups = new Dictionary<string, (SearchParameterInfo Parameter, List<string> ResourceTypes)>();
+            if (compartmentDefinitionManager.TryGetResourceTypes(compartmentTypeEnum, out var allResourceTypes))
+            {
+                foreach (var resourceType in allResourceTypes)
+                {
+                    if (!compartmentDefinitionManager.TryGetSearchParams(resourceType, compartmentTypeEnum, out var searchParamCodes))
+                    {
+                        continue;
+                    }
+
+                    foreach (var code in searchParamCodes)
+                    {
+                        if (!searchParameterDefinitionManager.TryGetSearchParameter(resourceType, code, out var searchParam)
+                            || searchParam.Type != SearchParamType.Reference)
+                        {
+                            continue;
+                        }
+
+                        var key = searchParam.Url.ToString();
+                        if (!groups.TryGetValue(key, out var group))
+                        {
+                            group = (searchParam, []);
+                            groups[key] = group;
+                        }
+
+                        group.ResourceTypes.Add(resourceType);
+                    }
+                }
+            }
+
+            var groupList = groups.Values
+                .Select(g => (g.Parameter, (IReadOnlyList<string>)g.ResourceTypes))
+                .ToList();
+            membership[compartmentType] = groupList;
+
+            foreach (var (parameter, resourceTypes) in groupList)
+            {
+                collector.Parameters.Add(parameter);
+                foreach (var resourceType in resourceTypes)
+                {
+                    collector.ResourceTypes.Add(resourceType);
+                }
+            }
+        }
+
+        return membership;
     }
 }

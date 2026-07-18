@@ -22,5 +22,7 @@ public sealed class LeafContext
 
     public short ResourceTypeId(string resourceType) => _symbols.ResourceTypeId(resourceType);
 
+    public IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)> CompartmentMembership(string compartmentType) => _symbols.CompartmentMembership(compartmentType);
+
     public SqlParameterRef Parameter(object value) => new(value);
 }

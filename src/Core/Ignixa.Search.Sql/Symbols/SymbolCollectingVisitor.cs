@@ -33,8 +33,12 @@ namespace Ignixa.Search.Sql.Symbols;
 /// array carries the "source" vs. "target" side flips with <c>Reversed</c>. As of Phase 7,
 /// <see cref="CollectInclude"/> collects an IncludeExpression's own symbols the same way -- not via a
 /// visitor override (IncludeExpression is never part of this Expression tree), but as a direct method
-/// Resolve calls once per include/revinclude entry. Compartment target-type resolution remains Phase
-/// 8's job. See Resolve's remarks for the full argument.
+/// Resolve calls once per include/revinclude entry. As of Phase 8, VisitCompartment collects a
+/// CompartmentSearchExpression's own CompartmentType (added to ResourceTypes, since the compiled
+/// predicate needs it to filter ReferenceResourceTypeId) and records the full (CompartmentType,
+/// FilteredResourceTypes) pair into Compartments for Resolve to expand via
+/// ICompartmentDefinitionManager/ISearchParameterDefinitionManager -- see Resolve's remarks for the
+/// full argument.
 /// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 {
@@ -84,6 +88,24 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         }
 
         return base.VisitChained(expression, context);
+    }
+
+    public List<(string CompartmentType, ISet<string> FilteredResourceTypes)> Compartments { get; } = [];
+
+    /// <summary>
+    /// Records a CompartmentSearchExpression's own type/filter for Resolve to expand -- unlike
+    /// VisitChained, this override does no further recursion (CompartmentSearchExpression has no
+    /// child Expression field to walk into). Resolve, not this visitor, does the actual
+    /// ICompartmentDefinitionManager/ISearchParameterDefinitionManager expansion -- this class's own
+    /// contract is tree traversal without I/O; recording the raw (type, filter) pair here and
+    /// resolving it in Resolve keeps that contract intact for compartment search the same way it
+    /// already does for every other collected symbol.
+    /// </summary>
+    public override Expression VisitCompartment(CompartmentSearchExpression expression, object? context)
+    {
+        AddResourceType(expression.CompartmentType);
+        Compartments.Add((expression.CompartmentType, expression.FilteredResourceTypes));
+        return expression;
     }
 
     /// <summary>

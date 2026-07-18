@@ -116,4 +116,37 @@ public class SymbolTableTests
         exception.Message.ShouldContain("name");
         exception.Message.ShouldContain("Url is null");
     }
+
+    [Fact]
+    public void GivenACompartmentMembershipMap_WhenLookedUp_ThenReturnsTheStoredGroups()
+    {
+        // Arrange
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var membership = new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+        {
+            ["Patient"] = [(subjectParam, ["Observation", "Condition"])],
+        };
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>(),
+            membership);
+
+        // Act
+        var result = symbolTable.CompartmentMembership("Patient");
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Parameter.ShouldBe(subjectParam);
+        result[0].ResourceTypes.ShouldBe(["Observation", "Condition"]);
+    }
+
+    [Fact]
+    public void GivenNoCompartmentMembershipWasResolved_WhenLookedUp_ThenThrowsKeyNotFoundException()
+    {
+        // Arrange
+        var symbolTable = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        // Act & Assert
+        Should.Throw<KeyNotFoundException>(() => symbolTable.CompartmentMembership("Patient"));
+    }
 }

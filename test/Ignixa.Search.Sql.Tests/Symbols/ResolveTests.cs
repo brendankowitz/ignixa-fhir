@@ -1,3 +1,4 @@
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
@@ -234,6 +235,94 @@ public class ResolveTests
         symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
         symbolTable.ResourceTypeId("Condition").ShouldBe((short)106);
         Should.Throw<KeyNotFoundException>(() => symbolTable.ResourceTypeId("*"));
+    }
+
+    [Fact]
+    public async Task GivenACompartmentSearchExpression_WhenResolved_ThenSymbolTableHasItsCompartmentMembership()
+    {
+        // Arrange -- Patient/123/Observation-shaped: Patient compartment, Observation membership via "subject".
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[Ignixa.Specification.ValueSets.Normative.CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", Ignixa.Specification.ValueSets.Normative.CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 77;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            compartmentManager, searchParamManager);
+
+        // Assert
+        var membership = symbolTable.CompartmentMembership("Patient");
+        membership.Count.ShouldBe(1);
+        membership[0].Parameter.ShouldBe(subjectParam);
+        membership[0].ResourceTypes.ShouldBe(["Observation"]);
+        symbolTable.SearchParamId(subjectParam).ShouldBe((short)77);
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+        symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
+    }
+
+    [Fact]
+    public async Task GivenACompartmentSearchExpressionWithNoManagersSupplied_WhenResolved_ThenThrowsInvalidOperationException()
+    {
+        // Arrange
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var resolver = new FakeSymbolResolver();
+
+        // Act & Assert
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            Resolve.RunAsync(compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Observation", CancellationToken.None));
+    }
+
+    /// <summary>
+    /// An in-memory, dictionary-backed ICompartmentDefinitionManager test double -- not a mock,
+    /// matching this file's existing FakeSymbolResolver philosophy.
+    /// </summary>
+    private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
+    {
+        public Dictionary<Ignixa.Specification.ValueSets.Normative.CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
+
+        public Dictionary<(string ResourceType, Ignixa.Specification.ValueSets.Normative.CompartmentType CompartmentType), HashSet<string>> SearchParams { get; } = [];
+
+        public bool TryGetResourceTypes(Ignixa.Specification.ValueSets.Normative.CompartmentType compartmentType, out HashSet<string> resourceTypes)
+            => ResourceTypes.TryGetValue(compartmentType, out resourceTypes!);
+
+        public bool TryGetSearchParams(string resourceType, Ignixa.Specification.ValueSets.Normative.CompartmentType compartmentType, out HashSet<string> searchParams)
+            => SearchParams.TryGetValue((resourceType, compartmentType), out searchParams!);
+    }
+
+    /// <summary>
+    /// A minimal ISearchParameterDefinitionManager test double implementing only what Resolve calls
+    /// (TryGetSearchParameter) -- every other member throws NotImplementedException deliberately,
+    /// surfacing loudly if a future change makes Resolve call something this test double doesn't expect.
+    /// </summary>
+    private sealed class FakeSearchParameterDefinitionManager : ISearchParameterDefinitionManager
+    {
+        public Dictionary<(string ResourceType, string Code), SearchParameterInfo> Parameters { get; } = [];
+
+        public bool TryGetSearchParameter(string resourceType, string code, out SearchParameterInfo searchParameter)
+            => Parameters.TryGetValue((resourceType, code), out searchParameter!);
+
+        public IEnumerable<SearchParameterInfo> AllSearchParameters => throw new NotImplementedException();
+        public IReadOnlyDictionary<string, string> SearchParameterHashMap => throw new NotImplementedException();
+        public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType) => throw new NotImplementedException();
+        public bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters) => throw new NotImplementedException();
+        public SearchParameterInfo GetSearchParameter(string resourceType, string code) => throw new NotImplementedException();
+        public bool TryGetSearchParameter(Uri definitionUri, out SearchParameterInfo value) => throw new NotImplementedException();
+        public SearchParameterInfo GetSearchParameter(Uri definitionUri) => throw new NotImplementedException();
+        public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap) => throw new NotImplementedException();
+        public string GetSearchParameterHashForResourceType(string resourceType) => throw new NotImplementedException();
+        public void AddNewSearchParameters(IReadOnlyCollection<Ignixa.Abstractions.IElement> searchParameters, bool calculateHash = true) => throw new NotImplementedException();
+        public void DeleteSearchParameter(string url, bool calculateHash = true) => throw new NotImplementedException();
     }
 
     /// <summary>

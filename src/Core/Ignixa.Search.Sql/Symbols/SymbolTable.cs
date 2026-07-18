@@ -26,13 +26,16 @@ public sealed class SymbolTable
 {
     private readonly IReadOnlyDictionary<string, short> _searchParamIds;
     private readonly IReadOnlyDictionary<string, short> _resourceTypeIds;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>> _compartmentMembership;
 
     public SymbolTable(
         IReadOnlyDictionary<string, short> searchParamIds,
-        IReadOnlyDictionary<string, short> resourceTypeIds)
+        IReadOnlyDictionary<string, short> resourceTypeIds,
+        IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? compartmentMembership = null)
     {
         _searchParamIds = searchParamIds;
         _resourceTypeIds = resourceTypeIds;
+        _compartmentMembership = compartmentMembership ?? new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>();
     }
 
     /// <summary>
@@ -57,4 +60,19 @@ public sealed class SymbolTable
         => _resourceTypeIds.TryGetValue(resourceType, out var id)
            ? id
            : throw new KeyNotFoundException($"SymbolTable has no ResourceTypeId for '{resourceType}'.");
+
+    /// <summary>
+    /// Looks up a compartment type's full membership map -- every Reference-type search parameter
+    /// that establishes membership in this compartment, grouped by parameter, each with the full set
+    /// of resource types that use it. Names, not resolved ids (Lower resolves SearchParamId/
+    /// ResourceTypeId through the existing methods above) -- see Resolve's remarks for why this
+    /// stores the compartment's FULL map rather than pre-filtered to any one request's
+    /// FilteredResourceTypes. Throws if Resolve did not resolve this compartment type -- the same
+    /// "Resolve should have resolved every X Lower will need" contract SearchParamId/ResourceTypeId
+    /// already establish.
+    /// </summary>
+    public IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)> CompartmentMembership(string compartmentType)
+        => _compartmentMembership.TryGetValue(compartmentType, out var membership)
+           ? membership
+           : throw new KeyNotFoundException($"SymbolTable has no compartment membership map for '{compartmentType}' -- Resolve should have resolved every compartment type Lower will need.");
 }
