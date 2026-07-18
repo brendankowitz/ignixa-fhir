@@ -945,4 +945,183 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("true");
         emitted.Sql.ShouldNotContain("Acme");
     }
+
+    [Fact]
+    public async Task GivenPatientIncludeOrganization_WhenCompiledEndToEnd_ThenTheIncludeStageIsForwardWithTheReferencingSideAsTheSeed()
+    {
+        // Arrange -- Patient?name=Smith&_include=Patient:organization
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, top: 50);
+
+        // Assert -- structure via Explain(), full SQL text via Emit for the whole shape. No modifier on
+        // `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI), same as every other
+        // unmodified `name` predicate in this file (e.g. GivenAForwardChainQuery above) -- not a plain Equal.
+        plan.Explain().ShouldBe(
+            "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI top 50\n" +
+            "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("cteMatchPage AS (");
+        emitted.Sql.ShouldContain("SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1");
+        emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC");
+    }
+
+    [Fact]
+    public async Task GivenPatientRevincludeObservationSubject_WhenCompiledEndToEnd_ThenTheIncludeStageIsReverseWithTheTranslatedSideAsTheSeed()
+    {
+        // Arrange -- Patient?name=Smith&_revinclude=Observation:subject
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var subjectParam = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"), targetResourceTypes: ["Patient", "Group"]);
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var revInclude = new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", null, wildCard: false, reversed: true, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 77;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbols = await Resolve.RunAsync(predicate, includes: [], revIncludes: [revInclude], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000);
+
+        // Assert -- same StringLoweringRule default-arm shape as the forward-include test above.
+        plan.Explain().ShouldBe(
+            "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "inc0 = IncludeStage(ref=77, seedTypes=[103], outputTypes=[104], seeds=[match], limit=1000, Reverse)");
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("SELECT DISTINCT TOP (1001) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1");
+        emitted.Sql.ShouldContain("SELECT 1 FROM cteMatchPage m WHERE m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId");
+    }
+
+    [Fact]
+    public async Task GivenAnIncludeOnlySearchWithNoOtherFilter_WhenCompiledEndToEnd_ThenTheMatchIsAPlainResourceSource()
+    {
+        // Arrange -- Patient?_include=Patient:organization, no other search parameter.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, top: 50);
+
+        // Assert
+        plan.Explain().ShouldBe(
+            "root = ResourceSource[103] top 50\n" +
+            "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM cte0 m\n)");
+    }
+
+    [Fact]
+    public async Task GivenPatientIncludeWildcard_WhenCompiledEndToEnd_ThenNoSearchParamIdFilterButOutputTypesAreTheRealReferencedTypes()
+    {
+        // Arrange -- Patient?_include=Patient:* -- WildCard=true, ReferenceSearchParameter=null,
+        // ReferencedTypes carries the REAL resolved output types (design §1.2: this is NOT the "*"
+        // sentinel case -- that only arises for _revinclude's wildcard-SOURCE form, tested separately).
+        var include = new IncludeExpression(["Patient"], null, "Patient", null, ["Organization", "Practitioner"], wildCard: true, reversed: false, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+        resolver.ResourceTypeIds["Practitioner"] = 107;
+
+        // Act
+        var symbols = await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000);
+
+        // Assert
+        plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
+        plan.Includes[0].OutputTypeIds.ShouldBe([(short)105, (short)107]);
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+        emitted.Sql.ShouldContain("(r.ResourceTypeId = 105 OR r.ResourceTypeId = 107)");
+    }
+
+    [Fact]
+    public async Task GivenRevincludeWildcardSource_WhenCompiledEndToEnd_ThenOutputTypeIdsIsNullSoNoOutputFilterIsEmitted()
+    {
+        // Arrange -- Patient?_revinclude=*:* -- Produces=["*"] (the literal sentinel, design §1.2).
+        var revInclude = new IncludeExpression(["*"], null, "*", "Patient", ["Observation", "Condition"], wildCard: true, reversed: true, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.ResourceTypeIds["Condition"] = 106;
+
+        // Act
+        var symbols = await Resolve.RunAsync(expression: null, includes: [], revIncludes: [revInclude], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000);
+
+        // Assert
+        plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
+        plan.Includes[0].OutputTypeIds.ShouldBeNull();
+        plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 104");
+        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 106");
+    }
+
+    [Fact]
+    public async Task GivenChainedIterateIncludesSpecifiedOutOfOrder_WhenCompiledEndToEnd_ThenTheKahnSortReordersThemRegardlessOfInputOrder()
+    {
+        // Arrange -- Patient?_include=Patient:organization&_include:iterate=Organization:partOf,
+        // with the iterate expression listed FIRST in the includes list.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var partOfParam = new SearchParameterInfo(
+            "partof", "partof", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Organization-partof"), targetResourceTypes: ["Organization"]);
+        var nonIterate = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var iterate = new IncludeExpression(["Organization"], partOfParam, "Organization", "Organization", null, wildCard: false, reversed: false, iterate: true);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[partOfParam.Url!.ToString()] = 66;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(expression: null, includes: [iterate, nonIterate], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000);
+
+        // Assert -- non-iterate always sorts first regardless of its position in the input list.
+        plan.Explain().ShouldBe(
+            "root = ResourceSource[103]\n" +
+            "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)\n" +
+            "inc1 = IncludeStage(ref=66, seedTypes=[105], outputTypes=[105], seeds=[inc0], limit=1000 iterate, Forward)");
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("SELECT 1 FROM inc0lim m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+    }
 }
