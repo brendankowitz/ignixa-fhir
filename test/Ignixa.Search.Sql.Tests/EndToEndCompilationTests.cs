@@ -1444,12 +1444,16 @@ public class EndToEndCompilationTests
 
         // Assert -- ResourceSource's own ResourceTypeId is itself a bound parameter (@p0, same accounting
         // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's own two
-        // boundary parameters are @p1/@p2, not @p0/@p1.
+        // boundary parameters are @p1/@p2, not @p0/@p1. The NOT EXISTS filter and the 2-branch seek
+        // predicate must be ANDed together with the OR chain parenthesized as a single unit -- otherwise
+        // NOT EXISTS binds only to the first branch (T-SQL's AND-over-OR precedence) and the second
+        // branch silently bypasses the missing-name filter on page 2+.
         var emitted = Emit.Run(plan);
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
-        emitted.Sql.ShouldContain("WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)");
-        emitted.Sql.ShouldContain("(m.T1 = @p1 AND m.Sid1 > @p2)");
-        emitted.Sql.ShouldContain("(m.T1 > @p1)");
+        emitted.Sql.ShouldContain(
+            "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
+            "AND ((m.T1 = @p1 AND m.Sid1 > @p2)\n" +
+            "       OR (m.T1 > @p1))");
     }
 
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager

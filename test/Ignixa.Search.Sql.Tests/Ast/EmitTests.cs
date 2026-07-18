@@ -584,9 +584,9 @@ public class EmitTests
 
         // Assert
         emitted.Sql.ShouldContain(
-            "WHERE sk0.Text > @p1\n" +
+            "WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2)\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
             "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(4);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
@@ -645,10 +645,10 @@ public class EmitTests
             "    ON sk1.ResourceTypeId = m.T1 AND sk1.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk1.SearchParamId = 303 AND sk1.IsMax = 1");
         emitted.Sql.ShouldContain(
-            "WHERE sk0.Text > @p1\n" +
+            "WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p2)\n" +
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
-            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 > @p3)\n" +
+            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 > @p3))\n" +
             "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
     }
 
@@ -685,9 +685,11 @@ public class EmitTests
         // Assert -- branches.Count == 2 here (no key levels, just the two final type/sid tie-break
         // branches), so EmitSeekPredicate's multi-branch join applies: "\n       OR ", not a single
         // space -- matching every other multi-branch case in this same method, not a special case.
+        // The whole 2-branch chain is itself wrapped in parens (branches.Count > 1) so it stays a
+        // single AND-safe unit even though there's no sibling WHERE clause in THIS test to prove it.
         emitted.Sql.ShouldContain(
-            "WHERE (m.T1 = @p1 AND m.Sid1 > @p2)\n" +
-            "       OR (m.T1 > @p1)\n" +
+            "WHERE ((m.T1 = @p1 AND m.Sid1 > @p2)\n" +
+            "       OR (m.T1 > @p1))\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
     }
 
@@ -838,9 +840,9 @@ public class EmitTests
             "INNER JOIN dbo.StringSearchParam sk0\n" +
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
-            "    WHERE sk0.Text > @p1\n" +
+            "    WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2)\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
             "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
@@ -883,5 +885,79 @@ public class EmitTests
             "    )");
         emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
         emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnOuterPredicateAndASortWithAPageBoundary_WhenEmitted_ThenTheSeekPredicateOrChainIsParenthesizedSoItStaysAndedWithTheOuterFilter()
+    {
+        // Arrange -- Patient?_lastUpdated=gt...&_sort=name, second page: the exact combination the
+        // Checkpoint 1.5 review flagged as silently wrong. Before the fix, EmitSeekPredicate's
+        // multi-branch OR chain was joined into whereClauses UNPARENTHESIZED, so "AND" bound tighter
+        // than "OR" and the outer filter only applied to the seek predicate's FIRST branch -- the two
+        // type/sid tie-break branches bypassed the outer filter entirely (page 2+ could return rows
+        // that violate the filter).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the outer filter is ANDed against the whole parenthesized OR chain as a single
+        // unit, not just its first branch. If the seek predicate's OR chain were unparenthesized, this
+        // exact "WHERE {outer} AND (...)" text would not appear -- the second/third OR branches would
+        // instead sit at the top level, bypassing ResourceId = @p1 entirely.
+        emitted.Sql.ShouldContain(
+            "WHERE ResourceId = @p1 AND (sk0.Text > @p2\n" +
+            "       OR (sk0.Text = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
+            "       OR (sk0.Text = @p2 AND m.T1 > @p3))\n" +
+            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(5);
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "123"));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", "Adams"));
+    }
+
+    [Fact]
+    public void GivenTheMissingPrimaryPhaseWithAMultiBranchPageBoundary_WhenEmitted_ThenTheNotExistsFilterAppliesToEveryBranchOfTheParenthesizedSeekPredicate()
+    {
+        // Arrange -- Patient?_sort=name,-birthdate, missing-name phase, second page: a two-key sort so
+        // the MissingPrimary phase's seek predicate has 3 branches (one active-key level plus the two
+        // type/sid tie-break branches), not just the 2-branch degenerate case -- proving NOT EXISTS
+        // combines correctly with EVERY branch, not merely the first one it happens to sit beside.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
+            ],
+            SortPhase.MissingPrimary);
+        var page = new PageSpec(
+            [new SqlParameterRef("2000-01-01T00:00:00.0000000")],
+            new SqlParameterRef((short)103),
+            new SqlParameterRef(9000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- before the fix, this "NOT EXISTS(...) AND (branch0 OR branch1 OR branch2)" text
+        // would not exist: NOT EXISTS would only bind to branch0 via AND, and branch1/branch2 would sit
+        // at the top level unfiltered, letting rows WITH a name value (that NOT EXISTS was meant to
+        // exclude) leak into the missing-name phase's page 2+ results.
+        emitted.Sql.ShouldContain(
+            "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
+            "AND (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p1\n" +
+            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
+            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 > @p2))\n" +
+            "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
     }
 }
