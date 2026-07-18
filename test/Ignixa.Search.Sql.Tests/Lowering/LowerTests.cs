@@ -25,7 +25,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient");
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -49,7 +49,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", top: 10);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, top: 10);
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -72,7 +72,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient");
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -94,7 +94,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient"))
+        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0))
             .Message.ShouldContain("does not support");
     }
 
@@ -113,7 +113,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient"));
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0));
     }
 
     [Fact]
@@ -127,6 +127,153 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation"));
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0));
+    }
+
+    [Fact]
+    public void GivenAnIncludeOnlySearchWithNoOtherExpression_WhenLowered_ThenTheMatchFallsBackToResourceSource()
+    {
+        // Arrange -- Patient?_include=Patient:organization, no other filter (expression is null).
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        // Act
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000);
+
+        // Assert
+        plan.Ctes.Count.ShouldBe(1);
+        plan.Ctes[0].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Includes.ShouldNotBeNull();
+        plan.Includes!.Count.ShouldBe(1);
+        plan.Includes[0].Direction.ShouldBe(IncludeDirection.Forward);
+        plan.Includes[0].ReferenceSearchParamId.ShouldBe((short)55);
+        plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
+        plan.Includes[0].OutputTypeIds.ShouldBe([(short)105]);
+        plan.Includes[0].SeedFromMatch.ShouldBeTrue();
+        plan.Includes[0].SeedStages.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenTwoIterateIncludesThatChainProducesToRequires_WhenLowered_ThenTheSecondStageSeedsFromTheFirst()
+    {
+        // Arrange -- Patient?_include:iterate=Organization:partOf&_include=Patient:organization
+        // (:iterate stage requires Organization, which the non-iterate stage produces).
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var partOfParam = new SearchParameterInfo(
+            "partof", "partof", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Organization-partof"), targetResourceTypes: ["Organization"]);
+        var nonIterate = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var iterate = new IncludeExpression(["Organization"], partOfParam, "Organization", "Organization", null, wildCard: false, reversed: false, iterate: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [partOfParam.Url.ToString()] = 66 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        // Act -- iterate entry listed FIRST in the includes list, to prove ordering is by the sort, not input order.
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000);
+
+        // Assert -- non-iterate stage always sorts first (design §4.1); inc0 is Organization:organization, inc1 is the iterate.
+        plan.Includes!.Count.ShouldBe(2);
+        plan.Includes[0].ReferenceSearchParamId.ShouldBe((short)55);
+        plan.Includes[0].SeedFromMatch.ShouldBeTrue();
+        plan.Includes[1].ReferenceSearchParamId.ShouldBe((short)66);
+        plan.Includes[1].SeedStages.ShouldBe([0]);
+        plan.Includes[1].SeedFromMatch.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTwoIndependentIterateIncludesThatBecomeReadySimultaneously_WhenLowered_ThenTheOriginalListOrderIsPreservedAsTheDeterministicTieBreak()
+    {
+        // Arrange -- Patient?_revinclude:iterate=Condition:subject&_revinclude:iterate=Encounter:subject.
+        // Neither stage's Produces overlaps the other's Requires (both just require Patient, satisfied
+        // directly by the match) -- both are simultaneously "ready" in Kahn's first round, with no edge
+        // between them. Without the deterministic lowest-original-index tie-break (design §4.5), which
+        // one sorts first would be an implementation accident, breaking Explain() golden-string stability.
+        var conditionSubjectParam = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Condition-subject"), targetResourceTypes: ["Patient"]);
+        var encounterSubjectParam = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Encounter-subject"), targetResourceTypes: ["Patient"]);
+        var conditionIterate = new IncludeExpression(["Condition"], conditionSubjectParam, "Condition", "Patient", null, wildCard: false, reversed: true, iterate: true);
+        var encounterIterate = new IncludeExpression(["Encounter"], encounterSubjectParam, "Encounter", "Patient", null, wildCard: false, reversed: true, iterate: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [conditionSubjectParam.Url.ToString()] = 21, [encounterSubjectParam.Url.ToString()] = 22 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110, ["Encounter"] = 111 });
+
+        // Act -- Encounter listed first in the input list.
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000);
+
+        // Assert -- inc0 is the Encounter stage (ref=22), matching its position in the input list.
+        plan.Includes!.Count.ShouldBe(2);
+        plan.Includes[0].ReferenceSearchParamId.ShouldBe((short)22);
+        plan.Includes[1].ReferenceSearchParamId.ShouldBe((short)21);
+    }
+
+    [Fact]
+    public void GivenTwoMutuallyDependentIterateIncludes_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- two :iterate expressions whose Produces/Requires form a genuine 2-node cycle.
+        var aParam = new SearchParameterInfo(
+            "a", "a", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/A-a"), targetResourceTypes: ["B"]);
+        var bParam = new SearchParameterInfo(
+            "b", "b", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/B-b"), targetResourceTypes: ["A"]);
+        var includeA = new IncludeExpression(["A"], aParam, "A", "B", null, wildCard: false, reversed: false, iterate: true);
+        var includeB = new IncludeExpression(["B"], bParam, "B", "A", null, wildCard: false, reversed: false, iterate: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [aParam.Url.ToString()] = 1, [bParam.Url.ToString()] = 2 },
+            new Dictionary<string, short> { ["A"] = 10, ["B"] = 11, ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000))
+            .Message.ShouldContain("cycle");
+    }
+
+    [Fact]
+    public void GivenAnIterateIncludeThatNeitherAPredecessorProducesNorTheMatchRequires_WhenLowered_ThenTheStageIsDroppedEntirely()
+    {
+        // Arrange -- Patient?_include:iterate=Organization:partOf with NO non-iterate Organization-
+        // producing include and Patient not being Organization -- Requires=[Organization] intersects
+        // neither any predecessor's Produces (there is none) nor the match's own type (Patient).
+        var partOfParam = new SearchParameterInfo(
+            "partof", "partof", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Organization-partof"), targetResourceTypes: ["Organization"]);
+        var iterate = new IncludeExpression(["Organization"], partOfParam, "Organization", "Organization", null, wildCard: false, reversed: false, iterate: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [partOfParam.Url.ToString()] = 66 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        // Act
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000);
+
+        // Assert -- the degenerate stage was dropped, not emitted with an empty EXISTS.
+        plan.Includes.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenARevincludeWildcardSourceInclude_WhenLowered_ThenOutputTypeIdsIsNullNotAResolvedStarEntry()
+    {
+        // Arrange -- Patient?_revinclude=*:*
+        var include = new IncludeExpression(["*"], null, "*", "Patient", ["Observation"], wildCard: true, reversed: true, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000);
+
+        // Assert
+        plan.Includes!.Count.ShouldBe(1);
+        plan.Includes[0].ReferenceSearchParamId.ShouldBeNull();
+        plan.Includes[0].OutputTypeIds.ShouldBeNull();
+        plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
     }
 }

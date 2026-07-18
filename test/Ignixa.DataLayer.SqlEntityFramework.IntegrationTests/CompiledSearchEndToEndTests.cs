@@ -71,7 +71,7 @@ public class CompiledSearchEndToEndTests
 
         // Act
         var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient");
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
         var emitted = Emit.Run(plan);
 
         // CA2100 suppressed: emitted.Sql is Emit.Run's compiler-generated, fully parameterized T-SQL

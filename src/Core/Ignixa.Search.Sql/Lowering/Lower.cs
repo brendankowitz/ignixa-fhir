@@ -9,20 +9,41 @@ namespace Ignixa.Search.Sql.Lowering;
 /// The compiler's Lower stage: turns a bound Expression tree of ANDed/ORed
 /// SearchParameterPredicateExpression leaves, SearchParameterExpression-wrapped composites, and
 /// ChainedExpression (forward and reverse chain, any nesting depth, dispatched to
-/// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan. Include and sort are not handled --
-/// see this plan's global constraints for the full list and why.
+/// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan, and includes/revIncludes (via
+/// BuildIncludeStages, Phase 7) into QueryPlan.Includes. Sort is not handled -- see this plan's global
+/// constraints for why.
 /// </summary>
 public static class Lower
 {
-    public static QueryPlan Run(Expression expression, SymbolTable symbols, string targetResourceType, int? top = null)
+    public static QueryPlan Run(
+        Expression? expression,
+        SymbolTable symbols,
+        string targetResourceType,
+        IReadOnlyList<IncludeExpression> includes,
+        IReadOnlyList<IncludeExpression> revIncludes,
+        int includeLimit,
+        int? top = null)
     {
-        var leafContext = new LeafContext(symbols);
-        var (remaining, outerPredicate) = ExtractResourceColumnPredicates(expression, leafContext);
         var context = new StructuralContext(symbols);
-        var match = remaining is null
-            ? context.LowerResourceSource(targetResourceType)
-            : LowerNode(remaining, context, targetResourceType);
-        return new QueryPlan(context.Ctes, match, top, outerPredicate);
+        CteRef match;
+        Predicate? outerPredicate = null;
+
+        if (expression is null)
+        {
+            match = context.LowerResourceSource(targetResourceType);
+        }
+        else
+        {
+            var leafContext = new LeafContext(symbols);
+            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, leafContext);
+            outerPredicate = extractedPredicate;
+            match = remaining is null
+                ? context.LowerResourceSource(targetResourceType)
+                : LowerNode(remaining, context, targetResourceType);
+        }
+
+        var includeStages = BuildIncludeStages(includes, revIncludes, symbols, targetResourceType, includeLimit);
+        return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages);
     }
 
     private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
@@ -150,5 +171,141 @@ public static class Lower
         return nestedPredicate is null
             ? ordinaryMatch
             : context.Intersect(context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate), ordinaryMatch);
+    }
+
+    private readonly record struct ResolvedInclude(
+        IncludeExpression Expression,
+        IncludeDirection Direction,
+        IReadOnlyList<short>? Requires,
+        IReadOnlyList<short>? Produces);
+
+    private static IReadOnlyList<IncludeStage>? BuildIncludeStages(
+        IReadOnlyList<IncludeExpression> includes,
+        IReadOnlyList<IncludeExpression> revIncludes,
+        SymbolTable symbols,
+        string matchResourceType,
+        int includeLimit)
+    {
+        if (includes.Count == 0 && revIncludes.Count == 0)
+        {
+            return null;
+        }
+
+        var resolved = includes.Select(e => ResolveInclude(e, IncludeDirection.Forward, symbols))
+            .Concat(revIncludes.Select(e => ResolveInclude(e, IncludeDirection.Reverse, symbols)))
+            .ToList();
+
+        var nonIterate = resolved.Where(e => !e.Expression.Iterate).ToList();
+        var iterate = resolved.Where(e => e.Expression.Iterate).ToList();
+        var ordered = nonIterate.Concat(TopologicalSort(iterate)).ToList();
+
+        var matchTypeId = symbols.ResourceTypeId(matchResourceType);
+        var stages = new List<IncludeStage>();
+        var stageProduces = new List<IReadOnlyList<short>?>();
+
+        foreach (var entry in ordered)
+        {
+            var seedStages = new List<int>();
+            for (var i = 0; i < stages.Count; i++)
+            {
+                if (Overlaps(stageProduces[i], entry.Requires))
+                {
+                    seedStages.Add(i);
+                }
+            }
+
+            var seedFromMatch = Overlaps([matchTypeId], entry.Requires);
+
+            if (seedStages.Count == 0 && !seedFromMatch)
+            {
+                // Degenerate case (design doc §2): this stage's EXISTS would have zero branches --
+                // unrenderable, and not a real shape any binder-produced Requires/Produces pair
+                // should reach in practice. Drop it: it can never produce any rows.
+                continue;
+            }
+
+            var referenceSearchParamId = entry.Expression.WildCard
+                ? (short?)null
+                : symbols.SearchParamId(entry.Expression.ReferenceSearchParameter);
+
+            stages.Add(new IncludeStage(
+                entry.Direction,
+                referenceSearchParamId,
+                entry.Requires,
+                entry.Produces,
+                seedStages,
+                seedFromMatch,
+                entry.Expression.Iterate,
+                includeLimit));
+            stageProduces.Add(entry.Produces);
+        }
+
+        // Every entry can be dropped as degenerate (e.g. a single :iterate stage whose Requires never
+        // resolves) -- QueryPlan.Includes must stay null in that case, not an empty-but-non-null list,
+        // to preserve "no Includes byte-identical to before this field existed" (QueryPlan.cs remarks).
+        return stages.Count == 0 ? null : stages;
+    }
+
+    private static ResolvedInclude ResolveInclude(IncludeExpression expression, IncludeDirection direction, SymbolTable symbols)
+        => new(expression, direction, ResolveTypeIds(expression.Requires, symbols), ResolveTypeIds(expression.Produces, symbols));
+
+    private static IReadOnlyList<short>? ResolveTypeIds(IReadOnlyCollection<string> types, SymbolTable symbols)
+        => types.Contains("*") ? null : types.Select(symbols.ResourceTypeId).ToList();
+
+    private static bool Overlaps(IReadOnlyList<short>? produces, IReadOnlyList<short>? requires)
+        => produces is null || requires is null || produces.Any(requires.Contains);
+
+    private static List<ResolvedInclude> TopologicalSort(List<ResolvedInclude> entries)
+    {
+        var n = entries.Count;
+        var inDegree = new int[n];
+        var edges = new List<int>[n];
+        for (var i = 0; i < n; i++)
+        {
+            edges[i] = [];
+        }
+
+        for (var x = 0; x < n; x++)
+        {
+            for (var y = 0; y < n; y++)
+            {
+                if (x == y)
+                {
+                    continue; // A self-referential iterate is not a cycle for this purpose (design §4.4).
+                }
+
+                if (Overlaps(entries[x].Produces, entries[y].Requires))
+                {
+                    edges[x].Add(y);
+                    inDegree[y]++;
+                }
+            }
+        }
+
+        var ready = new SortedSet<int>(Enumerable.Range(0, n).Where(i => inDegree[i] == 0));
+        var result = new List<ResolvedInclude>();
+        while (ready.Count > 0)
+        {
+            var node = ready.Min;
+            ready.Remove(node);
+            result.Add(entries[node]);
+            foreach (var next in edges[node])
+            {
+                if (--inDegree[next] == 0)
+                {
+                    ready.Add(next);
+                }
+            }
+        }
+
+        if (result.Count != n)
+        {
+            throw new NotSupportedException(
+                "Two or more :iterate include expressions form a cycle -- the FHIR spec does not define an " +
+                "ordering for this case, and fhir-server rejects it too (PR #1391, " +
+                "SearchOperationNotSupportedException). Rewrite the search to remove the mutual dependency.");
+        }
+
+        return result;
     }
 }
