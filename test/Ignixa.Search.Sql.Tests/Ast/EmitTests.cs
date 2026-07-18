@@ -316,6 +316,7 @@ public class EmitTests
             "cteMatchPage AS (\n" +
             "    SELECT TOP (50) m.T1, m.Sid1\n" +
             "    FROM cte0 m\n" +
+            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
             "),\n" +
             "inc0 AS (\n" +
             "    SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
@@ -341,7 +342,7 @@ public class EmitTests
             "UNION ALL\n" +
             "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc0lim i\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
-            "ORDER BY IsMatch DESC");
+            "ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(1);
     }
 
@@ -378,6 +379,7 @@ public class EmitTests
             "cteMatchPage AS (\n" +
             "    SELECT m.T1, m.Sid1\n" +
             "    FROM cte0 m\n" +
+            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
             "),\n" +
             "inc0 AS (\n" +
             "    SELECT DISTINCT TOP (1001) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
@@ -403,7 +405,7 @@ public class EmitTests
             "UNION ALL\n" +
             "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc0lim i\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
-            "ORDER BY IsMatch DESC");
+            "ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -684,5 +686,67 @@ public class EmitTests
             "WHERE (m.T1 = @p1 AND m.Sid1 > @p2)\n" +
             "       OR (m.T1 > @p1)\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnIncludeBearingPlanWithASortKey_WhenEmitted_ThenCteMatchPageCarriesTheSortJoinAndTheOuterUnionProjectsSortValueColumns()
+    {
+        // Arrange -- Patient?_sort=name&_include=Patient:organization.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Sort: sort,
+            Includes: [includeStage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "cteMatchPage AS (\n" +
+            "    SELECT TOP (50) m.T1, m.Sid1, sk0.Text AS SortValue0\n" +
+            "    FROM cte0 m\n" +
+            "INNER JOIN dbo.StringSearchParam sk0\n" +
+            "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
+            "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
+            "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
+            ")");
+        emitted.Sql.ShouldContain(
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage\n" +
+            "UNION ALL\n" +
+            "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i\n" +
+            "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
+            "ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnIncludeBearingPlanWithNoSort_WhenEmitted_ThenCteMatchPageStillGetsAnOrderByAndTheOuterOrderByGetsATieBreak()
+    {
+        // Arrange -- Patient?_include=Patient:organization, no _sort -- proves the universal
+        // "every TOP needs an ORDER BY" invariant applies even when Sort is entirely absent.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [includeStage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "cteMatchPage AS (\n" +
+            "    SELECT m.T1, m.Sid1\n" +
+            "    FROM cte0 m\n" +
+            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            ")");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
     }
 }

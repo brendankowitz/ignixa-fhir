@@ -979,7 +979,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain("cteMatchPage AS (");
         emitted.Sql.ShouldContain("SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1");
         emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -1037,7 +1037,7 @@ public class EndToEndCompilationTests
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
         var emitted = Emit.Run(plan);
-        emitted.Sql.ShouldContain("cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM cte0 m\n)");
+        emitted.Sql.ShouldContain("cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM cte0 m\n    ORDER BY m.T1 ASC, m.Sid1 ASC\n)");
     }
 
     [Fact]

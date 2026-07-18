@@ -65,13 +65,38 @@ public static class Emit
             return new EmittedSql(sql, parameters);
         }
 
-        var matchJoin = plan.OuterPredicate is null
+        var matchSortJoins = EmitSortJoins(plan.Sort);
+        var matchSortColumns = EmitSortSelectColumns(plan.Sort);
+        var activeSortKeyCount = ActiveKeyIndices(plan.Sort).Count;
+        var cteOrderBy = $"\n    ORDER BY {EmitOrderBy(plan.Sort)}";
+
+        var matchWhereClauses = new List<string>();
+        if (plan.OuterPredicate is not null)
+        {
+            matchWhereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+        }
+
+        if (plan.Sort is { Phase: SortPhase.MissingPrimary } missingPhaseSort)
+        {
+            matchWhereClauses.Add(EmitMissingPrimaryFilter(missingPhaseSort));
+        }
+
+        if (plan.Page is { } matchPage)
+        {
+            matchWhereClauses.Add(EmitSeekPredicate(plan.Sort, matchPage, parameters));
+        }
+
+        var matchResourceJoin = plan.OuterPredicate is null
             ? string.Empty
-            : $"\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n    WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
+            : "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
+        var matchWhere = matchWhereClauses.Count > 0
+            ? $"\n    WHERE {string.Join(" AND ", matchWhereClauses)}"
+            : string.Empty;
+
         cteBlocks.Add(
             $"cteMatchPage AS (\n" +
-            $"    SELECT {top}m.T1, m.Sid1\n" +
-            $"    FROM cte{plan.Match.Index} m{matchJoin}\n" +
+            $"    SELECT {top}m.T1, m.Sid1{matchSortColumns}\n" +
+            $"    FROM cte{plan.Match.Index} m{matchSortJoins}{matchResourceJoin}{matchWhere}{cteOrderBy}\n" +
             $")");
 
         for (var i = 0; i < includes.Count; i++)
@@ -86,20 +111,23 @@ public static class Emit
                 $")");
         }
 
+        var nullSortColumns = string.Concat(Enumerable.Repeat(", NULL", activeSortKeyCount));
+        var matchSortColumnRefs = string.Concat(Enumerable.Range(0, activeSortKeyCount).Select(o => $", SortValue{o}"));
+
         var unionBlocks = new List<string>
         {
-            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage",
+            $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM cteMatchPage",
         };
         for (var i = 0; i < includes.Count; i++)
         {
             unionBlocks.Add(
-                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc{i}lim i\n" +
+                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM inc{i}lim i\n" +
                 $"WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 
         var includeSql = $";WITH {string.Join(",\n", cteBlocks)}\n" +
                           $"{string.Join("\nUNION ALL\n", unionBlocks)}\n" +
-                          $"ORDER BY IsMatch DESC";
+                          $"ORDER BY {EmitOuterOrderByForIncludes(plan.Sort)}";
 
         return new EmittedSql(includeSql, parameters);
     }
@@ -265,6 +293,14 @@ public static class Emit
         var terms = activeIndices.Select(i =>
             $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
         return string.Join(", ", terms.Append("m.T1 ASC").Append("m.Sid1 ASC"));
+    }
+
+    private static string EmitOuterOrderByForIncludes(SortSpec? sort)
+    {
+        var activeIndices = ActiveKeyIndices(sort);
+        var terms = activeIndices.Select((idx, ordinal) =>
+            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
+        return string.Join(", ", terms.Prepend("IsMatch DESC").Append("T1 ASC").Append("Sid1 ASC"));
     }
 
     private static string EmitSortSelectColumns(SortSpec? sort)
