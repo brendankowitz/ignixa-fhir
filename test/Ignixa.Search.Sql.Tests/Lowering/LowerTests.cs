@@ -25,7 +25,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -49,7 +49,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, top: 10);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10);
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -72,7 +72,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -94,7 +94,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0))
+        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("does not support");
     }
 
@@ -113,7 +113,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0));
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0));
+        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -177,7 +177,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act -- iterate entry listed FIRST in the includes list, to prove ordering is by the sort, not input order.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert -- non-iterate stage always sorts first (design §4.1); inc0 is Organization:organization, inc1 is the iterate.
         plan.Includes!.Count.ShouldBe(2);
@@ -209,7 +209,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110, ["Encounter"] = 111 });
 
         // Act -- Encounter listed first in the input list.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert -- inc0 is the Encounter stage (ref=22), matching its position in the input list.
         plan.Includes!.Count.ShouldBe(2);
@@ -233,7 +233,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000))
+            Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("cycle");
     }
 
@@ -252,7 +252,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert -- the degenerate stage was dropped, not emitted with an empty EXISTS.
         plan.Includes.ShouldBeNull();
@@ -268,7 +268,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -296,7 +296,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0))
+            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("no single resource type");
     }
 
@@ -325,7 +325,7 @@ public class LowerTests
             });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0);
+        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
@@ -352,7 +352,116 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000))
+            Lower.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("SeedFromMatch");
+    }
+
+    [Fact]
+    public void GivenASingleStringSortKey_WhenLowered_ThenPlanSortHasTheResolvedSearchParamId()
+    {
+        // Arrange
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Keys.Count.ShouldBe(1);
+        plan.Sort.Keys[0].SearchParamId.ShouldBe((short)202);
+        plan.Sort.Keys[0].Kind.ShouldBe(SortKeyKind.String);
+        plan.Sort.Keys[0].Direction.ShouldBe(Ignixa.Search.Expressions.SortOrder.Ascending);
+        plan.Sort.Phase.ShouldBe(SortPhase.Valued);
+    }
+
+    [Fact]
+    public void GivenALastUpdatedSortKey_WhenLowered_ThenNoSearchParamIdIsRequested()
+    {
+        // Arrange -- symbols has no SearchParamId entry at all; must not throw.
+        var lastUpdatedParam = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(lastUpdatedParam, Ignixa.Search.Expressions.SortOrder.Descending)], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Sort!.Keys[0].SearchParamId.ShouldBeNull();
+        plan.Sort.Keys[0].Kind.ShouldBe(SortKeyKind.LastUpdated);
+    }
+
+    [Fact]
+    public void GivenFourSortKeys_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange
+        var p1 = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var p2 = new SearchParameterInfo("birthdate", "birthdate", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Patient-birthdate"));
+        var p3 = new SearchParameterInfo("gender", "gender", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-gender"));
+        var lastUpdated = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [p1.Url.ToString()] = 1, [p2.Url.ToString()] = 2, [p3.Url.ToString()] = 3 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [
+                    new SortExpression(p1, Ignixa.Search.Expressions.SortOrder.Ascending),
+                    new SortExpression(p2, Ignixa.Search.Expressions.SortOrder.Descending),
+                    new SortExpression(p3, Ignixa.Search.Expressions.SortOrder.Ascending),
+                    new SortExpression(lastUpdated, Ignixa.Search.Expressions.SortOrder.Descending),
+                ],
+                sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("at most 3 keys");
+    }
+
+    [Fact]
+    public void GivenATokenSortKey_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- Token/Number/Quantity/Reference/Uri sort is deferred, not silently mishandled.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [statusParam.Url.ToString()] = 1 },
+            new Dictionary<string, short> { ["Observation"] = 104 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("Token");
+    }
+
+    [Fact]
+    public void GivenAWildcardCompartmentSearchWithASortKey_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- GET /Patient/123/*?_sort=name -- no single resource type to scope the sort join against.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 77, [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(subjectParam, ["Observation"])],
+            });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+                sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("wildcard compartment search");
     }
 }
