@@ -464,4 +464,33 @@ public class LowerTests
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("wildcard compartment search");
     }
+
+    [Fact]
+    public void GivenAWildcardCompartmentSearchWithBothSortAndIncludes_WhenLowered_ThenTheSortViolationIsReportedFirst()
+    {
+        // Arrange -- GET /Patient/123/*?_sort=name&_include=Observation:encounter
+        // The sort guard (line ~63-69) should fire before the includes guard (line ~72-80).
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var encounterParam = new SearchParameterInfo(
+            "encounter", "encounter", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-encounter"), targetResourceTypes: ["Encounter"]);
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var include = new IncludeExpression(["Observation"], encounterParam, "Observation", "Encounter", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 77, [nameParam.Url.ToString()] = 202, [encounterParam.Url.ToString()] = 88 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104, ["Encounter"] = 105 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(subjectParam, ["Observation"])],
+            });
+
+        // Act & Assert
+        var ex = Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000,
+                sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null));
+        ex.Message.ShouldContain("wildcard compartment search");
+        ex.Message.ShouldNotContain("SeedFromMatch");
+    }
 }

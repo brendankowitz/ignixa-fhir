@@ -1,5 +1,4 @@
 using Ignixa.Search.Expressions;
-using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -11,8 +10,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// SearchParameterPredicateExpression leaves, SearchParameterExpression-wrapped composites, and
 /// ChainedExpression (forward and reverse chain, any nesting depth, dispatched to
 /// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan, and includes/revIncludes (via
-/// BuildIncludeStages, Phase 7) into QueryPlan.Includes. Sort is not handled -- see this plan's global
-/// constraints for why. As of Phase 8, CompartmentSearchExpression is also handled, via
+/// BuildIncludeStages, Phase 7) into QueryPlan.Includes. As of Phase 8, CompartmentSearchExpression is also handled, via
 /// StructuralContext.LowerCompartment, dispatched both from Run's top-level switch (the wildcard,
 /// no-single-scope case) and from LowerNode's ordinary switch (the non-wildcard case, reachable
 /// standalone or nested inside an And alongside ordinary predicates). As of Phase 8 part 2,
