@@ -19,7 +19,9 @@
 
 `IncludeProcessor.cs`/`RevIncludeProcessor.cs` (the live, correct executors — same role `ChainedExpressionProcessor.cs` played for chain) confirm the identical `dbo.ReferenceSearchParam ⋈ dbo.Resource` translation join. But: **forward `_include`'s known set is the referencing side** (the resource already in the result set); **forward `ChainJoin`'s known set is the referenced side**. This means a forward `_include` emits the same join shape `ChainJoin.Reverse` already emits, and `_revinclude` emits `ChainJoin.Forward`'s shape — the opposite of what an initial reading of "same mechanism as chain" would suggest. This is the single easiest place this phase could ship a silently-swapped emission, matching exactly the class of bug the Phase 6 final review specifically hunted for in reverse chain's field mapping. §2 addresses this with a dedicated `IncludeDirection` enum (not `ChainDirection` reused) and a side-by-side golden test.
 
-Wildcard forward include emits no `SearchParamId` filter at all (`IncludeProcessor.cs:141-151`) — only the `dbo.Resource` join itself constrains it. Ignixa also supports a revinclude wildcard-source form (`*:*` — no source-type filter *and* no reference-param filter, `RevIncludeProcessor.cs:121-125`), which any design must be able to express (both `SeedTypeIds` and `ReferenceSearchParamId` nullable).
+Wildcard forward include emits no `SearchParamId` filter at all (`IncludeProcessor.cs:141-151`) — only the `dbo.Resource` join itself constrains it. Ignixa also supports a revinclude wildcard-source form (`*:*` — no source-type filter *and* no reference-param filter, `RevIncludeProcessor.cs:121-125`); `*` is the produced side of a `_revinclude` (`IncludeExpression.SourceResourceType == "*"`), so under §6's produced-side rule this is expressed by a null **`OutputTypeIds`** (already nullable), not `SeedTypeIds` — an earlier draft of this section misattributed it to `SeedTypeIds`, corrected here. Two special cases this shape must not silently mishandle: `IncludeExpression.Produces` for `*:*` is literally `["*"]`, a sentinel, not a real resource type name -- `Resolve` must recognize and skip it (not attempt `ISymbolResolver.GetResourceTypeIdAsync("*")`, which would silently miss), and §4's Kahn edge rule (`Produces ∩ Requires`) must treat a `*`-producing stage as satisfying every downstream `Requires`, not computing zero edges for it (the literal-string-intersection reading would silently produce zero edges instead of "matches anything").
+
+**Divergence from the live executor, recorded deliberately (matching this design's existing practice for §1.3/§1.5/`BaseUri`):** the live `IncludeProcessor.cs` filters a *specific-parameter* forward include (not just the wildcard case) by target resource type only -- it never filters by `SearchParamId` anywhere in the file. This means the live path over-includes: `_include=Patient:general-practitioner` also returns `managingOrganization` targets of the same resource type, since both reference params share a target type and the live query doesn't distinguish them. This design's `inc0`'s `rsp.SearchParamId = 55` filter (below) is correct FHIR semantics and does NOT reproduce this bug -- a deliberate, documented improvement, not an oversight, named here so Phase 9's differential-test suite expects and confirms the difference rather than flagging it as an unexplained mismatch.
 
 ### 1.3 `:iterate` — the live executor and fhir-server disagree, and this design must pick one
 
@@ -51,33 +53,36 @@ IncludeStage(
     int Limit)
 ```
 
-`QueryPlan` gains `IReadOnlyList<IncludeStage> Includes = []`.
+`QueryPlan` gains `IReadOnlyList<IncludeStage>? Includes = null` (nullable, trailing, defaulted -- `= []` is not legal C# here: a record's default parameter value must be a compile-time constant, and a collection expression targeting an interface type isn't one, matching why `Top`/`OuterPredicate` are already `?`-typed with `null` defaults rather than empty-collection defaults). Every consumer treats `plan.Includes is not { Count: > 0 }` as "no includes" -- callers that already construct a `QueryPlan` positionally are unaffected, matching this project's established purely-additive-trailing-field precedent (`ResourceSource.Predicate`, `QueryPlan.OuterPredicate`).
 
 **`SeedStages` is the piece Appendix A's original sketch omitted entirely**, and it's the load-bearing one. Without it, "which CTE does an iterate hop's `EXISTS` seed from" has nowhere to live except emitter-mutable state — exactly fhir-server's own `_includeLimitCtesByResourceType`, a type-keyed dictionary built up *during* emission (`SqlQueryGenerator.cs`'s `AddIncludeLimitCte`). That mutable-state-during-rendering pattern is precisely what this whole project exists to avoid (see the original design doc's tier-boundary argument). Reifying the dependency as data — plain integer indices into `QueryPlan.Includes`, exactly analogous to how `CteRef` indices work for `QueryPlan.Ctes` — means `Lower` computes every edge once, during the Kahn sort, and `Emit` becomes a dumb renderer with no registry to maintain.
 
 A non-iterate stage always has `SeedStages = []`, `SeedFromMatch = true`. An iterate stage seeds from every predecessor stage whose `Produces` intersects its own `Requires` (populating `SeedStages`), plus the match page directly (`SeedFromMatch = true`) when its `Requires` intersects the match's own resource type(s) — this reproduces both fhir-server's `_cteMainSelect` fallback for iterate stages with no in-graph predecessor and its "matches + first-level includes" combined seed for the second hop.
 
+**Degenerate case:** if an iterate stage's `Requires` intersects neither any predecessor's `Produces` nor the match page's own types (`SeedStages = []` AND `SeedFromMatch = false`), its `EXISTS` clause would have zero branches -- unrenderable, and not a real query shape any binder-produced `Requires`/`Produces` pair should reach in practice. `Lower` drops such a stage entirely (it can never produce any rows) rather than emit malformed SQL, matching this project's "fail at Lower time, not let SQL Server discover it" principle already established for `ChainJoin`'s empty-`OutputResourceTypeIds` case.
+
 ### Emitted SQL
 
-**Forward** (`Direction = Forward` — known set is the referencing side, e.g. `_include`):
+**Forward** (`Direction = Forward` — known set is the referencing side, e.g. `_include`; output is the referenced side, translated through `dbo.Resource` — structurally identical to `ChainJoin.Reverse`'s shape, per §1.2):
 ```sql
-inc0 = SELECT DISTINCT TOP (@Limit+1) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1
+inc0 = SELECT DISTINCT TOP (@Limit+1) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1
        FROM dbo.ReferenceSearchParam rsp
        INNER JOIN dbo.Resource r
            ON r.ResourceTypeId = rsp.ReferenceResourceTypeId
           AND r.ResourceId = rsp.ReferenceResourceId
           AND r.IsHistory = 0 AND r.IsDeleted = 0
        WHERE rsp.SearchParamId = 55                 -- omitted entirely for wildcard (ReferenceSearchParamId is null)
-         AND rsp.ResourceTypeId = 103                -- SeedTypeIds filter on rsp, when present
-         AND r.ResourceTypeId = 105                  -- OutputTypeIds filter on r, when present
+         AND rsp.ResourceTypeId = 103                -- SeedTypeIds filter on rsp (the known/referencing side), when present
+         AND r.ResourceTypeId = 105                  -- OutputTypeIds filter on r (the produced/referenced side), when present
          AND rsp.BaseUri IS NULL
          AND EXISTS (
              SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId
              -- UNION ALL one clause per SeedStages entry, same shape against incNlim
          )
 ```
+(An earlier draft of this block projected `rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1` -- that is `ChainJoin.Forward`'s projection, not `Reverse`'s, and would have returned a subset of the match page instead of the included resources. Caught during the spec's own re-review before any plan was written from it; the `SELECT` above is corrected. The `EXISTS` correlation still runs against `rsp` -- the seed/known side is always what correlates directly, regardless of which side the final `SELECT` projects.)
 
-**Reverse** (`Direction = Reverse` — known set is the referenced side, e.g. `_revinclude`): the mirror, structurally identical to `ChainJoin.Forward`'s shape — known-side correlates directly on `rsp`, output side translated through `dbo.Resource`.
+**Reverse** (`Direction = Reverse` — known set is the referenced side, e.g. `_revinclude`; output is the referencing side, selected directly from `rsp` — structurally identical to `ChainJoin.Forward`'s shape, per §1.2): the mirror of the block above -- the known/seed side (this time the referenced side) is translated through the `dbo.Resource` join and is what the `EXISTS` correlates against; the output side (the referencing side) is selected directly from `rsp.ResourceTypeId`/`rsp.ResourceSurrogateId`, with `SeedTypeIds` filtering the translated `dbo.Resource` alias and `OutputTypeIds` filtering `rsp.ResourceTypeId` directly.
 
 `BaseUri IS NULL` carried over from `ChainJoin`'s own precedent (§3 of the chain design doc) — neither the live processors nor fhir-server filter it; same class of free, documented correctness improvement.
 
@@ -114,6 +119,10 @@ ORDER BY IsMatch DESC
 
 **Result shape changes from `(T1, Sid1)` to `(T1, Sid1, IsMatch, IsPartial)` whenever `Includes` is non-empty.** `EmittedSql`'s XML doc states this explicitly as a contract — callers key off `plan.Includes.Count > 0` to know which shape to expect, not by inspecting column count at runtime.
 
+**Two rendering details pinned down, both by direct precedent already established in this codebase:**
+- **`Limit` (and every `IncludeStage` id field) renders as a SQL literal, never a bound `@pN` parameter** — matching `ChainJoin`'s existing precedent (`ReferenceSearchParamId`, `InnerResourceTypeId`, `OutputResourceTypeIds` all render as literals, per the chain design doc §3's `EmitChainJoin` note on why a real `Predicate` node would wrongly force a bound parameter) and `PlanExplainer`'s parameter-ordinal invariant, which every existing `CteDefinition` case already either consumes zero ordinals (literal-only nodes) or a documented, deliberate number (`ResourceSource`'s bound `ResourceTypeId`). `cteMatchPage`'s `TOP (@Top)` keeps `Top`'s EXISTING rendering unchanged (already a literal in `Emit.cs` today), so this is additive, not a new pattern.
+- **`cteMatchPage`'s `TOP` clause when `plan.Top` is null:** omit the `TOP (...)` entirely (`SELECT m.T1, m.Sid1 FROM cte{Match.Index} m ...`), matching how the existing outer-`SELECT` path already renders `Top is { } n ? $"TOP ({n}) " : string.Empty` (`Emit.cs`'s current `Run` method) — `cteMatchPage`'s emission reuses this exact same conditional, not a new rule.
+
 **Dedup across stages: `UNION ALL` + executor-side key dedup, not SQL-side `DISTINCT`.** With `IsPartial` in the projection, `SELECT DISTINCT` is unreliable (the same logical row could appear with different `IsPartial` flags from different stages). fhir-server uses `SELECT DISTINCT` on the *outer* query without `IsPartial` complications because its column shape differs slightly; Ignixa's live executor already deduplicates by `(ResourceType, ResourceId)` key at the application layer (`processedResourceKeys`), so `UNION ALL` here is consistent with an already-established, working pattern rather than introducing a new one.
 
 ## 4. Topological ordering (Kahn's algorithm, in `Lower`)
@@ -133,6 +142,8 @@ Confirmed against fhir-server: ordering happens in the SQL-generation layer, nev
 `Limit` is a **required, non-nullable `int`** field on `IncludeStage` (and, upstream, a required parameter on whatever `Lower.Run` overload accepts the include lists) — `Lower` stays pure with no ambient default, matching the precedent `targetResourceType` already set in Phase 6. This phase does **not** touch `SearchOptionsBuilder.cs` (out of scope: it is existing, already-shipped binder code, and today it defaults `IncludesMaxItemCount` to *unbounded* when `_includesCount` is absent — the opposite of fhir-server's 1000). The recommended-1000 default is explicitly **Phase 9's (DataLayer wiring) responsibility**: when Phase 9 translates a `SearchOptions` into a `Lower.Run` call, it computes `searchOptions.IncludesMaxItemCount ?? 1000` itself before passing `limit` in. This phase's own tests always pass an explicit `limit`, never relying on a default that doesn't exist at this layer. Recorded here now specifically so Phase 9 doesn't rediscover the unbounded-vs-1000 divergence as a surprise.
 
 "Was truncated" for a given stage = any row with `IsMatch = 0 AND IsPartial = 1` in that stage's output — no per-stage attribution beyond that is needed; fhir-server doesn't preserve one either.
+
+**Signature placement:** `Lower.Run`'s current shape (`Expression expression, SymbolTable symbols, string targetResourceType, int? top = null`) accommodates the new required parameters cleanly by inserting them before the trailing optional `top`: `Run(Expression? expression, SymbolTable symbols, string targetResourceType, IReadOnlyList<IncludeExpression> includes, IReadOnlyList<IncludeExpression> revIncludes, int includeLimit, int? top = null)` — no "optional parameters must be last" conflict. Note `expression` becomes **nullable**: an include-only search (`Patient?_include=organization` with no other filter) has no ordinary match expression at all; `Lower` already has the `LowerResourceSource` fallback for a null/empty match (used today for resource-column-only queries), and this phase's widened signature must accept that same fallback path when the ONLY thing driving the query is includes. `Resolve.RunAsync`'s `ArgumentNullException.ThrowIfNull(expression)` must be relaxed the same way.
 
 ## 6. SMART/compartment boundary
 
