@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using System.Globalization;
 using Shouldly;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -43,7 +44,7 @@ public class SearchIndexerMinMaxTests
     {
         // Arrange -- two distinct HumanName entries produce multiple "name" search values
         // (String type, multi-valued) -- exactly the shape MarkMinMaxValues exists to flag.
-        var patient = PatientBuilderFactory.Create(_schemaProvider)
+        var patient = PatientBuilderFactory.Create(_schemaProvider, seed: 42)
             .WithFamilyName("Zorro")
             .AddName("Adams", "Anna")
             .Build();
@@ -68,8 +69,15 @@ public class SearchIndexerMinMaxTests
         minMarked.Count.ShouldBe(1);
         maxMarked.Count.ShouldBe(1);
 
-        var expectedMin = nameValues.MinBy(v => v.String, StringComparer.Ordinal);
-        var expectedMax = nameValues.MaxBy(v => v.String, StringComparer.Ordinal);
+        // Matches StringSearchValue.CompareTo's real comparison (case- and accent-insensitive,
+        // invariant culture) so the test validates against the actual production comparer.
+#pragma warning disable CA1309
+        var productionComparer = Comparer<string>.Create((a, b) =>
+            string.Compare(a, b, CultureInfo.InvariantCulture, CompareOptions.IgnoreNonSpace | CompareOptions.IgnoreCase));
+#pragma warning restore CA1309
+
+        var expectedMin = nameValues.MinBy(v => v.String, productionComparer);
+        var expectedMax = nameValues.MaxBy(v => v.String, productionComparer);
 
         minMarked[0].String.ShouldBe(expectedMin!.String);
         maxMarked[0].String.ShouldBe(expectedMax!.String);
