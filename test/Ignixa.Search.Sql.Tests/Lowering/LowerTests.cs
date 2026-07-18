@@ -278,6 +278,30 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenAReversedIncludeExpressionPassedIntoTheForwardIncludesList_WhenLowered_ThenDirectionIsStillReverse()
+    {
+        // Arrange -- a _revinclude-shaped IncludeExpression (Reversed=true), but deliberately passed into
+        // BuildIncludeStages' forward `includes` parameter instead of `revIncludes`. Before the fix,
+        // Direction came from the caller's list choice (Forward here) while Requires/Produces reflected
+        // the expression's true reversed semantics -- an internally inconsistent IncludeStage. Direction
+        // must be derived from expression.Reversed, not from which list it arrived through.
+        var conditionSubjectParam = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Condition-subject"), targetResourceTypes: ["Patient"]);
+        var misplacedRevInclude = new IncludeExpression(["Condition"], conditionSubjectParam, "Condition", "Patient", null, wildCard: false, reversed: true, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [conditionSubjectParam.Url.ToString()] = 21 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110 });
+
+        // Act -- note: misplacedRevInclude is passed as `includes` (forward), not `revIncludes`.
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Includes!.Count.ShouldBe(1);
+        plan.Includes[0].Direction.ShouldBe(IncludeDirection.Reverse);
+    }
+
+    [Fact]
     public void GivenAWildcardCompartmentSearchWithAnOrdinaryTypedPredicate_WhenLowered_ThenThrowsNotSupportedException()
     {
         // Arrange -- GET /Patient/123/*?name=Smith -- no single resource type to scope "name" against.

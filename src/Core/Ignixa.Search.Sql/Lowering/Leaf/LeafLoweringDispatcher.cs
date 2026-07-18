@@ -2,7 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Sql.Ast;
 
-namespace Ignixa.Search.Sql.Lowering;
+namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
 /// Dispatches a leaf predicate to its tier-1 lowering rule by the runtime type of its ISearchValue.

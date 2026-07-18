@@ -1,6 +1,8 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Lowering.Composite;
+using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
 
 namespace Ignixa.Search.Sql.Lowering;

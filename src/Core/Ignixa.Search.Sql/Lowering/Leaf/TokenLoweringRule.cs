@@ -3,7 +3,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 
-namespace Ignixa.Search.Sql.Lowering;
+namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
 /// Lowers a Token search value to a ParamSource over TokenSearchParam. Code-only case only --

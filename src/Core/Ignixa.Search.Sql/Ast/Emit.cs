@@ -363,7 +363,9 @@ public static class Emit
         branches.Add($"({allEqualPrefix}m.T1 = {typeParam} AND m.Sid1 > {sidParam})");
         branches.Add($"({allEqualPrefix}m.T1 > {typeParam})");
 
-        return branches.Count == 1 ? branches[0] : string.Join("\n       OR ", branches);
+        return branches.Count == 1
+            ? branches[0]
+            : $"({string.Join("\n       OR ", branches)})";
     }
 
     private static string EmitCompartmentSource(CteDefinition.CompartmentSource cs, List<EmittedSqlParameter> parameters)

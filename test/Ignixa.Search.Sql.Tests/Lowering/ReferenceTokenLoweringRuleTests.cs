@@ -3,6 +3,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
+using Ignixa.Search.Sql.Lowering.Composite;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
