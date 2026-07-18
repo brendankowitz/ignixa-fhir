@@ -332,11 +332,13 @@ public class EmitTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
             "    SELECT TOP (1000) T1, Sid1,\n" +
             "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
             "    FROM inc0\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             ")\n" +
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
             "UNION ALL\n" +
@@ -379,7 +381,6 @@ public class EmitTests
             "cteMatchPage AS (\n" +
             "    SELECT m.T1, m.Sid1\n" +
             "    FROM cte0 m\n" +
-            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
             "),\n" +
             "inc0 AS (\n" +
             "    SELECT DISTINCT TOP (1001) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
@@ -395,11 +396,13 @@ public class EmitTests
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
             "    )\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
             "    SELECT TOP (1000) T1, Sid1,\n" +
             "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
             "    FROM inc0\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
             ")\n" +
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
             "UNION ALL\n" +
@@ -725,10 +728,12 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludeBearingPlanWithNoSort_WhenEmitted_ThenCteMatchPageStillGetsAnOrderByAndTheOuterOrderByGetsATieBreak()
+    public void GivenAnIncludeBearingPlanWithNoSortAndNoTop_WhenEmitted_ThenCteMatchPageHasNoOrderByButTheOuterOrderByStillGetsATieBreak()
     {
-        // Arrange -- Patient?_include=Patient:organization, no _sort -- proves the universal
-        // "every TOP needs an ORDER BY" invariant applies even when Sort is entirely absent.
+        // Arrange -- Patient?_include=Patient:organization, no _sort, no _top -- cteMatchPage has no
+        // TOP either, so it must have no ORDER BY of its own (SQL Server Msg 1033: ORDER BY is invalid
+        // inside a CTE without TOP/OFFSET/FOR XML). The outer UNION ALL's ORDER BY is a plain top-level
+        // SELECT and still applies unconditionally, giving the whole statement a deterministic ordering.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
@@ -745,8 +750,138 @@ public class EmitTests
             "cteMatchPage AS (\n" +
             "    SELECT m.T1, m.Sid1\n" +
             "    FROM cte0 m\n" +
+            "),\n");
+        emitted.Sql.ShouldContain("    ORDER BY T1 ASC, Sid1 ASC\n");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenTheMissingPrimaryPhaseWithALastUpdatedPrimaryKey_WhenEmitted_ThenThrowsInvalidOperationException()
+    {
+        // Arrange -- hand-constructed QueryPlan bypassing Lower.BuildSortSpec's own guard (Lower rejects
+        // this combination at construction time -- see LowerTests' equivalent throw test). QueryPlan is
+        // a public construction surface, so Emit defends against this shape too rather than trusting
+        // every caller to route through Lower: _lastUpdated is never "missing," so EmitMissingPrimaryFilter
+        // must never be asked to render a NOT EXISTS for it (its SearchParamId is null by construction).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.MissingPrimary);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => Emit.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAPageBoundaryWithFewerValuesThanActiveSortKeys_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
+    {
+        // Arrange -- a 2-key Valued sort needs a 2-value boundary; this one only carries 1. Silently
+        // pairing boundaryParams[0] against the wrong key's expression is exactly the silent-wrong-
+        // pagination failure class this guard exists to prevent.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
+            ],
+            SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Zorro")], new SqlParameterRef((short)103), new SqlParameterRef(9000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => Emit.Run(plan)).Message.ShouldContain("1 value(s)");
+    }
+
+    [Fact]
+    public void GivenAMissingPrimaryPhaseBoundaryReusedFromTheValuedPhaseShape_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
+    {
+        // Arrange -- MissingPrimary excludes Keys[0] from ActiveKeyIndices, so its boundary should carry
+        // Keys.Count - 1 values. Handing it a full Keys.Count-sized boundary (the Valued-phase shape) must
+        // throw rather than silently misalign boundaryParams against the wrong keys.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => Emit.Run(plan)).Message.ShouldContain("active key(s)");
+    }
+
+    [Fact]
+    public void GivenASortedIncludedSearchOnPageTwo_WhenEmitted_ThenTheSeekPredicateAppearsInsideCteMatchPageAlongsideTheSortJoinAndTheOuterUnionStillOrders()
+    {
+        // Arrange -- Patient?name=Smith&_sort=name&_include=Patient:organization, page 2. The flagship
+        // production scenario the final review flagged as unproven: Sort + Page + Includes all at once.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            Includes: [includeStage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the seek predicate is inside cteMatchPage's own WHERE, alongside the IsMin join.
+        emitted.Sql.ShouldContain(
+            "cteMatchPage AS (\n" +
+            "    SELECT TOP (10) m.T1, m.Sid1, sk0.Text AS SortValue0\n" +
+            "    FROM cte0 m\n" +
+            "INNER JOIN dbo.StringSearchParam sk0\n" +
+            "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
+            "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
+            "    WHERE sk0.Text > @p1\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 > @p2)\n" +
+            "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
+            ")");
+        emitted.Sql.ShouldContain(
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenTheMissingPrimaryPhaseWithIncludes_WhenEmitted_ThenCteMatchPageUsesNotExistsCombinedWithTheIncludeMachinery()
+    {
+        // Arrange -- Patient?_sort=name&_include=Patient:organization, missing-name phase: proves the
+        // NOT EXISTS filter (not the INNER JOIN) is what seeds the include stage's EXISTS-against-
+        // cteMatchPage correlation, exactly as it does with no includes present.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Includes: [includeStage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain(
+            "cteMatchPage AS (\n" +
+            "    SELECT TOP (10) m.T1, m.Sid1\n" +
+            "    FROM cte0 m\n" +
+            "    WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)\n" +
             "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
             ")");
+        emitted.Sql.ShouldContain(
+            "      AND EXISTS (\n" +
+            "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+            "    )");
+        emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
         emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
     }
 }

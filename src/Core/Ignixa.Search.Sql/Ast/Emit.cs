@@ -68,7 +68,12 @@ public static class Emit
         var matchSortJoins = EmitSortJoins(plan.Sort);
         var matchSortColumns = EmitSortSelectColumns(plan.Sort);
         var activeSortKeyCount = ActiveKeyIndices(plan.Sort).Count;
-        var cteOrderBy = $"\n    ORDER BY {EmitOrderBy(plan.Sort)}";
+
+        // A CTE's own ORDER BY is only legal T-SQL alongside TOP (SQL Server Msg 1033) -- when plan.Top
+        // is null, cteMatchPage has no TOP and so must have no ORDER BY of its own either. The outer
+        // final UNION ALL's ORDER BY (EmitOuterOrderByForIncludes, below) is a plain top-level SELECT,
+        // always legal regardless of TOP, and is unaffected by this.
+        var cteOrderBy = plan.Top is not null ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}" : string.Empty;
 
         var matchWhereClauses = new List<string>();
         if (plan.OuterPredicate is not null)
@@ -108,6 +113,7 @@ public static class Emit
                 $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
                 $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
                 $"    FROM inc{i}\n" +
+                $"    ORDER BY T1 ASC, Sid1 ASC\n" +
                 $")");
         }
 
@@ -249,6 +255,17 @@ public static class Emit
     private static string EmitMissingPrimaryFilter(SortSpec sort)
     {
         var key = sort.Keys[0];
+        if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
+        {
+            throw new InvalidOperationException(
+                "SortSpec.Phase == MissingPrimary with a LastUpdated (or otherwise SearchParamId-less) " +
+                "primary key reached Emit -- _lastUpdated is a resource-column key derived from " +
+                "ResourceSurrogateId, so it is never \"missing\" and has no MissingPrimary segment. " +
+                "Lower.BuildSortSpec rejects this combination; QueryPlan is a public construction " +
+                "surface, so this guard exists defensively rather than trusting every caller routes " +
+                "through Lower.");
+        }
+
         var table = key.Kind == SortKeyKind.String ? "StringSearchParam" : "DateTimeSearchParam";
         return $"NOT EXISTS (SELECT 1 FROM dbo.{table} s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = {key.SearchParamId})";
     }
@@ -314,6 +331,14 @@ public static class Emit
     private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {
         var activeIndices = ActiveKeyIndices(sort);
+        if (page.Boundary.Count != activeIndices.Count)
+        {
+            throw new InvalidOperationException(
+                $"PageSpec.Boundary has {page.Boundary.Count} value(s) but the current SortSpec phase has " +
+                $"{activeIndices.Count} active key(s) -- boundary values must be freshly decoded for the " +
+                "current phase, never reused across a Valued/MissingPrimary transition.");
+        }
+
         var boundaryParams = page.Boundary.Select(b => EmitParam(b, parameters)).ToList();
         var typeParam = EmitParam(page.BoundaryResourceTypeId, parameters);
         var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
@@ -390,7 +415,8 @@ public static class Emit
                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
                $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
-               $"    WHERE {string.Join("\n      AND ", whereClauses)}";
+               $"    WHERE {string.Join("\n      AND ", whereClauses)}\n" +
+               $"    ORDER BY T1 ASC, Sid1 ASC";
     }
 
     private static string EmitTypeInFilter(string column, IReadOnlyList<short> typeIds)

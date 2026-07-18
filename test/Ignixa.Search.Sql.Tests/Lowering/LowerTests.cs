@@ -493,4 +493,26 @@ public class LowerTests
         ex.Message.ShouldContain("wildcard compartment search");
         ex.Message.ShouldNotContain("SeedFromMatch");
     }
+
+    [Fact]
+    public void GivenALastUpdatedPrimarySortKeyInTheMissingPrimaryPhase_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- _lastUpdated is a resource-column key derived from ResourceSurrogateId, so it can
+        // never be "missing." A caller driving the two-phase transition (SortPhase is a caller input,
+        // not something Lower computes) must never be able to construct a SortSpec([LastUpdated key],
+        // MissingPrimary) -- EmitMissingPrimaryFilter would otherwise interpolate a null SearchParamId
+        // into SQL text.
+        var lastUpdated = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [new SortExpression(lastUpdated, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.MissingPrimary, page: null))
+            .Message.ShouldContain("never");
+    }
 }

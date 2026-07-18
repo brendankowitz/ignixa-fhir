@@ -309,6 +309,15 @@ public static class Lower
         }
 
         var keys = sort.Select(s => BuildSortKey(s, symbols)).ToList();
+
+        if (phase == SortPhase.MissingPrimary && keys[0].Kind == SortKeyKind.LastUpdated)
+        {
+            throw new NotSupportedException(
+                "_lastUpdated is a resource-column sort key derived directly from ResourceSurrogateId -- " +
+                "it is never \"missing,\" so there is no MissingPrimary segment for it. Only a search-" +
+                "parameter-table primary key (String or Date) has a MissingPrimary phase.");
+        }
+
         return new SortSpec(keys, phase);
     }
 
