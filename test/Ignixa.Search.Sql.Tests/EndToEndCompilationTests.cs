@@ -1,3 +1,4 @@
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -1123,5 +1124,192 @@ public class EndToEndCompilationTests
 
         var emitted = Emit.Run(plan);
         emitted.Sql.ShouldContain("SELECT 1 FROM inc0lim m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+    }
+
+    [Fact]
+    public async Task GivenAWildcardPatientCompartmentSearch_WhenCompiledEndToEnd_ThenTheCteIsAUnionOfGroupedCompartmentSources()
+    {
+        // Arrange -- GET /Patient/123/* -- Patient compartment covers Observation (via "subject") and
+        // Condition (via "subject" AND "asserter", two distinct membership parameters).
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var asserterParam = new SearchParameterInfo("asserter", "asserter", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Condition-asserter"));
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[asserterParam.Url!.ToString()] = 66;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.ResourceTypeIds["Condition"] = 106;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation", "Condition"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+        compartmentManager.SearchParams[("Condition", CompartmentType.Patient)] = ["subject", "asserter"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+        searchParamManager.Parameters[("Condition", "subject")] = subjectParam;
+        searchParamManager.Parameters[("Condition", "asserter")] = asserterParam;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None,
+            compartmentManager, searchParamManager);
+        var plan = Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0);
+
+        // Assert -- inc-free, two grouped CompartmentSource CTEs (one per distinct SearchParamId), Unioned.
+        plan.Ctes.Count.ShouldBe(3);
+        plan.Ctes[0].ShouldBeOfType<CteDefinition.CompartmentSource>();
+        plan.Ctes[1].ShouldBeOfType<CteDefinition.CompartmentSource>();
+        plan.Ctes[2].ShouldBeOfType<CteDefinition.Union>();
+        plan.Match.ShouldBe(new CteRef(2));
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("SearchParamId = 55");
+        emitted.Sql.ShouldContain("SearchParamId = 66");
+        emitted.Sql.ShouldContain("(ResourceTypeId = 104 OR ResourceTypeId = 106)"); // subject: Observation + Condition
+        emitted.Sql.ShouldContain("ResourceTypeId = 106\n"); // asserter: Condition only, bare Equal
+    }
+
+    [Fact]
+    public async Task GivenANonWildcardPatientCompartmentSearchForObservation_WhenCompiledEndToEnd_ThenTargetResourceTypeIsUsedNormally()
+    {
+        // Arrange -- GET /Patient/123/Observation -- FilteredResourceTypes = {"Observation"}, a real
+        // targetResourceType ("Observation") is supplied (matching SearchCompartmentHandler's own
+        // non-wildcard behavior -- SearchOptions.ResourceType is only ever nulled for "*"). Even a
+        // single membership parameter still gets Unioned -- StructuralContext.LowerCompartment always
+        // wraps its CompartmentSource group(s) in a Union, unconditionally (design doc §4: "still a
+        // Union of N single-type-list CompartmentSource CTEs" -- N=1 included, no shortcut for a
+        // single group), so this is 2 CTEs, not a bare CompartmentSource.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            compartmentManager, searchParamManager);
+        var plan = Lower.Run(compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
+
+        // Assert
+        plan.Ctes.Count.ShouldBe(2);
+        plan.Ctes[0].ShouldBeOfType<CteDefinition.CompartmentSource>();
+        plan.Ctes[1].ShouldBeOfType<CteDefinition.Union>();
+        plan.Match.ShouldBe(new CteRef(1));
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("ResourceTypeId = 104\n");
+        emitted.Sql.ShouldNotContain("(ResourceTypeId = 104)");
+    }
+
+    [Fact]
+    public async Task GivenANonWildcardCompartmentSearchCombinedWithAnOrdinaryPredicate_WhenCompiledEndToEnd_ThenAnIntersectComposesThem()
+    {
+        // Arrange -- GET /Patient/123/Observation?category=laboratory -- zero new mechanism (design §4):
+        // LowerAnd's existing recursion produces Intersect(compartmentUnion, categoryCte). The compartment
+        // side is itself CompartmentSource -> Union (see the single-group note above), so the compartment's
+        // own CteRef feeding the outer Intersect is the Union CTE, not the CompartmentSource directly.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var categoryParam = new SearchParameterInfo("category", "category", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-category"));
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+        var categoryPredicate = new SearchParameterPredicateExpression(categoryParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "laboratory", text: null));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [compartment, categoryPredicate]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[categoryParam.Url!.ToString()] = 22;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            tree, includes: [], revIncludes: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            compartmentManager, searchParamManager);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0);
+
+        // Assert
+        plan.Ctes.Count.ShouldBe(4);
+        plan.Ctes[0].ShouldBeOfType<CteDefinition.CompartmentSource>();
+        plan.Ctes[1].ShouldBeOfType<CteDefinition.Union>();
+        plan.Ctes[2].ShouldBeOfType<CteDefinition.ParamSource>();
+        plan.Ctes[3].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Match.ShouldBe(new CteRef(3));
+    }
+
+    [Fact]
+    public async Task GivenACompartmentSearchThatResolvesToZeroMembershipParameters_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- GET /Patient/123/NotInCompartment (design §2's degenerate case).
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "NotInCompartment" });
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"]; // "NotInCompartment" isn't listed
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None,
+            compartmentManager, searchParamManager);
+
+        // Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0))
+            .Message.ShouldContain("zero membership");
+    }
+
+    private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
+    {
+        public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
+
+        public Dictionary<(string ResourceType, CompartmentType CompartmentType), HashSet<string>> SearchParams { get; } = [];
+
+        public bool TryGetResourceTypes(CompartmentType compartmentType, out HashSet<string> resourceTypes)
+            => ResourceTypes.TryGetValue(compartmentType, out resourceTypes!);
+
+        public bool TryGetSearchParams(string resourceType, CompartmentType compartmentType, out HashSet<string> searchParams)
+            => SearchParams.TryGetValue((resourceType, compartmentType), out searchParams!);
+    }
+
+    private sealed class FakeSearchParameterDefinitionManager : ISearchParameterDefinitionManager
+    {
+        public Dictionary<(string ResourceType, string Code), SearchParameterInfo> Parameters { get; } = [];
+
+        public bool TryGetSearchParameter(string resourceType, string code, out SearchParameterInfo searchParameter)
+            => Parameters.TryGetValue((resourceType, code), out searchParameter!);
+
+        public IEnumerable<SearchParameterInfo> AllSearchParameters => throw new NotImplementedException();
+        public IReadOnlyDictionary<string, string> SearchParameterHashMap => throw new NotImplementedException();
+        public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType) => throw new NotImplementedException();
+        public bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters) => throw new NotImplementedException();
+        public SearchParameterInfo GetSearchParameter(string resourceType, string code) => throw new NotImplementedException();
+        public bool TryGetSearchParameter(Uri definitionUri, out SearchParameterInfo value) => throw new NotImplementedException();
+        public SearchParameterInfo GetSearchParameter(Uri definitionUri) => throw new NotImplementedException();
+        public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap) => throw new NotImplementedException();
+        public string GetSearchParameterHashForResourceType(string resourceType) => throw new NotImplementedException();
+        public void AddNewSearchParameters(IReadOnlyCollection<Ignixa.Abstractions.IElement> searchParameters, bool calculateHash = true) => throw new NotImplementedException();
+        public void DeleteSearchParameter(string url, bool calculateHash = true) => throw new NotImplementedException();
     }
 }
