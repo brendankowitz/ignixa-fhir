@@ -1,3 +1,4 @@
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 using Shouldly;
@@ -207,5 +208,25 @@ public class PlanExplainerTests
 
         // Assert
         explained.ShouldBe("root = CompartmentSource[104,106,77]  ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1");
+    }
+
+    [Fact]
+    public void GivenAPlanWithSortAndAPageBoundary_WhenExplained_ThenPrintsBothAsTrailingLines()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe(
+            "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "sort = SortSpec([String:202 ASC], Valued)\n" +
+            "page = PageSpec(boundary=[@p1], type=@p2, sid=@p3)");
     }
 }

@@ -1,3 +1,4 @@
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 
@@ -24,7 +25,8 @@ public class EmitTests
             "    FROM dbo.StringSearchParam\n" +
             "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
             ")\n" +
-            "SELECT TOP (10) T1, Sid1 FROM cte0");
+            "SELECT TOP (10) m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(1);
         emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "Smith"));
     }
@@ -66,7 +68,8 @@ public class EmitTests
             "    FROM cte0\n" +
             "    INNER JOIN cte1 ON cte0.T1 = cte1.T1 AND cte0.Sid1 = cte1.Sid1\n" +
             ")\n" +
-            "SELECT T1, Sid1 FROM cte2");
+            "SELECT m.T1, m.Sid1 FROM cte2 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0", "@p1"]);
     }
 
@@ -110,7 +113,8 @@ public class EmitTests
             "    FROM dbo.StringSearchParam\n" +
             "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\'\n" +
             ")\n" +
-            "SELECT T1, Sid1 FROM cte0");
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -464,9 +468,9 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAPlanWithNoIncludes_WhenEmitted_ThenTheSqlIsByteIdenticalToThePreIncludeShape()
+    public void GivenAPlanWithNoIncludesAndNoSort_WhenEmitted_ThenTheSqlHasTheDefaultTypeAndSurrogateIdOrdering()
     {
-        // Arrange -- this is the zero-diff regression proof: identical to
+        // Arrange -- identical to
         // GivenASingleParamSourcePlan_WhenEmitted_ThenProducesAParameterizedSelect's arrangement, above.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(
@@ -483,7 +487,8 @@ public class EmitTests
             "    FROM dbo.StringSearchParam\n" +
             "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
             ")\n" +
-            "SELECT TOP (10) T1, Sid1 FROM cte0");
+            "SELECT TOP (10) m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -508,7 +513,8 @@ public class EmitTests
             "      AND (ResourceTypeId = 104 OR ResourceTypeId = 106)\n" +
             "      AND (ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1)\n" +
             ")\n" +
-            "SELECT T1, Sid1 FROM cte0");
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(2);
         emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", (short)103));
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "123"));
@@ -530,5 +536,153 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldContain("      AND ResourceTypeId = 104\n");
         emitted.Sql.ShouldNotContain("(ResourceTypeId = 104)");
+    }
+
+    [Fact]
+    public void GivenASingleAscendingStringSortKeyInTheValuedPhase_WhenEmitted_ThenJoinsOnIsMinAndOrdersByTheJoinedColumn()
+    {
+        // Arrange -- Patient?_sort=name, first page (no boundary).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            ")\n" +
+            "SELECT TOP (10) m.T1, m.Sid1, sk0.Text AS SortValue0 FROM cte0 m\n" +
+            "INNER JOIN dbo.StringSearchParam sk0\n" +
+            "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
+            "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
+            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenASortWithAPageBoundary_WhenEmitted_ThenTheSeekPredicateAppearsInTheWhereClause()
+    {
+        // Arrange -- Patient?_sort=name, second page.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "WHERE sk0.Text > @p1\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 > @p2)\n" +
+            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(4);
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", (short)103));
+        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5000L));
+    }
+
+    [Fact]
+    public void GivenTheMissingPrimaryPhase_WhenEmitted_ThenTheJoinIsReplacedByNotExistsAndTheOrderByOmitsTheMissingKey()
+    {
+        // Arrange -- Patient?_sort=name, second (missing-name) phase, no secondary keys.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain(
+            "SELECT TOP (10) m.T1, m.Sid1 FROM cte0 m\n" +
+            "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAMultiKeySortWithMixedDirectionsAndASecondaryKeyTie_WhenEmitted_ThenTheOrderByAndSeekPredicateUseTheIdenticalIsNullExpression()
+    {
+        // Arrange -- Patient?_sort=name,-birthdate, valued phase, second key uses the F1 invariant
+        // (ISNULL identical in ORDER BY and seek) since it's a LEFT-JOIN tie-breaker, not the primary.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
+            ],
+            SortPhase.Valued);
+        var page = new PageSpec(
+            [new SqlParameterRef("Zorro"), new SqlParameterRef("2000-01-01T00:00:00.0000000")],
+            new SqlParameterRef((short)103),
+            new SqlParameterRef(9000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- same ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') text in both places.
+        emitted.Sql.ShouldContain(
+            "INNER JOIN dbo.StringSearchParam sk0\n" +
+            "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
+            "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
+            "LEFT JOIN dbo.DateTimeSearchParam sk1\n" +
+            "    ON sk1.ResourceTypeId = m.T1 AND sk1.ResourceSurrogateId = m.Sid1\n" +
+            "   AND sk1.SearchParamId = 303 AND sk1.IsMax = 1");
+        emitted.Sql.ShouldContain(
+            "WHERE sk0.Text > @p1\n" +
+            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p2)\n" +
+            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
+            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 > @p3)\n" +
+            "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenALastUpdatedSortKey_WhenEmitted_ThenNoJoinIsEmittedAndTheOrderByUsesTheSurrogateIdDirectly()
+    {
+        // Arrange -- Patient?_sort=-_lastUpdated.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending)], SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldNotContain("JOIN dbo.");
+        emitted.Sql.ShouldContain("SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte0 m\n");
+        emitted.Sql.ShouldContain("ORDER BY m.Sid1 DESC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenNoSortButAPageBoundary_WhenEmitted_ThenTheSeekPredicateIsTheBareTypeAndSurrogateIdTupleOnly()
+    {
+        // Arrange -- an ordinary, unsorted paginated search (design §2's "no sort" keyset case).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Page: page);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- branches.Count == 2 here (no key levels, just the two final type/sid tie-break
+        // branches), so EmitSeekPredicate's multi-branch join applies: "\n       OR ", not a single
+        // space -- matching every other multi-branch case in this same method, not a special case.
+        emitted.Sql.ShouldContain(
+            "WHERE (m.T1 = @p1 AND m.Sid1 > @p2)\n" +
+            "       OR (m.T1 > @p1)\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
     }
 }

@@ -1,5 +1,7 @@
 #pragma warning disable CA1724
 
+using Ignixa.Search.Expressions;
+
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
@@ -25,12 +27,40 @@ public static class Emit
         if (plan.Includes is not { Count: > 0 } includes)
         {
             var withClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
-            var sql = plan.OuterPredicate is null
-                ? withClause + $"SELECT {top}T1, Sid1 FROM cte{plan.Match.Index}"
-                : withClause +
-                  $"SELECT {top}m.T1, m.Sid1 FROM cte{plan.Match.Index} m\n" +
-                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
-                  $"WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
+            var sortJoins = EmitSortJoins(plan.Sort);
+            var sortColumns = EmitSortSelectColumns(plan.Sort);
+            var orderBy = $"\nORDER BY {EmitOrderBy(plan.Sort)}";
+
+            var whereClauses = new List<string>();
+            if (plan.OuterPredicate is not null)
+            {
+                whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+            }
+
+            if (plan.Sort is { Phase: SortPhase.MissingPrimary })
+            {
+                whereClauses.Add(EmitMissingPrimaryFilter(plan.Sort));
+            }
+
+            if (plan.Page is { } page)
+            {
+                whereClauses.Add(EmitSeekPredicate(plan.Sort, page, parameters));
+            }
+
+            string sql;
+            if (whereClauses.Count == 0)
+            {
+                sql = withClause + $"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}{orderBy}";
+            }
+            else
+            {
+                var resourceJoin = plan.OuterPredicate is null
+                    ? string.Empty
+                    : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
+                sql = withClause +
+                      $"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}{resourceJoin}\n" +
+                      $"WHERE {string.Join(" AND ", whereClauses)}{orderBy}";
+            }
 
             return new EmittedSql(sql, parameters);
         }
@@ -154,6 +184,126 @@ public static class Emit
         ChainDirection.Reverse => "rsp.ReferenceResourceTypeId",
         _ => throw new NotSupportedException($"Unknown ChainDirection '{direction}'."),
     };
+
+    private static string EmitSortJoins(SortSpec? sort)
+    {
+        if (sort is null)
+        {
+            return string.Empty;
+        }
+
+        var joins = new List<string>();
+        for (var i = 0; i < sort.Keys.Count; i++)
+        {
+            if (i == 0 && sort.Phase == SortPhase.MissingPrimary)
+            {
+                continue; // primary key excluded from the join list in this phase -- see EmitMissingPrimaryFilter.
+            }
+
+            var key = sort.Keys[i];
+            if (key.Kind == SortKeyKind.LastUpdated)
+            {
+                continue; // resource-column key, no join needed.
+            }
+
+            var table = key.Kind == SortKeyKind.String ? "StringSearchParam" : "DateTimeSearchParam";
+            var flag = key.Direction == SortOrder.Ascending ? "IsMin" : "IsMax";
+            var joinType = i == 0 ? "INNER" : "LEFT";
+            joins.Add(
+                $"\n{joinType} JOIN dbo.{table} sk{i}\n" +
+                $"    ON sk{i}.ResourceTypeId = m.T1 AND sk{i}.ResourceSurrogateId = m.Sid1\n" +
+                $"   AND sk{i}.SearchParamId = {key.SearchParamId} AND sk{i}.{flag} = 1");
+        }
+
+        return string.Concat(joins);
+    }
+
+    private static string EmitMissingPrimaryFilter(SortSpec sort)
+    {
+        var key = sort.Keys[0];
+        var table = key.Kind == SortKeyKind.String ? "StringSearchParam" : "DateTimeSearchParam";
+        return $"NOT EXISTS (SELECT 1 FROM dbo.{table} s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = {key.SearchParamId})";
+    }
+
+    private static IReadOnlyList<int> ActiveKeyIndices(SortSpec? sort)
+        => sort is null
+            ? []
+            : sort.Phase == SortPhase.Valued
+                ? Enumerable.Range(0, sort.Keys.Count).ToList()
+                : Enumerable.Range(1, sort.Keys.Count - 1).ToList();
+
+    /// <summary>
+    /// The F1 invariant (design §3.3): this is the ONLY place a sort key's value expression is
+    /// rendered. EmitOrderBy and EmitSeekPredicate both call this -- neither hand-writes an
+    /// ISNULL(...)/sentinel string independently, so the ORDER BY and seek-predicate expressions for
+    /// a given key can never drift out of sync.
+    /// </summary>
+    private static string SortValueExpr(SortSpec sort, int index)
+    {
+        var key = sort.Keys[index];
+        if (key.Kind == SortKeyKind.LastUpdated)
+        {
+            return "m.Sid1";
+        }
+
+        var column = key.Kind == SortKeyKind.String ? "Text" : "StartDateTime";
+        var raw = $"sk{index}.{column}";
+
+        var isGuaranteedNonNull = index == 0 && sort.Phase == SortPhase.Valued;
+        if (isGuaranteedNonNull)
+        {
+            return raw;
+        }
+
+        var sentinel = key.Kind == SortKeyKind.String ? "N''" : "'0001-01-01T00:00:00.0000000'";
+        return $"ISNULL({raw}, {sentinel})";
+    }
+
+    private static string EmitOrderBy(SortSpec? sort)
+    {
+        var activeIndices = ActiveKeyIndices(sort);
+        var terms = activeIndices.Select(i =>
+            $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
+        return string.Join(", ", terms.Append("m.T1 ASC").Append("m.Sid1 ASC"));
+    }
+
+    private static string EmitSortSelectColumns(SortSpec? sort)
+    {
+        var activeIndices = ActiveKeyIndices(sort);
+        return activeIndices.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", activeIndices.Select((idx, ordinal) => $"{SortValueExpr(sort!, idx)} AS SortValue{ordinal}"));
+    }
+
+    private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
+    {
+        var activeIndices = ActiveKeyIndices(sort);
+        var boundaryParams = page.Boundary.Select(b => EmitParam(b, parameters)).ToList();
+        var typeParam = EmitParam(page.BoundaryResourceTypeId, parameters);
+        var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
+
+        var branches = new List<string>();
+        for (var level = 0; level < activeIndices.Count; level++)
+        {
+            var terms = new List<string>();
+            for (var j = 0; j < level; j++)
+            {
+                terms.Add($"{SortValueExpr(sort!, activeIndices[j])} = {boundaryParams[j]}");
+            }
+
+            var key = sort!.Keys[activeIndices[level]];
+            var op = key.Direction == SortOrder.Ascending ? ">" : "<";
+            terms.Add($"{SortValueExpr(sort, activeIndices[level])} {op} {boundaryParams[level]}");
+            branches.Add(terms.Count > 1 ? $"({string.Join(" AND ", terms)})" : terms[0]);
+        }
+
+        var allEqual = activeIndices.Select((idx, j) => $"{SortValueExpr(sort!, idx)} = {boundaryParams[j]}").ToList();
+        var allEqualPrefix = allEqual.Count > 0 ? string.Join(" AND ", allEqual) + " AND " : string.Empty;
+        branches.Add($"({allEqualPrefix}m.T1 = {typeParam} AND m.Sid1 > {sidParam})");
+        branches.Add($"({allEqualPrefix}m.T1 > {typeParam})");
+
+        return branches.Count == 1 ? branches[0] : string.Join("\n       OR ", branches);
+    }
 
     private static string EmitCompartmentSource(CteDefinition.CompartmentSource cs, List<EmittedSqlParameter> parameters)
         => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
