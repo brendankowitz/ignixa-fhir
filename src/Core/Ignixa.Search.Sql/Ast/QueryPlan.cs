@@ -8,10 +8,17 @@ namespace Ignixa.Search.Sql.Ast;
 /// resource-column predicates (_id/_type/_lastUpdated) are applied as a WHERE clause on an outer join
 /// to dbo.Resource, not folded into the CTE graph -- see task 6's plan section for why (avoids relying
 /// on SQL Server pushing a predicate through multiple CTE layers under TOP, a real, not hypothetical,
-/// risk). IncludeStage/SortSpec/full PageSpec (tier-3 result-shape stages) are not included yet --
-/// nothing in scope here produces or consumes them.
+/// risk). Includes (Phase 7) is the first tier-3 result-shape field -- non-null and non-empty only for
+/// queries with _include/_revinclude/:iterate; Emit materializes a cteMatchPage CTE and a
+/// (T1, Sid1, IsMatch, IsPartial) result shape only in that case, leaving every plan with no Includes
+/// byte-identical to before this field existed. SortSpec/full PageSpec remain out of scope.
 /// </summary>
-public sealed record QueryPlan(IReadOnlyList<CteDefinition> Ctes, CteRef Match, int? Top = null, Predicate? OuterPredicate = null)
+public sealed record QueryPlan(
+    IReadOnlyList<CteDefinition> Ctes,
+    CteRef Match,
+    int? Top = null,
+    Predicate? OuterPredicate = null,
+    IReadOnlyList<IncludeStage>? Includes = null)
 {
     public string Explain() => PlanExplainer.Print(this);
 }

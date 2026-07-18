@@ -29,7 +29,26 @@ public static class PlanExplainer
             lines.Add(line);
         }
 
+        if (plan.Includes is { Count: > 0 } includes)
+        {
+            for (var i = 0; i < includes.Count; i++)
+            {
+                lines.Add($"inc{i} = {PrintIncludeStage(includes[i])}");
+            }
+        }
+
         return string.Join('\n', lines);
+    }
+
+    private static string PrintIncludeStage(IncludeStage stage)
+    {
+        var refParam = stage.ReferenceSearchParamId is { } id ? $"{id}" : "*";
+        var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
+        var outputTypes = stage.OutputTypeIds is null ? "*" : $"[{string.Join(",", stage.OutputTypeIds)}]";
+        var seedStageLabels = stage.SeedStages.Select(s => $"inc{s}");
+        var seeds = stage.SeedFromMatch ? seedStageLabels.Prepend("match") : seedStageLabels;
+        var iterate = stage.Iterate ? " iterate" : string.Empty;
+        return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={stage.Limit}{iterate}, {stage.Direction})";
     }
 
     private static string PrintCte(CteDefinition cte, int? top, ref int parameterOrdinal) => cte switch

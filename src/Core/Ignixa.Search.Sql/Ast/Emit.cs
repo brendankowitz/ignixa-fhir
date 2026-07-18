@@ -21,15 +21,57 @@ public static class Emit
         }
 
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
-        var withClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
-        var sql = plan.OuterPredicate is null
-            ? withClause + $"SELECT {top}T1, Sid1 FROM cte{plan.Match.Index}"
-            : withClause +
-              $"SELECT {top}m.T1, m.Sid1 FROM cte{plan.Match.Index} m\n" +
-              $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
-              $"WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
 
-        return new EmittedSql(sql, parameters);
+        if (plan.Includes is not { Count: > 0 } includes)
+        {
+            var withClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
+            var sql = plan.OuterPredicate is null
+                ? withClause + $"SELECT {top}T1, Sid1 FROM cte{plan.Match.Index}"
+                : withClause +
+                  $"SELECT {top}m.T1, m.Sid1 FROM cte{plan.Match.Index} m\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
+                  $"WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
+
+            return new EmittedSql(sql, parameters);
+        }
+
+        var matchJoin = plan.OuterPredicate is null
+            ? string.Empty
+            : $"\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n    WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
+        cteBlocks.Add(
+            $"cteMatchPage AS (\n" +
+            $"    SELECT {top}m.T1, m.Sid1\n" +
+            $"    FROM cte{plan.Match.Index} m{matchJoin}\n" +
+            $")");
+
+        for (var i = 0; i < includes.Count; i++)
+        {
+            var stage = includes[i];
+            cteBlocks.Add($"inc{i} AS (\n{EmitIncludeStage(stage)}\n)");
+            cteBlocks.Add(
+                $"inc{i}lim AS (\n" +
+                $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
+                $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
+                $"    FROM inc{i}\n" +
+                $")");
+        }
+
+        var unionBlocks = new List<string>
+        {
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage",
+        };
+        for (var i = 0; i < includes.Count; i++)
+        {
+            unionBlocks.Add(
+                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc{i}lim i\n" +
+                $"WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+        }
+
+        var includeSql = $";WITH {string.Join(",\n", cteBlocks)}\n" +
+                          $"{string.Join("\nUNION ALL\n", unionBlocks)}\n" +
+                          $"ORDER BY IsMatch DESC";
+
+        return new EmittedSql(includeSql, parameters);
     }
 
     private static string EmitCte(CteDefinition cte, List<EmittedSqlParameter> parameters) => cte switch
@@ -118,6 +160,65 @@ public static class Emit
         return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM dbo.Resource\n" +
                $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0{predicateClause}";
+    }
+
+    private static string EmitIncludeStage(IncludeStage stage)
+    {
+        var (selectColumns, seedTypeColumn, outputTypeColumn, seedCorrelationAlias) = stage.Direction switch
+        {
+            IncludeDirection.Forward => ("r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1", "rsp.ResourceTypeId", "r.ResourceTypeId", "rsp"),
+            IncludeDirection.Reverse => ("rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1", "r.ResourceTypeId", "rsp.ResourceTypeId", "r"),
+            _ => throw new NotSupportedException($"Unknown IncludeDirection '{stage.Direction}'."),
+        };
+
+        var whereClauses = new List<string>();
+        if (stage.ReferenceSearchParamId is { } paramId)
+        {
+            whereClauses.Add($"rsp.SearchParamId = {paramId}");
+        }
+
+        if (stage.SeedTypeIds is { Count: > 0 } seedTypeIds)
+        {
+            whereClauses.Add(EmitTypeInFilter(seedTypeColumn, seedTypeIds));
+        }
+
+        if (stage.OutputTypeIds is { Count: > 0 } outputTypeIds)
+        {
+            whereClauses.Add(EmitTypeInFilter(outputTypeColumn, outputTypeIds));
+        }
+
+        whereClauses.Add("rsp.BaseUri IS NULL");
+        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias));
+
+        return $"    SELECT DISTINCT TOP ({stage.Limit + 1}) {selectColumns}\n" +
+               $"    FROM dbo.ReferenceSearchParam rsp\n" +
+               $"    INNER JOIN dbo.Resource r\n" +
+               $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+               $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+               $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+               $"    WHERE {string.Join("\n      AND ", whereClauses)}";
+    }
+
+    private static string EmitTypeInFilter(string column, IReadOnlyList<short> typeIds)
+    {
+        var filter = string.Join(" OR ", typeIds.Select(id => $"{column} = {id}"));
+        return typeIds.Count > 1 ? $"({filter})" : filter;
+    }
+
+    private static string EmitSeedExists(IncludeStage stage, string correlationAlias)
+    {
+        var branches = new List<string>();
+        if (stage.SeedFromMatch)
+        {
+            branches.Add($"SELECT 1 FROM cteMatchPage m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+        }
+
+        foreach (var seedStageIndex in stage.SeedStages)
+        {
+            branches.Add($"SELECT 1 FROM inc{seedStageIndex}lim m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+        }
+
+        return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";
     }
 
     private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch

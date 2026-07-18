@@ -155,4 +155,40 @@ public class PlanExplainerTests
             "cte0 = StringSearchParam[105,202]  Text = @p0\n" +
             "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
     }
+
+    [Fact]
+    public void GivenAPlanWithOneIncludeStage_WhenExplained_ThenAppendsAnIncLineAfterTheCteLines()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Includes: [stage]);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe(
+            "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
+    }
+
+    [Fact]
+    public void GivenAWildcardIncludeStage_WhenExplained_ThenRendersStarForTheNullFields()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(IncludeDirection.Reverse, null, null, null, [], SeedFromMatch: true, Iterate: true, Limit: 500);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Includes: [stage]);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe(
+            "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "inc0 = IncludeStage(ref=*, seedTypes=*, outputTypes=*, seeds=[match], limit=500 iterate, Reverse)");
+    }
 }

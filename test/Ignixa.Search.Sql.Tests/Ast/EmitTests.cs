@@ -276,4 +276,211 @@ public class EmitTests
         emitted.Sql.ShouldContain("AND (rsp.ReferenceResourceTypeId = 103 OR rsp.ReferenceResourceTypeId = 108)");
         emitted.Sql.ShouldContain("AND rsp.BaseUri IS NULL");
     }
+
+    [Fact]
+    public void GivenAForwardIncludeStageSeededFromMatch_WhenEmitted_ThenProducesTheCteMatchPageShapeWithTheRAsideProjection()
+    {
+        // Arrange -- Patient?_include=Patient:organization, matching ChainJoin.Reverse's shape per
+        // design doc §1.2: forward include's known side is rsp (already-matched Patient rows).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            "),\n" +
+            "cteMatchPage AS (\n" +
+            "    SELECT TOP (50) m.T1, m.Sid1\n" +
+            "    FROM cte0 m\n" +
+            "),\n" +
+            "inc0 AS (\n" +
+            "    SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.ReferenceSearchParam rsp\n" +
+            "    INNER JOIN dbo.Resource r\n" +
+            "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+            "       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+            "       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+            "    WHERE rsp.SearchParamId = 55\n" +
+            "      AND rsp.ResourceTypeId = 103\n" +
+            "      AND r.ResourceTypeId = 105\n" +
+            "      AND rsp.BaseUri IS NULL\n" +
+            "      AND EXISTS (\n" +
+            "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+            "    )\n" +
+            "),\n" +
+            "inc0lim AS (\n" +
+            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
+            "    FROM inc0\n" +
+            ")\n" +
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
+            "UNION ALL\n" +
+            "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc0lim i\n" +
+            "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
+            "ORDER BY IsMatch DESC");
+        emitted.Parameters.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAReverseIncludeStage_WhenEmitted_ThenTheKnownSideIsTranslatedThroughDboResourceAndTheOutputSideIsSelectedDirectlyFromRsp()
+    {
+        // Arrange -- Patient?_revinclude=Observation:subject, matching ChainJoin.Forward's shape.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Reverse,
+            ReferenceSearchParamId: 77,
+            SeedTypeIds: [103],
+            OutputTypeIds: [104],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            "),\n" +
+            "cteMatchPage AS (\n" +
+            "    SELECT m.T1, m.Sid1\n" +
+            "    FROM cte0 m\n" +
+            "),\n" +
+            "inc0 AS (\n" +
+            "    SELECT DISTINCT TOP (1001) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.ReferenceSearchParam rsp\n" +
+            "    INNER JOIN dbo.Resource r\n" +
+            "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+            "       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+            "       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+            "    WHERE rsp.SearchParamId = 77\n" +
+            "      AND r.ResourceTypeId = 103\n" +
+            "      AND rsp.ResourceTypeId = 104\n" +
+            "      AND rsp.BaseUri IS NULL\n" +
+            "      AND EXISTS (\n" +
+            "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
+            "    )\n" +
+            "),\n" +
+            "inc0lim AS (\n" +
+            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
+            "    FROM inc0\n" +
+            ")\n" +
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
+            "UNION ALL\n" +
+            "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc0lim i\n" +
+            "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
+            "ORDER BY IsMatch DESC");
+    }
+
+    [Fact]
+    public void GivenAWildcardIncludeStage_WhenEmitted_ThenNoSearchParamIdFilterIsEmitted()
+    {
+        // Arrange -- Patient?_include=Patient:* -- ReferenceSearchParamId is null.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: null,
+            SeedTypeIds: null,
+            OutputTypeIds: null,
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 500);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- no "rsp.SearchParamId = ", no type filters, straight to BaseUri + EXISTS
+        emitted.Sql.ShouldContain(
+            "    WHERE rsp.BaseUri IS NULL\n" +
+            "      AND EXISTS (\n" +
+            "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+            "    )");
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId = ");
+    }
+
+    [Fact]
+    public void GivenAnIterateStageSeededFromAPredecessorInclude_WhenEmitted_ThenTheExistsClauseUnionsBothBranches()
+    {
+        // Arrange -- inc1 seeds from BOTH cteMatchPage and inc0lim.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage0 = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(IncludeDirection.Forward, 88, [105], [105], SeedStages: [0], SeedFromMatch: false, Iterate: true, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage0, stage1]);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "    WHERE rsp.SearchParamId = 88\n" +
+            "      AND rsp.ResourceTypeId = 105\n" +
+            "      AND r.ResourceTypeId = 105\n" +
+            "      AND rsp.BaseUri IS NULL\n" +
+            "      AND EXISTS (\n" +
+            "        SELECT 1 FROM inc0lim m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+            "    )");
+    }
+
+    [Fact]
+    public void GivenAPlanWithNoIncludes_WhenEmitted_ThenTheSqlIsByteIdenticalToThePreIncludeShape()
+    {
+        // Arrange -- this is the zero-diff regression proof: identical to
+        // GivenASingleParamSourcePlan_WhenEmitted_ThenProducesAParameterizedSelect's arrangement, above.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(
+            new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), "Latin1_General_100_CS_AS");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0 COLLATE Latin1_General_100_CS_AS\n" +
+            ")\n" +
+            "SELECT TOP (10) T1, Sid1 FROM cte0");
+    }
 }
