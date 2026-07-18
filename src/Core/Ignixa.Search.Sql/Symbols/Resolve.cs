@@ -38,6 +38,9 @@ namespace Ignixa.Search.Sql.Symbols;
 /// type's remarks for the full list, which now includes <see cref="ReferenceSearchValue"/> leaves, a
 /// <c>_type</c> predicate's own value, and (as of Phase 6) a <see cref="ChainedExpression"/>'s
 /// <c>ReferenceSearchParameter</c> and both its <c>ResourceTypes</c>/<c>TargetResourceTypes</c> arrays.
+/// As of Phase 7, resolution also extends to every <see cref="IncludeExpression"/> passed via the
+/// includes/revIncludes parameters -- see SymbolCollectingVisitor.CollectInclude's remarks for the
+/// exact fields collected.
 /// Resolve still does not resolve resource types touched only by compartment context that does not
 /// exist anywhere on this <see cref="Expression"/> tree -- that generalization is Phase 8's job.
 /// </para>
@@ -45,17 +48,33 @@ namespace Ignixa.Search.Sql.Symbols;
 public static class Resolve
 {
     public static async Task<SymbolTable> RunAsync(
-        Expression expression,
+        Expression? expression,
+        IReadOnlyList<IncludeExpression> includes,
+        IReadOnlyList<IncludeExpression> revIncludes,
         ISymbolResolver resolver,
         string targetResourceType,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(expression);
+        ArgumentNullException.ThrowIfNull(includes);
+        ArgumentNullException.ThrowIfNull(revIncludes);
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(targetResourceType);
 
         var collector = new SymbolCollectingVisitor();
-        expression.AcceptVisitor(collector, context: null);
+        if (expression is not null)
+        {
+            expression.AcceptVisitor(collector, context: null);
+        }
+
+        foreach (var include in includes)
+        {
+            collector.CollectInclude(include);
+        }
+
+        foreach (var revInclude in revIncludes)
+        {
+            collector.CollectInclude(revInclude);
+        }
 
         var searchParamIds = new Dictionary<string, short>();
         foreach (var parameter in collector.Parameters)
@@ -65,10 +84,6 @@ public static class Resolve
             {
                 searchParamIds[parameter.Url.ToString()] = id.Value;
             }
-
-            // A null result (unresolvable parameter) is not an error here -- Lower/Emit will throw
-            // if something downstream actually needs it. Resolve's job is to look up what it can,
-            // not to validate the tree is fully resolvable.
         }
 
         var resourceTypes = new HashSet<string>(collector.ResourceTypes);
@@ -82,9 +97,6 @@ public static class Resolve
             {
                 resourceTypeIds[resourceType] = id.Value;
             }
-
-            // Same non-error stance as the search-param loop above -- an unresolvable resource
-            // type is simply absent from the table until something downstream needs it.
         }
 
         return new SymbolTable(searchParamIds, resourceTypeIds);

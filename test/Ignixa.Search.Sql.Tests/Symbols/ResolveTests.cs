@@ -22,7 +22,7 @@ public class ResolveTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Patient-name"] = 202;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.SearchParamId(parameter).ShouldBe((short)202);
@@ -64,7 +64,7 @@ public class ResolveTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"] = 400;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(composite, resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(composite, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
 
         // Assert
         symbolTable.SearchParamId(compositeParam).ShouldBe((short)400);
@@ -85,7 +85,7 @@ public class ResolveTests
         var resolver = new FakeSymbolResolver();
 
         // Act -- Resolve itself must not throw for an unresolvable parameter.
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
 
         // Assert -- the miss only surfaces when something actually looks the parameter up later.
         Should.Throw<KeyNotFoundException>(() => symbolTable.SearchParamId(parameter));
@@ -104,7 +104,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Observation", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Observation", CancellationToken.None);
 
         // Assert
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
@@ -124,7 +124,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
@@ -141,7 +141,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
@@ -163,13 +163,77 @@ public class ResolveTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = await Resolve.RunAsync(chain, resolver, targetResourceType: "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
 
         // Assert
         symbolTable.SearchParamId(orgParam).ShouldBe((short)55);
         symbolTable.SearchParamId(nameParam).ShouldBe((short)202);
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
         symbolTable.ResourceTypeId("Organization").ShouldBe((short)105);
+    }
+
+    [Fact]
+    public async Task GivenAForwardIncludeExpression_WhenResolved_ThenSymbolTableHasItsReferenceParamAndBothResourceTypes()
+    {
+        // Arrange -- Patient?_include=Patient:organization
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(
+            resourceTypes: ["Patient"],
+            referenceSearchParameter: orgParam,
+            sourceResourceType: "Patient",
+            targetResourceType: "Organization",
+            referencedTypes: null,
+            wildCard: false,
+            reversed: false,
+            iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbolTable = await Resolve.RunAsync(
+            expression: null, includes: [include], revIncludes: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+
+        // Assert
+        symbolTable.SearchParamId(orgParam).ShouldBe((short)55);
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+        symbolTable.ResourceTypeId("Organization").ShouldBe((short)105);
+    }
+
+    [Fact]
+    public async Task GivenARevincludeWildcardSourceExpression_WhenResolved_ThenTheStarSentinelIsNeverPassedToTheResolver()
+    {
+        // Arrange -- Patient?_revinclude=*:* -- SourceResourceType is the literal sentinel "*"
+        // (design doc §1.2); CollectInclude must skip it, not call GetResourceTypeIdAsync("*").
+        var include = new IncludeExpression(
+            resourceTypes: ["*"],
+            referenceSearchParameter: null,
+            sourceResourceType: "*",
+            targetResourceType: "Patient",
+            referencedTypes: ["Observation", "Condition"],
+            wildCard: true,
+            reversed: true,
+            iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.ResourceTypeIds["Condition"] = 106;
+
+        // Act -- must not throw even though the resolver has no row for "*"
+        var symbolTable = await Resolve.RunAsync(
+            expression: null, includes: [], revIncludes: [include], resolver, targetResourceType: "Patient", CancellationToken.None);
+
+        // Assert
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+        symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
+        symbolTable.ResourceTypeId("Condition").ShouldBe((short)106);
+        Should.Throw<KeyNotFoundException>(() => symbolTable.ResourceTypeId("*"));
     }
 
     /// <summary>

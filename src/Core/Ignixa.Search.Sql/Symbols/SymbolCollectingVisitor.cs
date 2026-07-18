@@ -30,8 +30,11 @@ namespace Ignixa.Search.Sql.Symbols;
 /// than the query's own <c>targetResourceType</c> would throw; and <see cref="VisitChained"/>, which
 /// collects a <see cref="ChainedExpression"/>'s <c>ReferenceSearchParameter</c> and every type in both
 /// <c>ResourceTypes</c> and <c>TargetResourceTypes</c> -- forward and reverse chains alike, since which
-/// array carries the "source" vs. "target" side flips with <c>Reversed</c>. Compartment target-type
-/// resolution remains Phase 8's job. See Resolve's remarks for the full argument.
+/// array carries the "source" vs. "target" side flips with <c>Reversed</c>. As of Phase 7,
+/// <see cref="CollectInclude"/> collects an IncludeExpression's own symbols the same way -- not via a
+/// visitor override (IncludeExpression is never part of this Expression tree), but as a direct method
+/// Resolve calls once per include/revinclude entry. Compartment target-type resolution remains Phase
+/// 8's job. See Resolve's remarks for the full argument.
 /// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 {
@@ -81,5 +84,47 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         }
 
         return base.VisitChained(expression, context);
+    }
+
+    /// <summary>
+    /// Collects the symbols an <see cref="IncludeExpression"/> references -- its own
+    /// <c>ReferenceSearchParameter</c> (when not a wildcard), and every resource type appearing in
+    /// <c>SourceResourceType</c>, <c>TargetResourceType</c>, <c>ReferenceSearchParameter.TargetResourceTypes</c>,
+    /// and <c>ReferencedTypes</c>. This over-collects relative to what <c>Requires</c>/<c>Produces</c>
+    /// actually uses for any one <see cref="IncludeExpression"/> instance (their exact source field
+    /// depends on which of <c>TargetResourceType</c>/<c>ReferenceSearchParameter.TargetResourceTypes</c>/
+    /// <c>WildCard</c> is populated) -- resolving a superset is safe, matching <see cref="VisitChained"/>'s
+    /// existing precedent of collecting both <c>ResourceTypes</c> and <c>TargetResourceTypes</c> rather than
+    /// re-deriving which one a given chain direction actually needs. Not a visitor override:
+    /// <see cref="IncludeExpression"/> lives on <c>SearchOptions.Include</c>/<c>RevInclude</c>, never on the
+    /// <see cref="Expression"/> tree this visitor walks, so <c>Resolve</c> calls this directly per include.
+    /// The literal sentinel string "*" (a <c>_revinclude</c> wildcard-source's <c>SourceResourceType</c>,
+    /// design doc §1.2) is skipped, never added as a resource type to resolve.
+    /// </summary>
+    public void CollectInclude(IncludeExpression include)
+    {
+        if (include.ReferenceSearchParameter is not null)
+        {
+            Parameters.Add(include.ReferenceSearchParameter);
+            foreach (var targetType in include.ReferenceSearchParameter.TargetResourceTypes)
+            {
+                AddResourceType(targetType);
+            }
+        }
+
+        AddResourceType(include.SourceResourceType);
+        AddResourceType(include.TargetResourceType);
+        foreach (var referencedType in include.ReferencedTypes ?? [])
+        {
+            AddResourceType(referencedType);
+        }
+    }
+
+    private void AddResourceType(string? resourceType)
+    {
+        if (resourceType is { Length: > 0 } and not "*")
+        {
+            ResourceTypes.Add(resourceType);
+        }
     }
 }

@@ -70,7 +70,7 @@ public class CompiledSearchEndToEndTests
         var resolver = new SqlEntityFrameworkSymbolResolver(cache);
 
         // Act
-        var symbolTable = await Resolve.RunAsync(predicate, resolver, "Patient", CancellationToken.None);
+        var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient");
         var emitted = Emit.Run(plan);
 
