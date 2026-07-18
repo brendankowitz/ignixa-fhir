@@ -3,7 +3,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 
-namespace Ignixa.Search.Sql.Lowering;
+namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
 /// Dispatches a composite's ordered components to their tier-1 composite lowering rule, by the

@@ -4,7 +4,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 
-namespace Ignixa.Search.Sql.Lowering;
+namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
 /// Lowers a TokenToken composite to a single ParamSource over TokenTokenCompositeSearchParam --

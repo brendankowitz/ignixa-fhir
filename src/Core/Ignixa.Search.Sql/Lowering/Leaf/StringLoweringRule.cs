@@ -4,7 +4,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 using Ignixa.Specification.ValueSets.Normative;
 
-namespace Ignixa.Search.Sql.Lowering;
+namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
 /// Lowers a String search value to a ParamSource over StringSearchParam. Values within the inline
