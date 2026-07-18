@@ -276,4 +276,51 @@ public class LowerTests
         plan.Includes[0].OutputTypeIds.ShouldBeNull();
         plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
     }
+
+    [Fact]
+    public void GivenAWildcardCompartmentSearchWithAnOrdinaryTypedPredicate_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- GET /Patient/123/*?name=Smith -- no single resource type to scope "name" against.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var namePredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [compartment, namePredicate]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 77, [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(subjectParam, ["Observation"])],
+            });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0))
+            .Message.ShouldContain("no single resource type");
+    }
+
+    [Fact]
+    public void GivenAWildcardCompartmentSearchWithIncludes_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- GET /Patient/123/*?_include=Observation:encounter
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var encounterParam = new SearchParameterInfo(
+            "encounter", "encounter", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-encounter"), targetResourceTypes: ["Encounter"]);
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var include = new IncludeExpression(["Observation"], encounterParam, "Observation", "Encounter", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 77, [encounterParam.Url.ToString()] = 88 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104, ["Encounter"] = 105 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(subjectParam, ["Observation"])],
+            });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000))
+            .Message.ShouldContain("SeedFromMatch");
+    }
 }

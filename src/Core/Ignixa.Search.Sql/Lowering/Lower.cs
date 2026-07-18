@@ -11,14 +11,17 @@ namespace Ignixa.Search.Sql.Lowering;
 /// ChainedExpression (forward and reverse chain, any nesting depth, dispatched to
 /// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan, and includes/revIncludes (via
 /// BuildIncludeStages, Phase 7) into QueryPlan.Includes. Sort is not handled -- see this plan's global
-/// constraints for why.
+/// constraints for why. As of Phase 8, CompartmentSearchExpression is also handled, via
+/// StructuralContext.LowerCompartment, dispatched both from Run's top-level switch (the wildcard,
+/// no-single-scope case) and from LowerNode's ordinary switch (the non-wildcard case, reachable
+/// standalone or nested inside an And alongside ordinary predicates).
 /// </summary>
 public static class Lower
 {
     public static QueryPlan Run(
         Expression? expression,
         SymbolTable symbols,
-        string targetResourceType,
+        string? targetResourceType,
         IReadOnlyList<IncludeExpression> includes,
         IReadOnlyList<IncludeExpression> revIncludes,
         int includeLimit,
@@ -30,21 +33,50 @@ public static class Lower
 
         if (expression is null)
         {
-            match = context.LowerResourceSource(targetResourceType);
+            match = context.LowerResourceSource(RequireResourceType(targetResourceType));
         }
         else
         {
             var leafContext = new LeafContext(symbols);
             var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, leafContext);
             outerPredicate = extractedPredicate;
-            match = remaining is null
-                ? context.LowerResourceSource(targetResourceType)
-                : LowerNode(remaining, context, targetResourceType);
+            match = remaining switch
+            {
+                null => context.LowerResourceSource(RequireResourceType(targetResourceType)),
+                CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
+                _ when targetResourceType is null => throw new NotSupportedException(
+                    "A search with no single target resource type (a wildcard compartment search) can only " +
+                    "combine with a CompartmentSearchExpression and resource-column predicates -- an ordinary " +
+                    "typed search parameter alongside it has no single resource type to scope it against, " +
+                    "which this phase does not support."),
+                _ => LowerNode(remaining, context, targetResourceType!), // non-null: the prior arm already threw otherwise.
+            };
         }
 
-        var includeStages = BuildIncludeStages(includes, revIncludes, symbols, targetResourceType, includeLimit);
+        IReadOnlyList<IncludeStage>? includeStages;
+        if (targetResourceType is null)
+        {
+            if (includes.Count > 0 || revIncludes.Count > 0)
+            {
+                throw new NotSupportedException(
+                    "_include/_revinclude combined with a wildcard compartment search (no single target resource " +
+                    "type) is not supported -- BuildIncludeStages needs a concrete match resource type to compute " +
+                    "SeedFromMatch.");
+            }
+
+            includeStages = null;
+        }
+        else
+        {
+            includeStages = BuildIncludeStages(includes, revIncludes, symbols, targetResourceType, includeLimit);
+        }
+
         return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages);
     }
+
+    private static string RequireResourceType(string? targetResourceType)
+        => targetResourceType ?? throw new NotSupportedException(
+            "targetResourceType is required unless the top-level expression is a compartment search with no single target resource type.");
 
     private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
     {
@@ -59,6 +91,7 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
+        CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };

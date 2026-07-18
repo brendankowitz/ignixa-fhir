@@ -147,4 +147,34 @@ public sealed class StructuralContext
             _chainDepth--;
         }
     }
+
+    public CteRef LowerCompartment(CompartmentSearchExpression expression)
+    {
+        var membership = _leafContext.CompartmentMembership(expression.CompartmentType);
+        var groups = expression.FilteredResourceTypes.Count == 0
+            ? membership
+            : membership
+                .Select(m => (m.Parameter, ResourceTypes: (IReadOnlyList<string>)m.ResourceTypes.Where(expression.FilteredResourceTypes.Contains).ToList()))
+                .Where(m => m.ResourceTypes.Count > 0)
+                .ToList();
+
+        if (groups.Count == 0)
+        {
+            throw new NotSupportedException(
+                $"Compartment search for '{expression.CompartmentType}/{expression.CompartmentId}' resolved to " +
+                "zero membership search parameters for the requested resource type(s) -- this compartment/filter " +
+                "combination can never match any row. Callers should short-circuit this case before calling " +
+                "Lower (matching CompartmentSearchQueryGenerator's own empty-result short-circuit today), not " +
+                "rely on this throw.");
+        }
+
+        var refs = groups.Select(g =>
+        {
+            var cte = CompartmentLoweringRule.Lower(g.Parameter, g.ResourceTypes, expression.CompartmentType, expression.CompartmentId, _leafContext);
+            _ctes.Add(cte);
+            return new CteRef(_ctes.Count - 1);
+        }).ToList();
+
+        return Union(refs);
+    }
 }
