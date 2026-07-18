@@ -91,6 +91,7 @@ public static class Emit
             $"        SELECT 1 FROM cte{ex.Right.Index}\n" +
             $"        WHERE cte{ex.Right.Index}.T1 = cte{ex.Left.Index}.T1 AND cte{ex.Right.Index}.Sid1 = cte{ex.Left.Index}.Sid1)",
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
+        CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -153,6 +154,13 @@ public static class Emit
         ChainDirection.Reverse => "rsp.ReferenceResourceTypeId",
         _ => throw new NotSupportedException($"Unknown ChainDirection '{direction}'."),
     };
+
+    private static string EmitCompartmentSource(CteDefinition.CompartmentSource cs, List<EmittedSqlParameter> parameters)
+        => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+           $"    FROM dbo.ReferenceSearchParam\n" +
+           $"    WHERE SearchParamId = {cs.SearchParamId}\n" +
+           $"      AND {EmitTypeInFilter("ResourceTypeId", cs.ResourceTypeIds)}\n" +
+           $"      AND {EmitPredicate(cs.Predicate, parameters)}";
 
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
     {

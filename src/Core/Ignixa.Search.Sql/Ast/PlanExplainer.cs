@@ -63,6 +63,8 @@ public static class PlanExplainer
         CteDefinition.Except ex => $"Except(cte{ex.Left.Index}, cte{ex.Right.Index}){PrintTop(top)}",
         CteDefinition.ChainJoin cj =>
             $"ChainJoin(cte{cj.InnerMatch.Index}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
+        CteDefinition.CompartmentSource cs =>
+            $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
 

@@ -485,4 +485,50 @@ public class EmitTests
             ")\n" +
             "SELECT TOP (10) T1, Sid1 FROM cte0");
     }
+
+    [Fact]
+    public void GivenACompartmentSourcePlan_WhenEmitted_ThenProducesAGroupedSelectWithTheTypeOrChainAndTheReferencePredicate()
+    {
+        // Arrange -- Patient/123 compartment, "subject" SearchParamId 77, spanning Observation(104)/Condition(106).
+        var table = SqlCatalog.Default.Table("ReferenceSearchParam");
+        var predicate = new Predicate.And(
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"), new SqlParameterRef((short)103)),
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceId"), new SqlParameterRef("123")));
+        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.ReferenceSearchParam\n" +
+            "    WHERE SearchParamId = 77\n" +
+            "      AND (ResourceTypeId = 104 OR ResourceTypeId = 106)\n" +
+            "      AND (ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1)\n" +
+            ")\n" +
+            "SELECT T1, Sid1 FROM cte0");
+        emitted.Parameters.Count.ShouldBe(2);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", (short)103));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "123"));
+    }
+
+    [Fact]
+    public void GivenACompartmentSourceWithASingleResourceType_WhenEmitted_ThenTheTypeFilterIsABareEqualNotAnOrChain()
+    {
+        // Arrange -- the non-wildcard case (design §4): one grouped SearchParamId, one resource type.
+        var table = SqlCatalog.Default.Table("ReferenceSearchParam");
+        var predicate = new Predicate.And(
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"), new SqlParameterRef((short)103)),
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceId"), new SqlParameterRef("123")));
+        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104], 77, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("      AND ResourceTypeId = 104\n");
+        emitted.Sql.ShouldNotContain("(ResourceTypeId = 104)");
+    }
 }

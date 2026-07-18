@@ -15,6 +15,12 @@ namespace Ignixa.Search.Sql.Ast;
 /// parameter spanning Patient/Practitioner) would otherwise let a ParamSource CTE return rows from the
 /// wrong resource type. ChainJoin represents a chain (forward or reverse) as a join through
 /// dbo.ReferenceSearchParam and dbo.Resource -- see the chain design doc for the full derivation.
+/// CompartmentSource represents a compartment-search grouped predicate -- all rows in
+/// dbo.ReferenceSearchParam matching one SearchParamId, any of a list of ResourceTypeIds (the
+/// resource types that share this particular membership parameter), and a fixed compartment
+/// reference -- one CTE per distinct membership SearchParamId (matching
+/// CompartmentSearchQueryGenerator's own grouping), Unioned by StructuralContext.LowerCompartment.
+/// See the compartment design doc §2 for the full derivation.
 /// </summary>
 public abstract record CteDefinition
 {
@@ -34,4 +40,6 @@ public abstract record CteDefinition
         short InnerResourceTypeId,
         IReadOnlyList<short> OutputResourceTypeIds,
         ChainDirection Direction) : CteDefinition;
+
+    public sealed record CompartmentSource(IReadOnlyList<short> ResourceTypeIds, short SearchParamId, Predicate Predicate) : CteDefinition;
 }

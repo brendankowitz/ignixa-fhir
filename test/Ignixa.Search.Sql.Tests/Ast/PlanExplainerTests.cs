@@ -191,4 +191,21 @@ public class PlanExplainerTests
             "root = StringSearchParam[103,202]  Text = @p0\n" +
             "inc0 = IncludeStage(ref=*, seedTypes=*, outputTypes=*, seeds=[match], limit=500 iterate, Reverse)");
     }
+
+    [Fact]
+    public void GivenACompartmentSourcePlan_WhenExplained_ThenPrintsTheGroupedTypeListAndSearchParamId()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("ReferenceSearchParam");
+        var predicate = new Predicate.And(
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"), new SqlParameterRef((short)103)),
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceId"), new SqlParameterRef("123")));
+        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = CompartmentSource[104,106,77]  ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1");
+    }
 }
