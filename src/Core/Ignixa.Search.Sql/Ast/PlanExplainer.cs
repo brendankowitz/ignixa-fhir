@@ -48,6 +48,11 @@ public static class PlanExplainer
             lines.Add($"page = {PrintPageSpec(page, ref parameterOrdinal)}");
         }
 
+        if (plan.CountOnly)
+        {
+            lines.Add("countOnly = true");
+        }
+
         return string.Join('\n', lines);
     }
 

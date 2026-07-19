@@ -16,7 +16,13 @@ namespace Ignixa.Search.Sql.Lowering;
 /// standalone or nested inside an And alongside ordinary predicates). As of Phase 8 part 2,
 /// SortExpression/SortPhase/PageSpec are also handled, via BuildSortSpec -- SortPhase is a caller
 /// input (the executor drives the two-phase transition, matching fhir-server's own model), not
-/// something Lower computes by inspecting the query.
+/// something Lower computes by inspecting the query. Phase 10's executor must reject _total=estimate
+/// at its own boundary with NotSupportedException("_total=estimate is not supported -- real
+/// fhir-server does not implement this distinctly from _total=accurate either (TotalType.Estimate
+/// exists as an enum value but is never consumed in Microsoft.Health.Fhir.Core or
+/// Microsoft.Health.Fhir.SqlServer). Use _total=accurate."); Lower.Run/Emit.Run have no _total
+/// vocabulary of their own -- CountOnly is the only "count instead of rows" concept this compiler
+/// exposes.
 /// </summary>
 public static class Lower
 {
@@ -30,6 +36,7 @@ public static class Lower
         IReadOnlyList<SortExpression> sort,
         SortPhase sortPhase,
         PageSpec? page,
+        bool countOnly = false,
         int? top = null)
     {
         var context = new StructuralContext(symbols);
@@ -86,7 +93,7 @@ public static class Lower
 
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
-        return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page);
+        return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly);
     }
 
     private static string RequireResourceType(string? targetResourceType)

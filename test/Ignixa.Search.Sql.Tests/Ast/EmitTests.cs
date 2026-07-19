@@ -982,4 +982,72 @@ public class EmitTests
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.ShouldBeEmpty();
     }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithNoOuterPredicate_WhenEmitted_ThenTheSqlIsACountBigDistinctQuery()
+    {
+        // Arrange -- Patient?name=Smith&_total=accurate, no resource-column predicate.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            ")\n" +
+            "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
+        emitted.Parameters.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithAnOuterPredicate_WhenEmitted_ThenTheSqlJoinsResourceAndFiltersBeforeCounting()
+    {
+        // Arrange -- Patient?_id=abc&_total=accurate (a resource-column OuterPredicate case).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
+            OuterPredicate: outerPredicate, CountOnly: true);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m\n" +
+            "INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
+            "WHERE ResourceId = @p1");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithSortAndTopAndIncludesAllSet_WhenEmitted_ThenTheyAreAllIgnored()
+    {
+        // Arrange -- proves CountOnly wins unconditionally, regardless of what else is set on the plan
+        // (a caller should never populate these for a count request, but Emit must not depend on that).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
+            Top: 10, Sort: sort, Includes: [includeStage], CountOnly: true);
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert -- no TOP, no ORDER BY, no sort join, no cteMatchPage, no UNION ALL anywhere.
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            ")\n" +
+            "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
+    }
 }

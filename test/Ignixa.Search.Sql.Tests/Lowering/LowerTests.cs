@@ -539,4 +539,42 @@ public class LowerTests
                 sortPhase: SortPhase.MissingPrimary, page: null))
             .Message.ShouldContain("never");
     }
+
+    [Fact]
+    public void GivenCountOnlyTrue_WhenLowered_ThenQueryPlanCountOnlyIsTrue()
+    {
+        // Arrange
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true);
+
+        // Assert
+        plan.CountOnly.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenCountOnlyOmitted_WhenLowered_ThenQueryPlanCountOnlyDefaultsFalse()
+    {
+        // Arrange
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.CountOnly.ShouldBeFalse();
+    }
 }
