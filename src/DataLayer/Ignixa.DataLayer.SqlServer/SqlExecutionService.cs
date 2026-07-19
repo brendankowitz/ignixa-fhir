@@ -29,9 +29,10 @@ public sealed class SqlExecutionService : ISqlExecutionService
         _logger = logger;
     }
 
-    internal async Task<SqlConnection> OpenConnectionAsync(int tenantId, CancellationToken cancellationToken)
+    internal static async Task<string> ResolveConnectionStringAsync(
+        ITenantConfigurationStore tenantConfigurationStore, int tenantId, CancellationToken cancellationToken)
     {
-        var tenant = await _tenantConfigurationStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
+        var tenant = await tenantConfigurationStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
         if (tenant is null)
         {
             throw new InvalidOperationException($"Tenant {tenantId} does not exist or is inactive.");
@@ -50,7 +51,13 @@ public sealed class SqlExecutionService : ISqlExecutionService
                 $"Tenant {tenantId} is configured for 'SqlServer' storage but has no ConnectionString.");
         }
 
-        var connection = new SqlConnection(tenant.Storage.ConnectionString);
+        return tenant.Storage.ConnectionString;
+    }
+
+    internal async Task<SqlConnection> OpenConnectionAsync(int tenantId, CancellationToken cancellationToken)
+    {
+        var connectionString = await ResolveConnectionStringAsync(_tenantConfigurationStore, tenantId, cancellationToken);
+        var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         return connection;
     }

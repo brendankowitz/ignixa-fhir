@@ -37,6 +37,7 @@
     <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <!-- Entity Framework Core -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
@@ -44,10 +45,12 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.9" />
     <PackageVersion Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="161.8905.0" />
     <!-- SQL Server -->
+    <PackageVersion Include="Microsoft.SqlServer.DacFx" Version="170.4.83" />
     <!-- OpenIddict -->
     <PackageVersion Include="OpenIddict.AspNetCore" Version="6.4.0" />
     <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="6.4.0" />
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.4" />
+    <!-- 6.1.5 (not 6.1.4): Microsoft.SqlServer.DacFx 170.4.83 has a transitive floor of >= 6.1.5 -->
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.5" />
     <!-- ASP.NET Core -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <!-- Transitive from Microsoft.AspNetCore.OpenApi; pinned above its resolved 2.0.0 to clear GHSA-v5pm-xwqc-g5wc -->
