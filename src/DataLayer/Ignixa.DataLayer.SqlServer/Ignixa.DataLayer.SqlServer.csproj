@@ -21,4 +21,8 @@
     <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.Tests" />
+  </ItemGroup>
+
 </Project>
