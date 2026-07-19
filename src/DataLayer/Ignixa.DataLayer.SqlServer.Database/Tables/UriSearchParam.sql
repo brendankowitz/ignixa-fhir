@@ -2,7 +2,9 @@ CREATE TABLE dbo.UriSearchParam (
     ResourceTypeId      SMALLINT      NOT NULL,
     ResourceSurrogateId BIGINT        NOT NULL,
     SearchParamId       SMALLINT      NOT NULL,
-    Uri                 VARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL
+    Uri                 VARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
+    Fragment             NVARCHAR (128) NULL,
+    Version               NVARCHAR (64)  NULL
 );
 
 GO
