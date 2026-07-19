@@ -161,6 +161,24 @@ public class SqlExecutionServiceExecutionTests
             service.ExecuteReaderAsync(2, command, reader => reader.GetInt32(0), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task GivenASqlErrorNumber_WhenClassifiedByIsTransient_ThenTheDocumentedTransientNumbersAreTrueAndOthersAreFalse()
+    {
+        // This does not simulate a real transient failure against the live container (SQL Server
+        // doesn't offer a clean way to inject one on demand); it directly proves
+        // SqlExecutionService.IsTransient(int) classifies the documented transient error numbers
+        // correctly, which is the actual decision the retry pipeline's ShouldHandle predicate depends
+        // on (Task 3 Step 2: IsTransient(SqlException) delegates to this same int overload).
+
+        // Act & Assert -- deadlock victim, connection timeout, and Azure SQL throttling are all transient.
+        SqlExecutionService.IsTransient(1205).ShouldBeTrue();
+        SqlExecutionService.IsTransient(-2).ShouldBeTrue();
+        SqlExecutionService.IsTransient(40197).ShouldBeTrue();
+
+        // A generic syntax error or constraint violation is not.
+        SqlExecutionService.IsTransient(547).ShouldBeFalse();
+    }
+
     private sealed class FakeStoreWithOneTenant : ITenantConfigurationStore
     {
         private readonly TenantConfiguration _tenant;
