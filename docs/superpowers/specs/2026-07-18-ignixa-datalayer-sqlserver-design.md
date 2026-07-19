@@ -34,7 +34,7 @@ Three parallel investigations grounded this design before any architecture was p
 
 Six phases, each independently plannable and reviewable, matching the discipline used throughout the `fhir-to-sql-compiler` roadmap (isolated worktree, subagent-driven execution, task-scoped review, final whole-branch review before merge):
 
-- **Phase A — Project skeleton + connection/execution layer.** New `Ignixa.DataLayer.SqlServer` project; `ISqlExecutionService` (§4), no schema-version awareness yet. Zero production-facing change — nothing else depends on this project existing yet.
+- **Phase A — Project skeleton + connection/execution layer.** New `Ignixa.DataLayer.SqlServer` project; `ISqlExecutionService` (§4), no schema-version awareness yet. Zero production-facing change — nothing else depends on this project existing yet. **Status: complete** (worktree `.claude/worktrees/ignixa-datalayer-sqlserver`, 4 tasks, all task-scoped reviews clean). One finding worth carrying into later phases: `SqlExecutionService`'s "fresh `SqlConnection` per call" design means `Microsoft.Data.SqlClient`'s pooled-connection reuse calls `sp_reset_connection`, which drops session-scoped temp objects (local **and** global temp tables) even when the pool hands back the same physical connection/SPID — confirmed empirically, not just via documentation. Any future phase needing cross-call session state (e.g. a multi-statement transaction spanning several `ExecuteXxxAsync` calls) cannot rely on temp tables or session-scoped `SET` options surviving between calls under this design.
 - **Phase B — SQL Database Projects adoption.** New SDK-style `.sqlproj`; full decomposition of `97.sql` into per-object files now (§5), verified via a zero-diff `DeployReport` check, not incremental adoption. `SqlCatalogGenerator` gains a new input source. CI gains a `dotnet build` → `.dacpac` → `sqlpackage /Action:DeployReport` step producing a reviewable artifact; `/Action:Publish` never runs unattended (§5).
 - **Phase C — Schema-version compatibility layer.** Per-tenant `SchemaVersion` tracking, the app's compiled-in compatibility window, version-gated behavior, expand/contract migration discipline (§6).
 - **Phase D — Write-path migration.** Port `SqlMergeRepository`'s TVP-based bulk writes from EF's `Database.ExecuteSqlRawAsync` to `ISqlExecutionService` directly. Lower risk than it sounds — the write path is already raw SQL text execution, not LINQ; this swaps the connection/execution wrapper underneath, not the write logic itself.
@@ -43,7 +43,7 @@ Six phases, each independently plannable and reviewable, matching the discipline
 
 ## 4. Connection/execution layer
 
-`ISqlExecutionService` (naming placeholder, to be finalized at implementation time), mirroring `ISqlRetryService`'s real shape (§1), unified for reads and writes from Phase A:
+`ISqlExecutionService` (name finalized during Phase A's implementation plan — `src/DataLayer/Ignixa.DataLayer.SqlServer/ISqlExecutionService.cs`), mirroring `ISqlRetryService`'s real shape (§1), unified for reads and writes from Phase A:
 
 - **Connection management**: standard ADO.NET pooling per connection string. Since each tenant already has its own connection string (§1), pooling is naturally per-tenant — no new pooling logic beyond what `Microsoft.Data.SqlClient` already provides.
 - **Retry policy**: transient-fault handling (deadlocks, timeouts, connection resets) — standard, not novel design work.
