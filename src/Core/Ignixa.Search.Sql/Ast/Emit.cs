@@ -160,9 +160,12 @@ public static class Emit
     };
 
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
-        => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-           $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-           $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId} AND {EmitPredicate(p.Predicate, parameters)}";
+    {
+        var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
+        return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+               $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
+               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{predicateClause}";
+    }
 
     private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters)
     {

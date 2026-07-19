@@ -960,4 +960,26 @@ public class EmitTests
             "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 > @p2))\n" +
             "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
     }
+
+    [Fact]
+    public void GivenAParamSourceWithNoPredicate_WhenEmitted_ThenTheWhereClauseHasNoTrailingAndClause()
+    {
+        // Arrange -- the shape Task 3's LowerParameterPresence will produce: "any row exists for this parameter."
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new CteRef(0));
+
+        // Act
+        var emitted = Emit.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.ShouldBeEmpty();
+    }
 }
