@@ -577,4 +577,85 @@ public class LowerTests
         // Assert
         plan.CountOnly.ShouldBeFalse();
     }
+
+    [Fact]
+    public void GivenAMissingFalseOnAStringParameter_WhenLowered_ThenThePlanIsAParamSourceWithNoPredicate()
+    {
+        // Arrange -- Patient?name:missing=false ("name is present").
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var missing = new MissingSearchParameterExpression(nameParam, isMissing: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Explain().ShouldBe("root = StringSearchParam[103,202]");
+    }
+
+    [Fact]
+    public void GivenAMissingTrueOnAStringParameter_WhenLowered_ThenThePlanIsAnExceptOfResourceSourceAndParamSource()
+    {
+        // Arrange -- Patient?name:missing=true ("name is absent") -- reuses :not's Except/ResourceSource shape.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var missing = new MissingSearchParameterExpression(nameParam, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+        var except = (CteDefinition.Except)plan.Ctes[plan.Match.Index];
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+        ((CteDefinition.ParamSource)plan.Ctes[except.Right.Index]).Predicate.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("_id")]
+    [InlineData("_type")]
+    [InlineData("_lastUpdated")]
+    public void GivenMissingOnAResourceColumnParameter_WhenLowered_ThenThrowsNotSupportedException(string code)
+    {
+        // Arrange -- _id/_type/_lastUpdated:missing=true is nonsensical (these are never absent) and
+        // must throw loudly, not silently compile a query against the wrong table.
+        var param = new SearchParameterInfo(code, code, SearchParamType.String, new Uri($"http://hl7.org/fhir/SearchParameter/Resource-{code}"));
+        var missing = new MissingSearchParameterExpression(param, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null));
+    }
+
+    [Fact]
+    public void GivenMissingOnAnUnsupportedParameterType_WhenLowered_ThenThrowsNotSupportedExceptionCitingTheType()
+    {
+        // Arrange -- Special is not a leaf type this compiler handles at all.
+        var param = new SearchParameterInfo("composition", "composition", SearchParamType.Special, new Uri("http://hl7.org/fhir/SearchParameter/special-composition"));
+        var missing = new MissingSearchParameterExpression(param, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("Special");
+    }
 }

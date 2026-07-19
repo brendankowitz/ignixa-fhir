@@ -108,6 +108,7 @@ public static class Lower
             "and comma-separated cases), so this is unexpected input. Throwing rather than silently lowering it as a " +
             "positive match, which is exactly the bug this guard exists to prevent."),
         SearchParameterPredicateExpression leaf => context.Lower(leaf, resourceType),
+        MissingSearchParameterExpression missing => LowerMissing(missing, context, resourceType),
         SearchParameterExpression sp => LowerSearchParameter(sp, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
@@ -151,6 +152,12 @@ public static class Lower
         }
 
         return LowerNode(sp.Expression, context, resourceType);
+    }
+
+    private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string resourceType)
+    {
+        var presence = context.LowerParameterPresence(missing.Parameter, resourceType);
+        return missing.IsMissing ? context.LowerNot(presence, resourceType) : presence;
     }
 
     private static bool TryGetCompositeComponents(Expression expression, out IReadOnlyList<CompositeComponentExpression>? components)

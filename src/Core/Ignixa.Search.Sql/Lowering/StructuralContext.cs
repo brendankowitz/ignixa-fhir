@@ -1,9 +1,11 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Lowering.Composite;
 using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Lowering;
 
@@ -48,6 +50,38 @@ public sealed class StructuralContext
         var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
+    }
+
+    public CteRef LowerParameterPresence(SearchParameterInfo parameter, string resourceType)
+    {
+        RejectResourceColumnCode(parameter.Code);
+
+        var table = ResolveMissingTable(parameter);
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        var searchParamId = _leafContext.SearchParamId(parameter);
+
+        var cte = new CteDefinition.ParamSource(table, resourceTypeId, searchParamId);
+        _ctes.Add(cte);
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    private static TableDescriptor ResolveMissingTable(SearchParameterInfo parameter)
+    {
+        var tableName = parameter.Type switch
+        {
+            SearchParamType.String => "StringSearchParam",
+            SearchParamType.Token => "TokenSearchParam",
+            SearchParamType.Reference => "ReferenceSearchParam",
+            SearchParamType.Uri => "UriSearchParam",
+            SearchParamType.Number => "NumberSearchParam",
+            SearchParamType.Quantity => "QuantitySearchParam",
+            SearchParamType.Date => "DateTimeSearchParam",
+            _ => throw new NotSupportedException(
+                $":missing is not supported for search parameter type '{parameter.Type}' on '{parameter.Code}' -- " +
+                "composite types are handled separately (see ResolveMissingCompositeTable); Special is out of scope."),
+        };
+
+        return SqlCatalog.Default.Table(tableName);
     }
 
     private static void RejectResourceColumnCode(string parameterCode)
