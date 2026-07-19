@@ -12,12 +12,17 @@ namespace Ignixa.Search.Sql.Symbols;
 /// </summary>
 /// <remarks>
 /// Collects <see cref="SearchParameterPredicateExpression"/>, <see cref="CompositeComponentExpression"/>,
-/// and <see cref="SearchParameterExpression"/> parameters. The <c>VisitSearchParameter</c> override
-/// specifically collects a composite parameter's own identity (its <c>SearchParamId</c> is otherwise
-/// unreachable, since it lives only on the <see cref="SearchParameterExpression"/> wrapper, never on any
-/// leaf beneath it). <c>base.VisitSearchParameter</c> is called to preserve recursion into <c>.Expression</c>,
-/// which reaches every <see cref="SearchParameterPredicateExpression"/> and <see cref="CompositeComponentExpression"/>
-/// beneath via the other two overrides. Resource-type identity (<c>ResourceTypeId</c>) is otherwise
+/// <see cref="SearchParameterExpression"/>, and <see cref="MissingSearchParameterExpression"/> parameters.
+/// The <c>VisitSearchParameter</c> override specifically collects a composite parameter's own identity
+/// (its <c>SearchParamId</c> is otherwise unreachable, since it lives only on the
+/// <see cref="SearchParameterExpression"/> wrapper, never on any leaf beneath it). <c>base.VisitSearchParameter</c>
+/// is called to preserve recursion into <c>.Expression</c>, which reaches every
+/// <see cref="SearchParameterPredicateExpression"/> and <see cref="CompositeComponentExpression"/>
+/// beneath via the other two overrides. <c>VisitMissingSearchParameter</c> collects a
+/// <see cref="MissingSearchParameterExpression"/>'s own <c>Parameter</c> the same way -- it is always a bare,
+/// unwrapped leaf per <c>SearchExpressionBinder</c> (never nested inside a <see cref="SearchParameterExpression"/>),
+/// so without this override its <c>SearchParamId</c> is never resolved and <c>Lower.LowerMissing</c> throws
+/// <see cref="KeyNotFoundException"/> resolving it against the <see cref="SymbolTable"/>. Resource-type identity (<c>ResourceTypeId</c>) is otherwise
 /// deliberately not collected here: the design doc's <c>ResourceSource</c>/<c>ParamSource</c> nodes that
 /// need it are synthesized by Lower (Phase 5) from context this visitor does not have -- notably the
 /// query's own target resource type, which lives on the surrounding SemanticQuery, not anywhere in this
@@ -72,6 +77,12 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     {
         Parameters.Add(expression.Parameter);
         return base.VisitSearchParameter(expression, context);
+    }
+
+    public override Expression VisitMissingSearchParameter(MissingSearchParameterExpression expression, object? context)
+    {
+        Parameters.Add(expression.Parameter);
+        return base.VisitMissingSearchParameter(expression, context);
     }
 
     public override Expression VisitChained(ChainedExpression expression, object? context)

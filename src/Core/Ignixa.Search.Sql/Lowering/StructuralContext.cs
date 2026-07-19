@@ -1,9 +1,11 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Lowering.Composite;
 using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Lowering;
 
@@ -48,6 +50,63 @@ public sealed class StructuralContext
         var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         return new CteRef(_ctes.Count - 1);
+    }
+
+    public CteRef LowerParameterPresence(SearchParameterInfo parameter, string resourceType)
+    {
+        RejectResourceColumnCode(parameter.Code);
+
+        var table = ResolveMissingTable(parameter);
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        var searchParamId = _leafContext.SearchParamId(parameter);
+
+        var cte = new CteDefinition.ParamSource(table, resourceTypeId, searchParamId);
+        _ctes.Add(cte);
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    private static TableDescriptor ResolveMissingTable(SearchParameterInfo parameter)
+    {
+        if (parameter.Type == SearchParamType.Composite)
+        {
+            return ResolveMissingCompositeTable(parameter);
+        }
+
+        var tableName = parameter.Type switch
+        {
+            SearchParamType.String => "StringSearchParam",
+            SearchParamType.Token => "TokenSearchParam",
+            SearchParamType.Reference => "ReferenceSearchParam",
+            SearchParamType.Uri => "UriSearchParam",
+            SearchParamType.Number => "NumberSearchParam",
+            SearchParamType.Quantity => "QuantitySearchParam",
+            SearchParamType.Date => "DateTimeSearchParam",
+            _ => throw new NotSupportedException(
+                $":missing is not supported for search parameter type '{parameter.Type}' on '{parameter.Code}'."),
+        };
+
+        return SqlCatalog.Default.Table(tableName);
+    }
+
+    private static TableDescriptor ResolveMissingCompositeTable(SearchParameterInfo parameter)
+    {
+        var componentTypes = parameter.Component.Select(c => c.ResolvedSearchParameter?.Type).ToArray();
+
+        var tableName = componentTypes switch
+        {
+            [SearchParamType.Token, SearchParamType.Token] => "TokenTokenCompositeSearchParam",
+            [SearchParamType.Token, SearchParamType.Number, SearchParamType.Number] => "TokenNumberNumberCompositeSearchParam",
+            [SearchParamType.Token, SearchParamType.String] => "TokenStringCompositeSearchParam",
+            [SearchParamType.Token, SearchParamType.Quantity] => "TokenQuantityCompositeSearchParam",
+            [SearchParamType.Token, SearchParamType.Date] => "TokenDateTimeCompositeSearchParam",
+            [SearchParamType.Reference, SearchParamType.Token] => "ReferenceTokenCompositeSearchParam",
+            [SearchParamType.Token, SearchParamType.Reference] => "ReferenceTokenCompositeSearchParam",
+            var types => throw new NotSupportedException(
+                $":missing is not supported for composite search parameter '{parameter.Code}' with component types " +
+                $"[{string.Join(", ", types.Select(t => t?.ToString() ?? "unresolved"))}] -- no matching composite table."),
+        };
+
+        return SqlCatalog.Default.Table(tableName);
     }
 
     private static void RejectResourceColumnCode(string parameterCode)

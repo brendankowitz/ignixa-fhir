@@ -229,4 +229,21 @@ public class PlanExplainerTests
             "sort = SortSpec([String:202 ASC], Valued)\n" +
             "page = PageSpec(boundary=[@p1], type=@p2, sid=@p3)");
     }
+
+    [Fact]
+    public void GivenACountOnlyPlan_WhenExplained_ThenPrintsCountOnlyLine()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe(
+            "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "countOnly = true");
+    }
 }

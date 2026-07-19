@@ -22,6 +22,19 @@ public static class Emit
             cteBlocks.Add($"cte{i} AS (\n{EmitCte(plan.Ctes[i], parameters)}\n)");
         }
 
+        if (plan.CountOnly)
+        {
+            var countWithClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
+            var countSql = plan.OuterPredicate is null
+                ? countWithClause + $"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m"
+                : countWithClause +
+                  $"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
+                  $"WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
+
+            return new EmittedSql(countSql, parameters);
+        }
+
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
 
         if (plan.Includes is not { Count: > 0 } includes)
@@ -160,9 +173,12 @@ public static class Emit
     };
 
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
-        => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-           $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-           $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId} AND {EmitPredicate(p.Predicate, parameters)}";
+    {
+        var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
+        return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+               $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
+               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{predicateClause}";
+    }
 
     private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters)
     {

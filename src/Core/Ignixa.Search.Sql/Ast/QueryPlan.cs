@@ -15,7 +15,10 @@ namespace Ignixa.Search.Sql.Ast;
 /// result-shape fields -- Sort decorates ordering only (never membership), synthesized entirely inside
 /// Emit's page-selection sites; Page is the keyset boundary a caller decodes from a continuation
 /// token. Both are purely additive -- a plan with neither is byte-identical to before these fields
-/// existed.
+/// existed. CountOnly (Phase 9) is a third tier-3 result-shape field -- when true, Emit ignores
+/// Top/Sort/Page/Includes entirely and renders a single COUNT_BIG(DISTINCT Sid1) terminal SELECT
+/// instead of any row-returning shape; a plan with CountOnly false (the default) is byte-identical to
+/// before this field existed.
 /// </summary>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,
@@ -24,7 +27,8 @@ public sealed record QueryPlan(
     Predicate? OuterPredicate = null,
     IReadOnlyList<IncludeStage>? Includes = null,
     SortSpec? Sort = null,
-    PageSpec? Page = null)
+    PageSpec? Page = null,
+    bool CountOnly = false)
 {
     public string Explain() => PlanExplainer.Print(this);
 }

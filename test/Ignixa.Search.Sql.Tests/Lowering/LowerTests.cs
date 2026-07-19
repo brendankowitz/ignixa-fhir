@@ -539,4 +539,205 @@ public class LowerTests
                 sortPhase: SortPhase.MissingPrimary, page: null))
             .Message.ShouldContain("never");
     }
+
+    [Fact]
+    public void GivenCountOnlyTrue_WhenLowered_ThenQueryPlanCountOnlyIsTrue()
+    {
+        // Arrange
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true);
+
+        // Assert
+        plan.CountOnly.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenCountOnlyOmitted_WhenLowered_ThenQueryPlanCountOnlyDefaultsFalse()
+    {
+        // Arrange
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.CountOnly.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenAMissingFalseOnAStringParameter_WhenLowered_ThenThePlanIsAParamSourceWithNoPredicate()
+    {
+        // Arrange -- Patient?name:missing=false ("name is present").
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var missing = new MissingSearchParameterExpression(nameParam, isMissing: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Explain().ShouldBe("root = StringSearchParam[103,202]");
+    }
+
+    [Fact]
+    public void GivenAMissingTrueOnAStringParameter_WhenLowered_ThenThePlanIsAnExceptOfResourceSourceAndParamSource()
+    {
+        // Arrange -- Patient?name:missing=true ("name is absent") -- reuses :not's Except/ResourceSource shape.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var missing = new MissingSearchParameterExpression(nameParam, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+        var except = (CteDefinition.Except)plan.Ctes[plan.Match.Index];
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+        ((CteDefinition.ParamSource)plan.Ctes[except.Right.Index]).Predicate.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("_id")]
+    [InlineData("_type")]
+    [InlineData("_lastUpdated")]
+    public void GivenMissingOnAResourceColumnParameter_WhenLowered_ThenThrowsNotSupportedException(string code)
+    {
+        // Arrange -- _id/_type/_lastUpdated:missing=true is nonsensical (these are never absent) and
+        // must throw loudly, not silently compile a query against the wrong table.
+        var param = new SearchParameterInfo(code, code, SearchParamType.String, new Uri($"http://hl7.org/fhir/SearchParameter/Resource-{code}"));
+        var missing = new MissingSearchParameterExpression(param, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null));
+    }
+
+    [Fact]
+    public void GivenMissingOnAnUnsupportedParameterType_WhenLowered_ThenThrowsNotSupportedExceptionCitingTheType()
+    {
+        // Arrange -- Special is not a leaf type this compiler handles at all.
+        var param = new SearchParameterInfo("composition", "composition", SearchParamType.Special, new Uri("http://hl7.org/fhir/SearchParameter/special-composition"));
+        var missing = new MissingSearchParameterExpression(param, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("Special");
+    }
+
+    [Fact]
+    public void GivenMissingFalseOnATokenQuantityCompositeParameter_WhenLowered_ThenThePlanIsAParamSourceAgainstTheCompositeTable()
+    {
+        // Arrange -- Observation?component-code-value-quantity:missing=false.
+        var tokenComponent = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var quantityComponent = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity, new Uri("http://hl7.org/fhir/SearchParameter/clinical-value-quantity"));
+        var composite = new SearchParameterInfo(
+            "component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"),
+            components: new[]
+            {
+                new SearchParameterComponentInfo(tokenComponent.Url, "code") { ResolvedSearchParameter = tokenComponent },
+                new SearchParameterComponentInfo(quantityComponent.Url, "value.as(Quantity)") { ResolvedSearchParameter = quantityComponent },
+            });
+        var missing = new MissingSearchParameterExpression(composite, isMissing: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [composite.Url.ToString()] = 909 },
+            new Dictionary<string, short> { ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(
+            missing, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,909]");
+    }
+
+    [Fact]
+    public void GivenMissingOnACompositeWithNoMatchingTable_WhenLowered_ThenThrowsNotSupportedExceptionCitingTheComponentTypes()
+    {
+        // Arrange -- a synthetic, unsupported composite shape (Number+Number, no such table exists).
+        var numberComponent1 = new SearchParameterInfo("a", "a", SearchParamType.Number, new Uri("http://example.org/a"));
+        var numberComponent2 = new SearchParameterInfo("b", "b", SearchParamType.Number, new Uri("http://example.org/b"));
+        var composite = new SearchParameterInfo(
+            "unsupported-composite", "unsupported-composite", SearchParamType.Composite,
+            new Uri("http://example.org/unsupported-composite"),
+            components: new[]
+            {
+                new SearchParameterComponentInfo(numberComponent1.Url, "a") { ResolvedSearchParameter = numberComponent1 },
+                new SearchParameterComponentInfo(numberComponent2.Url, "b") { ResolvedSearchParameter = numberComponent2 },
+            });
+        var missing = new MissingSearchParameterExpression(composite, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("Number");
+    }
+
+    [Fact]
+    public void GivenMissingOnACompositeWithAnUnresolvedComponent_WhenLowered_ThenThrowsNotSupportedExceptionNotNullReferenceException()
+    {
+        // Arrange -- a composite with one component where ResolvedSearchParameter is null (unresolved at load time).
+        var tokenComponent = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var unresolvedComponentUrl = new Uri("http://example.org/unresolved");
+        var composite = new SearchParameterInfo(
+            "composite-with-unresolved", "composite-with-unresolved", SearchParamType.Composite,
+            new Uri("http://example.org/composite-with-unresolved"),
+            components: new[]
+            {
+                new SearchParameterComponentInfo(tokenComponent.Url, "code") { ResolvedSearchParameter = tokenComponent },
+                new SearchParameterComponentInfo(unresolvedComponentUrl, "unresolved") { ResolvedSearchParameter = null },
+            });
+        var missing = new MissingSearchParameterExpression(composite, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert -- should throw NotSupportedException, not NullReferenceException
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("unresolved");
+    }
 }

@@ -48,6 +48,11 @@ public static class PlanExplainer
             lines.Add($"page = {PrintPageSpec(page, ref parameterOrdinal)}");
         }
 
+        if (plan.CountOnly)
+        {
+            lines.Add("countOnly = true");
+        }
+
         return string.Join('\n', lines);
     }
 
@@ -85,7 +90,7 @@ public static class PlanExplainer
     private static string PrintCte(CteDefinition cte, int? top, ref int parameterOrdinal) => cte switch
     {
         CteDefinition.ParamSource p =>
-            $"{p.Table.TableName}[{p.ResourceTypeId},{p.SearchParamId}]  {PrintPredicate(p.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
+            $"{p.Table.TableName}[{p.ResourceTypeId},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
         CteDefinition.Intersect x =>
             $"Intersect(cte{x.Left.Index}, cte{x.Right.Index}){PrintTop(top)}",
         CteDefinition.Union u =>

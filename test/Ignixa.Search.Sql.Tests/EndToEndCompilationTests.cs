@@ -1456,6 +1456,197 @@ public class EndToEndCompilationTests
             "       OR (m.T1 > @p1))");
     }
 
+    [Fact]
+    public async Task GivenACompartmentSearchWithCountOnly_WhenCompiledEndToEnd_ThenTheCountQueryReusesTheCompartmentUnionRoot()
+    {
+        // Arrange -- GET /Patient/123/Observation?_total=accurate -- proves CountOnly composes with the
+        // Union-rooted compartment match graph, including the DISTINCT that matters for a Union root.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation",
+            CancellationToken.None, compartmentManager, searchParamManager);
+        var plan = Lower.Run(
+            compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true);
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1)");
+        emitted.Sql.ShouldNotContain("TOP (");
+        emitted.Sql.ShouldNotContain("ORDER BY");
+    }
+
+    [Fact]
+    public async Task GivenAChainWithMissingInsideTheTargetExpression_WhenCompiledEndToEnd_ThenTheMissingBranchIsReachableAtChainNestingDepth()
+    {
+        // Arrange -- Patient?organization.name:missing=true -- the referenced Organization has no name.
+        var orgRefParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
+        var chain = new ChainedExpression(["Patient"], orgRefParam, ["Organization"], reversed: false, missingName);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgRefParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            chain, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert -- structural, not SQL-text, assertions (matching Task 3's own :missing=true test style):
+        // the chain's InnerMatch CteRef must point at the Except/ResourceSource/ParamSource shape
+        // LowerMissing produces standalone, proving it is reachable at chain-nesting depth with zero
+        // new chain-specific wiring. The plan's match root itself is the ChainJoin.
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        var chainJoin = (CteDefinition.ChainJoin)plan.Ctes[plan.Match.Index];
+        plan.Ctes[chainJoin.InnerMatch.Index].ShouldBeOfType<CteDefinition.Except>();
+        var except = (CteDefinition.Except)plan.Ctes[chainJoin.InnerMatch.Index];
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+        ((CteDefinition.ParamSource)plan.Ctes[except.Right.Index]).Predicate.ShouldBeNull();
+
+        // Also confirm the whole plan still emits without error -- a real, if not exhaustively
+        // asserted, proof that ChainJoin's Emit code and the Except/ParamSource-no-predicate shape
+        // compose into valid SQL text end to end.
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task GivenAPatientMissingNameQueryWithAnInclude_WhenCompiledEndToEnd_ThenTheIncludeMachineryWrapsTheExceptRootedMatch()
+    {
+        // Arrange -- Patient?name:missing=true&_include=Patient:organization -- proves the includes
+        // path (cteMatchPage/UNION ALL) correctly wraps an Except-rooted match, not just the
+        // ParamSource-rooted match every other include test in this file exercises.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            missingName, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            missingName, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000,
+            sort: [], sortPhase: SortPhase.Valued, page: null, top: 50);
+
+        // Assert -- the match CTE is genuinely the Except/ResourceSource/ParamSource shape LowerMissing
+        // produces, matching Task 3's own :missing=true structural style, not a ParamSource.
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+        var except = (CteDefinition.Except)plan.Ctes[plan.Match.Index];
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+        ((CteDefinition.ParamSource)plan.Ctes[except.Right.Index]).Predicate.ShouldBeNull();
+
+        var emitted = Emit.Run(plan);
+
+        // Assert -- the includes machinery (cteMatchPage + the final UNION ALL) is present, and
+        // cteMatchPage's own FROM clause points at cte{plan.Match.Index} -- the Except CTE -- proving
+        // the includes path is agnostic to the match CTE's own internal shape.
+        emitted.Sql.ShouldContain(
+            $"cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM cte{plan.Match.Index} m\n    ORDER BY m.T1 ASC, m.Sid1 ASC\n)");
+        emitted.Sql.ShouldContain("UNION ALL");
+        emitted.Sql.ShouldContain(
+            $"    SELECT cte{except.Left.Index}.T1, cte{except.Left.Index}.Sid1\n" +
+            $"    FROM cte{except.Left.Index}\n" +
+            $"    WHERE NOT EXISTS (\n" +
+            $"        SELECT 1 FROM cte{except.Right.Index}\n" +
+            $"        WHERE cte{except.Right.Index}.T1 = cte{except.Left.Index}.T1 AND cte{except.Right.Index}.Sid1 = cte{except.Left.Index}.Sid1)");
+    }
+
+    [Fact]
+    public async Task GivenAPatientMissingNameQuerySortedByLastUpdated_WhenCompiledEndToEnd_ThenTheExceptRootedMatchStillCarriesTheOrderBy()
+    {
+        // Arrange -- Patient?name:missing=true&_sort=_lastUpdated -- _lastUpdated needs no extra
+        // symbol resolution (Lower.BuildSortKey short-circuits it before any SearchParamId lookup),
+        // the simplest composition proving :missing's Except-rooted match also sorts correctly.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var lastUpdatedParam = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            missingName, includes: [], revIncludes: [], sort: [new SortExpression(lastUpdatedParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            missingName, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(lastUpdatedParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert -- the match CTE is still the Except/ResourceSource/ParamSource shape.
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+        var except = (CteDefinition.Except)plan.Ctes[plan.Match.Index];
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain($"SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte{plan.Match.Index} m");
+        emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenAPatientMissingNameQueryWithCountOnly_WhenCompiledEndToEnd_ThenTheCountQueryTargetsTheExceptRootedMatch()
+    {
+        // Arrange -- Patient?name:missing=true&_total=accurate -- proves CountOnly's terminal-SELECT
+        // swap works regardless of the match CTE's own shape: every other CountOnly test in this file
+        // (e.g. GivenACompartmentSearchWithCountOnly above) targets a Union root, not an Except root.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            missingName, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            missingName, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true);
+
+        // Assert -- the match CTE is the Except/ResourceSource/ParamSource shape, NOT a bare ParamSource.
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldEndWith($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m");
+        emitted.Sql.ShouldNotContain("TOP (");
+        emitted.Sql.ShouldNotContain("ORDER BY");
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];

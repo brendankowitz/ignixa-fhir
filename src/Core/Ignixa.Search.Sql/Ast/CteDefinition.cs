@@ -24,7 +24,7 @@ namespace Ignixa.Search.Sql.Ast;
 /// </summary>
 public abstract record CteDefinition
 {
-    public sealed record ParamSource(TableDescriptor Table, short ResourceTypeId, short SearchParamId, Predicate Predicate) : CteDefinition;
+    public sealed record ParamSource(TableDescriptor Table, short ResourceTypeId, short SearchParamId, Predicate? Predicate = null) : CteDefinition;
 
     public sealed record Intersect(CteRef Left, CteRef Right) : CteDefinition;
 
