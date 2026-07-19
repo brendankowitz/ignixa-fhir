@@ -1456,6 +1456,85 @@ public class EndToEndCompilationTests
             "       OR (m.T1 > @p1))");
     }
 
+    [Fact]
+    public async Task GivenACompartmentSearchWithCountOnly_WhenCompiledEndToEnd_ThenTheCountQueryReusesTheCompartmentUnionRoot()
+    {
+        // Arrange -- GET /Patient/123/Observation?_total=accurate -- proves CountOnly composes with the
+        // Union-rooted compartment match graph, including the DISTINCT that matters for a Union root.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation",
+            CancellationToken.None, compartmentManager, searchParamManager);
+        var plan = Lower.Run(
+            compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true);
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1)");
+        emitted.Sql.ShouldNotContain("TOP (");
+        emitted.Sql.ShouldNotContain("ORDER BY");
+    }
+
+    [Fact]
+    public async Task GivenAChainWithMissingInsideTheTargetExpression_WhenCompiledEndToEnd_ThenTheMissingBranchIsReachableAtChainNestingDepth()
+    {
+        // Arrange -- Patient?organization.name:missing=true -- the referenced Organization has no name.
+        var orgRefParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
+        var chain = new ChainedExpression(["Patient"], orgRefParam, ["Organization"], reversed: false, missingName);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[orgRefParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        // Act
+        var symbols = await Resolve.RunAsync(
+            chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
+        var plan = Lower.Run(
+            chain, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert -- structural, not SQL-text, assertions (matching Task 3's own :missing=true test style):
+        // the chain's InnerMatch CteRef must point at the Except/ResourceSource/ParamSource shape
+        // LowerMissing produces standalone, proving it is reachable at chain-nesting depth with zero
+        // new chain-specific wiring. The plan's match root itself is the ChainJoin.
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        var chainJoin = (CteDefinition.ChainJoin)plan.Ctes[plan.Match.Index];
+        plan.Ctes[chainJoin.InnerMatch.Index].ShouldBeOfType<CteDefinition.Except>();
+        var except = (CteDefinition.Except)plan.Ctes[chainJoin.InnerMatch.Index];
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+        ((CteDefinition.ParamSource)plan.Ctes[except.Right.Index]).Predicate.ShouldBeNull();
+
+        // Also confirm the whole plan still emits without error -- a real, if not exhaustively
+        // asserted, proof that ChainJoin's Emit code and the Except/ParamSource-no-predicate shape
+        // compose into valid SQL text end to end.
+        var emitted = Emit.Run(plan);
+        emitted.Sql.ShouldNotBeNullOrWhiteSpace();
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
