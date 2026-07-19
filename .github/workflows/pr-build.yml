@@ -92,6 +92,28 @@ jobs:
             -Q "SELECT @@VERSION" -b
         timeout-minutes: 2
 
+      - name: Install SqlPackage
+        run: dotnet tool install -g Microsoft.SqlPackage
+
+      - name: Build Ignixa.DataLayer.SqlServer.Database
+        run: dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+
+      - name: Generate schema DeployReport
+        run: |
+          sqlpackage /Action:DeployReport \
+            /SourceFile:src/DataLayer/Ignixa.DataLayer.SqlServer.Database/bin/Release/Ignixa.DataLayer.SqlServer.Database.dacpac \
+            /TargetConnectionString:"Server=localhost,1433;Database=FhirSchemaReview;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false" \
+            /OutputPath:${{ runner.temp }}/deployreport.xml
+        env:
+          SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
+
+      - name: Upload schema DeployReport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-deploy-report
+          path: ${{ runner.temp }}/deployreport.xml
+
       - name: Restore E2E test project
         run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
 
