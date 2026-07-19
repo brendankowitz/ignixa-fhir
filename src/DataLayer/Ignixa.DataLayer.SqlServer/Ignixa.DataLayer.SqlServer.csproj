@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.Tests" />
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.IntegrationTests" />
   </ItemGroup>
 
 </Project>
