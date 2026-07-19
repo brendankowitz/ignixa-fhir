@@ -90,7 +90,7 @@ public sealed class StructuralContext
 
     private static TableDescriptor ResolveMissingCompositeTable(SearchParameterInfo parameter)
     {
-        var componentTypes = parameter.Component.Select(c => c.ResolvedSearchParameter.Type).ToArray();
+        var componentTypes = parameter.Component.Select(c => c.ResolvedSearchParameter?.Type).ToArray();
 
         var tableName = componentTypes switch
         {
@@ -103,7 +103,7 @@ public sealed class StructuralContext
             [SearchParamType.Token, SearchParamType.Reference] => "ReferenceTokenCompositeSearchParam",
             var types => throw new NotSupportedException(
                 $":missing is not supported for composite search parameter '{parameter.Code}' with component types " +
-                $"[{string.Join(", ", types)}] -- no matching composite table."),
+                $"[{string.Join(", ", types.Select(t => t?.ToString() ?? "unresolved"))}] -- no matching composite table."),
         };
 
         return SqlCatalog.Default.Table(tableName);

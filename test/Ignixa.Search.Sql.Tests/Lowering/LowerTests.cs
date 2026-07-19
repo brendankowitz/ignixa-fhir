@@ -713,4 +713,31 @@ public class LowerTests
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("Number");
     }
+
+    [Fact]
+    public void GivenMissingOnACompositeWithAnUnresolvedComponent_WhenLowered_ThenThrowsNotSupportedExceptionNotNullReferenceException()
+    {
+        // Arrange -- a composite with one component where ResolvedSearchParameter is null (unresolved at load time).
+        var tokenComponent = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var unresolvedComponentUrl = new Uri("http://example.org/unresolved");
+        var composite = new SearchParameterInfo(
+            "composite-with-unresolved", "composite-with-unresolved", SearchParamType.Composite,
+            new Uri("http://example.org/composite-with-unresolved"),
+            components: new[]
+            {
+                new SearchParameterComponentInfo(tokenComponent.Url, "code") { ResolvedSearchParameter = tokenComponent },
+                new SearchParameterComponentInfo(unresolvedComponentUrl, "unresolved") { ResolvedSearchParameter = null },
+            });
+        var missing = new MissingSearchParameterExpression(composite, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert -- should throw NotSupportedException, not NullReferenceException
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("unresolved");
+    }
 }
