@@ -658,4 +658,59 @@ public class LowerTests
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("Special");
     }
+
+    [Fact]
+    public void GivenMissingFalseOnATokenQuantityCompositeParameter_WhenLowered_ThenThePlanIsAParamSourceAgainstTheCompositeTable()
+    {
+        // Arrange -- Observation?component-code-value-quantity:missing=false.
+        var tokenComponent = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var quantityComponent = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity, new Uri("http://hl7.org/fhir/SearchParameter/clinical-value-quantity"));
+        var composite = new SearchParameterInfo(
+            "component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"),
+            components: new[]
+            {
+                new SearchParameterComponentInfo(tokenComponent.Url, "code") { ResolvedSearchParameter = tokenComponent },
+                new SearchParameterComponentInfo(quantityComponent.Url, "value.as(Quantity)") { ResolvedSearchParameter = quantityComponent },
+            });
+        var missing = new MissingSearchParameterExpression(composite, isMissing: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [composite.Url.ToString()] = 909 },
+            new Dictionary<string, short> { ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(
+            missing, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,909]");
+    }
+
+    [Fact]
+    public void GivenMissingOnACompositeWithNoMatchingTable_WhenLowered_ThenThrowsNotSupportedExceptionCitingTheComponentTypes()
+    {
+        // Arrange -- a synthetic, unsupported composite shape (Number+Number, no such table exists).
+        var numberComponent1 = new SearchParameterInfo("a", "a", SearchParamType.Number, new Uri("http://example.org/a"));
+        var numberComponent2 = new SearchParameterInfo("b", "b", SearchParamType.Number, new Uri("http://example.org/b"));
+        var composite = new SearchParameterInfo(
+            "unsupported-composite", "unsupported-composite", SearchParamType.Composite,
+            new Uri("http://example.org/unsupported-composite"),
+            components: new[]
+            {
+                new SearchParameterComponentInfo(numberComponent1.Url, "a") { ResolvedSearchParameter = numberComponent1 },
+                new SearchParameterComponentInfo(numberComponent2.Url, "b") { ResolvedSearchParameter = numberComponent2 },
+            });
+        var missing = new MissingSearchParameterExpression(composite, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("Number");
+    }
 }
