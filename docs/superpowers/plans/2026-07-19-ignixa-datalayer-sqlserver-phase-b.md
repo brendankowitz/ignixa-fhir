@@ -1011,9 +1011,151 @@ git commit -m "ci(datalayer-sqlserver): add schema DeployReport artifact to the 
 
 ---
 
+### Task 8: Fold `BackgroundJobs`, `PackageResource`, `ResourceTtl`, `SourceEvents` into the SSDT project
+
+**Files:**
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/BackgroundJobs.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/PackageResource.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/ResourceTtl.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/SourceEvents.sql`
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: 4 new table files. Task 9 depends on `Tables/PackageResource.sql` existing (it adds 6 more columns to it, from a later migration).
+
+**Why this task exists**: Task 6's real end-to-end run found the SSDT project is missing every table 4 of the 6 now-deleted EF migrations created (only `AddSearchParamExtensionColumns`'s columns and 3 of `AddPackageResourceAndTerminologyIndexes`'s indexes were folded in, by Task 5) — confirmed as a real, live gap (a `SqlException: Invalid object name 'SourceEvents'` in `ConformanceStateInitializerService` during Task 6's Step 8 run, non-fatal by that service's own degraded-mode design, but real). This task and Task 9 close the remaining gap.
+
+**Method: recover the real DDL via `dotnet ef migrations script`, not hand-transcription.** The deleted migrations are still in git history (Task 6's commit is `99ebd4a2`; the commit immediately before that deletion, `94d1d8c2`, has them intact). `dotnet ef migrations script` generates the exact SQL Server DDL EF Core would have applied for a given migration — this is more reliable than hand-transcribing `MigrationBuilder.CreateTable`/`CreateIndex` calls into SQL yourself, and matches this project's established "verify via tooling, not manual transcription" approach (the same reasoning behind Task 1's scripted `97.sql` decomposition and every task's zero-diff `DeployReport` checks).
+
+- [ ] **Step 1: Temporarily restore the deleted `Migrations/` folder**
+
+This is a **local, uncommitted** restoration purely to run `dotnet ef` tooling — it must never be committed.
+```
+git checkout 94d1d8c2 -- src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/
+git status --short src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/
+```
+Expected: 13 files reappear as staged additions. `dotnet build src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj` should now succeed with the migrations compiling (they only need `Microsoft.EntityFrameworkCore.Migrations`, already a dependency of that project).
+
+- [ ] **Step 2: Generate each migration's SQL via `dotnet ef migrations script`**
+
+```
+dotnet ef migrations script 0 20251104055142_AddBackgroundJobs --project src/DataLayer/Ignixa.DataLayer.SqlEntityFramework --output /tmp/backgroundjobs.sql
+dotnet ef migrations script 20251118050351_AddTerminologyImportTracking 20251222213143_AddResourceTtlTable --project src/DataLayer/Ignixa.DataLayer.SqlEntityFramework --output /tmp/resourcettl.sql
+dotnet ef migrations script 20251222213143_AddResourceTtlTable 20251223154537_AddSourceEventsTable --project src/DataLayer/Ignixa.DataLayer.SqlEntityFramework --output /tmp/sourceevents.sql
+```
+(Use this session's scratchpad directory instead of `/tmp` if on Windows — any throwaway location outside the repo works; these files are never committed.)
+
+For `PackageResource`, generate the migration's full script, then manually exclude the 3 `TokenSearchParam` index statements Task 5 already folded (`IX_TokenSearchParam_SearchParamId_SystemId_Code`, `IX_TokenSearchParam_SystemId_Code`, `IX_TokenSearchParam_ResourceTypeId_SearchParamId`) — everything else in this migration (the `PackageResource` table itself and its own 5 indexes: `UQ_PackageResource_Identity`, `IX_PackageResource_Canonical_Version`, `IX_PackageResource_ResourceType_Canonical`, `IX_PackageResource_Package`, and one more — read the real migration source, `git show 94d1d8c2:src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/20251108000000_AddPackageResourceAndTerminologyIndexes.cs`, to confirm the complete index list) is new and needs folding:
+```
+dotnet ef migrations script 20251104055142_AddBackgroundJobs 20251108000000_AddPackageResourceAndTerminologyIndexes --project src/DataLayer/Ignixa.DataLayer.SqlEntityFramework --output /tmp/packageresource-and-terminology-indexes.sql
+```
+
+- [ ] **Step 3: Write the 4 table files**
+
+For each of `BackgroundJobs`, `PackageResource`, `ResourceTtl`, `SourceEvents`: take the generated script's `CREATE TABLE` statement plus that table's own `CREATE INDEX` statements (skip the `IF EXISTS`/EF-bookkeeping boilerplate `dotnet ef migrations script` wraps around the real DDL — e.g. `IF NOT EXISTS (SELECT * FROM [__EFMigrationsHistory] ...)` guards, `INSERT INTO [__EFMigrationsHistory]` bookkeeping rows — none of that belongs in a declarative SSDT object file), and write it into the new `.sql` file, matching the exact style already established by Task 1's decomposition (`GO`-separated batches, no trailing blank lines, table/index statements only — see any existing file under `Tables/` for the reference format). For `PackageResource.sql` specifically, exclude the 3 already-folded `TokenSearchParam` index statements per Step 2.
+
+- [ ] **Step 4: Discard the temporarily-restored `Migrations/` folder**
+
+```
+git checkout HEAD -- src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/
+git clean -f src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/ 2>/dev/null
+git status --short src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/
+```
+Expected: the folder is gone again (back to Task 6's post-deletion state), confirmed by no output from the last command.
+
+- [ ] **Step 5: Confirm the SSDT project still builds**
+
+```
+dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+```
+Expected: 0 errors. (Full zero-diff re-verification happens in Task 9, once all missing tables — including the terminology ones — are folded in; don't re-run the full reference-DB comparison yet if it would only be partially complete.)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/BackgroundJobs.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/PackageResource.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/ResourceTtl.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/SourceEvents.sql
+git commit -m "feat(datalayer-sqlserver): fold BackgroundJobs/PackageResource/ResourceTtl/SourceEvents into the SSDT project"
+```
+
+---
+
+### Task 9: Fold the 6 terminology tables and `PackageResource`'s import-tracking columns into the SSDT project; final zero-diff re-verification
+
+**Files:**
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermCodeSystem.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermConcept.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermConceptMap.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermConceptMapElement.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermValueSet.sql`
+- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermValueSetExpansion.sql`
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/PackageResource.sql` (Task 8's output — add 6 tracking columns)
+
+**Interfaces:**
+- Consumes: `Tables/PackageResource.sql` (Task 8).
+- Produces: a fully-complete SSDT project — after this task, the dacpac should be schema-equivalent to a database with `97.sql` + all 6 EF migrations applied, closing every gap Task 2 and Task 6 found. This is the last content-adding task in Phase B.
+
+**Ground truth**: `20251118050351_AddTerminologyImportTracking.cs` (recovered from `git show 94d1d8c2:...`, same as Task 8) does two things: (1) adds 6 columns to the **already-existing** `PackageResource` table (`ContentHash NVARCHAR(64) NULL`, `ImportCompletedDate DATETIMEOFFSET NULL`, `ImportErrorMessage NVARCHAR(1000) NULL`, `ImportStartDate DATETIMEOFFSET NULL`, `ImportedConceptCount INT NULL`, `TerminologyImportStatus NVARCHAR(20) NULL`) — this is why this task depends on Task 8's `PackageResource.sql` already existing; (2) creates 6 new tables with FK relationships among themselves and back to `PackageResource`/`System` (an existing `97.sql` table) — `TermCodeSystem`, `TermConceptMap`, `TermValueSet`, `TermConcept`, `TermConceptMapElement`, `TermValueSetExpansion` (singular names, not "Terms"/plural — confirm against the real migration source, don't assume).
+
+- [ ] **Step 1: Temporarily restore the deleted `Migrations/` folder** (same as Task 8 Step 1)
+
+```
+git checkout 94d1d8c2 -- src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/
+```
+
+- [ ] **Step 2: Generate this migration's SQL**
+
+```
+dotnet ef migrations script 20251108000000_AddPackageResourceAndTerminologyIndexes 20251118050351_AddTerminologyImportTracking --project src/DataLayer/Ignixa.DataLayer.SqlEntityFramework --output /tmp/terminology-import-tracking.sql
+```
+(Adjust the scratch path for your environment; never committed.)
+
+- [ ] **Step 3: Add the 6 new columns to `Tables/PackageResource.sql`**
+
+Insert the 6 columns from the generated script's `ALTER TABLE ... ADD` statements into the existing `CREATE TABLE dbo.PackageResource (...)` statement's column list (Task 8 already created this file — modify it, don't recreate it), matching the real migration's exact types/lengths/nullability given in "Ground truth" above.
+
+- [ ] **Step 4: Write the 6 terminology table files**
+
+For each of the 6 tables, extract its `CREATE TABLE` statement, its own indexes, and its own FK constraints from the generated script — matching Task 1's established per-object-file convention. Read the real migration source directly (`git show 94d1d8c2:src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/20251118050351_AddTerminologyImportTracking.cs`) for the exact FK relationships (e.g. `TermConcept` has FKs to `TermCodeSystem` and to itself via a parent-concept self-reference; `TermConceptMapElement` has FKs to `TermConceptMap` and twice to `TermCodeSystem` for source/target systems; `TermValueSetExpansion` has FKs to `TermValueSet` and `TermCodeSystem`) — do not guess these from table names, transcribe them from the actual generated SQL. Since SSDT resolves object build/dependency order automatically at build time (the same reasoning that let Task 1 decompose 135 objects without manual ordering), these 6 files can reference each other's tables via FK regardless of alphabetical file order.
+
+- [ ] **Step 5: Discard the temporarily-restored `Migrations/` folder** (same as Task 8 Step 4)
+
+```
+git checkout HEAD -- src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/
+git clean -f src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/ 2>/dev/null
+```
+
+- [ ] **Step 6: Full zero-diff re-verification — the actual correctness gate for both this task and Task 8**
+
+This repeats Task 2/Task 5's methodology, now against the fully-complete `.sqlproj`:
+```
+dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+```
+Bootstrap a fresh reference database (raw `97.sql` execution + all 6 EF migrations via `dotnet ef database update` — this needs the `Migrations/` folder again; either temporarily re-restore it as in Step 1 for this one `dotnet ef database update` invocation and discard again afterward, or use `sqlpackage`/`sqlcmd` against a database already bootstrapped by an earlier task if one still exists and is known-fresh — prefer bootstrapping a genuinely new one to avoid any doubt) on the local SQL Server 2025 engine (`Server=localhost;Trusted_Connection=True;TrustServerCertificate=True`, the established substitution for this machine's incompatible LocalDB, per Task 4/5/6):
+```
+sqlpackage /Action:DeployReport /SourceFile:src/DataLayer/Ignixa.DataLayer.SqlServer.Database/bin/Release/Ignixa.DataLayer.SqlServer.Database.dacpac /TargetConnectionString:"Server=localhost;Database=<fresh-reference-db>;Trusted_Connection=True;TrustServerCertificate=True" /OutputPath:deployreport-final.xml
+```
+Expected: **the only remaining `<Operation>` entries are Categories B, C, and D from Task 2's original report** (the `CURRENT_TIMESTAMP` canonicalization noise on `SchemaMigrationProgress`, the hex-literal check-constraint canonicalization noise on `Resource`, and the partition-function/post-deploy-script rebuild cascade) — all three already proven benign via Task 2's self-consistency test. **No `BackgroundJobs`/`PackageResource`/`ResourceTtl`/`SourceEvents`/`Term*` operations of any kind should appear.** If any do, the added DDL has a mismatch against the real migration source — compare column-by-column/constraint-by-constraint and fix, don't guess.
+
+Also confirm total table count: `SELECT COUNT(*) FROM sys.tables` against the fresh reference database and against a database deployed from the now-complete dacpac should both read **47** (37 from `97.sql` + `BackgroundJobs` + `PackageResource` + `ResourceTtl` + `SourceEvents` + 6 terminology tables).
+
+Drop the reference database when done.
+
+- [ ] **Step 7: Live end-to-end re-confirmation of Task 6's finding**
+
+Repeat Task 6's Step 8 (run the real `Ignixa.Web` app against a brand-new database with `SqlServer:AutomaticSchemaDeploymentEnabled=true`) and confirm the `ConformanceStateInitializerService` `SourceEvents` failure Task 6 found is gone — the service should now initialize cleanly against a `SchemaDeployer`-provisioned database, not just degrade gracefully.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermCodeSystem.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermConcept.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermConceptMap.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermConceptMapElement.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermValueSet.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TermValueSetExpansion.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/PackageResource.sql
+git commit -m "feat(datalayer-sqlserver): fold terminology tables and PackageResource import-tracking columns into the SSDT project"
+```
+
+---
+
 ## Final steps (controller, not a task subagent)
 
-After all 6 tasks are complete and reviewed clean:
+After all 9 tasks are complete and reviewed clean:
 1. Full solution build + test (`dotnet build All.sln`, `dotnet test All.sln --filter "FullyQualifiedName!~E2ETests"`).
 2. Generate the final whole-branch review package (`scripts/review-package` against the merge-base with `feature/fhir-to-sql-compiler` — Phase A's own merge-base, since this branch never merged there) and dispatch the final reviewer on the most capable available model, per this session's established pattern.
 3. Report the full picture to the user; ask explicitly before merging (note: per the user's Phase A decision, this branch likely stays standalone rather than merging into `feature/fhir-to-sql-compiler` — confirm with the user rather than assuming the same choice applies) and again before pushing.
