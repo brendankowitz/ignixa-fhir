@@ -1,0 +1,6 @@
+CREATE TABLE dbo.System (
+    SystemId INT            IDENTITY (1, 1) NOT NULL,
+    Value    NVARCHAR (256) NOT NULL,
+    CONSTRAINT UQ_System_SystemId UNIQUE (SystemId),
+    CONSTRAINT PKC_System PRIMARY KEY CLUSTERED (Value) WITH (DATA_COMPRESSION = PAGE)
+);

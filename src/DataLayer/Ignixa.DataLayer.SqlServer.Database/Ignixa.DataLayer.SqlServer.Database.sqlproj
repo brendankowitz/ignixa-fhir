@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build">
+  <Sdk Name="Microsoft.Build.Sql" Version="2.2.0" />
+  <PropertyGroup>
+    <Name>Ignixa.DataLayer.SqlServer.Database</Name>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql170DatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI</ModelCollation>
+    <ProjectGuid>0D46D298-89F4-43E1-B6B6-4F560D86D637</ProjectGuid>
+  </PropertyGroup>
+  <ItemGroup>
+    <Build Remove="Scripts\Script.PostDeployment.sql" />
+    <PostDeploy Include="Scripts\Script.PostDeployment.sql" />
+  </ItemGroup>
+</Project>
