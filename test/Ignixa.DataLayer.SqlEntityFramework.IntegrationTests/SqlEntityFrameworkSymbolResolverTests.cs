@@ -48,15 +48,14 @@ public class SqlEntityFrameworkSymbolResolverTests
     [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenARealDatabase_WhenResolvingAKnownParameter_ThenReturnsItsRealSearchParamId()
     {
-        // Arrange: initialize schema via the same DatabaseInitializer production uses (see
-        // DatabaseSchemaInitializationTests.cs), then seed one real search parameter row.
+        // Arrange: initialize schema via SchemaDeployer, the same DacFx-based mechanism production
+        // uses (see SqlEntityFrameworkRepositoryFactory.cs), then seed one real search parameter row.
         var connectionString = GetConnectionString();
         var options = new DbContextOptionsBuilder<FhirDbContext>()
             .UseSqlServer(connectionString)
             .Options;
         await using var context = new FhirDbContext(options);
-        var initializer = new DatabaseInitializer(context, NullLogger<DatabaseInitializer>.Instance, "Development");
-        await initializer.InitializeAsync();
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
 
         var parameter = new SearchParameterInfo(
             "name",

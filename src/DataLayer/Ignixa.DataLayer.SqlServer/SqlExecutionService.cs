@@ -1,4 +1,5 @@
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -38,20 +39,46 @@ public sealed class SqlExecutionService : ISqlExecutionService
             throw new InvalidOperationException($"Tenant {tenantId} does not exist or is inactive.");
         }
 
-        if (tenant.Storage.Type != "SqlServer")
+        // "SqlEntityFramework" and "SqlServer" are synonyms for "this tenant's data lives in SQL
+        // Server" throughout the codebase (see SqlEntityFrameworkRepositoryFactory's identical check,
+        // and CompositeRepositoryFactory/CompositeSearchServiceFactory's "SqlEntityFramework" or
+        // "SqlServer" pattern-match arms) -- "SqlEntityFramework" is the legacy/actual value every
+        // real tenant config in this repo uses today, not a different storage backend.
+        if (tenant.Storage.Type != "SqlServer" && tenant.Storage.Type != "SqlEntityFramework")
         {
             throw new InvalidOperationException(
                 $"Tenant {tenantId} is configured for storage type '{tenant.Storage.Type}', not 'SqlServer' -- " +
                 "ISqlExecutionService can only be used for tenants configured for SQL Server storage.");
         }
 
-        if (string.IsNullOrEmpty(tenant.Storage.ConnectionString))
+        var connectionString = tenant.Storage.ConnectionString;
+        if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException(
-                $"Tenant {tenantId} is configured for 'SqlServer' storage but has no ConnectionString.");
+            // System partition (Tenant 0) is allowed a null ConnectionString: it inherits from
+            // another tenant's database (single-tenant deployments avoid extra infrastructure).
+            // Mirrors SqlEntityFrameworkRepositoryFactory.GetOrCreateFactoryAsync's identical
+            // inheritance logic -- kept in sync deliberately, not duplicated by accident.
+            var isSystemPartitionAccess = tenant.IsSystemPartition || tenantId == SystemConstants.SystemPartitionId;
+            if (!isSystemPartitionAccess)
+            {
+                throw new InvalidOperationException(
+                    $"Tenant {tenantId} is configured for 'SqlServer' storage but has no ConnectionString.");
+            }
+
+            var inheritFromTenantId = tenant.Storage.InheritConnectionStringFromTenant;
+            var inheritedConfig = await tenantConfigurationStore.GetTenantConfigurationAsync(inheritFromTenantId, cancellationToken);
+
+            if (inheritedConfig is null || string.IsNullOrEmpty(inheritedConfig.Storage.ConnectionString))
+            {
+                throw new InvalidOperationException(
+                    $"System partition (Tenant {tenantId}) has no ConnectionString and cannot inherit from Tenant {inheritFromTenantId} " +
+                    $"(tenant {(inheritedConfig == null ? "not found" : "has no ConnectionString")}).");
+            }
+
+            connectionString = inheritedConfig.Storage.ConnectionString;
         }
 
-        return tenant.Storage.ConnectionString;
+        return connectionString;
     }
 
     internal async Task<SqlConnection> OpenConnectionAsync(int tenantId, CancellationToken cancellationToken)

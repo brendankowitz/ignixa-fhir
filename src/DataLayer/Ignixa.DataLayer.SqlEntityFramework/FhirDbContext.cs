@@ -193,21 +193,6 @@ public class FhirDbContext : DbContext
     public DbSet<EventStore.SourceEventEntity> SourceEvents => Set<EventStore.SourceEventEntity>();
 
     /// <summary>
-    /// Configures database provider options and warnings.
-    /// </summary>
-    /// <param name="optionsBuilder">The options builder to configure.</param>
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-    {
-        base.OnConfiguring(optionsBuilder);
-
-        // Suppress PendingModelChangesWarning during migrations
-        // This is safe because MigrateAsync() explicitly handles model-to-schema synchronization
-        // The warning would block migrations from applying, which is the opposite of what we want
-        optionsBuilder.ConfigureWarnings(warnings =>
-            warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-    }
-
-    /// <summary>
     /// Configures entity mappings, keys, indexes, and relationships.
     /// </summary>
     /// <param name="modelBuilder">The model builder to configure.</param>

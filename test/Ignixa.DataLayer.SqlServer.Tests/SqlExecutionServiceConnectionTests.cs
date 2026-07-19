@@ -55,6 +55,61 @@ public class SqlExecutionServiceConnectionTests
     }
 
     [Fact]
+    public async Task GivenATenantConfiguredForSqlEntityFrameworkStorage_WhenResolvingConnectionString_ThenReturnsItWithoutThrowing()
+    {
+        // Arrange -- "SqlEntityFramework" is the storage type value every real tenant config in this
+        // repo actually uses (see appsettings.json/appsettings.Development.json/launchSettings.json);
+        // it must resolve the same as "SqlServer", not be rejected as a foreign storage type.
+        var store = new FakeTenantConfigurationStore();
+        const string connectionString = "Server=test;Database=test;Trusted_Connection=True;";
+        store.Tenants[1] = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Test Tenant",
+            FhirVersion = "4.0",
+            Storage = new TenantStorageConfiguration { Type = "SqlEntityFramework", ConnectionString = connectionString },
+        };
+
+        // Act
+        var resolved = await SqlExecutionService.ResolveConnectionStringAsync(store, 1, CancellationToken.None);
+
+        // Assert
+        resolved.ShouldBe(connectionString);
+    }
+
+    [Fact]
+    public async Task GivenTheSystemPartitionWithNoConnectionString_WhenResolvingConnectionString_ThenInheritsFromTheConfiguredTenant()
+    {
+        // Arrange -- Tenant 0 (system partition) has no ConnectionString of its own; it inherits
+        // Tenant 1's, matching CLAUDE.md's multi-tenancy rules and
+        // SqlEntityFrameworkRepositoryFactory.GetOrCreateFactoryAsync's identical, already-established
+        // inheritance behavior.
+        var store = new FakeTenantConfigurationStore();
+        const string tenant1ConnectionString = "Server=test;Database=tenant1;Trusted_Connection=True;";
+        store.Tenants[0] = new TenantConfiguration
+        {
+            TenantId = 0,
+            DisplayName = "System Partition (Reserved)",
+            FhirVersion = "4.0",
+            IsSystemPartition = true,
+            Storage = new TenantStorageConfiguration { Type = "SqlEntityFramework", InheritConnectionStringFromTenant = 1, ConnectionString = null },
+        };
+        store.Tenants[1] = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Tenant 1",
+            FhirVersion = "4.0",
+            Storage = new TenantStorageConfiguration { Type = "SqlEntityFramework", ConnectionString = tenant1ConnectionString },
+        };
+
+        // Act
+        var resolved = await SqlExecutionService.ResolveConnectionStringAsync(store, 0, CancellationToken.None);
+
+        // Assert
+        resolved.ShouldBe(tenant1ConnectionString);
+    }
+
+    [Fact]
     public async Task GivenATenantConfiguredForSqlServerWithNoConnectionString_WhenOpeningAConnection_ThenThrowsInvalidOperationException()
     {
         // Arrange

@@ -49,8 +49,7 @@ public class CompiledSearchEndToEndTests
         var connectionString = GetConnectionString();
         var options = new DbContextOptionsBuilder<FhirDbContext>().UseSqlServer(connectionString).Options;
         await using var context = new FhirDbContext(options);
-        var initializer = new DatabaseInitializer(context, NullLogger<DatabaseInitializer>.Instance, "Development");
-        await initializer.InitializeAsync();
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
 
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://ignixa.dev/fhir/task10/SearchParameter/patient-name"));
         var predicate = new SearchParameterPredicateExpression(

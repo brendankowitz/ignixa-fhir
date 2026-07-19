@@ -41,6 +41,13 @@ public sealed class SchemaDeployer : ISchemaDeployer
         if (_environment.IsDevelopment() && !await CanConnectAsync(connectionString, cancellationToken))
         {
             await CreateEmptyDatabaseAsync(connectionString, cancellationToken);
+
+            // SQL Server occasionally isn't immediately connectable via a brand-new connection right
+            // after CREATE DATABASE commits (observed as a transient "login failed" / error 4060 --
+            // the same error code SqlExecutionService.IsTransient already treats as retryable), even
+            // though the creating login is db_owner. A short bounded retry avoids a spurious startup
+            // failure on a database this method itself just created.
+            await WaitUntilConnectableAsync(connectionString, cancellationToken);
         }
 
         if (!await IsDatabaseEmptyAsync(connectionString, cancellationToken))
@@ -82,7 +89,14 @@ public sealed class SchemaDeployer : ISchemaDeployer
     {
         try
         {
-            await using var connection = new SqlConnection(connectionString);
+            // Pooling disabled: this is a one-off "does it exist yet" probe, not a connection meant
+            // to be reused. Without this, a probe against a not-yet-created database trips
+            // Microsoft.Data.SqlClient's connection-pool blocking period for this exact connection
+            // string -- poisoning the SAME pool that IsDatabaseEmptyAsync/DacServices.Deploy/the
+            // app's own runtime EF Core queries reuse afterward, causing spurious "login failed"
+            // errors for several seconds even after the database is confirmed ONLINE and reachable
+            // via a fresh, unpooled connection.
+            await using var connection = new SqlConnection(BuildNonPooledConnectionString(connectionString));
             await connection.OpenAsync(cancellationToken);
             return true;
         }
@@ -90,6 +104,31 @@ public sealed class SchemaDeployer : ISchemaDeployer
         {
             return false;
         }
+    }
+
+    private static string BuildNonPooledConnectionString(string connectionString)
+        => new SqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString;
+
+    private const int ConnectableRetryAttempts = 10;
+    private static readonly TimeSpan ConnectableRetryDelay = TimeSpan.FromMilliseconds(300);
+
+    private static async Task WaitUntilConnectableAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= ConnectableRetryAttempts; attempt++)
+        {
+            if (await CanConnectAsync(connectionString, cancellationToken))
+            {
+                return;
+            }
+
+            await Task.Delay(ConnectableRetryDelay, cancellationToken);
+        }
+
+        // Final attempt: let the real exception surface if the database is still unreachable --
+        // don't swallow a genuine failure behind a generic timeout message. Still unpooled, for the
+        // same reason CanConnectAsync is.
+        await using var connection = new SqlConnection(BuildNonPooledConnectionString(connectionString));
+        await connection.OpenAsync(cancellationToken);
     }
 
     private static async Task CreateEmptyDatabaseAsync(string connectionString, CancellationToken cancellationToken)
