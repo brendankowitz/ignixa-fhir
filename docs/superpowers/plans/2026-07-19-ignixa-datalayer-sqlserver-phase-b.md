@@ -432,7 +432,7 @@ git commit -m "feat(datalayer-sqlserver): point SqlCatalogGenerator at the decom
 
 **Interfaces:**
 - Consumes: `SqlExecutionService`'s existing `ITenantConfigurationStore`-based tenant resolution (Phase A, Task 2) — extracted into a shared method this task adds. `Ignixa.DataLayer.SqlServer.Database`'s built `.dacpac` (Tasks 1–2).
-- Produces: `public interface ISchemaDeployer { Task DeployIfEmptyAsync(int tenantId, CancellationToken cancellationToken); }`, consumed by Task 5's app-startup wiring.
+- Produces: `public interface ISchemaDeployer { Task DeployIfEmptyAsync(int tenantId, CancellationToken cancellationToken); }`, consumed by Task 6's app-startup wiring.
 
 - [ ] **Step 1: Confirm the exact `Microsoft.SqlServer.DacFx` version to pin**
 
@@ -669,7 +669,7 @@ public static IServiceCollection AddIgnixaSqlServerSchemaDeployment(this IServic
     return services;
 }
 ```
-(This method is called from `Ignixa.Web`/`Ignixa.Api` in Task 5, not here — Task 4 stays isolated per the "zero unrelated production wiring within this task" spirit, though note Task 5 is where the actual wiring happens since Phase B as a whole *does* touch production wiring, per the Global Constraints.)
+(This method is called from `Ignixa.Web`/`Ignixa.Api` in Task 6, not here — Task 4 stays isolated per the "zero unrelated production wiring within this task" spirit, though note Task 6 is where the actual wiring happens since Phase B as a whole *does* touch production wiring, per the Global Constraints.)
 
 - [ ] **Step 8: Unit tests for `SchemaDeployer`'s non-DB-touching logic**
 
@@ -754,7 +754,107 @@ git commit -m "feat(datalayer-sqlserver): add SchemaDeployer -- DacFx-based sche
 
 ---
 
-### Task 5: Wire `SchemaDeployer` into app startup; retire the EF migration/bootstrap path
+### Task 5: Fold the search-param extension columns into the SSDT project
+
+**Files:**
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TokenSearchParam.sql`
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/UriSearchParam.sql`
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: a `.sqlproj` that, once deployed, is schema-equivalent to a database that has had **all 6** EF migrations applied (not just `97.sql`) — closing the one real gap Task 2 found (Category A of its DeployReport investigation). Task 6 (below) depends on this being closed *before* it deletes the migrations that are currently the only source of this schema.
+
+**Why this task exists**: Task 2's zero-diff verification found that `TokenSearchParam.IdentifierTypeCode`/`IdentifierTypeSystemId` and `UriSearchParam.Fragment`/`Version` (+ 3 indexes) exist only via already-applied EF migrations, never in `97.sql`'s text — so Task 1's faithful extraction of `97.sql` correctly omitted them. Task 6 deletes those migrations outright; without this task, any new tenant bootstrapped via `SchemaDeployer` (Task 4) would permanently lack this schema, a real regression against the `PostMergeExtensionUpdater` pattern CLAUDE.md documents (these columns back the `:of-type`/`:above`/`:below` search modifiers).
+
+Real ground truth for this task's DDL, read directly from the two source migrations — do not invent or approximate:
+- `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/20251230193724_AddSearchParamExtensionColumns.cs`: adds `UriSearchParam.Fragment nvarchar(128) NULL`, `UriSearchParam.Version nvarchar(64) NULL`, `TokenSearchParam.IdentifierTypeCode nvarchar(256) NULL`, `TokenSearchParam.IdentifierTypeSystemId int NULL`.
+- `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Migrations/20251108000000_AddPackageResourceAndTerminologyIndexes.cs` (lines 76–106) — despite its name, this migration *also* adds 3 filtered/covering indexes on `TokenSearchParam`, under a comment "Strategic Terminology Indexes on TokenSearchParam (ADR-2531)". These are Task 2's Category A "3 indexes" — not a side effect of adding the two new columns, genuinely separate DDL that needs adding.
+
+**Note on data type**: the migration declares these columns `nvarchar`, while every other text column in `TokenSearchParam`/`UriSearchParam` (and the rest of the schema generally) uses `VARCHAR` (single-byte, matching `97.sql`'s convention). **Do not "fix" this to `VARCHAR` for stylistic consistency** — any tenant database that has already had this migration applied has real `NVARCHAR` columns today; declaring `VARCHAR` in the new dacpac would create a genuine mismatch against already-deployed schema, not just a style inconsistency. Preserve `NVARCHAR` exactly as the migration declares it.
+
+- [ ] **Step 1: Add the two new columns to `Tables/TokenSearchParam.sql`**
+
+Insert after the existing `CodeOverflow` column (before the closing `)`):
+```sql
+CREATE TABLE dbo.TokenSearchParam (
+    ResourceTypeId         SMALLINT       NOT NULL,
+    ResourceSurrogateId    BIGINT         NOT NULL,
+    SearchParamId          SMALLINT       NOT NULL,
+    SystemId                INT           NULL,
+    Code                    VARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
+    CodeOverflow            VARCHAR (MAX) COLLATE Latin1_General_100_CS_AS NULL,
+    IdentifierTypeCode      NVARCHAR (256) NULL,
+    IdentifierTypeSystemId  INT            NULL
+);
+```
+(Keep everything else in the file — the `LOCK_ESCALATION` `ALTER TABLE`, `IXC_TokenSearchParam`, `IX_SearchParamId_Code_INCLUDE_SystemId` — exactly as-is; only the `CREATE TABLE` statement's column list changes.)
+
+- [ ] **Step 2: Add the 3 new indexes to the end of `Tables/TokenSearchParam.sql`**
+
+Append (as new `GO`-separated batches, matching the file's existing style), reproducing the migration's raw SQL exactly (dropping only the `IF NOT EXISTS`/`sys.indexes` guard — SSDT's declarative deploy model supplies its own idempotency, the same reasoning Task 1 already applied elsewhere; no explicit partition-scheme `ON` clause is needed since a new index on an already-partitioned table aligns to the table's own partition scheme by default in SQL Server, matching the migration's own real, unqualified `CREATE INDEX` statements):
+```sql
+CREATE INDEX IX_TokenSearchParam_SearchParamId_SystemId_Code
+    ON dbo.TokenSearchParam(SearchParamId, SystemId, Code)
+    INCLUDE(ResourceTypeId, ResourceSurrogateId)
+    WHERE SystemId IS NOT NULL;
+
+GO
+
+CREATE INDEX IX_TokenSearchParam_SystemId_Code
+    ON dbo.TokenSearchParam(SystemId, Code)
+    INCLUDE(ResourceTypeId, ResourceSurrogateId)
+    WHERE SystemId IS NOT NULL;
+
+GO
+
+CREATE INDEX IX_TokenSearchParam_ResourceTypeId_SearchParamId
+    ON dbo.TokenSearchParam(ResourceTypeId, SearchParamId)
+    INCLUDE(SystemId, Code);
+```
+
+- [ ] **Step 3: Add the two new columns to `Tables/UriSearchParam.sql`**
+
+Insert after the existing `Uri` column:
+```sql
+CREATE TABLE dbo.UriSearchParam (
+    ResourceTypeId      SMALLINT      NOT NULL,
+    ResourceSurrogateId BIGINT        NOT NULL,
+    SearchParamId       SMALLINT      NOT NULL,
+    Uri                 VARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
+    Fragment             NVARCHAR (128) NULL,
+    Version               NVARCHAR (64)  NULL
+);
+```
+(Keep everything else in the file unchanged — `LOCK_ESCALATION`, `IXC_UriSearchParam`, `IX_SearchParamId_Uri`.)
+
+- [ ] **Step 4: Rebuild and re-run Task 2's zero-diff verification**
+
+```
+dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+```
+Expected: still 0 errors (warning count may shift slightly given 2 new tables' worth of columns/indexes, but should stay in the same `SQL71502`/`SQL71558` benign categories Task 1/Task 2 already established — investigate anything new).
+
+Bootstrap a fresh reference database exactly as Task 2 did (raw `97.sql` execution + **all 6** EF migrations via `dotnet ef database update`), then:
+```
+sqlpackage /Action:DeployReport `
+  /SourceFile:src/DataLayer/Ignixa.DataLayer.SqlServer.Database/bin/Release/Ignixa.DataLayer.SqlServer.Database.dacpac `
+  /TargetConnectionString:"Server=(localdb)\MSSQLLocalDB;Database=<fresh-reference-db>;Integrated Security=true;TrustServerCertificate=true" `
+  /OutputPath:deployreport-post-fold.xml
+```
+Expected: **Category A (the `TokenSearchParam`/`UriSearchParam` column and index diffs) is completely gone.** Categories B, C, and D from Task 2's report (the `CURRENT_TIMESTAMP` canonicalization noise, the hex-literal check-constraint canonicalization noise, and the partition-function/post-deploy-script interaction) are expected to still appear — Task 2 already proved those are `SqlPackage`/DacFx comparison artifacts, not real bugs, via a self-consistency test; they are not this task's concern. If Category A does not fully disappear, the added DDL has a mismatch against the migration's real behavior — compare column-by-column/index-by-index against the migration source above and fix, don't guess.
+
+Drop the reference database when done.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TokenSearchParam.sql src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/UriSearchParam.sql
+git commit -m "feat(datalayer-sqlserver): fold AddSearchParamExtensionColumns/AddPackageResourceAndTerminologyIndexes DDL into the SSDT project"
+```
+
+---
+
+### Task 6: Wire `SchemaDeployer` into app startup; retire the EF migration/bootstrap path
 
 **Files:**
 - Modify: `Ignixa.Web`'s (or `Ignixa.Api`'s — confirm which project actually calls `DatabaseInitializer` today via grep before assuming) startup wiring
@@ -833,7 +933,7 @@ Expected: all passing except the 2 known pre-existing `Ignixa.SqlOnFhir.Tests` s
 
 - [ ] **Step 8: End-to-end confirmation with a real fresh database**
 
-Set `TEST_SQL_CONNECTION_STRING`-style connection info for a brand-new LocalDB database the app has never seen, run the app (or the relevant startup integration test) with `SqlServer:AutomaticSchemaDeploymentEnabled=true`, and confirm it starts successfully and the database ends up with the expected tables — this is the actual proof that Task 5's wiring works end-to-end, not just that it compiles.
+Set `TEST_SQL_CONNECTION_STRING`-style connection info for a brand-new LocalDB database the app has never seen, run the app (or the relevant startup integration test) with `SqlServer:AutomaticSchemaDeploymentEnabled=true`, and confirm it starts successfully and the database ends up with the expected tables — this is the actual proof that Task 6's wiring works end-to-end, not just that it compiles.
 
 - [ ] **Step 9: Commit**
 
@@ -844,7 +944,7 @@ git commit -m "feat(datalayer-sqlserver): wire SchemaDeployer into app startup, 
 
 ---
 
-### Task 6: CI pipeline — automated `DeployReport` on every PR
+### Task 7: CI pipeline — automated `DeployReport` on every PR
 
 **Files:**
 - Modify: `.github/workflows/pr-build.yml`
