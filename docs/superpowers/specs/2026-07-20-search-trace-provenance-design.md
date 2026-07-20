@@ -1,7 +1,7 @@
 # Search trace provenance — design
 
 **Date:** 2026-07-20
-**Status:** Proposed (revision 2, after principal review)
+**Status:** Approved (revision 3 — signed off in principal review)
 **Scope:** `Ignixa.Search` (Expressions/Parsers) and `Ignixa.Search.Sql`
 
 ## Motivation
@@ -290,11 +290,38 @@ motivated per-parameter scoping: `name=John&name=Jane` yields two predicates who
 **Resolution rule.** The assembler maps `CteOrigin.SourceNode` to its owning `ParameterTrace` by
 **reference identity**, testing the node against each `ParameterTrace.Ir` subtree.
 
-**Fallback for cloned nodes.** `Lower.cs:132` (`:not` handling) *rebuilds* the predicate to strip the
-modifier, so the clone has reference identity in no parameter's subtree even with its span copied. When
-reference identity fails, fall back to matching on span **plus** `ValueInsensitiveEquals` within each
-parameter's subtree. A residual tie means two literally identical parameters, where attribution is
-arbitrary and harmless.
+**Cloned nodes: record the original, do not match heuristically.** `Lower.cs:132` (`:not` handling)
+rebuilds the predicate to strip the modifier, so the clone has reference identity in no parameter's
+subtree. The fix is to remove the problem rather than paper over it: `LowerSearchParameter` holds the
+**original** `predicate` at the moment it constructs the clone, so provenance is recorded against that
+original node — via a `StructuralContext.Lower` overload taking an explicit provenance node. Reference
+identity then holds for `:not` with no matching heuristics at all.
+
+A heuristic fallback must *not* be specified as span + `ValueInsensitiveEquals`. That rule is provably
+dead for the only case it was written for:
+
+```csharp
+// the clone strips the modifier …
+new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value)
+
+// … but ValueInsensitiveEquals compares it
+p.Parameter.Equals(Parameter) && p.Comparator == Comparator && p.Modifier == Modifier
+```
+
+The clone's defining feature is `Modifier = null` while the original carries `:not`, so the comparison is
+**always false** — every `:not` CTE would resolve to no parameter.
+
+**Residual defensive fallback**, for hypothetical future rewrites only: match on span **plus
+`Parameter.Equals`** (deliberately excluding comparator and modifier). Within one parameter's subtree,
+span plus parameter identity is unambiguous; a residual tie means two literally identical parameters,
+where attribution is arbitrary and harmless.
+
+**Invariant that keeps this true:** `ParameterTrace.Ir` must be the *same tree instance* handed to
+`SearchCompiler.CompileAsync`. Any rewriter introduced between them must be span-preserving and
+re-evaluated against this resolution rule. `Lower.cs:132` is currently the only reference-identity
+breaker in the compile path — `SearchOptionsBuilder` applies no rewriters, `DateTimeEqualityRewriter`
+lives on the legacy DataLayer path, `SymbolCollectingVisitor`'s output is discarded, and
+`LegacyExpressionLowerer` is not in the compile path.
 
 This rule is specified here precisely so implementers do not improvise it — the obvious improvisation
 (global span matching) is the ambiguity this section exists to eliminate.
@@ -509,3 +536,10 @@ tests are unaffected.
 - **`SearchTrace` is not directly serializable.** Its projected DTOs are the serialization boundary;
   `Expression`/`ISearchValue`/`SymbolTable` require projection. Stated explicitly so no API is designed
   against the earlier, incorrect claim.
+- **Plan caching would pin the parsed IR.** `CteOrigin` holds `Expression` references, so if plan caching
+  is ever introduced, a cached plan retains the whole parsed IR — including user values on
+  `ISearchValue`. This is a change of magnitude, not of kind: `QueryPlan` already pins user values via
+  `SqlParameterRef.Value` in every `Predicate`, so any plan cache must already strip or normalize
+  parameter values. Noted so that requirement is not rediscovered later. Nothing here affects
+  per-request use: `LoweredPlan` is per-request, the trace already roots every `ParameterTrace.Ir`
+  subtree, and `Expression` never references the plan (no cycles).
