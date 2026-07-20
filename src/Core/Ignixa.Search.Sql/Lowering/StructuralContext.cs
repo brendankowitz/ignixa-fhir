@@ -17,6 +17,7 @@ namespace Ignixa.Search.Sql.Lowering;
 public sealed class StructuralContext
 {
     private readonly List<CteDefinition> _ctes = [];
+    private readonly List<CteOrigin> _origins = [];
     private readonly LeafContext _leafContext;
     private int _chainDepth;
 
@@ -29,18 +30,28 @@ public sealed class StructuralContext
 
     public IReadOnlyList<CteDefinition> Ctes => _ctes;
 
+    public IReadOnlyList<CteOrigin> Origins => _origins;
+
     public LeafContext LeafContext => _leafContext;
 
     public CteRef Lower(SearchParameterPredicateExpression predicate, string resourceType)
+        => Lower(predicate, resourceType, provenanceNode: predicate);
+
+    /// <summary>Lowers a leaf predicate, recording provenance against <paramref name="provenanceNode"/> rather
+    /// than <paramref name="predicate"/> itself — needed at the :not clone site, where the predicate actually
+    /// lowered is a synthesized positive-match clone with no place in any parameter's IR subtree.</summary>
+    public CteRef Lower(SearchParameterPredicateExpression predicate, string resourceType, Expression provenanceNode)
     {
         RejectResourceColumnCode(predicate.Parameter.Code);
         var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext, resourceTypeId);
         _ctes.Add(cte);
-        return new CteRef(_ctes.Count - 1);
+        var index = _ctes.Count - 1;
+        _origins.Add(new CteOrigin(index, provenanceNode));
+        return new CteRef(index);
     }
 
-    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string resourceType)
+    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string resourceType, Expression provenanceNode)
     {
         foreach (var component in components)
         {
@@ -50,7 +61,9 @@ public sealed class StructuralContext
         var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext, resourceTypeId);
         _ctes.Add(cte);
-        return new CteRef(_ctes.Count - 1);
+        var index = _ctes.Count - 1;
+        _origins.Add(new CteOrigin(index, provenanceNode));
+        return new CteRef(index);
     }
 
     public CteRef LowerParameterPresence(SearchParameterInfo parameter, string resourceType)

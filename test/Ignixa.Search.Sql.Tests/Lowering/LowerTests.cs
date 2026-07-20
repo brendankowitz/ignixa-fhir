@@ -25,7 +25,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -49,7 +49,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -72,7 +72,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -144,7 +144,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -177,7 +177,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act -- iterate entry listed FIRST in the includes list, to prove ordering is by the sort, not input order.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- non-iterate stage always sorts first (design §4.1); inc0 is Organization:organization, inc1 is the iterate.
         plan.Includes!.Count.ShouldBe(2);
@@ -209,7 +209,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110, ["Encounter"] = 111 });
 
         // Act -- Encounter listed first in the input list.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- inc0 is the Encounter stage (ref=22), matching its position in the input list.
         plan.Includes!.Count.ShouldBe(2);
@@ -252,7 +252,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- the degenerate stage was dropped, not emitted with an empty EXISTS.
         plan.Includes.ShouldBeNull();
@@ -268,7 +268,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -294,7 +294,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110 });
 
         // Act -- note: misplacedRevInclude is passed as `includes` (forward), not `revIncludes`.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -349,7 +349,7 @@ public class LowerTests
             });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
@@ -393,7 +393,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null);
+            sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Sort.ShouldNotBeNull();
@@ -416,7 +416,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [new SortExpression(lastUpdatedParam, Ignixa.Search.Expressions.SortOrder.Descending)], sortPhase: SortPhase.Valued, page: null);
+            sort: [new SortExpression(lastUpdatedParam, Ignixa.Search.Expressions.SortOrder.Descending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Sort!.Keys[0].SearchParamId.ShouldBeNull();
@@ -553,7 +553,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true);
+            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true).Plan;
 
         // Assert
         plan.CountOnly.ShouldBeTrue();
@@ -572,7 +572,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null);
+            sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.CountOnly.ShouldBeFalse();
@@ -591,7 +591,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null);
+            sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Explain().ShouldBe("root = StringSearchParam[103,202]");
@@ -610,7 +610,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null);
+            sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
@@ -681,7 +681,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             missing, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null);
+            sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,909]");

@@ -20,7 +20,7 @@ public static class Lower
     /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed only
     /// for a wildcard compartment search; combining it with typed leaves, includes, or sort throws.
     /// </summary>
-    public static QueryPlan Run(
+    public static LoweredPlan Run(
         Expression? expression,
         SymbolTable symbols,
         string? targetResourceType,
@@ -87,7 +87,9 @@ public static class Lower
 
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
-        return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly);
+        return new LoweredPlan(
+            new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly),
+            new PlanProvenance(context.Origins));
     }
 
     /// <summary>Returns the target resource type, or throws if it is null where one is required.</summary>
@@ -130,12 +132,12 @@ public static class Lower
         if (sp.Expression is SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } predicate)
         {
             var positiveMatch = new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value);
-            return context.LowerNot(context.Lower(positiveMatch, resourceType), resourceType);
+            return context.LowerNot(context.Lower(positiveMatch, resourceType, provenanceNode: predicate), resourceType);
         }
 
         if (TryGetCompositeComponents(sp.Expression, out var components))
         {
-            return context.LowerComposite(sp.Parameter, components!, resourceType);
+            return context.LowerComposite(sp.Parameter, components!, resourceType, provenanceNode: sp);
         }
 
         if (sp.Expression is MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or
@@ -146,7 +148,7 @@ public static class Lower
                 .Select(e =>
                 {
                     TryGetCompositeComponents(e, out var alt);
-                    return context.LowerComposite(sp.Parameter, alt!, resourceType);
+                    return context.LowerComposite(sp.Parameter, alt!, resourceType, provenanceNode: sp);
                 })
                 .ToList();
             return context.Union(refs);

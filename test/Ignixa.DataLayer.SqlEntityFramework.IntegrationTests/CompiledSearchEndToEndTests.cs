@@ -72,7 +72,7 @@ public class CompiledSearchEndToEndTests
 
         // Act
         var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // CA2100 suppressed: emitted.Sql is SqlBuilder.Run's compiler-generated, fully parameterized T-SQL
