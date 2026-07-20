@@ -18,9 +18,10 @@ public static class SqlBuilder
     /// CountOnly, a plain (T1, Sid1) select (with optional sort/paging) when there are no includes, or a
     /// match-page CTE plus per-stage include CTEs unioned into a (T1, Sid1, IsMatch, IsPartial) result.
     /// </summary>
-    public static EmittedSql Run(QueryPlan plan)
+    public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
     {
         var parameters = new List<EmittedSqlParameter>();
+        var writer = new SqlTextWriter(options?.IncludeTextRanges ?? false);
         var cteBlocks = new List<string>();
 
         for (var i = 0; i < plan.Ctes.Count; i++)
@@ -30,27 +31,33 @@ public static class SqlBuilder
 
         if (plan.CountOnly)
         {
-            var countWithClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
-            var countSql = plan.OuterPredicate is null
-                ? countWithClause + $"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m"
-                : countWithClause +
-                  $"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m\n" +
-                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
-                  $"WHERE {EmitPredicate(plan.OuterPredicate, parameters)}";
+            writer.Append(";WITH ");
+            writer.AppendJoin(",\n", cteBlocks, "cte");
+            writer.Append("\n");
+            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m");
 
-            return new EmittedSql(countSql, parameters);
+            if (plan.OuterPredicate is not null)
+            {
+                var outerPredicateText = EmitPredicate(plan.OuterPredicate, parameters);
+                writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\nWHERE ");
+                using (writer.Section("where"))
+                {
+                    writer.Append(outerPredicateText);
+                }
+            }
+
+            return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
         }
 
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
 
         if (plan.Includes is not { Count: > 0 } includes)
         {
-            var withClause = $";WITH {string.Join(",\n", cteBlocks)}\n";
             var sortJoins = EmitSortJoins(plan.Sort);
             var sortColumns = EmitSortSelectColumns(plan.Sort);
-            var orderBy = $"\nORDER BY {EmitOrderBy(plan.Sort)}";
 
             var whereClauses = new List<string>();
+            int? seekClauseIndex = null;
             if (plan.OuterPredicate is not null)
             {
                 whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
@@ -63,25 +70,35 @@ public static class SqlBuilder
 
             if (plan.Page is { } page)
             {
+                seekClauseIndex = whereClauses.Count;
                 whereClauses.Add(EmitSeekPredicate(plan.Sort, page, parameters));
             }
 
-            string sql;
-            if (whereClauses.Count == 0)
-            {
-                sql = withClause + $"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}{orderBy}";
-            }
-            else
+            writer.Append(";WITH ");
+            writer.AppendJoin(",\n", cteBlocks, "cte");
+            writer.Append("\n");
+            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}");
+
+            if (whereClauses.Count > 0)
             {
                 var resourceJoin = plan.OuterPredicate is null
                     ? string.Empty
                     : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
-                sql = withClause +
-                      $"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}{resourceJoin}\n" +
-                      $"WHERE {string.Join(" AND ", whereClauses)}{orderBy}";
+                writer.Append(resourceJoin);
+                writer.Append("\nWHERE ");
+                using (writer.Section("where"))
+                {
+                    WriteAndJoinedClauses(writer, whereClauses, seekClauseIndex);
+                }
             }
 
-            return new EmittedSql(sql, parameters);
+            writer.Append("\nORDER BY ");
+            using (writer.Section("orderBy"))
+            {
+                writer.Append(EmitOrderBy(plan.Sort));
+            }
+
+            return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
         }
 
         var matchSortJoins = EmitSortJoins(plan.Sort);
@@ -95,6 +112,7 @@ public static class SqlBuilder
         var cteOrderBy = plan.Top is not null ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}" : string.Empty;
 
         var matchWhereClauses = new List<string>();
+        int? matchSeekClauseIndex = null;
         if (plan.OuterPredicate is not null)
         {
             matchWhereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
@@ -107,33 +125,25 @@ public static class SqlBuilder
 
         if (plan.Page is { } matchPage)
         {
+            matchSeekClauseIndex = matchWhereClauses.Count;
             matchWhereClauses.Add(EmitSeekPredicate(plan.Sort, matchPage, parameters));
         }
 
         var matchResourceJoin = plan.OuterPredicate is null
             ? string.Empty
             : "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
-        var matchWhere = matchWhereClauses.Count > 0
-            ? $"\n    WHERE {string.Join(" AND ", matchWhereClauses)}"
-            : string.Empty;
 
-        cteBlocks.Add(
-            $"cteMatchPage AS (\n" +
-            $"    SELECT {top}m.T1, m.Sid1{matchSortColumns}\n" +
-            $"    FROM cte{plan.Match.Index} m{matchSortJoins}{matchResourceJoin}{matchWhere}{cteOrderBy}\n" +
-            $")");
-
+        var incBlocks = new List<string>();
+        var incLimBlocks = new List<string>();
         for (var i = 0; i < includes.Count; i++)
         {
             var stage = includes[i];
-            cteBlocks.Add($"inc{i} AS (\n{EmitIncludeStage(stage)}\n)");
-            cteBlocks.Add(
-                $"inc{i}lim AS (\n" +
+            incBlocks.Add(EmitIncludeStage(stage));
+            incLimBlocks.Add(
                 $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
                 $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
                 $"    FROM inc{i}\n" +
-                $"    ORDER BY T1 ASC, Sid1 ASC\n" +
-                $")");
+                $"    ORDER BY T1 ASC, Sid1 ASC");
         }
 
         var nullSortColumns = string.Concat(Enumerable.Repeat(", NULL", activeSortKeyCount));
@@ -150,11 +160,80 @@ public static class SqlBuilder
                 $"WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 
-        var includeSql = $";WITH {string.Join(",\n", cteBlocks)}\n" +
-                          $"{string.Join("\nUNION ALL\n", unionBlocks)}\n" +
-                          $"ORDER BY {EmitOuterOrderByForIncludes(plan.Sort)}";
+        writer.Append(";WITH ");
+        writer.AppendJoin(",\n", cteBlocks, "cte");
+        writer.Append(",\n");
+        using (writer.Section("cteMatchPage"))
+        {
+            writer.Append(
+                $"cteMatchPage AS (\n" +
+                $"    SELECT {top}m.T1, m.Sid1{matchSortColumns}\n" +
+                $"    FROM cte{plan.Match.Index} m{matchSortJoins}{matchResourceJoin}");
 
-        return new EmittedSql(includeSql, parameters);
+            if (matchWhereClauses.Count > 0)
+            {
+                writer.Append("\n    WHERE ");
+                using (writer.Section("where"))
+                {
+                    WriteAndJoinedClauses(writer, matchWhereClauses, matchSeekClauseIndex);
+                }
+            }
+
+            writer.Append(cteOrderBy);
+            writer.Append("\n)");
+        }
+
+        for (var i = 0; i < includes.Count; i++)
+        {
+            writer.Append(",\n");
+            using (writer.Section($"inc{i}"))
+            {
+                writer.Append($"inc{i} AS (\n{incBlocks[i]}\n)");
+            }
+
+            writer.Append(",\n");
+            using (writer.Section($"inc{i}lim"))
+            {
+                writer.Append($"inc{i}lim AS (\n{incLimBlocks[i]}\n)");
+            }
+        }
+
+        writer.Append("\n");
+        writer.Append(string.Join("\nUNION ALL\n", unionBlocks));
+        writer.Append("\nORDER BY ");
+        using (writer.Section("orderBy"))
+        {
+            writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
+        }
+
+        return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
+    }
+
+    /// <summary>
+    /// Joins already-rendered WHERE fragments with " AND ", wrapping the one at <paramref name="seekClauseIndex"/>
+    /// (if any) in its own "seek" section so the keyset-seek predicate stays traceable within the outer "where" section.
+    /// </summary>
+    private static void WriteAndJoinedClauses(SqlTextWriter writer, List<string> clauses, int? seekClauseIndex)
+    {
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            if (i > 0)
+            {
+                writer.Append(" AND ");
+            }
+
+            if (i == seekClauseIndex)
+            {
+                using (writer.Section("seek"))
+                {
+                    writer.Append(clauses[i]);
+                }
+            }
+            else
+            {
+                writer.Append(clauses[i]);
+            }
+        }
     }
 
     /// <summary>Renders one CTE definition's inner SELECT by its node kind.</summary>

@@ -9,4 +9,7 @@ public sealed record EmittedSqlParameter(string Name, object Value);
 /// 0 for an included row; IsPartial is 1 only on an included row whose stage TOP(@Limit) truncated
 /// further rows. Callers pick the expected shape from plan.Includes.Count, not by inspecting columns.
 /// </summary>
-public sealed record EmittedSql(string Sql, IReadOnlyList<EmittedSqlParameter> Parameters);
+public sealed record EmittedSql(
+    string Sql,
+    IReadOnlyList<EmittedSqlParameter> Parameters,
+    IReadOnlyList<SqlTextRange>? TextRanges = null);
