@@ -878,8 +878,6 @@ Create `test/Ignixa.DataLayer.SqlServer.IntegrationTests/SchemaDeployerUpgradeTe
 Write the complete test body (unique database, `DeployIfEmptyAsync` first, then `UpgradeIfNeededAsync`, exact `sys.tables` count and `SchemaVersion` row-count assertions before/after, teardown in `finally` — matching every other integration test's discipline in this plan). This is the only `SchemaDeployerUpgradeTests` scenario Task 5 owns — the "tenant on an older real schema" scenario needs a genuinely older schema fixture, which only exists starting in Task 8; Task 8 adds its test to this same file rather than this task attempting a premature, throwaway version of it.
 
 ```
-
-```
 dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests --filter FullyQualifiedName~SchemaDeployerUpgradeTests
 ```
 Expected: the already-current test passes now; the older-version test passes once its fixture exists (Task 5 or Task 8, per the coordination note above).
