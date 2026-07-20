@@ -60,6 +60,18 @@ becomes the divergent parallel path.
 The trace assembler consumes it, and production wiring **must** consume the same function rather than
 re-sequencing the stages.
 
+### The same risk on the parse side
+
+The parse side already *has* an orchestrator with non-trivial semantics: `SearchOptionsBuilder.Build`
+owns the per-parameter loop, the `_type` two-pass, category routing, and — critically — **the lenient
+catch that produces `Ignored`**. An `Ignored` outcome is observable *only* inside that catch.
+
+If the trace assembler re-implements the parameter loop to capture outcomes, it re-implements
+`SearchOptionsBuilder` — a second path for the stage with the subtlest semantics in the pipeline.
+
+**Requirement:** trace assembly runs **through** `SearchOptionsBuilder`, via an overload that accepts an
+outcome collector the builder populates as it loops. The assembler never owns the parameter loop.
+
 ## 1. Trace shape — per-parameter scoping
 
 A FHIR search is many parameters ANDed together: `SearchOptionsBuilder` calls `Parse` once per
@@ -75,6 +87,17 @@ public sealed record SearchTrace(
     IReadOnlyList<ParameterTrace> Parameters,
     QueryPlanTrace? Plan,          // null if compilation never ran
     EmittedSqlTrace? Sql);
+
+// Plan side: the explained plan plus each CTE's link back to the parameter that produced it.
+public sealed record QueryPlanTrace(
+    string Explain,                                    // QueryPlan.Explain() output
+    IReadOnlyList<CteProvenance> Ctes);                // ParameterOrdinal null where exempt (see §4)
+public sealed record CteProvenance(int CteIndex, int? ParameterOrdinal, SourceSpan? Span);
+
+// SQL side: the emitted text plus its section ranges (see §5).
+public sealed record EmittedSqlTrace(
+    string Sql,
+    IReadOnlyList<SqlTextRange> Ranges);
 
 public sealed record ParameterTrace(
     int Ordinal,                   // position in the original parameter list — the identity a span needs
@@ -140,6 +163,22 @@ can locate them client-side where the raw text actually exists.
 - **Shared old-shape nodes are untouched**: `BinaryExpression`, `StringExpression`, `MultiaryExpression`,
   `ChainedExpression`, `IncludeExpression`, `NotExpression`, `MissingSearchParameterExpression`.
 
+### Atomic spans include the comparator prefix
+
+**Convention: an `AtomicValueSyntax` span covers the whole token, including any comparator prefix — not
+just `RawText`.** `ParseAtomic` strips the prefix (`gt2000` → `RawText` `2000`), so this is a deliberate
+choice rather than the incidental one.
+
+It is what keeps §3's "spans are the join key" true. `SearchExpressionBinder.NormalizeCompositeComparator`
+fabricates a new `AtomicValueSyntax` by re-concatenating prefix and `RawText`. Under a RawText-only
+convention that fabricated node's text is not what its copied span extracts, so testing invariant 1 fails
+and the span must be widened during binding — at which point the IR leaf's span no longer matches the
+projected `SyntaxNode`'s span (projection happens at scan time, normalization during binding), and the
+join key breaks for exactly this shape.
+
+Including the prefix makes the span **invariant across normalization**: it can be copied verbatim,
+invariant 1 holds for both the original and the fabricated node, and the correlation survives.
+
 ### Record equality — corrected
 
 An earlier revision of this spec claimed a non-positional `init` property would avoid synthesized record
@@ -152,8 +191,13 @@ This matters concretely: `SearchValueSyntaxParserTests` compares syntax records 
 `ShouldBe(new OfTypeValueSyntax(...))`. A real span meeting a default-span expected value turns those red.
 
 **Decision:** hand-write `Equals`/`GetHashCode` on the span-carrying `Syntax` records to exclude `Span`,
-mirroring the approach already used for the two IR classes. Testing invariant 2 (§7) is extended to cover
+mirroring the approach already used for the two IR classes. Testing invariant 2 (§8) is extended to cover
 syntax records so the exclusion cannot silently regress.
+
+**Implementation caution:** `AlternativesValueSyntax` and `CompositeValueSyntax` hold `ImmutableArray<T>`,
+whose synthesized record equality is the struct's own (not element-wise). Hand-written `Equals` must
+reproduce the existing semantics exactly — exclude `Span` without inadvertently "improving" collection
+comparison, or the existing parser tests change meaning silently.
 
 ## 3. Surfacing the syntax tree — projection, not exposure
 
@@ -179,16 +223,38 @@ public sealed record SyntaxNode(
     SourceSpan Span,
     IReadOnlyList<SyntaxNode> Children);
 
-public sealed record ParseResult(Expression Expression, SyntaxNode KeySyntax, SyntaxNode ValueSyntax);
+public sealed record ParseResult(
+    Expression Expression,
+    SyntaxNode KeySyntax,
+    SyntaxNode? ValueSyntax);               // null for shapes with no value tree — see below
 ```
 
 `IExpressionParser` gains `ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value)`.
-The existing `Parse` remains and is implemented in terms of it (returning `.Expression`), so there is one
-parse implementation, not two.
 
-**Correlation rule: spans are the join key.** A syntax node and the IR node built from it carry the same
-`SourceSpan`, so a UI correlates structure to leaves by span containment — no identity map to maintain
-and no correlation state to drift.
+**Projection is an opt-in tail, not always-on.** `Parse` is *not* implemented as
+`ParseWithSyntax(...).Expression` — that would allocate a parallel `SyntaxNode` tree on every production
+parse, which is precisely the per-call hot-path allocation used to justify making SQL text ranges opt-in
+(§4). Instead both entry points share one scan→bind core, and projection runs as a pure additive **tail**
+that only `ParseWithSyntax` executes. Projection is a pure function of the syntax tree, not a pipeline
+fork, so "one parse implementation" is preserved without paying for it in production.
+
+**`ValueSyntax` is nullable because the grammar demands it.** `_not-referenced` parses its structure from
+the *value* string as a key-syntax (`ExpressionParser.Parse:62-67`) and has no value tree;
+`_include`/`_revinclude` likewise produce an `IncludeKeySyntax` only. Separately, `SearchOptionsBuilder`
+routes includes and sort outside `Parse` entirely — those `ParameterTrace.Syntax` entries are **null in
+v1**, which is accepted and stated rather than discovered.
+
+**Interface widening.** The value syntax currently dies inside
+`SearchParameterExpressionParser.Parse(searchParameter, modifier, value) → Expression`, which sits behind
+the **public** `ISearchParameterExpressionParser`. `ParseWithSyntax` cannot exist without widening that
+contract; it is listed with the other signature changes in §6.
+
+**Correlation rule: spans are the join key, resolved by containment.** A syntax node and the IR node built
+from it carry the same `SourceSpan` (guaranteed by the prefix-inclusive convention in §2), so a UI
+correlates structure to leaves by **span containment, with ties broken by depth**. The tie rule is
+required, not decorative: `ParseCompositeItem` with no `$` wraps a single atomic in a
+`CompositeValueSyntax` covering the identical range, so two syntax nodes legitimately share one span.
+Containment-plus-depth resolves it, and a UI highlighting either node highlights the same text anyway.
 
 This projection also fixes a claim the previous revision got wrong: `SearchTrace` is *not* trivially
 JSON-serializable, because it carries `Expression` (a polymorphic class hierarchy), `ISearchValue`, and
@@ -206,11 +272,32 @@ in generated equality.
 
 ```csharp
 public static LoweredPlan Run(...);   // LoweredPlan(QueryPlan Plan, PlanProvenance Provenance)
+
+public sealed record PlanProvenance(IReadOnlyList<CteOrigin> Origins);
+public sealed record CteOrigin(int CteIndex, Expression SourceNode);   // the IR node, NOT a bare span
 ```
 
 A single always-on path is chosen over a `RunTraced` twin, per the guiding principle. This ripples
 through the `Lower` tests and `EndToEndCompilationTests`; `Ignixa.Search.Sql` is alpha with **no
 production call sites** for `Lower.Run`/`SqlBuilder.Run`, so this is the cheapest the change will ever be.
+
+**Entries store the IR node reference, not a bare span** — and this is load-bearing. `Lower` runs on the
+single merged AND tree that `SearchOptionsBuilder` produces, so the plan is per-*search*, one layer below
+the per-parameter scoping of §1. A bare span at this layer is ambiguous by exactly the argument that
+motivated per-parameter scoping: `name=John&name=Jane` yields two predicates whose value spans are both
+`(Value, 0, 4)`, and the assembler could not tell which `ParameterTrace` a CTE belongs to.
+
+**Resolution rule.** The assembler maps `CteOrigin.SourceNode` to its owning `ParameterTrace` by
+**reference identity**, testing the node against each `ParameterTrace.Ir` subtree.
+
+**Fallback for cloned nodes.** `Lower.cs:132` (`:not` handling) *rebuilds* the predicate to strip the
+modifier, so the clone has reference identity in no parameter's subtree even with its span copied. When
+reference identity fails, fall back to matching on span **plus** `ValueInsensitiveEquals` within each
+parameter's subtree. A residual tie means two literally identical parameters, where attribution is
+arbitrary and harmless.
+
+This rule is specified here precisely so implementers do not improvise it — the obvious improvisation
+(global span matching) is the ambiguity this section exists to eliminate.
 
 ### Provenance is partial by construction
 
@@ -333,6 +420,16 @@ implementation plan can cover them explicitly:
 - **`SearchPredicateExpressionBuilder.Build`** — currently takes no syntax/span input; gains one
   (an internal signature change).
 
+Signature changes required beyond the copy sites:
+
+- **`ISearchParameterExpressionParser`** (public) — widened so the value syntax can survive
+  `SearchParameterExpressionParser.Parse` rather than dying inside it (§3).
+- **`IExpressionParser`** (public) — gains `ParseWithSyntax`.
+- **`Resolve`** — return widened to carry unresolved symbols (§7).
+- **`Lower.Run`** — returns `LoweredPlan` (§4).
+- **`SqlBuilder.Run`** — gains `EmitOptions`; `EmittedSql` gains `TextRanges` (§4, binary-breaking, alpha).
+- **`SearchOptionsBuilder.Build`** — overload accepting an outcome collector (guiding principle).
+
 ## 7. Error handling
 
 Tracing must not change production semantics. `Lower.Run` and `SqlBuilder.Run` keep throwing exactly as
@@ -350,10 +447,18 @@ is accepted.
 
 **Unresolved search parameters get special handling**, because it is the most likely playground error of
 all. `Resolve` **silently omits** parameters the resolver cannot find (`Resolve.cs:76-81`), so `Lower`
-later throws a bare `KeyNotFoundException` from `SymbolTable.SearchParamId` with no useful context. The
-trace assembler therefore reads unresolved symbols from `Resolve` **directly** and reports them as
-`Failed(TraceStage.Resolve, "search parameter is not registered: …", span)` against the owning
-parameter, rather than waiting for the downstream throw.
+later throws a bare `KeyNotFoundException` from `SymbolTable.SearchParamId` with no useful context.
+
+This needs a mechanism, not just an intention: `Resolve` currently discards the misses and `SymbolTable`
+exposes only throwing lookups, so **`Resolve`'s return is widened**:
+
+```csharp
+public sealed record ResolvedSymbols(SymbolTable Symbols, IReadOnlyList<SearchParameterInfo> Unresolved);
+```
+
+Same alpha-signature-change justification as `LoweredPlan`. The trace assembler reads `Unresolved`
+directly and reports `Failed(TraceStage.Resolve, "search parameter is not registered: …", span)` against
+the owning parameter, rather than waiting for the downstream throw.
 
 ## 8. Testing
 
@@ -365,9 +470,18 @@ parameter, rather than waiting for the downstream throw.
    ignores `Span`**. This protects `SearchParserOldVsNewParityTests` (which compares `ToString()`) and
    `SearchValueSyntaxParserTests` (which compares syntax records by value).
 3. **The chain is unbroken, where it is claimed to exist.** For a corpus covering leaf, composite,
-   chain, include, sort, **`:not`**, **`:missing`**, and a rewriter round-trip: every predicate has a
-   span, every *leaf/composite-derived* `ParamSource` has provenance to an IR node, and every CTE has a
-   SQL text range. `:not` and the rewriter case exist specifically to catch the copy sites in §6.
+   chain, include, sort, **`:not`**, **`:missing`**, and a rewriter round-trip: every
+   `SearchParameterPredicateExpression` and `CompositeComponentExpression` has a span, every
+   *leaf/composite-derived* `ParamSource` has provenance to an IR node, and every CTE has a SQL text
+   range. `:not` and the rewriter case exist specifically to catch the copy sites in §6.
+
+   The assertion is scoped to those two types deliberately. **`:text` and `:of-type` produce no
+   span-carrying IR node at all** — `BindValue`'s text path builds
+   `Expression.StartsWith(FieldName.TokenText, …)` and `BindOfType` routes through
+   `SearchValueExpressionBuilderHelper`, so both yield *shared old-shape leaves from birth*, bypassing
+   `SearchPredicateExpressionBuilder`. Syntax-side spans still cover them (the projection carries the
+   span) and neither lowers in the SQL compiler today. They are IR-side exemptions, alongside the CTE
+   exemptions tabled in §4.
 4. **Outcomes land as data.** An unsupported construct (a system-qualified token) yields `Failed` with
    the correct stage, real message, and the offending predicate's span. A parameter dropped by lenient
    handling yields `Ignored` with its reason — not silence.
