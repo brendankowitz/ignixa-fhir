@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Differential;
 using Shouldly;
 using Xunit;
@@ -125,5 +127,47 @@ public class DifferentialTestHarnessTests : IAsyncLifetime
         var @new = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["RawResource"] = new byte[] { 1, 2, 3 } } ], "dbo.TestTable");
 
         Should.NotThrow(() => _harness.AssertEquivalent(legacy, @new));
+    }
+
+    [Fact]
+    public void GivenTwoResourcesDifferingOnlyInMetaLastUpdated_WhenAssertingResourceContentEquivalent_ThenDoesNotThrow()
+    {
+        // meta.lastUpdated is the one field with a known, legitimate per-database divergence reason
+        // (derived from each side's independently-allocated TransactionId) -- AssertResourceContentEquivalent
+        // must tolerate exactly this, and only this.
+        var legacyRawResource = GzipCompress("""{"resourceType":"Patient","id":"content-1","meta":{"versionId":"1","lastUpdated":"2026-01-01T00:00:00Z"}}""");
+        var newRawResource = GzipCompress("""{"resourceType":"Patient","id":"content-1","meta":{"versionId":"1","lastUpdated":"2026-01-02T12:34:56Z"}}""");
+
+        Should.NotThrow(() => _harness.AssertResourceContentEquivalent(legacyRawResource, newRawResource));
+    }
+
+    [Fact]
+    public void GivenTwoResourcesWithAGenuineContentDivergence_WhenAssertingResourceContentEquivalent_ThenThrows()
+    {
+        // The canary AssertResourceContentEquivalent was missing before this fix: proves the method
+        // actually DETECTS a real content difference riding along in RawResource (here, "active"),
+        // not just that it tolerates the one expected meta.lastUpdated divergence. Without this test,
+        // a mechanism that always returns/never throws would still pass every other test here.
+        var legacyRawResource = GzipCompress("""{"resourceType":"Patient","id":"content-2","meta":{"versionId":"1","lastUpdated":"2026-01-01T00:00:00Z"},"active":true}""");
+        var newRawResource = GzipCompress("""{"resourceType":"Patient","id":"content-2","meta":{"versionId":"1","lastUpdated":"2026-01-01T00:00:00Z"},"active":false}""");
+
+        var exception = Should.Throw<ShouldAssertException>(
+            () => _harness.AssertResourceContentEquivalent(legacyRawResource, newRawResource));
+        exception.Message.ShouldContain("RawResource");
+    }
+
+    // Builds real gzip-compressed UTF-8 JSON bytes -- the same wire format GzipResourceCompressor
+    // produces (both use System.IO.Compression.GZipStream) -- without depending on
+    // GzipResourceCompressor/ResourceJsonNode's construction requirements, since these tests only
+    // need to prove AssertResourceContentEquivalent's decompress-then-compare behavior.
+    private static byte[] GzipCompress(string json)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionMode.Compress))
+        {
+            gzip.Write(Encoding.UTF8.GetBytes(json));
+        }
+
+        return output.ToArray();
     }
 }

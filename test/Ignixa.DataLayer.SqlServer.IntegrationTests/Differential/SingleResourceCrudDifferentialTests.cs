@@ -28,9 +28,9 @@ public class SingleResourceCrudDifferentialTests : IAsyncLifetime
         // ResourceSurrogateId and TransactionId legitimately differ between the two databases
         // (independently allocated sequences/clocks) -- everything else must match exactly.
         //
-        // RawResource is ALSO ignored, for the same underlying reason: CreateOrUpdateAsync bakes
-        // Meta.LastUpdated = transactionId.Value.ToDate() into the compressed JSON BEFORE it is
-        // compressed (matches legacy SqlEntityFrameworkRepository.cs:160 exactly -- confirmed
+        // RawResource is ALSO ignored here, for the same underlying reason: CreateOrUpdateAsync
+        // bakes Meta.LastUpdated = transactionId.Value.ToDate() into the compressed JSON BEFORE it
+        // is compressed (matches legacy SqlEntityFrameworkRepository.cs:160 exactly -- confirmed
         // correct, see Task 6 brief). Since legacy and new each allocate their transaction ID from
         // their own independent database (own sequence, own clock reading), the two TransactionId
         // values differ, so the two Meta.LastUpdated values differ, so the two compressed byte
@@ -39,6 +39,15 @@ public class SingleResourceCrudDifferentialTests : IAsyncLifetime
         // run (confirmed via a real test run), not flakily -- it is not possible for two
         // independently-allocated TransactionIds to decode to the same LastUpdated instant.
         _harness.AssertEquivalent(legacySnapshot, newSnapshot, "ResourceSurrogateId", "TransactionId", "HistoryTransactionId", "RawResource");
+
+        // Blanket-ignoring RawResource above throws away comparison of everything else riding along
+        // in that column (resourceType, id, any other field) -- a real serialization/compression bug
+        // on the new port would pass silently. AssertResourceContentEquivalent decompresses both
+        // sides, strips only the one field known to legitimately diverge (meta.lastUpdated), and
+        // deep-compares the rest.
+        var legacyRawResource = DifferentialTestHarness.ExtractRawResourceBytes(legacySnapshot);
+        var newRawResource = DifferentialTestHarness.ExtractRawResourceBytes(newSnapshot);
+        _harness.AssertResourceContentEquivalent(legacyRawResource, newRawResource);
     }
 
     [Fact]

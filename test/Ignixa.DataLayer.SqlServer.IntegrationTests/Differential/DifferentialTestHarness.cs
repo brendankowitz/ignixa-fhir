@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
@@ -33,6 +35,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
     private readonly FhirDbContext _legacyRepositoryDbContext;
     private readonly FhirDbContext _legacyCacheDbContext;
     private readonly SearchIndexReferenceDataCache _legacyCache;
+    private readonly GzipResourceCompressor _compressor;
 
     private DifferentialTestHarness(
         TestTenantDatabase legacyDatabase,
@@ -40,6 +43,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         FhirDbContext legacyRepositoryDbContext,
         FhirDbContext legacyCacheDbContext,
         SearchIndexReferenceDataCache legacyCache,
+        GzipResourceCompressor compressor,
         IFhirRepository legacyRepository,
         SqlMergeRepository legacyMergeRepository)
     {
@@ -48,6 +52,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         _legacyRepositoryDbContext = legacyRepositoryDbContext;
         _legacyCacheDbContext = legacyCacheDbContext;
         _legacyCache = legacyCache;
+        _compressor = compressor;
         LegacyRepository = legacyRepository;
         LegacyMergeRepository = legacyMergeRepository;
         NewRepository = newDatabase.Repository;
@@ -128,6 +133,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
             legacyRepositoryDbContext,
             legacyCacheDbContext,
             legacyCache,
+            compressor,
             legacyRepository,
             legacyMergeRepository);
     }
@@ -184,6 +190,78 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         {
             AssertRowEquivalent(sortedLegacy[rowIndex], sortedNew[rowIndex], rowIndex, ignored, legacy.TableName);
         }
+    }
+
+    /// <summary>
+    /// Content-aware companion to <see cref="AssertEquivalent"/> for the one column that can never
+    /// pass a byte-level comparison: <c>RawResource</c>. <c>CreateOrUpdateAsync</c> bakes
+    /// <c>Meta.LastUpdated</c> (derived from each side's independently-allocated <c>TransactionId</c>)
+    /// into the compressed JSON before storage, so the compressed bytes themselves can never
+    /// byte-match between legacy and new -- that is why <c>RawResource</c> must still be passed to
+    /// <see cref="AssertEquivalent"/>'s <c>ignoredColumns</c>. This method decompresses both sides,
+    /// parses the JSON, strips ONLY <c>meta.lastUpdated</c> (the one field with a known, legitimate
+    /// per-database divergence reason) from a copy of each, and asserts the remainder is deep-equal --
+    /// so a real serialization/compression bug (wrong field, dropped property, encoding mismatch)
+    /// still fails loudly instead of riding along inside a blanket-ignored column. Reusable by any
+    /// future differential test comparing RawResource-bearing rows (Tasks 7, 9, 10).
+    /// </summary>
+    public void AssertResourceContentEquivalent(byte[] legacyRawResource, byte[] newRawResource)
+    {
+        ArgumentNullException.ThrowIfNull(legacyRawResource);
+        ArgumentNullException.ThrowIfNull(newRawResource);
+
+        var legacyContent = DecompressAndNormalizeResourceContent(legacyRawResource);
+        var newContent = DecompressAndNormalizeResourceContent(newRawResource);
+
+        if (!JsonNode.DeepEquals(legacyContent, newContent))
+        {
+            throw new ShouldAssertException(
+                $"Differential content mismatch on RawResource (after stripping meta.lastUpdated): "
+                + $"legacy='{legacyContent?.ToJsonString() ?? "<null>"}', new='{newContent?.ToJsonString() ?? "<null>"}'.");
+        }
+    }
+
+    /// <summary>
+    /// Pulls a compressed <c>byte[]</c> column back out of a <see cref="RowStateSnapshot"/> row for
+    /// use with <see cref="AssertResourceContentEquivalent"/>. Snapshot rows normalize <c>byte[]</c>
+    /// columns to hex strings (see <see cref="NormalizeValue"/>, needed for sorting/equality in
+    /// <see cref="AssertEquivalent"/>), so this reverses that encoding rather than re-querying the
+    /// database. Reusable by any future differential test (Tasks 7, 9, 10).
+    /// </summary>
+    public static byte[] ExtractRawResourceBytes(RowStateSnapshot snapshot, int rowIndex = 0, string columnName = "RawResource")
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (rowIndex < 0 || rowIndex >= snapshot.Rows.Count)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(rowIndex), rowIndex, $"Snapshot of table '{snapshot.TableName}' has {snapshot.Rows.Count} row(s).");
+        }
+
+        var row = snapshot.Rows[rowIndex];
+        if (!row.TryGetValue(columnName, out var value) || value is not string hex)
+        {
+            throw new InvalidOperationException(
+                $"Column '{columnName}' not found or not a byte[]-backed hex string in row {rowIndex} of table '{snapshot.TableName}'.");
+        }
+
+        return Convert.FromHexString(hex);
+    }
+
+    private JsonNode? DecompressAndNormalizeResourceContent(byte[] compressedBytes)
+    {
+        var jsonBytes = _compressor.DecompressBytes(compressedBytes);
+        var reader = new Utf8JsonReader(jsonBytes.Span);
+        var node = JsonNode.Parse(ref reader);
+
+        if (node is JsonObject resourceObject
+            && resourceObject.TryGetPropertyValue("meta", out var metaNode)
+            && metaNode is JsonObject metaObject)
+        {
+            metaObject.Remove("lastUpdated");
+        }
+
+        return node;
     }
 
     private static void AssertRowEquivalent(
