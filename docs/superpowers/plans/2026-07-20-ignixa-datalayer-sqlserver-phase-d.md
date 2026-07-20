@@ -1078,7 +1078,7 @@ Expected: FAIL (compile error, `SqlServerFhirRepository` does not exist, `Differ
 
 - [ ] **Step 4: Extend `TestTenantDatabase` with a `SqlServerFhirRepository`-wiring factory**
 
-Add to `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Fixtures/TestTenantDatabase.cs`:
+Add to `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Fixtures/TestTenantDatabase.cs`. **Note the construction order: `SqlServerPostMergeExtensionUpdater` is built BEFORE `SqlServerMergeRepository` and passed into it (Task 4's constructor requires it — this snippet corrects an earlier draft that built the merge repository with the old, pre-Task-3/4-swap 5-argument constructor, which no longer compiles against Task 4's real signature).**
 ```csharp
 public static async Task<TestTenantDatabase> CreateSqlServerFhirRepositoryAsync()
 {
@@ -1087,12 +1087,12 @@ public static async Task<TestTenantDatabase> CreateSqlServerFhirRepositoryAsync(
         database.SqlExecutionService, database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
     await cache.PreloadResourceTypesAsync(CancellationToken.None);
     var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
-    var mergeRepository = new SqlServerMergeRepository(
-        database.SqlExecutionService, database.TenantId, compressor, cache, NullLogger<SqlServerMergeRepository>.Instance);
     var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
         database.SqlExecutionService, database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
+    var mergeRepository = new SqlServerMergeRepository(
+        database.SqlExecutionService, database.TenantId, compressor, cache, extensionUpdater, NullLogger<SqlServerMergeRepository>.Instance);
     database.Repository = new SqlServerFhirRepository(
-        database.SqlExecutionService, database.TenantId, compressor, cache, mergeRepository, extensionUpdater,
+        database.SqlExecutionService, database.TenantId, compressor, cache, mergeRepository,
         NullLogger<SqlServerFhirRepository>.Instance);
     return database;
 }
