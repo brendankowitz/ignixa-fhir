@@ -19,6 +19,11 @@ public class SqlServerPostMergeExtensionUpdater(
 {
     private const int BatchSize = 100;
 
+    private readonly ISqlExecutionService _sqlExecutionService =
+        sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
+    private readonly ILogger<SqlServerPostMergeExtensionUpdater> _logger =
+        logger ?? throw new ArgumentNullException(nameof(logger));
+
     /// <summary>
     /// Updates TokenSearchParam extension columns (IdentifierTypeSystemId, IdentifierTypeCode)
     /// for rows that were just inserted by MergeResources.
@@ -34,7 +39,7 @@ public class SqlServerPostMergeExtensionUpdater(
             return;
         }
 
-        logger.LogDebug("Updating {Count} TokenSearchParam extension records in batches", extensionList.Count);
+        _logger.LogDebug("Updating {Count} TokenSearchParam extension records in batches", extensionList.Count);
 
         foreach (var batch in extensionList.Chunk(BatchSize))
         {
@@ -73,10 +78,10 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
                 command.Parameters.Add(parameter);
             }
 
-            await sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
         }
 
-        logger.LogInformation("Updated {Count} TokenSearchParam extension records", extensionList.Count);
+        _logger.LogInformation("Updated {Count} TokenSearchParam extension records", extensionList.Count);
     }
 
     /// <summary>
@@ -94,7 +99,7 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
             return;
         }
 
-        logger.LogDebug("Updating {Count} UriSearchParam extension records in batches", extensionList.Count);
+        _logger.LogDebug("Updating {Count} UriSearchParam extension records in batches", extensionList.Count);
 
         foreach (var batch in extensionList.Chunk(BatchSize))
         {
@@ -131,10 +136,10 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
                 command.Parameters.Add(parameter);
             }
 
-            await sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
         }
 
-        logger.LogInformation("Updated {Count} UriSearchParam extension records", extensionList.Count);
+        _logger.LogInformation("Updated {Count} UriSearchParam extension records", extensionList.Count);
     }
 
     /// <summary>
