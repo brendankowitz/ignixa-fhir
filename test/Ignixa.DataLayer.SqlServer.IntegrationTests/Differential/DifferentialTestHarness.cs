@@ -50,23 +50,18 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         _legacyCache = legacyCache;
         LegacyRepository = legacyRepository;
         LegacyMergeRepository = legacyMergeRepository;
+        NewRepository = newDatabase.Repository;
+        NewMergeRepository = newDatabase.MergeRepository;
     }
 
     /// <summary>The real EF-based repository, wired to database A ("legacy").</summary>
     public IFhirRepository LegacyRepository { get; }
 
     /// <summary>
-    /// The new port, wired to database B ("new"). Throws until Task 6 constructs the new port's
-    /// <see cref="IFhirRepository"/> implementation.
+    /// The new port, wired to database B ("new"). Set by <see cref="CreateAsync"/> via
+    /// <see cref="TestTenantDatabase.CreateSqlServerFhirRepositoryAsync"/> (Task 6).
     /// </summary>
-    // CA1065 suppressed: the task brief's exact API mandates a get-only property (not a method) that
-    // throws NotImplementedException until Task 6 wires this member -- a deliberate, documented,
-    // temporary placeholder shape, not an accidental design mistake.
-#pragma warning disable CA1065
-    public IFhirRepository NewRepository =>
-        throw new NotImplementedException(
-            "DifferentialTestHarness.NewRepository is not wired yet -- it is set once Task 6 builds the new port's IFhirRepository implementation.");
-#pragma warning restore CA1065
+    public IFhirRepository NewRepository { get; }
 
     /// <summary>
     /// The same <see cref="SqlMergeRepository"/> instance <see cref="LegacyRepository"/> was
@@ -76,16 +71,10 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
     public SqlMergeRepository LegacyMergeRepository { get; }
 
     /// <summary>
-    /// Same as <see cref="LegacyMergeRepository"/>, for the new port. Throws until Task 6 constructs
-    /// the new port's <c>SqlServerMergeRepository</c>.
+    /// Same as <see cref="LegacyMergeRepository"/>, for the new port. Set by <see cref="CreateAsync"/>
+    /// via <see cref="TestTenantDatabase.CreateSqlServerFhirRepositoryAsync"/> (Task 6).
     /// </summary>
-    // CA1065 suppressed: same rationale as NewRepository above -- exact API mandates a get-only
-    // property, deliberately throwing NotImplementedException until Task 6 wires this member.
-#pragma warning disable CA1065
-    public SqlServerMergeRepository NewMergeRepository =>
-        throw new NotImplementedException(
-            "DifferentialTestHarness.NewMergeRepository is not wired yet -- it is set once Task 6 constructs the new port's SqlServerMergeRepository.");
-#pragma warning restore CA1065
+    public SqlServerMergeRepository NewMergeRepository { get; }
 
     /// <summary>
     /// Provisions two independent, throwaway tenant databases and wires <see cref="LegacyRepository"/>
@@ -95,7 +84,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
     public static async Task<DifferentialTestHarness> CreateAsync(CancellationToken cancellationToken)
     {
         var legacyDatabaseTask = TestTenantDatabase.CreateEmptyAsync(cancellationToken);
-        var newDatabaseTask = TestTenantDatabase.CreateEmptyAsync(cancellationToken);
+        var newDatabaseTask = TestTenantDatabase.CreateSqlServerFhirRepositoryAsync();
         await Task.WhenAll(legacyDatabaseTask, newDatabaseTask);
 
         var legacyDatabase = await legacyDatabaseTask;

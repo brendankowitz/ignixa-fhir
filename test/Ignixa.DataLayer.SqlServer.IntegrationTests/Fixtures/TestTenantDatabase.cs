@@ -1,3 +1,5 @@
+using Ignixa.DataLayer.SqlServer.Compression;
+using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -5,6 +7,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.IO;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 
@@ -19,6 +22,7 @@ public sealed class TestTenantDatabase
     public const int TestTenantId = 1;
 
     private readonly string _databaseName;
+    private SqlServerSearchIndexReferenceDataCache? _cache;
 
     private TestTenantDatabase(string databaseName, int tenantId, ISqlExecutionService sqlExecutionService)
     {
@@ -104,7 +108,47 @@ public sealed class TestTenantDatabase
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task DisposeAsync() => await DropDatabaseAsync(_databaseName, CancellationToken.None);
+    public async Task DisposeAsync()
+    {
+        _cache?.Dispose();
+        await DropDatabaseAsync(_databaseName, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Provisions an empty tenant database and wires a fully-constructed <see cref="SqlServerFhirRepository"/>
+    /// against it (Task 1-4's compressor/cache/merge-repository pieces, wired once here). Note the
+    /// construction order: <see cref="SqlServerPostMergeExtensionUpdater"/> is built BEFORE
+    /// <see cref="SqlServerMergeRepository"/> and passed into it (Task 4's constructor requires it).
+    /// This is the single place all of Tasks 6-9's tests get a fully-wired <see cref="SqlServerFhirRepository"/>
+    /// from -- built once here, reused by every later task's test via this same factory method.
+    /// </summary>
+    public static async Task<TestTenantDatabase> CreateSqlServerFhirRepositoryAsync()
+    {
+        var database = await CreateEmptyAsync();
+        var cache = new SqlServerSearchIndexReferenceDataCache(
+            database.SqlExecutionService, database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
+        database._cache = cache;
+        await cache.PreloadResourceTypesAsync(CancellationToken.None);
+        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
+        var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
+            database.SqlExecutionService, database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
+        var mergeRepository = new SqlServerMergeRepository(
+            database.SqlExecutionService, database.TenantId, compressor, cache, extensionUpdater, NullLogger<SqlServerMergeRepository>.Instance);
+        database.MergeRepository = mergeRepository;
+        database.Repository = new SqlServerFhirRepository(
+            database.SqlExecutionService, database.TenantId, compressor, cache, mergeRepository,
+            NullLogger<SqlServerFhirRepository>.Instance);
+        return database;
+    }
+
+    public SqlServerFhirRepository Repository { get; private set; } = null!;
+
+    /// <summary>
+    /// The same <see cref="SqlServerMergeRepository"/> instance <see cref="Repository"/> was
+    /// constructed with -- exposed so <c>DifferentialTestHarness</c> can surface it as
+    /// <c>NewMergeRepository</c>, matching its <c>LegacyMergeRepository</c> equivalent.
+    /// </summary>
+    public SqlServerMergeRepository MergeRepository { get; private set; } = null!;
 
     private sealed class SingleTenantStore : ITenantConfigurationStore
     {
