@@ -48,11 +48,19 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
     /// <param name="resourceType">The resource type being searched (e.g., "Patient"), or null for system-wide search.</param>
     /// <param name="parameters">The parsed query parameters.</param>
     /// <param name="schemaProvider">Optional schema provider for validating _elements parameter.</param>
+    /// <param name="outcomes">
+    /// Optional collector for per-parameter provenance trace entries. When non-null, each
+    /// <see cref="ParameterCategory.Search"/> parameter is parsed with its syntax projection and
+    /// appended as a <see cref="ParameterTrace"/> — a <see cref="ParameterOutcome.Compiled"/> entry on
+    /// success, or a <see cref="ParameterOutcome.Ignored"/> entry when FHIR lenient handling drops it.
+    /// Leave null on production hot paths to avoid the syntax projection cost.
+    /// </param>
     /// <returns>A SearchOptions instance configured according to the parameters.</returns>
     public SearchOptions Build(
         string? resourceType,
         IReadOnlyList<QueryParameter> parameters,
-        ISchema? schemaProvider = null)
+        ISchema? schemaProvider = null,
+        IList<ParameterTrace>? outcomes = null)
     {
         EnsureArg.IsNotNull(parameters, nameof(parameters));
 
@@ -103,6 +111,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             resourceTypes = ["Resource"];
         }
 
+        int searchOrdinal = 0;
         foreach (var param in parameters)
         {
             try
@@ -165,9 +174,27 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.Search:
-                        // Use ExpressionParser to parse the search parameter
-                        Expression expr = _expressionParser.Parse(resourceTypes, param.Name, param.Value);
-                        searchExpressions.Add(expr);
+                        // Use ExpressionParser to parse the search parameter. ParseWithSyntax additionally
+                        // projects a syntax tree for provenance tracing, so it is only called when a
+                        // collector is present - production searches take the cheaper Parse path.
+                        if (outcomes is not null)
+                        {
+                            ParseResult parseResult = _expressionParser.ParseWithSyntax(resourceTypes, param.Name, param.Value);
+                            searchExpressions.Add(parseResult.Expression);
+                            outcomes.Add(new ParameterTrace(
+                                searchOrdinal++,
+                                param.Name,
+                                param.Value,
+                                parseResult.ValueSyntax ?? parseResult.KeySyntax,
+                                parseResult.Expression,
+                                new ParameterOutcome.Compiled()));
+                        }
+                        else
+                        {
+                            Expression expr = _expressionParser.Parse(resourceTypes, param.Name, param.Value);
+                            searchExpressions.Add(expr);
+                        }
+
                         break;
 
                     case ParameterCategory.Control:
@@ -206,13 +233,33 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
                 }
             }
-            catch (SearchParameterNotSupportedException)
+            catch (SearchParameterNotSupportedException ex)
             {
                 unsupportedParameters.Add(param.Name);
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        searchOrdinal++,
+                        param.Name,
+                        param.Value,
+                        null,
+                        null,
+                        new ParameterOutcome.Ignored(ex.Message, null)));
+                }
             }
-            catch (InvalidSearchOperationException)
+            catch (InvalidSearchOperationException ex)
             {
                 unsupportedParameters.Add(param.Name);
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        searchOrdinal++,
+                        param.Name,
+                        param.Value,
+                        null,
+                        null,
+                        new ParameterOutcome.Ignored(ex.Message, null)));
+                }
             }
         }
 
