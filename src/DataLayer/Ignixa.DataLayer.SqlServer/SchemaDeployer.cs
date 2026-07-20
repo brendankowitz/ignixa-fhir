@@ -15,21 +15,25 @@ public sealed class SchemaDeployer : ISchemaDeployer
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IHostEnvironment _environment;
     private readonly IOptions<SqlServerOptions> _options;
+    private readonly ISchemaVersionResolver _schemaVersionResolver;
     private readonly ILogger<SchemaDeployer> _logger;
 
     public SchemaDeployer(
         ITenantConfigurationStore tenantConfigurationStore,
         IHostEnvironment environment,
         IOptions<SqlServerOptions> options,
+        ISchemaVersionResolver schemaVersionResolver,
         ILogger<SchemaDeployer> logger)
     {
         ArgumentNullException.ThrowIfNull(tenantConfigurationStore);
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(schemaVersionResolver);
         ArgumentNullException.ThrowIfNull(logger);
         _tenantConfigurationStore = tenantConfigurationStore;
         _environment = environment;
         _options = options;
+        _schemaVersionResolver = schemaVersionResolver;
         _logger = logger;
     }
 
@@ -84,6 +88,56 @@ public sealed class SchemaDeployer : ISchemaDeployer
         dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
         _logger.LogInformation("Deployed schema to tenant {TenantId}'s new database '{DatabaseName}'.", tenantId, databaseName);
         await StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
+    }
+
+    public async Task UpgradeIfNeededAsync(int tenantId, CancellationToken cancellationToken)
+    {
+        var connectionString = await SqlExecutionService.ResolveConnectionStringAsync(
+            _tenantConfigurationStore, tenantId, cancellationToken);
+
+        if (await IsDatabaseEmptyAsync(connectionString, cancellationToken))
+        {
+            // Nothing to upgrade -- an empty database is DeployIfEmptyAsync's job, not this one.
+            return;
+        }
+
+        var currentVersion = await _schemaVersionResolver.GetCurrentVersionAsync(tenantId, cancellationToken);
+        if (currentVersion >= SchemaVersionConstants.CurrentVersion)
+        {
+            _logger.LogDebug("Tenant {TenantId} is already at schema version {Version}.", tenantId, currentVersion);
+            return;
+        }
+
+        using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
+        using var package = DacPackage.Load(dacpacStream);
+        var databaseName = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
+        var dacServices = new DacServices(connectionString);
+
+        var deployReportXml = dacServices.GenerateDeployReport(package, databaseName, cancellationToken: cancellationToken);
+
+        if (!DeployReportClassifier.IsAutoSafe(deployReportXml))
+        {
+            throw new InvalidOperationException(
+                $"Tenant {tenantId}'s database is at schema version {currentVersion}, behind the current " +
+                $"version {SchemaVersionConstants.CurrentVersion}, and the pending diff contains changes " +
+                "that are not safe to apply automatically. Review the diff and apply it explicitly using " +
+                "the schema-upgrade CLI tool (tools/Ignixa.SchemaUpgrade.Cli).");
+        }
+
+        if (!_options.Value.AutomaticSchemaDeploymentEnabled)
+        {
+            throw new InvalidOperationException(
+                $"Tenant {tenantId}'s database is behind schema version {SchemaVersionConstants.CurrentVersion} " +
+                $"and {SqlServerOptions.SectionName}:{nameof(SqlServerOptions.AutomaticSchemaDeploymentEnabled)} is false. " +
+                "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
+        }
+
+        dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
+        await StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
+        _logger.LogInformation(
+            "Upgraded tenant {TenantId}'s database from schema version {OldVersion} to {NewVersion}.",
+            tenantId, currentVersion, SchemaVersionConstants.CurrentVersion);
     }
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)

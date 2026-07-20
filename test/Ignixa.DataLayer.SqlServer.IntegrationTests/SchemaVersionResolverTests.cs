@@ -98,11 +98,18 @@ public class SchemaVersionResolverTests
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private sealed class ThrowingSchemaVersionResolver : ISchemaVersionResolver
+    {
+        public Task<int> GetCurrentVersionAsync(int tenantId, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Not expected to be called by DeployIfEmptyAsync.");
+    }
+
     private static SchemaDeployer CreateDeployer(string connectionString)
         => new(
             new SingleTenantStore(connectionString),
             new FakeHostEnvironment { EnvironmentName = "Production" },
             Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
+            new ThrowingSchemaVersionResolver(),
             NullLogger<SchemaDeployer>.Instance);
 
     [Fact]

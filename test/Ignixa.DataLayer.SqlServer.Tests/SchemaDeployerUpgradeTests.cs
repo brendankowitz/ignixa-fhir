@@ -8,7 +8,7 @@ using Shouldly;
 
 namespace Ignixa.DataLayer.SqlServer.Tests;
 
-public class SchemaDeployerConnectionTests
+public class SchemaDeployerUpgradeTests
 {
     private sealed class FakeTenantConfigurationStore : ITenantConfigurationStore
     {
@@ -36,49 +36,20 @@ public class SchemaDeployerConnectionTests
     }
 
     [Fact]
-    public async Task GivenANonexistentTenant_WhenDeployIfEmptyAsyncCalled_ThenThrowsWithTenantMessage()
+    public async Task GivenANonexistentTenant_WhenUpgradeIfNeededAsyncCalled_ThenThrowsWithTenantMessage()
     {
-        // Arrange
         var store = new FakeTenantConfigurationStore(); // no tenant 999
         var deployer = new SchemaDeployer(
             store,
             new FakeHostEnvironment { EnvironmentName = "Production" },
             Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
-            new ThrowingSchemaVersionResolver(),
+            new ThrowingSchemaVersionResolver(), // never reached -- ResolveConnectionStringAsync throws first
             NullLogger<SchemaDeployer>.Instance);
 
-        // Act & Assert
         var ex = await Should.ThrowAsync<InvalidOperationException>(
-            () => deployer.DeployIfEmptyAsync(999, CancellationToken.None));
+            () => deployer.UpgradeIfNeededAsync(999, CancellationToken.None));
 
         ex.Message.ShouldBe("Tenant 999 does not exist or is inactive.");
-    }
-
-    [Fact]
-    public async Task GivenATenantConfiguredForFileSystemStorage_WhenDeployIfEmptyAsyncCalled_ThenThrowsWithStorageTypeMessage()
-    {
-        // Arrange
-        var store = new FakeTenantConfigurationStore();
-        store.Tenants[1] = new TenantConfiguration
-        {
-            TenantId = 1,
-            DisplayName = "Test Tenant",
-            FhirVersion = "4.0",
-            Storage = new TenantStorageConfiguration { Type = "FileSystem" },
-        };
-        var deployer = new SchemaDeployer(
-            store,
-            new FakeHostEnvironment { EnvironmentName = "Production" },
-            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
-            new ThrowingSchemaVersionResolver(),
-            NullLogger<SchemaDeployer>.Instance);
-
-        // Act & Assert
-        var ex = await Should.ThrowAsync<InvalidOperationException>(
-            () => deployer.DeployIfEmptyAsync(1, CancellationToken.None));
-
-        ex.Message.ShouldContain("FileSystem");
-        ex.Message.ShouldContain("SqlServer");
     }
 
     private sealed class ThrowingSchemaVersionResolver : ISchemaVersionResolver

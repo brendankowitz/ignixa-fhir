@@ -61,10 +61,12 @@ internal static class TestSchemaInitializer
     /// </summary>
     public static Task InitializeAsync(string connectionString, CancellationToken cancellationToken)
     {
+        var store = new SingleTenantStore(connectionString);
         var deployer = new SchemaDeployer(
-            new SingleTenantStore(connectionString),
+            store,
             new FakeHostEnvironment(),
             Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
+            new SchemaVersionResolver(store, NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
         return deployer.DeployIfEmptyAsync(tenantId: 1, cancellationToken);

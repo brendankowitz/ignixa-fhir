@@ -9,7 +9,7 @@ using Shouldly;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
-public class SchemaDeployerDeploymentTests
+public class SchemaDeployerUpgradeTests
 {
     private sealed class SingleTenantStore : ITenantConfigurationStore
     {
@@ -115,103 +115,51 @@ public class SchemaDeployerDeploymentTests
         return tableNames;
     }
 
-    private sealed class ThrowingSchemaVersionResolver : ISchemaVersionResolver
+    private static async Task<int> GetSchemaVersionRowCountAsync(string connectionString, CancellationToken cancellationToken)
     {
-        public Task<int> GetCurrentVersionAsync(int tenantId, CancellationToken cancellationToken)
-            => throw new InvalidOperationException("Not expected to be called by DeployIfEmptyAsync.");
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM dbo.SchemaVersion";
+        return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
-    private static SchemaDeployer CreateDeployer(string connectionString, bool automaticSchemaDeploymentEnabled)
+    private static SchemaDeployer CreateDeployer(string connectionString, bool automaticSchemaDeploymentEnabled = true)
         => new(
             new SingleTenantStore(connectionString),
             new FakeHostEnvironment { EnvironmentName = "Production" },
             Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled }),
-            new ThrowingSchemaVersionResolver(),
+            new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
     [Fact]
-    public async Task GivenAnEmptyDatabase_WhenDeployIfEmptyAsyncCalled_ThenCreatesTheExpectedTables()
+    public async Task GivenATenantAlreadyAtCurrentVersion_WhenUpgradeIfNeededAsyncCalled_ThenDoesNothing()
     {
-        // Arrange -- a real, empty, freshly-created database (unique name per test run).
-        var databaseName = $"SchemaDeployerTest_{Guid.NewGuid():N}";
+        // Arrange -- deploy fresh via DeployIfEmptyAsync (stamps CurrentVersion per Task 1).
+        var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
         var connectionString = BuildConnectionStringForDatabase(databaseName);
         await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
 
         try
         {
-            var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: true);
-
-            // Act
-            await deployer.DeployIfEmptyAsync(1, CancellationToken.None);
-
-            // Assert -- golden-shape assertion, not a loose row-count check.
-            var tableNames = await GetTableNamesAsync(connectionString, CancellationToken.None);
-            tableNames.ShouldContain("Resource");
-            tableNames.ShouldContain("TokenSearchParam");
-            tableNames.ShouldContain("ResourceType");
-
-            await using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync(CancellationToken.None);
-            await using var versionCommand = connection.CreateCommand();
-            versionCommand.CommandText = "SELECT MAX(Version) FROM dbo.SchemaVersion";
-            var stampedVersion = (int)(await versionCommand.ExecuteScalarAsync(CancellationToken.None))!;
-            stampedVersion.ShouldBe(SchemaVersionConstants.CurrentVersion);
-        }
-        finally
-        {
-            await DropDatabaseAsync(databaseName, CancellationToken.None);
-        }
-    }
-
-    [Fact]
-    public async Task GivenANonEmptyDatabase_WhenDeployIfEmptyAsyncCalled_ThenDoesNotAttemptDeploy()
-    {
-        // Arrange -- a database that already has the Resource table (deploy once, then call again).
-        var databaseName = $"SchemaDeployerTest_{Guid.NewGuid():N}";
-        var connectionString = BuildConnectionStringForDatabase(databaseName);
-        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
-
-        try
-        {
-            var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: true);
+            var deployer = CreateDeployer(connectionString);
             await deployer.DeployIfEmptyAsync(1, CancellationToken.None);
 
             var tableNamesBefore = await GetTableNamesAsync(connectionString, CancellationToken.None);
-            tableNamesBefore.ShouldContain("Resource");
+            var schemaVersionRowCountBefore = await GetSchemaVersionRowCountAsync(connectionString, CancellationToken.None);
+            schemaVersionRowCountBefore.ShouldBe(1);
 
-            // Act & Assert -- the second call returns without throwing (no DacServicesException from
-            // upgradeExisting: false), proving the emptiness check short-circuits before ever calling
-            // DacServices.Deploy.
-            await deployer.DeployIfEmptyAsync(1, CancellationToken.None);
+            // Act -- calling UpgradeIfNeededAsync against an already-current tenant must be a
+            // true no-op: it returns without throwing and without touching sys.tables or
+            // SchemaVersion.
+            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
 
+            // Assert
             var tableNamesAfter = await GetTableNamesAsync(connectionString, CancellationToken.None);
             tableNamesAfter.ShouldBe(tableNamesBefore, ignoreOrder: true);
-        }
-        finally
-        {
-            await DropDatabaseAsync(databaseName, CancellationToken.None);
-        }
-    }
 
-    [Fact]
-    public async Task GivenAnEmptyDatabaseAndTheToggleDisabled_WhenDeployIfEmptyAsyncCalled_ThenThrowsAnActionableError()
-    {
-        // Arrange -- AutomaticSchemaDeploymentEnabled = false, a real empty database.
-        var databaseName = $"SchemaDeployerTest_{Guid.NewGuid():N}";
-        var connectionString = BuildConnectionStringForDatabase(databaseName);
-        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
-
-        try
-        {
-            var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: false);
-
-            // Act & Assert -- throws InvalidOperationException mentioning both the config key name
-            // and the manual sqlpackage command, not a silent no-op and not a hang.
-            var ex = await Should.ThrowAsync<InvalidOperationException>(
-                () => deployer.DeployIfEmptyAsync(1, CancellationToken.None));
-
-            ex.Message.ShouldContain(nameof(SqlServerOptions.AutomaticSchemaDeploymentEnabled));
-            ex.Message.ShouldContain("sqlpackage");
+            var schemaVersionRowCountAfter = await GetSchemaVersionRowCountAsync(connectionString, CancellationToken.None);
+            schemaVersionRowCountAfter.ShouldBe(schemaVersionRowCountBefore);
         }
         finally
         {
