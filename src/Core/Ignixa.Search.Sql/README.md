@@ -75,8 +75,9 @@ Compilation is three pure stages plus a build-time catalog. Only the first stage
 
 `Resolve.RunAsync` walks the expression tree once, collects every search parameter and resource type it
 references, and resolves them all through `ISymbolResolver` — a single interface your data layer
-implements. The output is an immutable `SymbolTable`. This is the *only* stage that touches the outside
-world; it does all lookups up front so the later stages can be pure, synchronous functions.
+implements. The output is a `ResolvedSymbols` — an immutable `SymbolTable` plus the parameters the
+resolver could not find, reported rather than silently dropped. This is the *only* stage that touches the
+outside world; it does all lookups up front so the later stages can be pure, synchronous functions.
 
 `ISymbolResolver` is the whole seam between the compiler and your storage:
 
@@ -92,7 +93,8 @@ The package itself has no EF or ASP.NET dependency and does no database access o
 
 ### 2. Lower — build the plan
 
-`Lower.Run` turns the bound tree into a `QueryPlan`. The plan is a **graph of CTEs**, not a tree of
+`Lower.Run` turns the bound tree into a `LoweredPlan` — a `QueryPlan` plus provenance linking each CTE
+back to the IR node that produced it. The plan is a **graph of CTEs**, not a tree of
 inline joins: every AND becomes a set intersection, every OR a union, `:not` a set subtraction, a chain a
 join through the reference table, and so on — each as its own named CTE, so any node can reference any
 other at any depth. Resource-column filters (`_id` / `_type` / `_lastUpdated`) are lifted out into a
@@ -137,7 +139,9 @@ using Ignixa.Search.Sql.Symbols;
 Expression searchExpression = ParsePatientNameEquals("Smith");
 
 // 1. Resolve — the only async / I/O step. `resolver` is your ISymbolResolver.
-SymbolTable symbols = await Resolve.RunAsync(
+//    Returns the symbol table plus any parameters the resolver could not find, so a caller can
+//    explain the failure instead of hitting a KeyNotFoundException later during lowering.
+ResolvedSymbols resolved = await Resolve.RunAsync(
     expression: searchExpression,
     includes: [],
     revIncludes: [],
@@ -146,10 +150,11 @@ SymbolTable symbols = await Resolve.RunAsync(
     targetResourceType: "Patient",
     cancellationToken: cancellationToken);
 
-// 2. Lower — pure. Produce the query plan.
-QueryPlan plan = Lower.Run(
+// 2. Lower — pure. Produce the query plan, plus provenance linking each CTE to the IR node
+//    that produced it.
+LoweredPlan lowered = Lower.Run(
     expression: searchExpression,
-    symbols: symbols,
+    symbols: resolved.Symbols,
     targetResourceType: "Patient",
     includes: [],
     revIncludes: [],
@@ -157,6 +162,8 @@ QueryPlan plan = Lower.Run(
     sort: [],
     sortPhase: SortPhase.Valued,
     page: null);
+
+QueryPlan plan = lowered.Plan;
 
 // Inspect the plan shape (great for tests / debugging):
 Console.WriteLine(plan.Explain());
