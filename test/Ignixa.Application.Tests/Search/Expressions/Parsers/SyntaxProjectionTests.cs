@@ -13,6 +13,7 @@ namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
 public class SyntaxProjectionTests
 {
     private static readonly string[] Patient = ["Patient"];
+    private static readonly string[] Observation = ["Observation"];
 
     [Fact]
     public void GivenAlternatives_WhenParsedWithSyntax_ThenEachChildSpanExtractsItsText()
@@ -40,6 +41,31 @@ public class SyntaxProjectionTests
 
         var plain = context.Parser.Parse(Patient, "name", "Smith");
         var withSyntax = context.Parser.ParseWithSyntax(Patient, "name", "Smith");
+
+        withSyntax.Expression.ToString().ShouldBe(plain.ToString());
+    }
+
+    [Fact]
+    public void GivenNotReferencedKey_WhenParsedWithSyntax_ThenTheExpressionMatchesPlainParse()
+    {
+        var context = new SearchParserTestContext();
+        const string value = "Observation:subject";
+
+        var plain = context.Parser.Parse(Patient, "_not-referenced", value);
+        var withSyntax = context.Parser.ParseWithSyntax(Patient, "_not-referenced", value);
+
+        withSyntax.Expression.ToString().ShouldBe(plain.ToString());
+    }
+
+    [Fact]
+    public void GivenAChainedKey_WhenParsedWithSyntax_ThenTheExpressionMatchesPlainParse()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "patient", SearchParamType.Reference, targets: Patient);
+        context.Add("Patient", "name", SearchParamType.String);
+
+        var plain = context.Parser.Parse(Observation, "patient.name", "Smith");
+        var withSyntax = context.Parser.ParseWithSyntax(Observation, "patient.name", "Smith");
 
         withSyntax.Expression.ToString().ShouldBe(plain.ToString());
     }
