@@ -130,6 +130,39 @@ public class SourceSpanTests
         a.ShouldBe(b);
         a.GetHashCode().ShouldBe(b.GetHashCode());
     }
+
+    [Fact]
+    public void GivenAModifiedKey_WhenScanned_ThenTheSpanCoversTheWholeKey()
+    {
+        const string key = "name:exact";
+
+        var syntax = SearchKeySyntaxParser.ParseParameter(key);
+
+        key.Substring(syntax.Span.Start, syntax.Span.Length).ShouldBe("name:exact");
+        syntax.Span.Origin.ShouldBe(SourceOrigin.Key);
+    }
+
+    [Fact]
+    public void GivenAForwardChainKey_WhenScanned_ThenTheChainSpanCoversTheWholeKey()
+    {
+        const string key = "general-practitioner.name";
+
+        var syntax = (ForwardChainKeySyntax)SearchKeySyntaxParser.ParseParameter(key);
+
+        key.Substring(syntax.Span.Start, syntax.Span.Length).ShouldBe("general-practitioner.name");
+        key.Substring(syntax.Next.Span.Start, syntax.Next.Span.Length).ShouldBe("name");
+    }
+
+    [Fact]
+    public void GivenAReverseChainKey_WhenScanned_ThenTheChainSpanCoversTheWholeKey()
+    {
+        const string key = "_has:Observation:patient:code";
+
+        var syntax = (ReverseChainKeySyntax)SearchKeySyntaxParser.ParseParameter(key);
+
+        key.Substring(syntax.Span.Start, syntax.Span.Length).ShouldBe("_has:Observation:patient:code");
+        key.Substring(syntax.Next.Span.Start, syntax.Next.Span.Length).ShouldBe("code");
+    }
 }
 ```
 
@@ -248,12 +281,29 @@ Attach spans at every other construction site in the file using the offsets alre
 
 - [ ] **Step 7: Populate spans in `SearchKeySyntaxParser`**
 
-Use `SourceOrigin.Key` and the `Cursor`'s existing `_offset` to set `Span` on every `SearchKeySyntax` the file constructs. Each node's span covers the segment it consumed: record the offset before parsing a segment and the offset after, then `new SourceSpan(SourceOrigin.Key, startOffset, endOffset - startOffset)`.
+Use `SourceOrigin.Key` and the `Cursor`'s existing `_offset`. The capture pattern, applied to every
+`Parse*` method that constructs a `SearchKeySyntax`:
+
+1. At the **head** of the method, capture the start: `var start = _offset;`
+2. Construct the node **after** any recursion completes, so the end offset is final.
+3. Set `Span = new SourceSpan(SourceOrigin.Key, start, _offset - start)`.
+
+Two subtleties that will produce wrong spans if missed:
+
+- **`TryParseReverse` uses lookahead.** It advances a local `lookaheadOffset` and only commits `_offset`
+  on success. Capture the start **before** consuming `_has:` — i.e. the offset as it stood on entry, not
+  `_offset` at construction time, which by then has moved past the whole chain head.
+- **Chain nodes are constructed after recursing** into `Next`. That makes the *end* offset naturally
+  correct, but the *start* must have been captured before the recursion began. Do not read `_offset` for
+  the start at construction time.
+
+The three key-span tests added in Step 1 cover exactly these cases: a plain modified key, a forward
+chain, and a reverse chain.
 
 - [ ] **Step 8: Run tests to verify they pass**
 
 Run: `dotnet test test/Ignixa.Application.Tests/Ignixa.Application.Tests.csproj -f net10.0 --filter "FullyQualifiedName~SourceSpanTests"`
-Expected: PASS — 4 tests.
+Expected: PASS — 7 tests (4 value-origin, 3 key-origin).
 
 - [ ] **Step 9: Verify existing parser tests are unaffected**
 
@@ -363,7 +413,9 @@ Add the identical property to `CompositeComponentExpression.cs`.
 
 - [ ] **Step 4: Thread the span through the builder**
 
-In `SearchPredicateExpressionBuilder.cs`:
+In `SearchPredicateExpressionBuilder.cs`. The new parameter **must** have a `= null` default:
+`SearchPredicateExpressionBuilderTests.cs:25,44` call the four-argument form and would otherwise fail to
+compile.
 
 ```csharp
     public SearchParameterPredicateExpression Build(
@@ -371,7 +423,7 @@ In `SearchPredicateExpressionBuilder.cs`:
         SearchModifier? modifier,
         SearchComparator comparator,
         ISearchValue value,
-        SourceSpan? span)
+        SourceSpan? span = null)
     {
         EnsureArg.IsNotNull(parameter, nameof(parameter));
         EnsureArg.IsNotNull(value, nameof(value));
@@ -419,7 +471,7 @@ Append to `IrSpanTests.cs`:
 
 ```csharp
     [Fact]
-    public void GivenACompositeComponent_WhenRewritten_ThenTheSpanSurvives()
+    public void GivenACompositeComponent_WhenRebuiltByARewriter_ThenTheSpanSurvives()
     {
         var parameter = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://x/code"));
         var inner = new SearchParameterPredicateExpression(
@@ -433,13 +485,29 @@ Append to `IrSpanTests.cs`:
         };
 
         var rewritten = (CompositeComponentExpression)component.AcceptVisitor(
-            new IdentityRewriter(), context: null);
+            new ReplacingRewriter(), context: null);
 
+        ReferenceEquals(rewritten, component).ShouldBeFalse();
         rewritten.Span.ShouldBe(component.Span);
     }
 
-    private sealed class IdentityRewriter : ExpressionRewriter<object?>;
+    /// <summary>Returns a fresh inner instance so the rebuild path is actually taken.</summary>
+    private sealed class ReplacingRewriter : ExpressionRewriter<object?>
+    {
+        public override Expression VisitSearchParameterPredicate(
+            SearchParameterPredicateExpression expression, object? context)
+            => new SearchParameterPredicateExpression(
+                expression.Parameter, expression.Comparator, expression.Modifier, expression.Value)
+            {
+                Span = expression.Span,
+            };
+    }
 ```
+
+**Why the rewriter must return a new instance:** `ExpressionRewriter.VisitCompositeComponent` short-circuits
+with `ReferenceEquals` when the child is unchanged (lines 108–111), returning the *original* component. An
+identity rewriter therefore never reaches the rebuild line, and the assertion would pass even if Step 6's
+span copy were omitted entirely. The `ShouldBeFalse()` on reference equality pins that the rebuild path ran.
 
 Adjust the `CompositeComponentExpression` constructor arguments to match its real signature.
 
@@ -471,6 +539,7 @@ git commit -m "feat(search): carry source spans on the typed predicate IR"
 **Files:**
 - Create: `src/Core/Ignixa.Search/Expressions/Parsers/SyntaxNode.cs`, `ParseResult.cs`, `SyntaxProjector.cs`
 - Modify: `IExpressionParser.cs`, `ExpressionParser.cs`, `ISearchParameterExpressionParser.cs`, `SearchParameterExpressionParser.cs`
+- Modify: `Parsers/Legacy/LegacyExpressionParser.cs`, `Parsers/Legacy/LegacySearchParameterExpressionParser.cs` — **these implement the widened interfaces and will not compile otherwise**
 - Test: `test/Ignixa.Application.Tests/Search/Expressions/Parsers/SyntaxProjectionTests.cs`
 
 **Interfaces:**
@@ -630,12 +699,45 @@ Implement it in `SearchParameterExpressionParser` by having both methods call on
 
 In `IExpressionParser.cs` add `ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value);` and implement it in `ExpressionParser` alongside the existing `Parse`, projecting the key syntax it already scans and passing `null` for `ValueSyntax` on the `_not-referenced` branch.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 6: Keep the frozen legacy oracle parsers compiling**
+
+`LegacyExpressionParser` (`Legacy/LegacyExpressionParser.cs:38`) implements `IExpressionParser`, and
+`LegacySearchParameterExpressionParser` (`Legacy/LegacySearchParameterExpressionParser.cs:24`) implements
+`ISearchParameterExpressionParser`. Both break the moment Step 5 widens those interfaces.
+
+These are the **frozen parity oracle** — they must keep behaving exactly as they do today. Do **not**
+implement real syntax projection in them. Add one throwing member to each:
+
+```csharp
+    public ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value)
+        => throw new NotSupportedException(
+            "The frozen legacy oracle parser does not produce syntax projections.");
+```
+
+and the matching member on `LegacySearchParameterExpressionParser`:
+
+```csharp
+    public (Expression Expression, SyntaxNode ValueSyntax) ParseWithSyntax(
+        SearchParameterInfo searchParameter,
+        SearchModifier modifier,
+        string value)
+        => throw new NotSupportedException(
+            "The frozen legacy oracle parser does not produce syntax projections.");
+```
+
+The oracle is only ever driven through `Parse` by the parity tests, so these are unreachable in practice.
+
+- [ ] **Step 7: Run tests to verify they pass**
 
 Run: `dotnet test test/Ignixa.Application.Tests/Ignixa.Application.Tests.csproj -f net10.0 --filter "FullyQualifiedName~SyntaxProjectionTests"`
 Expected: PASS — 2 tests.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Verify the parity oracle still runs**
+
+Run: `dotnet test test/Ignixa.Application.Tests/Ignixa.Application.Tests.csproj -f net10.0 --filter "FullyQualifiedName~SearchParserOldVsNewParityTests"`
+Expected: PASS — the oracle is exercised through `Parse`, never `ParseWithSyntax`.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/Core/Ignixa.Search/Expressions/Parsers/ \
@@ -744,10 +846,20 @@ Update every `Resolve.RunAsync` caller in `test/Ignixa.Search.Sql.Tests/` and `t
 Run: `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj -f net10.0`
 Expected: PASS — all tests including the new one.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Build the whole solution**
+
+This task edits `CompiledSearchEndToEndTests.cs` in a project the test command above does **not** compile.
+Verify nothing else references the old return type:
+
+Run: `dotnet build All.sln`
+Expected: 0 errors. (`Ignixa.DataLayer.LegacySqlEF.Tests` has pre-existing failures unrelated to this
+work — ignore those specific files, but no new errors may appear.)
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/Core/Ignixa.Search.Sql/Symbols/ test/Ignixa.Search.Sql.Tests/
+git add src/Core/Ignixa.Search.Sql/Symbols/ test/Ignixa.Search.Sql.Tests/ \
+        test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/
 git commit -m "feat(search-sql): report unresolved search parameters from Resolve"
 ```
 
@@ -892,10 +1004,19 @@ Update `LowerTests`, `EndToEndCompilationTests`, and `CompiledSearchEndToEndTest
 Run: `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj -f net10.0`
 Expected: PASS — all tests, including both new provenance tests.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 9: Build the whole solution**
+
+This task edits `CompiledSearchEndToEndTests.cs` in a project the test command above does **not** compile.
+
+Run: `dotnet build All.sln`
+Expected: 0 errors. (`Ignixa.DataLayer.LegacySqlEF.Tests` has pre-existing failures unrelated to this
+work — ignore those specific files, but no new errors may appear.)
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add src/Core/Ignixa.Search.Sql/Lowering/ test/Ignixa.Search.Sql.Tests/
+git add src/Core/Ignixa.Search.Sql/Lowering/ test/Ignixa.Search.Sql.Tests/ \
+        test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/
 git commit -m "feat(search-sql): return plan provenance linking CTEs to their IR nodes"
 ```
 
@@ -1070,19 +1191,63 @@ Change the signature to `Run(QueryPlan plan, EmitOptions? options = null)`, crea
         return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
 ```
 
-Apply the same decomposition to the `CountOnly` and includes paths, adding `Section` scopes for each CTE, `cteMatchPage`, each `incN`/`incNlim`, the seek predicate, and the final ORDER BY.
+**The label map is fixed — do not auto-number the whole `cteBlocks` list on the includes path.** By the
+time the includes path assembles, `cteBlocks` has `cteMatchPage`, `inc{i}`, and `inc{i}lim` blocks
+*appended after* the plan CTEs, so a blanket `AppendJoin(..., labelPrefix: "cte")` would mislabel them
+`cte7`, `cte8`, … Required labels:
 
-- [ ] **Step 7: Run the new tests**
+| Section | Label |
+|---|---|
+| plan CTE at index *i* | `cte{i}` |
+| match-page CTE (includes path) | `cteMatchPage` |
+| include stage *i* | `inc{i}` |
+| include stage *i* limit wrapper | `inc{i}lim` |
+| outer WHERE | `where` |
+| keyset seek predicate | `seek` |
+| final ORDER BY | `orderBy` |
+
+So on the includes path, `AppendJoin` covers only the first `plan.Ctes.Count` elements; the appended tail
+blocks are emitted with individual `writer.Section("cteMatchPage")` / `Section($"inc{i}")` /
+`Section($"inc{i}lim")` scopes.
+
+Apply the same decomposition to the `CountOnly` and includes paths, adding `Section` scopes for each CTE,
+`cteMatchPage`, each `incN`/`incNlim`, the seek predicate, and the final ORDER BY.
+
+- [ ] **Step 7: Add an includes-path label assertion**
+
+`EmitTests` guards the SQL bytes but nothing guards the *labels*. Append to `SqlTextRangeTests`:
+
+```csharp
+    [Fact]
+    public void GivenAnIncludesPlan_WhenEmitted_ThenTailBlocksAreLabelledNotAutoNumbered()
+    {
+        var emitted = SqlBuilder.Run(IncludesPlan(), new EmitOptions(IncludeTextRanges: true));
+
+        var labels = emitted.TextRanges!.Select(r => r.Label).ToList();
+        labels.ShouldContain("cteMatchPage");
+        labels.ShouldContain("inc0");
+        labels.ShouldContain("inc0lim");
+        labels.ShouldNotContain(label => label.StartsWith("cte", StringComparison.Ordinal)
+            && label != "cteMatchPage"
+            && int.TryParse(label.AsSpan(3), out var i)
+            && i >= 1);
+    }
+```
+
+Build `IncludesPlan()` by copying the includes-path plan construction from the existing `EmitTests`
+flagship include case, so the shapes stay in step.
+
+- [ ] **Step 8: Run the new tests**
 
 Run: `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj -f net10.0 --filter "FullyQualifiedName~SqlTextRangeTests"`
-Expected: PASS — 2 tests.
+Expected: PASS — 3 tests.
 
-- [ ] **Step 8: Verify the goldens are byte-identical**
+- [ ] **Step 9: Verify the goldens are byte-identical**
 
 Run: `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj -f net10.0`
 Expected: PASS — all 255+ tests. `EmitTests` failing means the assembly or an `Emit*` call order changed; fix the assembly rather than updating a golden.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/Core/Ignixa.Search.Sql/Builders/ test/Ignixa.Search.Sql.Tests/Builders/
@@ -1094,9 +1259,19 @@ git commit -m "feat(search-sql): record SQL section text ranges via a section-sc
 ### Task 7: `SearchOptionsBuilder` outcome collector
 
 **Files:**
-- Create: `src/Core/Ignixa.Search/Parsing/ParameterOutcome.cs`, `src/Core/Ignixa.Search/Parsing/ParameterTrace.cs`
+- Create: `src/Core/Ignixa.Search/Parsing/TraceStage.cs`, `ParameterOutcome.cs`, `ParameterTrace.cs`
 - Modify: `src/Core/Ignixa.Search/Parsing/SearchOptionsBuilder.cs`
 - Test: `test/Ignixa.Application.Tests/Search/Parsing/ParameterOutcomeTests.cs`
+
+**Three decisions pinned here so Task 8's implementer does not have to re-derive them:**
+
+1. **`ParameterTrace.Syntax` comes from `ParseWithSyntax`, and only when tracing.** Call
+   `ParseWithSyntax` when `outcomes is not null`, plain `Parse` otherwise. Calling it unconditionally
+   would allocate a projection on every production search — the cost rule this design is built on.
+2. **Only `ParameterCategory.Search` parameters get trace entries**, and `Ordinal` counts only those.
+   `_count`, `_sort`, `_include`, and formatting parameters produce no `ParameterTrace` in v1.
+3. **`Ignored.Span` is always `null` in v1.** Do not attempt to recover offsets from
+   `InvalidSearchOperationException` messages.
 
 **Interfaces:**
 - Produces: `ParameterOutcome` (abstract, with `Compiled`/`Ignored`/`Failed`), `ParameterTrace`, and a `Build` overload accepting `IList<ParameterTrace>? outcomes`.
@@ -1151,6 +1326,25 @@ Expected: FAIL — `ParameterOutcome` does not exist.
 
 - [ ] **Step 3: Create the outcome records**
 
+First `TraceStage.cs` — it lives in `Ignixa.Search` (not `Ignixa.Search.Sql`) so the outcome can be
+strongly typed. `Search.Sql` references `Search`, so it can use this enum; the reverse would be a layer
+violation:
+
+```csharp
+namespace Ignixa.Search.Parsing;
+
+/// <summary>Which compilation stage produced an outcome.</summary>
+public enum TraceStage
+{
+    Parse,
+    Resolve,
+    Lower,
+    Emit,
+}
+```
+
+Then `ParameterOutcome.cs`:
+
 ```csharp
 using Ignixa.Search.Expressions;
 
@@ -1166,7 +1360,7 @@ public abstract record ParameterOutcome
     public sealed record Ignored(string Reason, SourceSpan? Span) : ParameterOutcome;
 
     /// <summary>The parameter failed at a named stage.</summary>
-    public sealed record Failed(string Stage, string Message, SourceSpan? Span) : ParameterOutcome;
+    public sealed record Failed(TraceStage Stage, string Message, SourceSpan? Span) : ParameterOutcome;
 }
 ```
 
@@ -1207,16 +1401,33 @@ git commit -m "feat(search): report per-parameter outcomes from SearchOptionsBui
 ### Task 8: `SearchCompiler.CompileAsync` and `SearchTrace`
 
 **Files:**
-- Create: `src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs`, `SearchTrace.cs`, `QueryPlanTrace.cs`, `EmittedSqlTrace.cs`, `CteProvenance.cs`, `TraceStage.cs`
+- Create: `src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs`, `SearchTrace.cs`, `QueryPlanTrace.cs`, `EmittedSqlTrace.cs`, `CteProvenance.cs`
 - Test: `test/Ignixa.Search.Sql.Tests/Tracing/SearchTraceTests.cs`
 
 **Interfaces:**
-- Consumes: `ResolvedSymbols` (Task 4), `LoweredPlan` (Task 5), `EmitOptions`/`SqlTextRange` (Task 6), `ParameterTrace`/`ParameterOutcome` (Task 7).
-- Produces: `SearchCompiler.CompileAsync(...)` — the single orchestration entry point both tracing and future production wiring must use.
+- Consumes: `ResolvedSymbols` (Task 4), `LoweredPlan` (Task 5), `EmitOptions`/`SqlTextRange` (Task 6), `ParameterTrace`/`ParameterOutcome`/`TraceStage` (Task 7 — `TraceStage` lives in `Ignixa.Search.Parsing`; do **not** redefine it here).
+- Produces — the exact entry point, which both tracing and future production wiring must use:
+
+```csharp
+public static async Task<SearchTrace> CompileAsync(
+    string resourceType,
+    IReadOnlyList<QueryParameter> parameters,
+    SearchOptionsBuilder optionsBuilder,
+    ISymbolResolver resolver,
+    CancellationToken cancellationToken,
+    ICompartmentDefinitionManager? compartmentDefinitionManager = null,
+    ISearchParameterDefinitionManager? searchParameterDefinitionManager = null)
+```
+
+It takes the **concrete** `SearchOptionsBuilder`, not `ISearchOptionsBuilder` — this is a compiler entry
+point, not a DI seam, and Task 7 adds the outcome-collector overload only to the concrete class. Do not
+widen `ISearchOptionsBuilder`. The parameter order mirrors `Resolve.RunAsync`, which likewise places
+`cancellationToken` before its two optional definition managers.
 
 - [ ] **Step 1: Write the failing test**
 
 ```csharp
+using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Tracing;
 
 namespace Ignixa.Search.Sql.Tests.Tracing;
@@ -1249,7 +1460,7 @@ public class SearchTraceTests
             .OfType<ParameterOutcome.Failed>()
             .ShouldHaveSingleItem();
 
-        failed.Stage.ShouldBe(nameof(TraceStage.Resolve));
+        failed.Stage.ShouldBe(TraceStage.Resolve);
     }
 }
 ```
@@ -1264,19 +1475,8 @@ Expected: FAIL — `SearchCompiler` does not exist.
 - [ ] **Step 3: Create the trace records**
 
 ```csharp
-namespace Ignixa.Search.Sql.Tracing;
+using Ignixa.Search.Expressions;
 
-/// <summary>Which compilation stage an outcome came from.</summary>
-public enum TraceStage
-{
-    Parse,
-    Resolve,
-    Lower,
-    Emit,
-}
-```
-
-```csharp
 namespace Ignixa.Search.Sql.Tracing;
 
 /// <summary>One CTE's link back to the parameter that produced it. Null ordinal where exempt —
@@ -1338,7 +1538,8 @@ dispatchers, which already hold the predicate — one place each, rather than a 
 ```
 
 Rename the existing body to `LowerCore`. Apply the same wrapper in
-`Lowering/Composite/CompositeLoweringDispatcher.cs`, using the composite's own span.
+`Lowering/Composite/CompositeLoweringDispatcher.cs` — that dispatcher holds a *components list*, not a
+single predicate, so use `components[0].Span` **after** its existing `OrderBy(c => c.Position)` ordering.
 
 Enriching `Exception.Data` and rethrowing preserves the exception type, so production callers see exactly
 what they see today — only the trace assembler reads the key.
@@ -1347,7 +1548,7 @@ what they see today — only the trace assembler reads the key.
 
 Create `SearchCompiler.cs`. It must:
 1. Call `SearchOptionsBuilder.Build` with an outcome collector (never re-implement the loop).
-2. Call `Resolve.RunAsync`, and for every entry in `ResolvedSymbols.Unresolved` replace that parameter's outcome with `Failed(nameof(TraceStage.Resolve), …, span)`.
+2. Call `Resolve.RunAsync`, and for every entry in `ResolvedSymbols.Unresolved` replace that parameter's outcome with `Failed(TraceStage.Resolve, …, span)`. **Match rule:** walk each `ParameterTrace.Ir` for a `SearchParameterPredicateExpression` whose `Parameter` is that same `SearchParameterInfo` instance. Repeated parameters sharing one definition instance will *both* be marked `Failed` — that is correct, not a bug.
 3. Call `Lower.Run`, then map each `CteOrigin.SourceNode` to its owning `ParameterTrace` by **reference identity** against each trace's `Ir` subtree; where no match is found, emit `CteProvenance` with a null ordinal.
 4. Call `SqlBuilder.Run(plan, new EmitOptions(IncludeTextRanges: true))`.
 5. Catch `NotSupportedException` and `KeyNotFoundException` **at this boundary only**, recording `Failed` with the stage rather than letting it escape. Read the span from `ex.Data[LeafLoweringDispatcher.SpanDataKey]` when present.
@@ -1361,11 +1562,15 @@ Expected: PASS — 2 tests.
 
 Add to `SearchTraceTests` a theory covering leaf, composite, chain, include, sort, `:not`, and `:missing`. For each: every `SearchParameterPredicateExpression`/`CompositeComponentExpression` in the IR has a non-null `Span`; every leaf/composite-derived `ParamSource` CTE has a non-null `ParameterOrdinal`; every CTE has a `SqlTextRange`. `:text` and `:of-type` are exempt on the IR side; `:missing`, compartment, and structural CTEs are exempt on the plan side.
 
-- [ ] **Step 8: Run the full suites**
+- [ ] **Step 8: Run the full suites and build the solution**
+
+This is the plan's exit gate — the only point where everything is verified together.
 
 Run: `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj -f net10.0`
 Run: `dotnet test test/Ignixa.Application.Tests/Ignixa.Application.Tests.csproj -f net10.0`
-Expected: PASS — both suites green.
+Run: `dotnet build All.sln`
+Expected: both suites green; solution builds with 0 errors. (`Ignixa.DataLayer.LegacySqlEF.Tests` has
+pre-existing failures unrelated to this work — no *new* errors may appear.)
 
 - [ ] **Step 9: Commit**
 
