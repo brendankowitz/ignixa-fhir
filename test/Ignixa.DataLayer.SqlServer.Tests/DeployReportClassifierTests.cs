@@ -15,18 +15,23 @@ public class DeployReportClassifierTests
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
     }
 
+    // Proves the Issue-child signal is checked for Drop operations too, not just Alter --
+    // Drop isn't blanket-exempted like Create/Refresh. Shape verified against real DacFx output
+    // (Task 9 empirical check): dropping an object genuinely absent from source (here simulated
+    // via /p:DropObjectsNotInSource=true against a scratch table not in the dacpac -- production
+    // code never sets that option, but this proves the Issue-child marker generalizes to Drop
+    // when it does trigger) produces exactly this shape -- <Operation Name="Drop"><Item
+    // Type="SqlTable"><Issue Id="N" /></Item></Operation> cross-referencing a DataIssue alert.
+    // Originally this fixture used Type="SqlSimpleColumn" with no Issue child, modeling a
+    // standalone column-drop op; Task 9's real-DacFx check found that shape doesn't occur in
+    // practice -- a column absent from source always folds into a table-level Alter+Issue (per
+    // this class's own doc comment and the Ground Truth section of Task 9's brief), never a
+    // standalone Drop/SqlSimpleColumn item. Updated to the shape DacFx actually produces.
     [Fact]
-    public void GivenAReportWithAnUnrecognizedColumnDrop_WhenClassified_ThenIsNotAutoSafe()
+    public void GivenAReportWithADestructiveTableDrop_WhenClassified_ThenIsNotAutoSafe()
     {
         var xml = ReadFixture("synthetic-destructive-drop.xml");
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeFalse();
-    }
-
-    [Fact]
-    public void GivenACategoryEShapedDefaultConstraintDiff_WhenClassified_ThenIsAutoSafe()
-    {
-        var xml = ReadFixture("synthetic-category-e.xml");
-        DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
     }
 
     [Fact]
@@ -36,25 +41,31 @@ public class DeployReportClassifierTests
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
     }
 
-    // Category F -- discovered by Task 8's real older-schema integration test (not a synthetic
-    // guess): Phase B's Task 9 (commit d7e7c600) added six nullable import-tracking columns to
-    // dbo.PackageResource. DacFx reports this as a table-level Alter/SqlTable item, exactly the
-    // same shape a destructive change to that table would take at the Operation/Item level -- the
-    // only thing distinguishing a real column drop is an accompanying <Issue> cross-reference into
-    // <Alerts><Alert Name="DataIssue">, which this fixture (matching the real report) omits.
     [Fact]
-    public void GivenAPackageResourceAlterReport_WhenClassified_ThenIsAutoSafe()
+    public void GivenADefaultConstraintCanonicalizationDiff_WhenClassified_ThenIsAutoSafe()
     {
-        var xml = ReadFixture("synthetic-category-f.xml");
+        var xml = ReadFixture("synthetic-safe-default-constraint-alter.xml");
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
     }
 
-    // Proves Category F's fix is narrow and name-matched, not a general "any table Alter is
-    // safe" rule: an Alter on a table NOT covered by an allow-list entry is still rejected.
     [Fact]
-    public void GivenAnAlterReportForAnUnrelatedTable_WhenClassified_ThenIsNotAutoSafe()
+    public void GivenATableAlterWithNoIssueMarker_WhenClassified_ThenIsAutoSafe()
     {
-        const string xml = """<?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations><Operation Name="Alter"><Item Value="[dbo].[SomeOtherTable]" Type="SqlTable" /></Operation></Operations></DeploymentReport>""";
+        var xml = ReadFixture("synthetic-safe-table-alter-no-issue.xml");
+        DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenAnAdditiveAlterOnATableNeverPreviouslyAllowListed_WhenClassified_ThenIsAutoSafe()
+    {
+        var xml = ReadFixture("synthetic-safe-alter-unrecognized-table.xml");
+        DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenARealDataIssueAlertShape_WhenClassified_ThenIsNotAutoSafe()
+    {
+        var xml = ReadFixture("synthetic-destructive-alter-with-issue.xml");
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeFalse();
     }
 }
