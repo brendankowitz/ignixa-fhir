@@ -1142,9 +1142,162 @@ git commit -m "test(datalayer-sqlserver): prove the upgrade path end-to-end agai
 
 ---
 
+### Task 9: Generalize `DeployReportClassifier` using the `DataIssue` alert signal
+
+**Files:**
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer/DeployReportClassifier.cs`
+- Modify: `test/Ignixa.DataLayer.SqlServer.Tests/DeployReportClassifierTests.cs`
+
+**Interfaces:**
+- Consumes: nothing new — this is a pure internal redesign of `DeployReportClassifier.IsAutoSafe(string deployReportXml)`. Its public signature is unchanged; every existing caller (`SchemaDeployer.UpgradeIfNeededAsync`, `tools/Ignixa.SchemaUpgrade.Cli`) needs no changes.
+- Produces: the same `IsAutoSafe` method, now classifying via a general signal instead of a growing per-table allow-list.
+
+**Why this task exists**: Task 8's real older-schema test found that `DeployReportClassifier`'s per-category, name-matched allow-list (Categories B through F) doesn't scale — every future migration that touches a not-yet-allow-listed table needs a new hand-added entry, discovered only when someone happens to run a real diff against it. While investigating, Task 8's implementer found a more general, already-present signal: SqlPackage's `DeployReport` XML marks a genuinely destructive operation with a child `<Issue>` element on the affected `<Item>`, cross-referencing an `<Alert Name="DataIssue">` entry in the report's `<Alerts>` section — and a purely-additive change (like the `PackageResource` column-add Category F was hand-added for) carries no such `<Issue>` child at all. The user chose to adopt this as the classifier's general safety rule now, retiring the per-table entries.
+
+**Ground truth, verified directly against this repo's real dacpac** (not assumed — generated fresh during this plan's own writing, following the same discipline Task 3 established): a genuinely destructive diff (an undeclared `BackgroundJobs.ExtraTestColumn` column, forcing DacFx to propose dropping it) produces:
+```xml
+<Alerts><Alert Name="DataMotion"><Issue Value="[dbo].[ResourceChangeData]" /></Alert><Alert Name="DataIssue"><Issue Value="The column [dbo].[BackgroundJobs].[ExtraTestColumn] is being dropped, data loss could occur." Id="1" /></Alert></Alerts><Operations>...<Operation Name="Alter"><Item Value="[dbo].[BackgroundJobs]" Type="SqlTable"><Issue Id="1" /></Item></Operation>...</Operations>
+```
+Note two distinct alert shapes: `DataMotion`'s `<Issue Value="..." />` has no `Id` and never cross-references into any `<Operation>`'s `<Item>` — it's purely informational, unrelated to destructiveness. `DataIssue`'s `<Issue Value="..." Id="1" />` DOES have an `Id`, and the `<Item>` that triggered it carries a matching child `<Issue Id="1" />` (no `Value`, just the reference). This means the classifier does **not** need to parse or cross-reference the `<Alerts>` section at all — checking whether an `<Item>` has **any** child `<Issue>` element is sufficient and simpler: in every real report generated so far (self-consistency comparisons, the real `0db642e3`→current diff, and this destructive case), only `DataIssue`-flagged items ever carry a child `<Issue>` element; `DataMotion` never does, and non-flagged items never do.
+
+- [ ] **Step 1: Independently re-verify the signal holds for the known benign cases, not just the one already documented**
+
+Before removing any existing logic, confirm empirically that none of the previously-allow-listed categories' `Item`s ever carry a child `<Issue>` element:
+```
+dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+```
+Regenerate the self-consistency report (Categories B/C/D — deploy the current dacpac fresh to a scratch database, `DeployReport` that same dacpac against that same database) and grep the output for `<Issue` — expect matches only inside `<Alerts>`, never inside `<Operations>...<Item>`. Then regenerate the real `0db642e3`→current diff using the committed fixture (`test/Ignixa.DataLayer.SqlServer.IntegrationTests/Fixtures/phase-b-pre-task9-schema.dacpac` — deploy it fresh to a scratch database, `DeployReport` the *current* dacpac against it) and confirm the same: the `PackageResource` `Alter` `Item` (Category F's case) has no child `<Issue>` element, even though the overall report's `<Alerts>` may contain a `DataMotion` entry. If either check finds a counter-example (a benign category's `Item` DOES carry an `<Issue>` child), stop and report it as a real finding — do not proceed with the redesign until it's understood.
+
+- [ ] **Step 2: Rewrite `DeployReportClassifier`**
+
+Replace `IsAllowListed` and its per-category logic entirely:
+```csharp
+using System.Xml.Linq;
+
+namespace Ignixa.DataLayer.SqlServer;
+
+/// <summary>
+/// Classifies a SqlPackage/DacFx DeployReport as safe to auto-apply unattended, or not.
+/// Create and Refresh operations are never destructive by construction (Create fails loudly
+/// at deploy time rather than silently corrupting; Refresh only recompiles a procedure's
+/// schema binding). For every other operation, an Item is unsafe if and only if SqlPackage's
+/// own comparison engine flagged it with a child &lt;Issue&gt; element -- this is the same signal
+/// DacFx uses internally to raise a DataIssue alert (e.g. "this column is being dropped, data
+/// loss could occur"). A purely additive change (a new nullable column, a canonicalization-only
+/// default/check-constraint rewrite, the partition-rebuild cascade Script.PostDeployment.sql's
+/// imperative splitting causes) never carries this marker. Verified directly against this
+/// project's real DeployReport XML -- see docs/superpowers/plans/2026-07-19-ignixa-datalayer-sqlserver-phase-c.md
+/// Task 9 for the captured example and the reasoning. This replaces an earlier, narrower design
+/// (a hand-maintained allow-list of known-benign object type/name patterns, "Categories B
+/// through F") that needed a new entry every time a migration touched a not-yet-seen table --
+/// the DataIssue-alert signal is general and needs no future entries.
+/// </summary>
+public static class DeployReportClassifier
+{
+    private static readonly XNamespace ReportNamespace = "http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02";
+
+    private static readonly string[] NeverDestructiveOperations = ["Create", "Refresh"];
+
+    public static bool IsAutoSafe(string deployReportXml)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(deployReportXml);
+
+        var document = XDocument.Parse(deployReportXml);
+        var operations = document.Root?.Element(ReportNamespace + "Operations")?.Elements(ReportNamespace + "Operation")
+            ?? [];
+
+        foreach (var operation in operations)
+        {
+            var operationName = operation.Attribute("Name")?.Value ?? string.Empty;
+            if (NeverDestructiveOperations.Contains(operationName))
+            {
+                continue;
+            }
+
+            foreach (var item in operation.Elements(ReportNamespace + "Item"))
+            {
+                if (item.Element(ReportNamespace + "Issue") is not null)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+}
+```
+
+- [ ] **Step 3: Regenerate the test fixtures to match the general mechanism**
+
+The existing `synthetic-category-e.xml` and `synthetic-category-f.xml` fixtures were hand-authored to exercise the old per-category matching (`Type="SqlDefaultConstraint"`, `Type="SqlTable" Value="[dbo].[PackageResource]"`) — they remain valid inputs (no child `<Issue>` element, so still correctly classify safe under the new rule), but their names now describe an obsolete category system. Rename them for clarity: `synthetic-category-e.xml` → `synthetic-safe-default-constraint-alter.xml`, `synthetic-category-f.xml` → `synthetic-safe-table-alter-no-issue.xml`. Add one new fixture proving the general mechanism actually works for a case the old allow-list never covered — a purely-additive `Alter` on a **different**, never-before-allow-listed table:
+```xml
+<?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations><Operation Name="Alter"><Item Value="[dbo].[SomeFutureTable]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+```
+Save as `test/Ignixa.DataLayer.SqlServer.Tests/Fixtures/synthetic-safe-alter-unrecognized-table.xml`. Also add a fixture proving the destructive case still correctly rejects, using the *real* XML shape captured in this task's own "Ground truth" section above (an `Item` with a genuine child `<Issue Id="1" />`), not the old `synthetic-destructive-drop.xml`'s `Drop`-shaped example — save as `test/Ignixa.DataLayer.SqlServer.Tests/Fixtures/synthetic-destructive-alter-with-issue.xml`:
+```xml
+<?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts><Alert Name="DataIssue"><Issue Value="The column [dbo].[BackgroundJobs].[ExtraTestColumn] is being dropped, data loss could occur." Id="1" /></Alert></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[BackgroundJobs]" Type="SqlTable"><Issue Id="1" /></Item></Operation></Operations></DeploymentReport>
+```
+Keep the original `synthetic-destructive-drop.xml` too — it's still a valid unsafe case (a `Drop` operation, distinct code path from `Alter`, worth continued coverage) and needs no change, since a genuine `Drop` with no child `<Issue>` would be a gap worth testing for on its own terms — but check whether a real, uncontrived `Drop` of something genuinely destructive (not on the old allow-list) would actually carry an `<Issue>` child in practice. If you're not certain, note it as a follow-up rather than asserting either way.
+
+- [ ] **Step 4: Update `DeployReportClassifierTests.cs`**
+
+Update the test method bodies to reference the renamed/new fixture files, keeping the same `Given...When...Then...` test names where the scenario is unchanged (the self-consistency-safe and synthetic-destructive-drop tests need no rename), and add:
+```csharp
+    [Fact]
+    public void GivenAnAdditiveAlterOnATableNeverPreviouslyAllowListed_WhenClassified_ThenIsAutoSafe()
+    {
+        var xml = ReadFixture("synthetic-safe-alter-unrecognized-table.xml");
+        DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenARealDataIssueAlertShape_WhenClassified_ThenIsNotAutoSafe()
+    {
+        var xml = ReadFixture("synthetic-destructive-alter-with-issue.xml");
+        DeployReportClassifier.IsAutoSafe(xml).ShouldBeFalse();
+    }
+```
+Remove the old `GivenACategoryEShapedDefaultConstraintDiff...`/`GivenAnAlterReportForAnUnrelatedTable...`-style tests that specifically asserted on the retired per-category matching's exact boundaries (they tested implementation details of a design that no longer exists) — keep only tests that assert on `IsAutoSafe`'s observable behavior.
+
+- [ ] **Step 5: Run the classifier tests**
+
+```
+dotnet test test/Ignixa.DataLayer.SqlServer.Tests --filter FullyQualifiedName~DeployReportClassifierTests
+```
+Expected: all passing, including the two new tests.
+
+- [ ] **Step 6: Regression-prove against the real Task 8 scenario**
+
+The most important proof this task can offer: confirm the real `0db642e3`→current diff (Task 8's committed fixture) now classifies safe via the *general* mechanism, not the retired `PackageResource`-specific entry. Re-run Task 8's own older-schema integration test:
+```
+dotnet build All.sln
+```
+Set `TEST_SQL_CONNECTION_STRING=Server=localhost;Trusted_Connection=True;TrustServerCertificate=True` and:
+```
+dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests --filter FullyQualifiedName~SchemaDeployerUpgradeTests
+```
+Expected: `GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion` still passes — proving the new general classifier correctly handles this real case without any table-specific code. Also re-run the destructive-diff refusal test in the same filter and confirm it still passes (proving the general rule still correctly refuses).
+
+- [ ] **Step 7: Full solution regression**
+
+```
+dotnet test All.sln --filter "FullyQualifiedName!~E2ETests"
+```
+Expected: all passing except the 2 known pre-existing `Ignixa.SqlOnFhir.Tests` submodule failures.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/DataLayer/Ignixa.DataLayer.SqlServer/DeployReportClassifier.cs test/Ignixa.DataLayer.SqlServer.Tests/DeployReportClassifierTests.cs test/Ignixa.DataLayer.SqlServer.Tests/Fixtures
+git commit -m "refactor(datalayer-sqlserver): generalize DeployReportClassifier using DacFx's DataIssue alert signal"
+```
+
+---
+
 ## Final steps (controller, not a task subagent)
 
-After all 8 tasks are complete and reviewed clean:
+After all 9 tasks are complete and reviewed clean:
 1. Full solution build + test (`dotnet build All.sln`, `dotnet test All.sln --filter "FullyQualifiedName!~E2ETests"`).
 2. Generate the final whole-branch review package (`scripts/review-package` against the merge-base with `feature/fhir-to-sql-compiler` — the same merge-base Phase A and Phase B used, since this branch never merged there) and dispatch the final reviewer on the most capable available model.
 3. Report the full picture to the user; ask explicitly before merging (this branch has stayed standalone through Phase A and Phase B — confirm with the user rather than assuming Phase C follows the same choice) and again before pushing.
