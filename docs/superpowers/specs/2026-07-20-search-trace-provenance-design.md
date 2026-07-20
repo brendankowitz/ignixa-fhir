@@ -103,7 +103,8 @@ public sealed record ParameterTrace(
     int Ordinal,                   // position in the original parameter list — the identity a span needs
     string Key,
     string Value,
-    SyntaxNode? Syntax,            // projected; see §3
+    SyntaxNode? KeySyntax,         // projected; see §3 — structural provenance (chains, includes)
+    SyntaxNode? ValueSyntax,       // projected; see §3 — value structure (alternatives, composites)
     Expression? Ir,
     ParameterOutcome Outcome);
 

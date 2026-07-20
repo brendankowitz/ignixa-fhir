@@ -1389,10 +1389,19 @@ public sealed record ParameterTrace(
     int Ordinal,
     string Key,
     string Value,
-    SyntaxNode? Syntax,
+    SyntaxNode? KeySyntax,
+    SyntaxNode? ValueSyntax,
     Expression? Ir,
     ParameterOutcome Outcome);
 ```
+
+**Both syntax projections are carried — do not collapse them into one field.** They mirror
+`ParseResult`'s two nodes: structural provenance (chains, includes) lives in `KeySyntax`, while value
+structure (alternatives, composites) lives in `ValueSyntax`. Collapsing with `ValueSyntax ?? KeySyntax`
+silently discards the chain structure for every ordinary chained parameter, because `ValueSyntax` is
+non-null for essentially all of them — which would throw away exactly the provenance the syntax
+projection exists to provide. `ValueSyntax` is legitimately null for `_not-referenced` and include shapes;
+both are null when a parameter is `Ignored`/`Failed` before parsing completes.
 
 - [ ] **Step 4: Add the collector overload to `SearchOptionsBuilder`**
 
