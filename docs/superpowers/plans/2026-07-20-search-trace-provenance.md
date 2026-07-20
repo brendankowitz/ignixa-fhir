@@ -14,7 +14,12 @@
 
 - Target frameworks: `net9.0;net10.0`. Run tests with `-f net10.0`.
 - `TreatWarningsAsErrors` is on repo-wide. Zero warnings, zero errors.
-- Nullable reference types enabled. Do not add `#nullable disable`.
+- **Nullability differs by project — check before adding a file:**
+  - `Ignixa.Search` is `<Nullable>disable</Nullable>` at the project level, and every file opts in with an
+    explicit `#nullable enable` pragma above the namespace. **Every new file added to this project must
+    include that pragma**, matching its siblings.
+  - `Ignixa.Search.Sql` is `<Nullable>enable</Nullable>` project-wide; no pragma needed there.
+  - Never add `#nullable disable` to a new file.
 - **One type per file.**
 - File-scoped namespaces; System usings first, outside the namespace.
 - Test naming: `GivenContext_WhenAction_ThenResult`. AAA pattern. Shouldly assertions.
