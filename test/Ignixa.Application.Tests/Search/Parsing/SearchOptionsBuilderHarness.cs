@@ -33,6 +33,20 @@ internal sealed class SearchOptionsBuilderHarness
         return new SearchOptionsBuilderHarness(new SearchOptionsBuilder(context.Parser, context.DefinitionManager));
     }
 
+    /// <summary>Wires a Patient search over a forward-chained reference, e.g. <c>general-practitioner.name</c>.</summary>
+    public static SearchOptionsBuilderHarness ForPatientChainedThrough(
+        string referenceCode,
+        string targetResourceType,
+        string targetCode,
+        SearchParamType targetType)
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Patient", referenceCode, SearchParamType.Reference, targets: [targetResourceType]);
+        context.Add(targetResourceType, targetCode, targetType);
+
+        return new SearchOptionsBuilderHarness(new SearchOptionsBuilder(context.Parser, context.DefinitionManager));
+    }
+
     public SearchOptions Build(IReadOnlyList<(string Key, string Value)> parameters, IList<ParameterTrace>? outcomes = null)
     {
         var queryParameters = parameters

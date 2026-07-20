@@ -36,4 +36,20 @@ public class ParameterOutcomeTests
 
         outcomes.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
     }
+
+    [Fact]
+    public void GivenAChainedKey_WhenBuilt_ThenKeySyntaxRetainsTheChainStructure()
+    {
+        var harness = SearchOptionsBuilderHarness.ForPatientChainedThrough(
+            "general-practitioner", "Practitioner", "name", SearchParamType.String);
+        var outcomes = new List<ParameterTrace>();
+
+        harness.Build([("general-practitioner.name", "Smith")], outcomes);
+
+        var trace = outcomes.ShouldHaveSingleItem();
+        trace.Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        trace.KeySyntax.ShouldNotBeNull();
+        trace.KeySyntax!.Kind.ShouldBe("ForwardChain");
+        trace.KeySyntax.Children.ShouldHaveSingleItem();
+    }
 }

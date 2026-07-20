@@ -185,7 +185,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                                 searchOrdinal++,
                                 param.Name,
                                 param.Value,
-                                parseResult.ValueSyntax ?? parseResult.KeySyntax,
+                                parseResult.KeySyntax,
+                                parseResult.ValueSyntax,
                                 parseResult.Expression,
                                 new ParameterOutcome.Compiled()));
                         }
@@ -244,6 +245,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         param.Value,
                         null,
                         null,
+                        null,
                         new ParameterOutcome.Ignored(ex.Message, null)));
                 }
             }
@@ -256,6 +258,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         searchOrdinal++,
                         param.Name,
                         param.Value,
+                        null,
                         null,
                         null,
                         new ParameterOutcome.Ignored(ex.Message, null)));
