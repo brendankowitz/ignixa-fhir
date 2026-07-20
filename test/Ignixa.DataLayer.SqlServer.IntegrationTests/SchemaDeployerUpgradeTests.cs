@@ -5,6 +5,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.SqlServer.Dac;
 using Shouldly;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
@@ -160,6 +161,133 @@ public class SchemaDeployerUpgradeTests
 
             var schemaVersionRowCountAfter = await GetSchemaVersionRowCountAsync(connectionString, CancellationToken.None);
             schemaVersionRowCountAfter.ShouldBe(schemaVersionRowCountBefore);
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    // Built from commit 0db642e3 (Phase B, before Task 9's terminology tables) via:
+    //   git worktree add /tmp/ignixa-phase-c-old-schema 0db642e3
+    //   dotnet build /tmp/ignixa-phase-c-old-schema/src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+    // then copied into this project's Fixtures directory so the test is runnable without git
+    // history archaeology or a scratch worktree still being present. Structurally missing
+    // TermCodeSystem/TermConcept/etc and the SchemaVersion table itself (both predate this
+    // commit) -- a real schema gap, not a synthetic fixture, used to prove the upgrade
+    // *mechanism* works, not a genuine version-1-to-version-2 transition (none exists yet).
+    private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
+
+    [Fact]
+    public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion()
+    {
+        // Arrange -- a real, empty, freshly-created database.
+        var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            // Deploy the OLD dacpac directly via DacServices -- SchemaDeployer only ever knows
+            // about the CURRENT embedded dacpac, so an older schema has to be put in place out of
+            // band, exactly like a real pre-Phase-C tenant's database would already look before
+            // this app version ever touches it.
+            var oldDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", OldDacpacFixtureFileName);
+            using (var oldDacpacStream = File.OpenRead(oldDacpacPath))
+            using (var oldPackage = DacPackage.Load(oldDacpacStream))
+            {
+                var oldDacServices = new DacServices(connectionString);
+                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, cancellationToken: CancellationToken.None);
+            }
+
+            var tableNamesAfterOldDeploy = await GetTableNamesAsync(connectionString, CancellationToken.None);
+            tableNamesAfterOldDeploy.ShouldContain("Resource");
+            tableNamesAfterOldDeploy.ShouldNotContain("TermCodeSystem");
+            tableNamesAfterOldDeploy.ShouldNotContain("SchemaVersion");
+
+            // Confirm SchemaVersionResolver correctly reports version 0 for this un-versioned
+            // pre-Phase-C schema (no SchemaVersion table exists at all yet).
+            var resolver = new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance);
+            var versionBeforeUpgrade = await resolver.GetCurrentVersionAsync(1, CancellationToken.None);
+            versionBeforeUpgrade.ShouldBe(0);
+
+            var deployer = CreateDeployer(connectionString);
+
+            // Act -- the pending diff is pure net-new tables/columns (TermCodeSystem etc.), no
+            // drops, so it must classify as auto-safe and apply without throwing.
+            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
+
+            // Assert
+            var tableNamesAfterUpgrade = await GetTableNamesAsync(connectionString, CancellationToken.None);
+            tableNamesAfterUpgrade.ShouldContain("TermCodeSystem");
+            tableNamesAfterUpgrade.ShouldContain("SchemaVersion");
+
+            var schemaVersionRowCount = await GetSchemaVersionRowCountAsync(connectionString, CancellationToken.None);
+            schemaVersionRowCount.ShouldBe(1);
+
+            var versionAfterUpgrade = await resolver.GetCurrentVersionAsync(1, CancellationToken.None);
+            versionAfterUpgrade.ShouldBe(SchemaVersionConstants.CurrentVersion);
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task GivenATenantWithAGenuinelyDestructiveDiffPending_WhenUpgradeIfNeededAsyncCalled_ThenThrowsAndDoesNotModifySchema()
+    {
+        // Arrange -- a real, empty, freshly-created database, deployed to the current dacpac's
+        // real schema via DeployIfEmptyAsync (stamps SchemaVersion at CurrentVersion).
+        var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            var deployer = CreateDeployer(connectionString);
+            await deployer.DeployIfEmptyAsync(1, CancellationToken.None);
+
+            // Diverge the live database from what the (current, embedded) dacpac declares: add a
+            // column the dacpac's model does not know about. Comparing the embedded dacpac against
+            // this database makes DacFx propose dropping ExtraTestColumn to reconcile the live
+            // database back to the dacpac's declared shape -- a genuine, unambiguous destructive
+            // operation, with no second dacpac needed anywhere.
+            await using (var alterConnection = new SqlConnection(connectionString))
+            {
+                await alterConnection.OpenAsync(CancellationToken.None);
+                await using var alterCommand = alterConnection.CreateCommand();
+                alterCommand.CommandText = "ALTER TABLE dbo.BackgroundJobs ADD ExtraTestColumn INT NULL";
+                await alterCommand.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            // Manually roll SchemaVersion back below CurrentVersion so UpgradeIfNeededAsync
+            // actually attempts the diff instead of no-op'ing on an already-current tenant.
+            await using (var stampConnection = new SqlConnection(connectionString))
+            {
+                await stampConnection.OpenAsync(CancellationToken.None);
+                await using var updateCommand = stampConnection.CreateCommand();
+                updateCommand.CommandText = "UPDATE dbo.SchemaVersion SET Version = 0";
+                await updateCommand.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            // Act & Assert -- throws, mentioning the schema-upgrade CLI tool.
+            var ex = await Should.ThrowAsync<InvalidOperationException>(
+                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
+
+            ex.Message.ShouldContain("tools/Ignixa.SchemaUpgrade.Cli");
+
+            // Confirm the refused diff was never actually applied -- ExtraTestColumn still exists,
+            // proving the method threw before calling DacServices.Deploy, not after a partial apply.
+            await using var verifyConnection = new SqlConnection(connectionString);
+            await verifyConnection.OpenAsync(CancellationToken.None);
+            await using var verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = """
+                SELECT 1 FROM sys.columns
+                WHERE object_id = OBJECT_ID('dbo.BackgroundJobs') AND name = 'ExtraTestColumn'
+                """;
+            var columnStillExists = await verifyCommand.ExecuteScalarAsync(CancellationToken.None);
+            columnStillExists.ShouldNotBeNull();
         }
         finally
         {

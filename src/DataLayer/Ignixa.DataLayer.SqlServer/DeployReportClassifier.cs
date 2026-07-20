@@ -78,6 +78,26 @@ public static class DeployReportClassifier
             return true;
         }
 
+        // Category F: discovered empirically by Task 8's real older-schema (commit 0db642e3)
+        // upgrade test, not a synthetic fixture. Phase B's Task 9 (commit d7e7c600) added six
+        // nullable import-tracking columns to an existing table, dbo.PackageResource. DacFx
+        // reports this as a table-level "Alter"/"SqlTable" item -- it does not surface individual
+        // column-level Add/Drop items the way it does for a genuine destructive change (compare:
+        // a real column drop instead produces an accompanying <Issue> cross-reference into
+        // <Alerts><Alert Name="DataIssue">, confirmed via manual DeployReport generation against a
+        // database with an extra, undeclared column -- see docs/superpowers/sdd/task-8-report.md).
+        // This specific Alter carries no such DataIssue alert -- verified purely additive
+        // (ContentHash, ImportCompletedDate, ImportErrorMessage, ImportStartDate,
+        // ImportedConceptCount, TerminologyImportStatus, all NULL, no drops). Narrow and
+        // name-matched like Categories C/D, not a general "any Alter is safe" rule: a future
+        // migration that alters a *different* table still needs its own allow-list entry (or the
+        // classifier needs the more general DataIssue-alert-based signal this discovery points
+        // to -- flagged in Task 8's report as a design decision, not applied here).
+        if (type == "SqlTable" && value.Contains("[dbo].[PackageResource]", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
         return false;
     }
 }
