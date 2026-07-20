@@ -10,7 +10,8 @@ namespace Ignixa.Search.Sql.Symbols;
 /// The compiler's Resolve stage: walks a typed predicate tree once (plus the includes, sort, and
 /// compartments), collects every search parameter and resource type it references, and resolves them all
 /// through <see cref="ISymbolResolver"/>. This is the compiler's only I/O, done up front, producing an
-/// immutable <see cref="SymbolTable"/> that Lower and Emit consume synchronously.
+/// immutable <see cref="SymbolTable"/> that Lower and Emit consume synchronously, plus the list of
+/// parameters the resolver could not find (see <see cref="ResolvedSymbols"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,7 +32,7 @@ namespace Ignixa.Search.Sql.Symbols;
 /// </remarks>
 public static class Resolve
 {
-    public static async Task<SymbolTable> RunAsync(
+    public static async Task<ResolvedSymbols> RunAsync(
         Expression? expression,
         IReadOnlyList<IncludeExpression> includes,
         IReadOnlyList<IncludeExpression> revIncludes,
@@ -71,12 +72,17 @@ public static class Resolve
         var compartmentMembership = ResolveCompartmentMembership(collector, compartmentDefinitionManager, searchParameterDefinitionManager);
 
         var searchParamIds = new Dictionary<string, short>();
+        var unresolved = new List<SearchParameterInfo>();
         foreach (var parameter in collector.Parameters)
         {
             var id = await resolver.GetSearchParamIdAsync(parameter, cancellationToken);
             if (id.HasValue)
             {
                 searchParamIds[parameter.Url.ToString()] = id.Value;
+            }
+            else
+            {
+                unresolved.Add(parameter);
             }
         }
 
@@ -96,7 +102,7 @@ public static class Resolve
             }
         }
 
-        return new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership);
+        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership), unresolved);
     }
 
     private static Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? ResolveCompartmentMembership(
