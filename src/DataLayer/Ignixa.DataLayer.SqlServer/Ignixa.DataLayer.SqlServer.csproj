@@ -25,6 +25,8 @@
   <ItemGroup>
     <!-- Project references -->
     <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <!-- RowGenerators (Phase D Task 1 copy) reference SqlCatalog for column/table facts -->
+    <ProjectReference Include="..\..\Core\Ignixa.Search.Sql\Ignixa.Search.Sql.csproj" />
   </ItemGroup>
 
   <ItemGroup>
