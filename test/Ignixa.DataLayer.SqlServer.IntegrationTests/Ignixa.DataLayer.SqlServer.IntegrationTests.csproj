@@ -24,6 +24,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj" />
+    <!-- Differential-test harness (Task 5) constructs the real legacy EF-based
+         SqlEntityFrameworkRepository, matching SqlEntityFrameworkRepositoryFactory's production wiring. -->
+    <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
   </ItemGroup>
 
   <ItemGroup>

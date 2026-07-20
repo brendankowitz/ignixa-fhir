@@ -31,6 +31,11 @@ public sealed class TestTenantDatabase
 
     public ISqlExecutionService SqlExecutionService { get; }
 
+    // Exposed for consumers that need to wire a non-ISqlExecutionService client directly against this
+    // database (e.g. DifferentialTestHarness's EF DbContext for the legacy SqlEntityFrameworkRepository,
+    // which needs a raw connection string, not the tenant-routed ISqlExecutionService abstraction).
+    public string ConnectionString => BuildConnectionStringForDatabase(_databaseName);
+
     public static async Task<TestTenantDatabase> CreateEmptyAsync(CancellationToken cancellationToken = default)
     {
         var databaseName = $"IgnixaDataLayerSqlServerTest_{Guid.NewGuid():N}";
