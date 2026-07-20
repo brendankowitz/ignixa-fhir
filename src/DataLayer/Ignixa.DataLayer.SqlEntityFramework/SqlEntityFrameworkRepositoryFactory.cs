@@ -296,6 +296,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
 
             _schemaDeployer.DeployIfEmptyAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
             logger.LogInformation("Database schema deployment completed for tenant {TenantId}", tenantId);
+
+            _schemaDeployer.UpgradeIfNeededAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
+            logger.LogInformation("Database schema upgrade check completed for tenant {TenantId}", tenantId);
         }
         catch (Exception ex)
         {
