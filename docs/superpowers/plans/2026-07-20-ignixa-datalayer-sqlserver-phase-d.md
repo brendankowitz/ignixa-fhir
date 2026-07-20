@@ -722,9 +722,14 @@ public class DifferentialTestHarnessTests : IAsyncLifetime
     [Fact]
     public async Task GivenTwoFreshlyDeployedDatabases_WhenSnapshottingDboResourceType_ThenBothAreIdentical()
     {
-        // dbo.ResourceType is seeded identically by the dacpac's post-deployment script on both
-        // sides -- a genuine zero-diff baseline proving the harness itself works before any real
-        // resource data is written by either repository.
+        // dbo.ResourceType is seeded identically on both sides -- NOT by the dacpac's
+        // post-deployment script (Task 2's implementer found the real DDL has zero ResourceType
+        // seed data; it's normally populated on-demand by the write path), but because BOTH
+        // databases provision through the same TestTenantDatabase.CreateEmptyAsync() (Task 2),
+        // which seeds one "Patient" row to unblock its own cache tests. Since Task 5's harness
+        // provisions both LegacyRepository's and NewRepository's databases through that same
+        // factory, the seed is symmetric -- a genuine zero-diff baseline proving the harness
+        // itself works before any real resource data is written by either repository.
         var legacy = await _harness.SnapshotLegacyAsync("dbo.ResourceType", "1=1", CancellationToken.None);
         var @new = await _harness.SnapshotNewAsync("dbo.ResourceType", "1=1", CancellationToken.None);
 
