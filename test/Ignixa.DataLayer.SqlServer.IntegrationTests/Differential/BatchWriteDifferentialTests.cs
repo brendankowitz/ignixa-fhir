@@ -41,17 +41,32 @@ public class BatchWriteDifferentialTests : IAsyncLifetime
 
         // Blanket-ignoring RawResource above throws away comparison of everything else riding along
         // in that column -- AssertResourceContentEquivalent decompresses both sides, strips only
-        // meta.lastUpdated, and deep-compares the rest. Both snapshots are sorted by the same
-        // deterministic, non-ignored-column sort key (see DifferentialTestHarness.BuildSortKey),
-        // and ResourceId is part of that key and unique per row here, so row N on one side lines up
-        // with row N on the other.
+        // meta.lastUpdated, and deep-compares the rest. AssertEquivalent above sorts its OWN local
+        // copies of the rows for its column-diff comparison, but never mutates legacySnapshot.Rows /
+        // newSnapshot.Rows themselves, so those lists carry no row-order guarantee. Explicitly sort
+        // both snapshots' rows here by ResourceId -- distinct per row for these 5 batch-written
+        // resources -- so row N on one sorted list genuinely corresponds to row N on the other before
+        // indexing into them below.
         legacySnapshot.Rows.Count.ShouldBe(5);
         newSnapshot.Rows.Count.ShouldBe(5);
+        var sortedLegacySnapshot = SortByResourceId(legacySnapshot);
+        var sortedNewSnapshot = SortByResourceId(newSnapshot);
         for (var rowIndex = 0; rowIndex < 5; rowIndex++)
         {
-            var legacyRawResource = DifferentialTestHarness.ExtractRawResourceBytes(legacySnapshot, rowIndex);
-            var newRawResource = DifferentialTestHarness.ExtractRawResourceBytes(newSnapshot, rowIndex);
+            var legacyRawResource = DifferentialTestHarness.ExtractRawResourceBytes(sortedLegacySnapshot, rowIndex);
+            var newRawResource = DifferentialTestHarness.ExtractRawResourceBytes(sortedNewSnapshot, rowIndex);
             _harness.AssertResourceContentEquivalent(legacyRawResource, newRawResource);
         }
     }
+
+    /// <summary>
+    /// Builds a new <see cref="RowStateSnapshot"/> with rows ordered by their <c>ResourceId</c> column
+    /// value, ascending. <see cref="RowStateSnapshot.Rows"/> carries no row-order guarantee on its own
+    /// (see the comment above), so callers that need row N on one snapshot to correspond to row N on
+    /// another must sort both by a column that is actually present and distinct per row in their data
+    /// -- here, ResourceId.
+    /// </summary>
+    private static RowStateSnapshot SortByResourceId(RowStateSnapshot snapshot) => new(
+        snapshot.Rows.OrderBy(row => (string)row["ResourceId"]!, StringComparer.Ordinal).ToList(),
+        snapshot.TableName);
 }
