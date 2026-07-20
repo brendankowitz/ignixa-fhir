@@ -3,30 +3,40 @@ using Shouldly;
 
 namespace Ignixa.SchemaUpgrade.Cli.Tests;
 
+// Both tests in this class mutate/depend on process-wide state (CWD for the relative-path test)
+// or an arbitrary-but-fixed absolute path (the other). xUnit v2 runs tests within the same class
+// sequentially by default (parallelization happens across collections/classes, not within one),
+// so the two facts below never interleave with each other. The CWD mutation is also safe against
+// the other classes in this assembly (ConfirmApplyTests, RootCommandHelpTests,
+// RunAsyncDataLossTests): none of them resolve any path relative to the current working
+// directory, so a concurrently-running class is unaffected by this class changing it.
 public class RunAsyncConfigLoadTests
 {
-    // Proves the Program.cs:44-48 bug (Finding 2) is fixed: AddJsonFile used to resolve
-    // "appsettings.json" relative to AppContext.BaseDirectory (the test assembly's own bin
-    // folder) with no SetBasePath, so a --config path pointing anywhere else -- an arbitrary
-    // temp directory here, standing in for "wherever the operator happens to run the packaged
-    // tool from" -- would throw FileNotFoundException before ever reaching tenant resolution.
-    // No real database is needed: getting as far as a tenant-resolution failure (a nonexistent
-    // tenant ID) proves the config file itself was found and parsed.
+    private const string MinimalAppSettingsJson = """
+        {
+          "Tenants": {
+            "Mode": "Isolated",
+            "Configurations": []
+          }
+        }
+        """;
+
+    // Proves --config threads an explicit, non-default path through to ConfigurationBuilder
+    // correctly: an absolute path pointing at an arbitrary temp directory (standing in for "some
+    // location the operator explicitly points at") must be found and parsed. Note: .NET's
+    // FileConfigurationSource.ResolveFileProvider() resolves a rooted path correctly with or
+    // without SetBasePath, so this test alone does NOT prove Program.cs:53's
+    // .SetBasePath(Directory.GetCurrentDirectory()) is present -- see the relative-path test below
+    // for that. No real database is needed: getting as far as a tenant-resolution failure (a
+    // nonexistent tenant ID) proves the config file itself was found and parsed.
     [Fact]
-    public async Task GivenConfigPathPointingAtAnArbitraryDirectory_WhenRunAsyncCalled_ThenConfigLoadsWithoutFileNotFoundException()
+    public async Task GivenAnAbsoluteConfigPath_WhenRunAsyncCalled_ThenConfigLoadsWithoutFileNotFoundException()
     {
         var tempDir = Directory.CreateTempSubdirectory("schema-upgrade-cli-config-test-");
         try
         {
             var configPath = Path.Combine(tempDir.FullName, "test-appsettings.json");
-            await File.WriteAllTextAsync(configPath, """
-                {
-                  "Tenants": {
-                    "Mode": "Isolated",
-                    "Configurations": []
-                  }
-                }
-                """);
+            await File.WriteAllTextAsync(configPath, MinimalAppSettingsJson);
 
             using var input = new StringReader(string.Empty);
             using var output = new StringWriter();
@@ -41,6 +51,44 @@ public class RunAsyncConfigLoadTests
         }
         finally
         {
+            Directory.Delete(tempDir.FullName, recursive: true);
+        }
+    }
+
+    // Proves the actual bug fix (Program.cs:53's .SetBasePath(Directory.GetCurrentDirectory())):
+    // the realistic default case is a bare relative filename ("appsettings.json", matching
+    // configOption's DefaultValueFactory) resolved against wherever the operator happens to run
+    // the packaged tool from -- NOT the CLI assembly's own bin directory. Without SetBasePath,
+    // AddJsonFile resolves a relative path against AppContext.BaseDirectory instead, so this test
+    // would throw FileNotFoundException if the fix were reverted (verified manually: see
+    // .superpowers/sdd/task-9-fix-report.md). A rooted/absolute --config path (the test above)
+    // resolves correctly with or without SetBasePath, so it can't stand in for this scenario.
+    [Fact]
+    public async Task GivenARelativeConfigPathAndAnOperatorWorkingDirectory_WhenRunAsyncCalled_ThenConfigLoadsRelativeToCurrentDirectory()
+    {
+        var tempDir = Directory.CreateTempSubdirectory("schema-upgrade-cli-relative-config-test-");
+        var originalCurrentDirectory = Environment.CurrentDirectory;
+        try
+        {
+            var configPath = Path.Combine(tempDir.FullName, "appsettings.json");
+            await File.WriteAllTextAsync(configPath, MinimalAppSettingsJson);
+
+            Environment.CurrentDirectory = tempDir.FullName;
+
+            using var input = new StringReader(string.Empty);
+            using var output = new StringWriter();
+
+            var exception = await Record.ExceptionAsync(() =>
+                Program.RunAsync(tenantId: 999, autoConfirm: true, allowDataLoss: false, "appsettings.json", input, output, CancellationToken.None));
+
+            exception.ShouldNotBeNull();
+            exception.ShouldNotBeOfType<FileNotFoundException>();
+            exception.ShouldBeOfType<InvalidOperationException>();
+            exception.Message.ShouldContain("Tenant 999 does not exist or is inactive.");
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalCurrentDirectory;
             Directory.Delete(tempDir.FullName, recursive: true);
         }
     }
