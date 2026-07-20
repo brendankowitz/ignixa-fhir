@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -21,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\tools\Ignixa.SchemaUpgrade.Cli\Ignixa.SchemaUpgrade.Cli.csproj" />
+    <ProjectReference Include="..\..\src\DataLayer\Ignixa.DataLayer.SqlServer\Ignixa.DataLayer.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>
