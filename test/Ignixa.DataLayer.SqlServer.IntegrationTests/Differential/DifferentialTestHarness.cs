@@ -184,16 +184,16 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         if (legacy.Rows.Count != @new.Rows.Count)
         {
             throw new ShouldAssertException(
-                $"Differential row count mismatch: legacy snapshot has {legacy.Rows.Count} row(s), new snapshot has {@new.Rows.Count} row(s).");
+                $"Differential row count mismatch on table '{legacy.TableName}': legacy snapshot has {legacy.Rows.Count} row(s), new snapshot has {@new.Rows.Count} row(s).");
         }
 
         var ignored = new HashSet<string>(ignoredColumns, StringComparer.OrdinalIgnoreCase);
-        var sortedLegacy = legacy.Rows.OrderBy(BuildSortKey, StringComparer.Ordinal).ToList();
-        var sortedNew = @new.Rows.OrderBy(BuildSortKey, StringComparer.Ordinal).ToList();
+        var sortedLegacy = legacy.Rows.OrderBy(row => BuildSortKey(row, ignored), StringComparer.Ordinal).ToList();
+        var sortedNew = @new.Rows.OrderBy(row => BuildSortKey(row, ignored), StringComparer.Ordinal).ToList();
 
         for (var rowIndex = 0; rowIndex < sortedLegacy.Count; rowIndex++)
         {
-            AssertRowEquivalent(sortedLegacy[rowIndex], sortedNew[rowIndex], rowIndex, ignored);
+            AssertRowEquivalent(sortedLegacy[rowIndex], sortedNew[rowIndex], rowIndex, ignored, legacy.TableName);
         }
     }
 
@@ -201,7 +201,8 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         IReadOnlyDictionary<string, object?> legacyRow,
         IReadOnlyDictionary<string, object?> newRow,
         int rowIndex,
-        IReadOnlySet<string> ignoredColumns)
+        IReadOnlySet<string> ignoredColumns,
+        string tableName)
     {
         foreach (var columnName in legacyRow.Keys)
         {
@@ -213,7 +214,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
             if (!newRow.TryGetValue(columnName, out var newRawValue))
             {
                 throw new ShouldAssertException(
-                    $"Differential mismatch at row {rowIndex}, column '{columnName}': present in legacy snapshot but missing from new snapshot.");
+                    $"Differential mismatch on table '{tableName}' at row {rowIndex}, column '{columnName}': present in legacy snapshot but missing from new snapshot.");
             }
 
             var legacyValue = NormalizeValue(legacyRow[columnName]);
@@ -222,7 +223,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
             if (!Equals(legacyValue, newValue))
             {
                 throw new ShouldAssertException(
-                    $"Differential mismatch at row {rowIndex}, column '{columnName}': legacy='{legacyValue ?? "<null>"}', new='{newValue ?? "<null>"}'.");
+                    $"Differential mismatch on table '{tableName}' at row {rowIndex}, column '{columnName}': legacy='{legacyValue ?? "<null>"}', new='{newValue ?? "<null>"}'.");
             }
         }
     }
@@ -248,7 +249,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
             ReadRow,
             cancellationToken);
 
-        return new RowStateSnapshot(rows);
+        return new RowStateSnapshot(rows, tableName);
     }
 
     private static IReadOnlyDictionary<string, object?> ReadRow(SqlDataReader reader)
@@ -273,15 +274,23 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         _ => value,
     };
 
-    // Stable, deterministic sort key built from every normalized column value in a fixed
+    // Stable, deterministic sort key built from every normalized, NON-ignored column value in a fixed
     // (alphabetical) column order -- SQL doesn't guarantee row order without ORDER BY, and TVP-based
     // bulk inserts don't guarantee insertion order either, so an unsorted comparison would spuriously
-    // fail on correct data just because two result sets came back in different orders.
-    private static string BuildSortKey(IReadOnlyDictionary<string, object?> row)
+    // fail on correct data just because two result sets came back in different orders. Ignored columns
+    // (e.g. ResourceSurrogateId, TransactionId) are excluded from the key: they hold independently
+    // allocated, genuinely nondeterministic values on each side, so including them in a multi-row
+    // snapshot can make legacy and new sort into different orders and pair up the wrong rows.
+    private static string BuildSortKey(IReadOnlyDictionary<string, object?> row, IReadOnlySet<string> ignoredColumns)
     {
         var builder = new StringBuilder();
         foreach (var columnName in row.Keys.OrderBy(key => key, StringComparer.Ordinal))
         {
+            if (ignoredColumns.Contains(columnName))
+            {
+                continue;
+            }
+
             var normalized = NormalizeValue(row[columnName]);
             var formatted = normalized is null ? "<NULL>" : Convert.ToString(normalized, CultureInfo.InvariantCulture);
             builder.Append(columnName).Append('=').Append(formatted).Append("|COL|");

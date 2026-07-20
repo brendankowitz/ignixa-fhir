@@ -47,20 +47,57 @@ public class DifferentialTestHarnessTests : IAsyncLifetime
     [Fact]
     public void GivenTwoSnapshotsWithDifferingRowCounts_WhenAssertEquivalentCalled_ThenThrowsWithACountMismatchMessage()
     {
-        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1 }]);
-        var @new = new RowStateSnapshot([]);
+        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1 }], "dbo.TestTable");
+        var @new = new RowStateSnapshot([], "dbo.TestTable");
 
         var exception = Should.Throw<ShouldAssertException>(() => _harness.AssertEquivalent(legacy, @new));
         exception.Message.ShouldContain("row count");
+        exception.Message.ShouldContain("dbo.TestTable");
     }
 
     [Fact]
     public void GivenTwoSnapshotsDifferingOnlyInAnIgnoredColumn_WhenAssertEquivalentCalledWithThatColumnIgnored_ThenDoesNotThrow()
     {
-        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["ResourceSurrogateId"] = 1000L } ]);
-        var @new = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["ResourceSurrogateId"] = 2000L } ]);
+        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["ResourceSurrogateId"] = 1000L } ], "dbo.TestTable");
+        var @new = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["ResourceSurrogateId"] = 2000L } ], "dbo.TestTable");
 
         Should.NotThrow(() => _harness.AssertEquivalent(legacy, @new, "ResourceSurrogateId"));
+    }
+
+    [Fact]
+    public void GivenMultiRowSnapshotsDifferingOnlyInAnIgnoredColumnWithDifferentSortOrders_WhenAssertEquivalentCalledWithThatColumnIgnored_ThenRowsPairCorrectlyAndDoesNotThrow()
+    {
+        // Proves Finding 1's fix: BuildSortKey must exclude ignored columns from the sort key.
+        // Both rows are identical on every NON-ignored column ("Code"), but each side's
+        // ResourceSurrogateId is independently allocated and, crucially, ordered OPPOSITELY between
+        // legacy and new (legacy: 1000 then 2000; new: 9000 then 1000). If ResourceSurrogateId still
+        // participated in the sort key, legacy would sort as [Code=A/1000, Code=B/2000] while new
+        // would sort as [Code=B/1000, Code=A/9000] -- pairing row 0 of each side ("A" vs "B") and
+        // producing a spurious mismatch despite the data being equivalent on every non-ignored column.
+        var legacy = new RowStateSnapshot(
+            [
+                new Dictionary<string, object?> { ["Code"] = "A", ["ResourceSurrogateId"] = 1000L },
+                new Dictionary<string, object?> { ["Code"] = "B", ["ResourceSurrogateId"] = 2000L },
+            ],
+            "dbo.TestTable");
+        var @new = new RowStateSnapshot(
+            [
+                new Dictionary<string, object?> { ["Code"] = "B", ["ResourceSurrogateId"] = 1000L },
+                new Dictionary<string, object?> { ["Code"] = "A", ["ResourceSurrogateId"] = 9000L },
+            ],
+            "dbo.TestTable");
+
+        Should.NotThrow(() => _harness.AssertEquivalent(legacy, @new, "ResourceSurrogateId"));
+    }
+
+    [Fact]
+    public void GivenAColumnValueMismatch_WhenAssertEquivalentCalled_ThenThrowsWithMessageContainingTheTableName()
+    {
+        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["Code"] = "A" }], "dbo.TestTable");
+        var @new = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["Code"] = "B" }], "dbo.TestTable");
+
+        var exception = Should.Throw<ShouldAssertException>(() => _harness.AssertEquivalent(legacy, @new));
+        exception.Message.ShouldContain("dbo.TestTable");
     }
 
     [Fact]
@@ -69,8 +106,8 @@ public class DifferentialTestHarnessTests : IAsyncLifetime
         // Proves the byte[] normalization (hex-string comparison, not reference equality) works --
         // without it, two snapshots holding equal-content-but-different-instance byte[] values
         // (the real shape RawResource takes) would spuriously fail every comparison.
-        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["RawResource"] = new byte[] { 1, 2, 3 } } ]);
-        var @new = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["RawResource"] = new byte[] { 1, 2, 3 } } ]);
+        var legacy = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["RawResource"] = new byte[] { 1, 2, 3 } } ], "dbo.TestTable");
+        var @new = new RowStateSnapshot([new Dictionary<string, object?> { ["Id"] = 1, ["RawResource"] = new byte[] { 1, 2, 3 } } ], "dbo.TestTable");
 
         Should.NotThrow(() => _harness.AssertEquivalent(legacy, @new));
     }
