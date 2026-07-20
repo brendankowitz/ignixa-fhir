@@ -70,12 +70,14 @@ internal static class SearchKeySyntaxParser
 
         internal IncludeKeySyntax ParseInclude()
         {
+            var start = _offset;
             var source = ParseIncludeSource();
             Require(':', "':'");
 
             if (ConsumeIf('*'))
             {
-                return new IncludeKeySyntax(source, null, null, true);
+                return new IncludeKeySyntax(source, null, null, true)
+                    { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
             }
 
             var parameter = ParseIdentifier("identifier");
@@ -83,11 +85,13 @@ internal static class SearchKeySyntaxParser
                 ? ParseIdentifier("identifier")
                 : null;
 
-            return new IncludeKeySyntax(source, parameter, targetResourceType, false);
+            return new IncludeKeySyntax(source, parameter, targetResourceType, false)
+                { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
         }
 
         internal NotReferencedKeySyntax ParseNotReferenced()
         {
+            var start = _offset;
             var sourceResourceType = ConsumeIf('*')
                 ? null
                 : ParseIdentifier("identifier");
@@ -95,7 +99,8 @@ internal static class SearchKeySyntaxParser
             Require(':', "':'");
 
             var referencePath = ParseNotReferencedPath();
-            return new NotReferencedKeySyntax(sourceResourceType, referencePath);
+            return new NotReferencedKeySyntax(sourceResourceType, referencePath)
+                { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
         }
 
         internal void RequireEnd()
@@ -108,6 +113,7 @@ internal static class SearchKeySyntaxParser
 
         private SearchKeySyntax ParseParameterOrForward()
         {
+            var start = _offset;
             var name = ParseIdentifier("identifier");
             var qualifier = ConsumeIf(':')
                 ? ParseIdentifier("identifier")
@@ -115,11 +121,12 @@ internal static class SearchKeySyntaxParser
 
             if (!ConsumeIf('.'))
             {
-                return new ParameterKeySyntax(name, qualifier);
+                return new ParameterKeySyntax(name, qualifier)
+                    { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
             }
 
-            SearchKeySyntax next = ParseKey();
-            return new ForwardChainKeySyntax(name, qualifier, next);
+            return new ForwardChainKeySyntax(name, qualifier, ParseKey())
+                { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
         }
 
         private string ParseIncludeSource()
@@ -164,6 +171,7 @@ internal static class SearchKeySyntaxParser
 
         private bool TryParseReverse([NotNullWhen(true)] out SearchKeySyntax? syntax)
         {
+            var start = _offset;
             var lookaheadOffset = _offset;
 
             if (!ConsumeLiteralIfAt("_has:", ref lookaheadOffset))
@@ -206,7 +214,7 @@ internal static class SearchKeySyntaxParser
             syntax = new ReverseChainKeySyntax(
                 sourceResourceType,
                 referenceName,
-                ParseKey());
+                ParseKey()) { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
             return true;
         }
 

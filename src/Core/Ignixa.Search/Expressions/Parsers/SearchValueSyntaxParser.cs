@@ -68,7 +68,7 @@ internal static class SearchValueSyntaxParser
             throw new InvalidSearchOperationException(Resources.InvalidValueTypeForMissingModifier);
         }
 
-        return new MissingValueSyntax(isMissing);
+        return new MissingValueSyntax(isMissing) { Span = new SourceSpan(SourceOrigin.Value, 0, source.Length) };
     }
 
     private static SearchValueSyntax ParseText(string source)
@@ -78,7 +78,7 @@ internal static class SearchValueSyntaxParser
             throw SyntaxError(source, 0, "nonempty text value");
         }
 
-        return new AtomicValueSyntax(source, SearchComparator.Eq);
+        return new AtomicValueSyntax(source, SearchComparator.Eq) { Span = new SourceSpan(SourceOrigin.Value, 0, source.Length) };
     }
 
     private static SearchValueSyntax ParseScalar(string source, bool supportsComparator)
@@ -105,7 +105,7 @@ internal static class SearchValueSyntaxParser
         }
 
         items.Add(ParseAtomic(source, partStart, source.Length - partStart, supportsComparator));
-        return new AlternativesValueSyntax(items.ToImmutable());
+        return new AlternativesValueSyntax(items.ToImmutable()) { Span = new SourceSpan(SourceOrigin.Value, 0, source.Length) };
     }
 
     private static AtomicValueSyntax ParseAtomic(
@@ -119,6 +119,8 @@ internal static class SearchValueSyntaxParser
             throw SyntaxError(source, start, "nonempty value");
         }
 
+        var span = new SourceSpan(SourceOrigin.Value, start, length);
+
         if (supportsComparator)
         {
             ReadOnlySpan<char> value = source.AsSpan(start, length);
@@ -129,12 +131,12 @@ internal static class SearchValueSyntaxParser
                 {
                     return new AtomicValueSyntax(
                         Slice(source, start + literal.Length, length - literal.Length),
-                        comparator);
+                        comparator) { Span = span };
                 }
             }
         }
 
-        return new AtomicValueSyntax(Slice(source, start, length), SearchComparator.Eq);
+        return new AtomicValueSyntax(Slice(source, start, length), SearchComparator.Eq) { Span = span };
     }
 
     private static SearchValueSyntax ParseOfType(string source)
@@ -161,7 +163,7 @@ internal static class SearchValueSyntaxParser
         }
 
         items.Add(ParseOfTypeItem(source, itemStart, source.Length - itemStart));
-        return new AlternativesValueSyntax(items.ToImmutable());
+        return new AlternativesValueSyntax(items.ToImmutable()) { Span = new SourceSpan(SourceOrigin.Value, 0, source.Length) };
     }
 
     private static OfTypeValueSyntax ParseOfTypeItem(string source, int start, int length)
@@ -189,7 +191,7 @@ internal static class SearchValueSyntaxParser
         return new OfTypeValueSyntax(
             Slice(source, start, firstPipe - start),
             Slice(source, firstPipe + 1, secondPipe - firstPipe - 1),
-            Slice(source, secondPipe + 1, end - secondPipe - 1));
+            Slice(source, secondPipe + 1, end - secondPipe - 1)) { Span = new SourceSpan(SourceOrigin.Value, start, length) };
     }
 
     private static SearchValueSyntax ParseComposite(string source)
@@ -216,7 +218,7 @@ internal static class SearchValueSyntaxParser
         }
 
         items.Add(ParseCompositeItem(source, itemStart, source.Length - itemStart));
-        return new AlternativesValueSyntax(items.ToImmutable());
+        return new AlternativesValueSyntax(items.ToImmutable()) { Span = new SourceSpan(SourceOrigin.Value, 0, source.Length) };
     }
 
     private static CompositeValueSyntax ParseCompositeItem(string source, int start, int length)
@@ -227,7 +229,8 @@ internal static class SearchValueSyntaxParser
         if (dollar < 0 || dollar >= end)
         {
             return new CompositeValueSyntax(
-                ImmutableArray.Create(ParseAtomic(source, start, length, supportsComparator: true)));
+                ImmutableArray.Create(ParseAtomic(source, start, length, supportsComparator: true)))
+                { Span = new SourceSpan(SourceOrigin.Value, start, length) };
         }
 
         var components = ImmutableArray.CreateBuilder<AtomicValueSyntax>();
@@ -249,7 +252,7 @@ internal static class SearchValueSyntaxParser
             componentStart,
             end - componentStart,
             supportsComparator: true));
-        return new CompositeValueSyntax(components.ToImmutable());
+        return new CompositeValueSyntax(components.ToImmutable()) { Span = new SourceSpan(SourceOrigin.Value, start, length) };
     }
 
     private static void ValidateEscapes(string source)

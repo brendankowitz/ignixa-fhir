@@ -11,4 +11,10 @@ namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
 /// <summary>A <c>$</c>-separated composite value — one atomic component per composite slot.</summary>
 internal sealed record CompositeValueSyntax(
-    ImmutableArray<AtomicValueSyntax> Components) : SearchValueSyntax;
+    ImmutableArray<AtomicValueSyntax> Components) : SearchValueSyntax
+{
+    public bool Equals(CompositeValueSyntax? other)
+        => other is not null && Components == other.Components;
+
+    public override int GetHashCode() => Components.GetHashCode();
+}
