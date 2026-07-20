@@ -10,5 +10,7 @@ public interface IExpressionParser
 {
     Expression Parse(string[] resourceTypes, string key, string value);
 
+    ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value);
+
     IncludeExpression ParseInclude(string[] resourceTypes, string includeValue, bool isReversed, bool iterate);
 }

@@ -78,6 +78,10 @@ public sealed class LegacyExpressionParser : IExpressionParser
         return ParseImpl(resourceTypes, key.AsSpan(), value);
     }
 
+    public ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value)
+        => throw new NotSupportedException(
+            "The frozen legacy oracle parser does not produce syntax projections.");
+
     public IncludeExpression ParseInclude(string[] resourceTypes, string includeValue, bool isReversed, bool iterate)
     {
         ReadOnlySpan<char> valueSpan = includeValue.AsSpan();

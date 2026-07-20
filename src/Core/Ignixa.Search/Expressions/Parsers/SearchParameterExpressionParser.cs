@@ -39,6 +39,24 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
         SearchModifier modifier,
         string value)
     {
+        (SearchValueSyntax _, Expression expression) = ParseCore(searchParameter, modifier, value);
+        return expression;
+    }
+
+    public (Expression Expression, SyntaxNode ValueSyntax) ParseWithSyntax(
+        SearchParameterInfo searchParameter,
+        SearchModifier modifier,
+        string value)
+    {
+        (SearchValueSyntax syntax, Expression expression) = ParseCore(searchParameter, modifier, value);
+        return (expression, SyntaxProjector.Project(syntax));
+    }
+
+    private (SearchValueSyntax Syntax, Expression Expression) ParseCore(
+        SearchParameterInfo searchParameter,
+        SearchModifier modifier,
+        string value)
+    {
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         EnsureArg.IsNotNullOrWhiteSpace(value, nameof(value));
 
@@ -47,6 +65,6 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
             modifier,
             value);
 
-        return _binder.BindValue(searchParameter, modifier, syntax);
+        return (syntax, _binder.BindValue(searchParameter, modifier, syntax));
     }
 }

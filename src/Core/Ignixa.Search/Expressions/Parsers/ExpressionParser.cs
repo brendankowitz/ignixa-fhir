@@ -77,6 +77,52 @@ public class ExpressionParser : IExpressionParser
                 value));
     }
 
+    /// <summary>
+    /// Parses the input into a search expression together with its projected syntax tree, for
+    /// provenance tracing. Runs the same scan → bind pipeline as <see cref="Parse"/>, plus a
+    /// projection tail — do not call this from production hot paths that don't need the syntax.
+    /// </summary>
+    /// <param name="resourceTypes">The resource type.</param>
+    /// <param name="key">The query key.</param>
+    /// <param name="value">The query value.</param>
+    /// <returns>The parsed expression plus its projected key and value syntax.</returns>
+    public ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value)
+    {
+        EnsureArg.HasItems(resourceTypes, nameof(resourceTypes));
+        EnsureArg.IsNotNullOrWhiteSpace(key, nameof(key));
+        EnsureArg.IsNotNullOrWhiteSpace(value, nameof(value));
+
+        if (key.Equals("_not-referenced", StringComparison.OrdinalIgnoreCase))
+        {
+            NotReferencedKeySyntax notReferencedSyntax =
+                SearchKeySyntaxParser.ParseNotReferenced(value);
+            Expression notReferencedExpression = SearchExpressionBinder.BindNotReferenced(
+                _keyBinder.BindNotReferenced(notReferencedSyntax));
+            return new ParseResult(
+                notReferencedExpression,
+                SyntaxProjector.Project(notReferencedSyntax),
+                null);
+        }
+
+        SearchKeySyntax keySyntax = SearchKeySyntaxParser.ParseParameter(key);
+        BoundSearchKey bound = _keyBinder.Bind(resourceTypes, keySyntax);
+
+        SyntaxNode valueSyntax = null;
+        Expression expression = SearchExpressionBinder.BindKey(
+            bound,
+            parameter =>
+            {
+                (Expression Expression, SyntaxNode ValueSyntax) parsed = _valueParser.ParseWithSyntax(
+                    parameter.SearchParameter,
+                    parameter.Modifier,
+                    value);
+                valueSyntax = parsed.ValueSyntax;
+                return parsed.Expression;
+            });
+
+        return new ParseResult(expression, SyntaxProjector.Project(keySyntax), valueSyntax);
+    }
+
     public IncludeExpression ParseInclude(
         string[] resourceTypes,
         string includeValue,

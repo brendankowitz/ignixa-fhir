@@ -15,4 +15,9 @@ public interface ISearchParameterExpressionParser
         SearchParameterInfo searchParameter,
         SearchModifier modifier,
         string value);
+
+    (Expression Expression, SyntaxNode ValueSyntax) ParseWithSyntax(
+        SearchParameterInfo searchParameter,
+        SearchModifier modifier,
+        string value);
 }

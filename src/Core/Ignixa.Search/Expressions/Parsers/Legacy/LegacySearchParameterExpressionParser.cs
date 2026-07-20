@@ -159,6 +159,13 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
         return Expression.SearchParameter(searchParameter, outputExpression);
     }
 
+    public (Expression Expression, SyntaxNode ValueSyntax) ParseWithSyntax(
+        SearchParameterInfo searchParameter,
+        SearchModifier modifier,
+        string value)
+        => throw new NotSupportedException(
+            "The frozen legacy oracle parser does not produce syntax projections.");
+
     private Expression Build(
         SearchParameterInfo searchParameter,
         SearchModifier modifier,
