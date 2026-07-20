@@ -12,6 +12,12 @@ using Ignixa.Search.Indexing.SearchValues;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>
+/// Flattens a typed <see cref="ISearchValue"/> into the old field-level <see cref="Expression"/> shape
+/// (via <see cref="ISearchValueVisitor"/>) and validates the modifier/comparator against the value type.
+/// The counterpart to <see cref="SearchPredicateExpressionBuilder"/>, which keeps the typed value instead
+/// of flattening it.
+/// </summary>
 internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
     private const decimal ApproximateMultiplier = .1M;

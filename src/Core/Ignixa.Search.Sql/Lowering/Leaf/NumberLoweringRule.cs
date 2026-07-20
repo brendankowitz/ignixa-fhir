@@ -6,9 +6,8 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a Number search value to a ParamSource over NumberSearchParam. All comparators except :ap
-/// (see NumericRangeComparison) are supported, matching the real SQL SearchParameterQueryGenerator
-/// already emits for this table.
+/// Lowers a Number search value to a ParamSource over NumberSearchParam. Every comparator except :ap is
+/// supported, via <see cref="NumericRangeComparison"/>.
 /// </summary>
 public static class NumberLoweringRule
 {

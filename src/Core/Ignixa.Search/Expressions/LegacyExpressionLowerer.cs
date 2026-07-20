@@ -11,12 +11,24 @@ namespace Ignixa.Search.Expressions;
 
 /// <summary>
 /// Converts the typed predicate tree (<see cref="SearchParameterPredicateExpression"/>,
-/// <see cref="CompositeComponentExpression"/>) back to the old untyped field-level shape, for
-/// consumers that haven't migrated to consume the typed tree directly.
-/// See docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md.
+/// <see cref="CompositeComponentExpression"/>) back to the old field-level expression shape
+/// (<see cref="BinaryExpression"/>/<see cref="StringExpression"/>/…) that old-shape query backends
+/// consume. See <see cref="LowerToLegacy"/> for the shared entry point.
 /// </summary>
 public sealed class LegacyExpressionLowerer : ExpressionRewriter<object?>
 {
+    /// <summary>
+    /// Lowers a typed predicate tree to the old field-level shape (BinaryExpression/StringExpression/…).
+    /// This is the shared bridge every old-shape query backend consumes — the SQL engine today, a CosmosDB
+    /// engine next — so it stays pure: any storage-specific optimization (e.g. the SQL date-index rewrite)
+    /// is applied by that backend afterward, not baked in here.
+    /// </summary>
+    public static Expression LowerToLegacy(Expression expression)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        return expression.AcceptVisitor(new LegacyExpressionLowerer(), context: null);
+    }
+
     public override Expression VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, object? context)
         => new SearchValueExpressionBuilderHelper().Build(expression.Parameter.Code, expression.Modifier, expression.Comparator, componentIndex: null, expression.Value);
 

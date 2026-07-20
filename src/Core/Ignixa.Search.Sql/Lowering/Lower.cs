@@ -6,26 +6,20 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// The compiler's Lower stage: turns a bound Expression tree of ANDed/ORed
-/// SearchParameterPredicateExpression leaves, SearchParameterExpression-wrapped composites, and
-/// ChainedExpression (forward and reverse chain, any nesting depth, dispatched to
-/// <see cref="StructuralContext.LowerChain"/>) into a QueryPlan, and includes/revIncludes (via
-/// BuildIncludeStages, Phase 7) into QueryPlan.Includes. As of Phase 8, CompartmentSearchExpression is also handled, via
-/// StructuralContext.LowerCompartment, dispatched both from Run's top-level switch (the wildcard,
-/// no-single-scope case) and from LowerNode's ordinary switch (the non-wildcard case, reachable
-/// standalone or nested inside an And alongside ordinary predicates). As of Phase 8 part 2,
-/// SortExpression/SortPhase/PageSpec are also handled, via BuildSortSpec -- SortPhase is a caller
-/// input (the executor drives the two-phase transition, matching fhir-server's own model), not
-/// something Lower computes by inspecting the query. Phase 10's executor must reject _total=estimate
-/// at its own boundary with NotSupportedException("_total=estimate is not supported -- real
-/// fhir-server does not implement this distinctly from _total=accurate either (TotalType.Estimate
-/// exists as an enum value but is never consumed in Microsoft.Health.Fhir.Core or
-/// Microsoft.Health.Fhir.SqlServer). Use _total=accurate."); Lower.Run/Emit.Run have no _total
-/// vocabulary of their own -- CountOnly is the only "count instead of rows" concept this compiler
-/// exposes.
+/// The compiler's Lower stage: turns a bound Expression tree into a <see cref="QueryPlan"/>. It handles
+/// ANDed/ORed predicate leaves, wrapped composites, forward and reverse chains at any nesting depth,
+/// compartment searches, and _include/_revinclude/_sort/paging. The resulting plan is a pure value; all
+/// I/O already happened in Resolve. CountOnly is the only "count instead of rows" concept the compiler
+/// exposes — there is no _total vocabulary here.
 /// </summary>
 public static class Lower
 {
+    /// <summary>
+    /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
+    /// lowers the remaining expression (or a bare resource source when there is none) into the CTE graph,
+    /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed only
+    /// for a wildcard compartment search; combining it with typed leaves, includes, or sort throws.
+    /// </summary>
     public static QueryPlan Run(
         Expression? expression,
         SymbolTable symbols,
@@ -96,10 +90,12 @@ public static class Lower
         return new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly);
     }
 
+    /// <summary>Returns the target resource type, or throws if it is null where one is required.</summary>
     private static string RequireResourceType(string? targetResourceType)
         => targetResourceType ?? throw new NotSupportedException(
             "targetResourceType is required unless the top-level expression is a compartment search with no single target resource type.");
 
+    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).</summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
@@ -119,6 +115,11 @@ public static class Lower
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };
 
+    /// <summary>
+    /// Lowers a wrapped search parameter, unwrapping the wrapper's own semantics first: a NotExpression or
+    /// a :not-modified predicate becomes a negation, a single composite or an OR of composite alternatives
+    /// becomes composite lowering, and anything else falls through to <see cref="LowerNode"/>.
+    /// </summary>
     private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string resourceType)
     {
         if (sp.Expression is NotExpression not)
@@ -154,12 +155,14 @@ public static class Lower
         return LowerNode(sp.Expression, context, resourceType);
     }
 
+    /// <summary>Lowers a :missing search to the parameter's presence set, negated when :missing=true.</summary>
     private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string resourceType)
     {
         var presence = context.LowerParameterPresence(missing.Parameter, resourceType);
         return missing.IsMissing ? context.LowerNot(presence, resourceType) : presence;
     }
 
+    /// <summary>Returns true and the components when the expression is an AND of composite components; false otherwise.</summary>
     private static bool TryGetCompositeComponents(Expression expression, out IReadOnlyList<CompositeComponentExpression>? components)
     {
         if (expression is MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and
@@ -174,6 +177,7 @@ public static class Lower
         return false;
     }
 
+    /// <summary>Lowers an AND by lowering each child and intersecting the results left to right.</summary>
     private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string resourceType)
     {
         var refs = and.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList();
@@ -185,6 +189,11 @@ public static class Lower
         return result;
     }
 
+    /// <summary>
+    /// Splits an expression into the resource-column predicates (_id/_type/_lastUpdated, ANDed together
+    /// into an outer WHERE) and the remaining expression that still needs CTE lowering. Either half may be
+    /// null.
+    /// </summary>
     private static (Expression? Remaining, Predicate? OuterPredicate) ExtractResourceColumnPredicates(Expression expression, LeafContext leafContext)
     {
         if (expression is MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and)
@@ -216,11 +225,17 @@ public static class Lower
         return single is null ? (expression, null) : (null, single);
     }
 
+    /// <summary>Returns the resource-column predicate for a single wrapped leaf, or null if it is not one.</summary>
     private static Predicate? TryExtractResourceColumnPredicate(Expression expression, LeafContext leafContext)
         => expression is SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate }
             ? ResourceColumnLoweringRule.TryLower(predicate, leafContext)
             : null;
 
+    /// <summary>
+    /// Lowers a chain's target expression within its own scope, folding any resource-column predicates into
+    /// the scope's ResourceSource (a nested scope has no outer WHERE to attach them to) and intersecting
+    /// with the ordinary match when both are present.
+    /// </summary>
     private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string resourceType)
     {
         var (remaining, nestedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
@@ -235,12 +250,18 @@ public static class Lower
             : context.Intersect(context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate), ordinaryMatch);
     }
 
+    /// <summary>An include with its direction and its resolved seed (Requires) and output (Produces) type ids; null means wildcard.</summary>
     private readonly record struct ResolvedInclude(
         IncludeExpression Expression,
         IncludeDirection Direction,
         IReadOnlyList<short>? Requires,
         IReadOnlyList<short>? Produces);
 
+    /// <summary>
+    /// Builds the ordered include stages for a plan. Non-iterate includes run first, iterate includes are
+    /// topologically sorted after them, and each stage records which earlier stages (and whether the match
+    /// page) seed it. Returns null when there are no includes or every stage is degenerate.
+    /// </summary>
     private static IReadOnlyList<IncludeStage>? BuildIncludeStages(
         IReadOnlyList<IncludeExpression> includes,
         IReadOnlyList<IncludeExpression> revIncludes,
@@ -308,6 +329,10 @@ public static class Lower
         return stages.Count == 0 ? null : stages;
     }
 
+    /// <summary>
+    /// Builds a <see cref="SortSpec"/> from the sort keys and phase, or null when there are none. Caps at 3
+    /// keys and rejects a MissingPrimary phase on _lastUpdated (which is never missing).
+    /// </summary>
     private static SortSpec? BuildSortSpec(IReadOnlyList<SortExpression> sort, SortPhase phase, SymbolTable symbols)
     {
         if (sort.Count == 0)
@@ -335,6 +360,7 @@ public static class Lower
         return new SortSpec(keys, phase);
     }
 
+    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated kind and resolving its id (none for _lastUpdated).</summary>
     private static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
         if (sortExpression.Parameter.Code == "_lastUpdated")
@@ -356,6 +382,7 @@ public static class Lower
         return new SortKey(searchParamId, kind, sortExpression.SortOrder);
     }
 
+    /// <summary>Resolves an include's direction and its seed/output resource-type ids into a <see cref="ResolvedInclude"/>.</summary>
     private static ResolvedInclude ResolveInclude(IncludeExpression expression, SymbolTable symbols)
         => new(
             expression,
@@ -363,12 +390,18 @@ public static class Lower
             ResolveTypeIds(expression.Requires, symbols),
             ResolveTypeIds(expression.Produces, symbols));
 
+    /// <summary>Resolves a set of resource-type names to ids, or null for a wildcard ("*").</summary>
     private static IReadOnlyList<short>? ResolveTypeIds(IReadOnlyCollection<string> types, SymbolTable symbols)
         => types.Contains("*") ? null : types.Select(symbols.ResourceTypeId).ToList();
 
+    /// <summary>Whether two type-id sets intersect, treating a null (wildcard) set as matching anything.</summary>
     private static bool Overlaps(IReadOnlyList<short>? produces, IReadOnlyList<short>? requires)
         => produces is null || requires is null || produces.Any(requires.Contains);
 
+    /// <summary>
+    /// Orders :iterate includes so each runs after every include it depends on (Kahn's algorithm, ties
+    /// broken by original position for determinism). Throws if the dependencies form a cycle.
+    /// </summary>
     private static List<ResolvedInclude> TopologicalSort(List<ResolvedInclude> entries)
     {
         var n = entries.Count;

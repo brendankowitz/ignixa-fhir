@@ -7,15 +7,12 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Lowers a TokenString composite to a single ParamSource over TokenStringCompositeSearchParam --
-/// components[0] is the token slot (Code1, via TokenColumnEquality), components[1] is the string slot
-/// (Text2/TextOverflow2). Composite components never carry a SearchModifier
-/// (SearchExpressionBinder.BindComposite always passes modifier: null per component -- confirmed by
-/// reading its source), so unlike StringLoweringRule this rule has exactly one case: the default/
-/// no-modifier StartsWith semantics, which per StringLoweringRule's own doc comment is safe against
-/// the inline column alone in both the overflowed and non-overflowed case -- no throw guard needed.
-/// The collation is TokenStringCompositeSearchParam's own (Latin1_General_CI_AI), NOT
-/// StringSearchParam.Text's (Latin1_General_100_CI_AI) -- a real, DDL-confirmed divergence.
+/// Lowers a TokenString composite to a single ParamSource over TokenStringCompositeSearchParam —
+/// components[0] is the token slot (Code1, via <see cref="TokenColumnEquality"/>), components[1] is the
+/// string slot (Text2/TextOverflow2). Composite components never carry a modifier, so this rule has only
+/// the default StartsWith case, which is always safe against the inline column (see
+/// <see cref="Leaf.StringLoweringRule"/>). The collation is this composite table's own
+/// (Latin1_General_CI_AI), which differs from StringSearchParam.Text's — a real, DDL-confirmed divergence.
 /// </summary>
 public static class TokenStringLoweringRule
 {

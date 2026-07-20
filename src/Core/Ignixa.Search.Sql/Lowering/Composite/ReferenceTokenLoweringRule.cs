@@ -8,11 +8,10 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
 /// Lowers a ReferenceToken composite to a single ParamSource over ReferenceTokenCompositeSearchParam.
-/// Finds the Reference and Token components by their runtime ISearchValue type, not by array index --
-/// some component definitions swap expressions (e.g. DocumentReference's relationship composite), so
-/// the write path (RefTokenCompositeRowGenerator.cs) already resolves roles this way too. Mirrors
-/// ReferenceLoweringRule's BaseUri throw and typed/untyped ResourceTypeId/ResourceId logic, and
-/// TokenColumnEquality for the token slot.
+/// Finds the Reference and Token components by runtime ISearchValue type, not array index, because some
+/// definitions swap the component order (the write path resolves roles the same way). Reuses
+/// <see cref="Leaf.ReferenceLoweringRule"/>'s BaseUri throw and typed/untyped id logic, and
+/// <see cref="TokenColumnEquality"/> for the token slot.
 /// </summary>
 public static class ReferenceTokenLoweringRule
 {

@@ -7,11 +7,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a Uri search value to a ParamSource over UriSearchParam. Plain (no-modifier) equality only --
-/// :above/:below (hierarchical URI matching) are not implemented and throw rather than silently
-/// matching without the hierarchy constraint. Version/Fragment (canonical-URL extension fields) are
-/// not in 97.sql's base UriSearchParam table -- they're populated via a separate post-merge extension
-/// path -- so this rule, like SqlCatalog's UriSearchParam entry, covers only the base Uri column.
+/// Lowers a Uri search value to a ParamSource over UriSearchParam — plain (no-modifier) equality only.
+/// The :above/:below hierarchical modifiers are not implemented and throw rather than match without the
+/// hierarchy constraint. Version/Fragment are not part of the base UriSearchParam table, so this rule
+/// covers the base Uri column only.
 /// </summary>
 public static class UriLoweringRule
 {

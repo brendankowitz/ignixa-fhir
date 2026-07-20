@@ -12,6 +12,11 @@ using Ignixa.Search.Indexing;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>
+/// Scans a raw search key string into a <see cref="Syntax.SearchKeySyntax"/> tree — handwritten and
+/// schema-agnostic (structure only: parameter name, modifier, chain/include shape), with no parameter
+/// resolution. Binding against the schema is <see cref="SearchKeyBinder"/>'s job.
+/// </summary>
 internal static class SearchKeySyntaxParser
 {
     internal static SearchKeySyntax ParseParameter(string source)

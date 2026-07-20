@@ -16,6 +16,7 @@ using Ignixa.Search.Expressions;
 
 namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
+/// <summary>The pre-rewrite value-to-expression flattener, frozen alongside <see cref="LegacyExpressionParser"/> as a rollback lever and parity-test oracle.</summary>
 internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
     private const decimal ApproximateMultiplier = .1M;

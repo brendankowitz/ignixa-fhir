@@ -4,6 +4,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -44,7 +45,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the plan-shape golden test
         plan.Explain().ShouldBe(
@@ -72,7 +73,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None);
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
@@ -100,7 +101,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe(
@@ -129,7 +130,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- identical plan shape to the bare-predicate case above (same table, same SearchParamId)
         plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
@@ -164,7 +165,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[104,301]  Code1 = @p0 AND Code2 = @p1");
@@ -203,7 +204,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[104,302]  Code1 = @p0 AND LowValue2 >= @p1 AND HighValue3 <= @p2");
@@ -277,7 +278,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe("root = TokenStringCompositeSearchParam[104,401]  Code1 = @p0 AND Text2 LIKE @p1 (StartsWith) collate CI_AI");
@@ -312,7 +313,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge (not Eq) so the raw value is used directly, no precision-widening bounds to compute
         plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,402]  Code1 = @p0 AND LowValue2 >= @p1");
@@ -348,7 +349,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe("root = TokenDateTimeCompositeSearchParam[104,403]  Code1 = @p0 AND EndDateTime2 >= @p1");
@@ -384,7 +385,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "DocumentReference", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "DocumentReference", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe(
@@ -412,7 +413,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         plan.Explain().ShouldBe(
@@ -451,7 +452,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, ResourceSource, Except, then an outer Intersect
         plan.Explain().ShouldBe(
@@ -482,7 +483,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource's own ResourceTypeId consumes @p0 (it's a real bound parameter in
         // Emit, and PlanExplainer's ordinal counter now accounts for it too), so the outer predicate is @p1
@@ -510,7 +511,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource seeds from the query's own target (Patient, 103); the outer WHERE
         // filters on _type's resolved value (Observation, 104) -- two different resolved ids in one plan.
@@ -538,7 +539,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- only `active` becomes a CTE; `_id` becomes the outer WHERE
         plan.Explain().ShouldBe("root = TokenSearchParam[103,44]  Code = @p0 WHERE ResourceId = @p1");
@@ -590,7 +591,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource's own ResourceTypeId consumes @p0, so the outer predicate is @p1
         plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceSurrogateId >= @p1");
@@ -620,7 +621,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the :not's ResourceSource+Except becomes the match CTE; _id becomes the outer WHERE.
         // StringSearchParam consumes @p0 for its Text parameter. ResourceSource's ResourceTypeId consumes
@@ -653,7 +654,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the target-side match (Organization.name=Acme) becomes cte0, the ChainJoin is root.
         // No modifier on `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI) --
@@ -687,7 +688,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the referencing-side match (Observation.code=1234-5) becomes cte0, the ChainJoin is root
         plan.Explain().ShouldBe(
@@ -719,7 +720,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(outerChain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(outerChain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the innermost match (Organization.name=Acme) becomes cte0, the inner ChainJoin
         // (partof) becomes cte1 and is itself InnerMatch for the outer ChainJoin (organization).
@@ -791,7 +792,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- both target predicates intersect into one InnerMatch before the ChainJoin.
         // No modifier on `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI) --
@@ -822,7 +823,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the target scope's _id predicate becomes a filtered ResourceSource (not OuterPredicate,
         // which only applies at the true top level), the ChainJoin's InnerMatch is that ResourceSource directly
@@ -850,7 +851,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- identical mechanism to the forward case, just on the referencing (inner) side this time
         plan.Explain().ShouldBe(
@@ -885,7 +886,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the ordinary predicate (name) lowers first as an ordinary ParamSource, then the
         // resource-column predicate (_id) becomes a filtered ResourceSource, Intersected together
@@ -926,7 +927,7 @@ public class EndToEndCompilationTests
         // Act
         var symbolTable = await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None);
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- _id is extracted to the outer WHERE (top-level mechanism, unchanged); active and
         // the chain intersect into the match CTE. Explain() pins the exact shape (a task review found
@@ -976,7 +977,7 @@ public class EndToEndCompilationTests
             "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI top 50\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("cteMatchPage AS (");
         emitted.Sql.ShouldContain("SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1");
         emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
@@ -1009,7 +1010,7 @@ public class EndToEndCompilationTests
             "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
             "inc0 = IncludeStage(ref=77, seedTypes=[103], outputTypes=[104], seeds=[match], limit=1000, Reverse)");
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("SELECT DISTINCT TOP (1001) rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1");
         emitted.Sql.ShouldContain("SELECT 1 FROM cteMatchPage m WHERE m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId");
     }
@@ -1037,7 +1038,7 @@ public class EndToEndCompilationTests
             "root = ResourceSource[103] top 50\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM cte0 m\n    ORDER BY m.T1 ASC, m.Sid1 ASC\n)");
     }
 
@@ -1062,7 +1063,7 @@ public class EndToEndCompilationTests
         plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
         plan.Includes[0].OutputTypeIds.ShouldBe([(short)105, (short)107]);
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldNotContain("rsp.SearchParamId");
         emitted.Sql.ShouldContain("(r.ResourceTypeId = 105 OR r.ResourceTypeId = 107)");
     }
@@ -1087,7 +1088,7 @@ public class EndToEndCompilationTests
         plan.Includes[0].OutputTypeIds.ShouldBeNull();
         plan.Includes[0].SeedTypeIds.ShouldBe([(short)103]);
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldNotContain("rsp.SearchParamId");
         emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 104");
         emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 106");
@@ -1123,7 +1124,7 @@ public class EndToEndCompilationTests
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)\n" +
             "inc1 = IncludeStage(ref=66, seedTypes=[105], outputTypes=[105], seeds=[inc0], limit=1000 iterate, Forward)");
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("SELECT 1 FROM inc0lim m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
     }
 
@@ -1166,7 +1167,7 @@ public class EndToEndCompilationTests
         plan.Ctes[2].ShouldBeOfType<CteDefinition.Union>();
         plan.Match.ShouldBe(new CteRef(2));
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("SearchParamId = 55");
         emitted.Sql.ShouldContain("SearchParamId = 66");
         emitted.Sql.ShouldContain("(ResourceTypeId = 104 OR ResourceTypeId = 106)"); // subject: Observation + Condition
@@ -1210,7 +1211,7 @@ public class EndToEndCompilationTests
         plan.Ctes[1].ShouldBeOfType<CteDefinition.Union>();
         plan.Match.ShouldBe(new CteRef(1));
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("ResourceTypeId = 104\n");
         emitted.Sql.ShouldNotContain("(ResourceTypeId = 104)");
     }
@@ -1302,7 +1303,7 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldContain("sort = SortSpec([String:202 ASC], Valued)");
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
     }
@@ -1337,7 +1338,7 @@ public class EndToEndCompilationTests
         plan.Includes[0].SeedFromMatch.ShouldBeTrue();
         plan.Includes[0].SeedStages.ShouldBeEmpty();
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("cteMatchPage AS (");
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain(
@@ -1377,7 +1378,7 @@ public class EndToEndCompilationTests
         plan.Sort.Keys[1].Kind.ShouldBe(SortKeyKind.Date);
         plan.Sort.Keys[1].Direction.ShouldBe(SortOrder.Descending);
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain("LEFT JOIN dbo.DateTimeSearchParam sk1");
@@ -1418,7 +1419,7 @@ public class EndToEndCompilationTests
 
         // Assert -- the match is the compartment's own Union; sort still decorates cleanly on top.
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
     }
@@ -1448,7 +1449,7 @@ public class EndToEndCompilationTests
         // predicate must be ANDed together with the OR chain parenthesized as a single unit -- otherwise
         // NOT EXISTS binds only to the first branch (T-SQL's AND-over-OR precedence) and the second
         // branch silently bypasses the missing-name filter on page 2+.
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain(
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
@@ -1486,7 +1487,7 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1)");
         emitted.Sql.ShouldNotContain("TOP (");
         emitted.Sql.ShouldNotContain("ORDER BY");
@@ -1531,7 +1532,7 @@ public class EndToEndCompilationTests
         // Also confirm the whole plan still emits without error -- a real, if not exhaustively
         // asserted, proof that ChainJoin's Emit code and the Except/ParamSource-no-predicate shape
         // compose into valid SQL text end to end.
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldNotBeNullOrWhiteSpace();
     }
 
@@ -1569,7 +1570,7 @@ public class EndToEndCompilationTests
         plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
         ((CteDefinition.ParamSource)plan.Ctes[except.Right.Index]).Predicate.ShouldBeNull();
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the includes machinery (cteMatchPage + the final UNION ALL) is present, and
         // cteMatchPage's own FROM clause points at cte{plan.Match.Index} -- the Except CTE -- proving
@@ -1613,7 +1614,7 @@ public class EndToEndCompilationTests
         plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
         plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain($"SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte{plan.Match.Index} m");
         emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC, m.Sid1 ASC");
     }
@@ -1641,7 +1642,7 @@ public class EndToEndCompilationTests
         // Assert -- the match CTE is the Except/ResourceSource/ParamSource shape, NOT a bare ParamSource.
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
 
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldEndWith($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m");
         emitted.Sql.ShouldNotContain("TOP (");
         emitted.Sql.ShouldNotContain("ORDER BY");

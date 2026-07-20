@@ -9,5 +9,6 @@ using System.Collections.Immutable;
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>A <c>$</c>-separated composite value — one atomic component per composite slot.</summary>
 internal sealed record CompositeValueSyntax(
     ImmutableArray<AtomicValueSyntax> Components) : SearchValueSyntax;

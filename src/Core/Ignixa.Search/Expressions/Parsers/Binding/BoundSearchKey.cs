@@ -7,4 +7,5 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Binding;
 
+/// <summary>A search key resolved against the schema — the bound counterpart of <see cref="Syntax.SearchKeySyntax"/>.</summary>
 internal abstract record BoundSearchKey;

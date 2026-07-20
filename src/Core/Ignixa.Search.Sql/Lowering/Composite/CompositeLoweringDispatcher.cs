@@ -6,12 +6,11 @@ using Ignixa.Search.Sql.Ast;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Dispatches a composite's ordered components to their tier-1 composite lowering rule, by the
-/// runtime type of each component's wrapped ISearchValue. Orders by Position first -- callers
-/// (real binder output, and this plan's own tests) are not required to hand components in order.
-/// TokenToken, TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken
-/// (in both component orders) are wired; every other composite table throws NotSupportedException,
-/// matching LeafLoweringDispatcher's precedent of a loud, explicit gap over a silent wrong answer.
+/// Dispatches a composite's components to their composite lowering rule, by the runtime types of the
+/// components' wrapped ISearchValues. Orders by Position first, since callers need not hand components in
+/// order. TokenToken, TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken
+/// (either component order) are wired; any other combination throws — a loud, explicit gap over a silent
+/// wrong answer.
 /// </summary>
 public static class CompositeLoweringDispatcher
 {

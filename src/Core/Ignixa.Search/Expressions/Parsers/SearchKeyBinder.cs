@@ -21,6 +21,11 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>
+/// Resolves a scanned <see cref="Syntax.SearchKeySyntax"/> against the schema (the search-parameter
+/// definitions and the FHIR schema) into a <see cref="Binding.BoundSearchKey"/> — turning names into
+/// resolved parameters and validating chains, includes, and reverse chains.
+/// </summary>
 internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definitionManager, IFhirSchemaProvider schemaProvider)
 {
     private static readonly FrozenDictionary<string, SearchModifierCode> SearchParamModifierMapping = Enum

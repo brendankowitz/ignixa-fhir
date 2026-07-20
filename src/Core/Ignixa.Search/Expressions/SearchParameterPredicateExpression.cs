@@ -14,10 +14,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Expressions;
 
 /// <summary>
-/// Represents a single typed predicate over one search parameter: the parameter's identity,
-/// how the value is compared, and the value itself, typed as the same <see cref="ISearchValue"/>
-/// the parser already builds during parsing rather than an untyped <see cref="object"/>.
-/// See docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md.
+/// A single typed predicate over one search parameter — the parameter's identity, how the value is
+/// compared, and the value itself, typed as the same <see cref="ISearchValue"/> the parser already
+/// builds during parsing rather than an untyped <see cref="object"/>. This is the parser's canonical
+/// leaf; old-shape backends reach the flattened form via <see cref="LegacyExpressionLowerer"/>.
 /// </summary>
 public sealed class SearchParameterPredicateExpression : Expression
 {

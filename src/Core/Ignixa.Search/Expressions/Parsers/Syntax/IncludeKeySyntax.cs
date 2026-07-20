@@ -7,6 +7,7 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>A scanned <c>_include</c>/<c>_revinclude</c> key: the source resource type, the search parameter name (or a wildcard), and an optional target type.</summary>
 internal sealed record IncludeKeySyntax(
     string SourceResourceType,
     string? SearchParameterName,

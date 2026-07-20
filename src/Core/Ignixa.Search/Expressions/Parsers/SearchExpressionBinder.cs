@@ -17,6 +17,12 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>
+/// Builds the typed predicate <see cref="Expression"/> tree from a <see cref="Binding.BoundSearchKey"/>
+/// and scanned <see cref="Syntax.SearchValueSyntax"/> — the final stage of the scan → bind → build
+/// pipeline. Produces <see cref="SearchParameterPredicateExpression"/> leaves and composites, and wraps
+/// chains, includes, and <c>_not-referenced</c>.
+/// </summary>
 internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValueParser)
 {
     internal static Expression BindKey(
@@ -305,6 +311,13 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             searchParameter.Type,
             syntax.RawText);
         value = ApplyReferenceTarget(searchParameter, modifier, value);
+
+        // Validate the modifier/comparator against the value type here, at parse time, by running the
+        // value through the same builder the SQL backend uses and discarding the result. An unsupported
+        // combination (e.g. a comparator on a string, ':exact' on a date) throws
+        // InvalidSearchOperationException now, inside SearchOptionsBuilder's parse-time catch, so the
+        // parameter is gracefully ignored -- rather than surfacing later as a hard failure during lowering.
+        _ = new SearchValueExpressionBuilderHelper().Build(searchParameter.Code, modifier, syntax.Comparator, componentIndex, value);
 
         return new SearchPredicateExpressionBuilder().Build(searchParameter, modifier, syntax.Comparator, value);
     }

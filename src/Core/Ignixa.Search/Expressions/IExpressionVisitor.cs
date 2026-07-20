@@ -123,9 +123,8 @@ public interface IExpressionVisitor<in TContext, out TOutput>
     /// <param name="expression">The expression to visit.</param>
     /// <param name="context">The input.</param>
     /// <remarks>
-    /// Default-implemented to throw for any implementor that hasn't overridden it, since adding a
-    /// required method to this public, IsPackable interface would be a binary-breaking change to
-    /// external implementors. See docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md, Risks.
+    /// Default-implemented to throw for any implementor that hasn't overridden it: adding a required
+    /// method to this public interface would be a binary-breaking change to external implementors.
     /// </remarks>
     TOutput VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, TContext context)
         => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(VisitSearchParameterPredicate)}.");

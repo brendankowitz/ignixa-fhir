@@ -7,12 +7,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Lowers _id/_type/_lastUpdated -- ordinary resource-column search parameters that bind through the
-/// same SearchExpressionBinder/BindAtomic pipeline as any other parameter (no special node type), but
-/// target dbo.Resource's own columns via QueryPlan.OuterPredicate, not a ParamSource table. Returns
-/// null for any other parameter code -- the caller (Lower.Run's extraction pass) treats null as "not a
-/// resource-column predicate, dispatch it normally." _lastUpdated's arm is added in a later increment
-/// task; this file starts with _id/_type only.
+/// Lowers _id/_type/_lastUpdated — resource-column search parameters that target dbo.Resource's own
+/// columns via QueryPlan.OuterPredicate rather than a ParamSource table. Returns null for any other
+/// parameter code, which the caller (Lower's extraction pass) reads as "not a resource-column predicate,
+/// dispatch it normally."
 /// </summary>
 public static class ResourceColumnLoweringRule
 {
@@ -117,14 +115,10 @@ public static class ResourceColumnLoweringRule
     }
 
     /// <summary>
-    /// Duplicated from Ignixa.Domain.Abstractions.IdHelper.ToId() -- that type lives in an
-    /// Application-tier project (Ignixa.Domain), which this Core-tier compiler project cannot
-    /// reference per the repo's strict layer rule. The formula is pure DateTimeOffset/bit-shift math
-    /// with zero external dependencies, matching the same "small, stable domain logic, transcribed
-    /// once" precedent already used for NumericRangeComparison/DateTimeRangeComparison/
-    /// TokenColumnEquality. Millisecond-truncated UTC ticks, left-shifted 3 bits (the low 3 bits are
-    /// reserved for a per-millisecond uniquifier the database allocates at write time -- irrelevant to
-    /// a search-time comparison, which only needs the timestamp bits).
+    /// Converts an instant to the surrogate id used by ResourceSurrogateId. Millisecond-truncated UTC
+    /// ticks, left-shifted 3 bits — the low 3 bits hold a per-millisecond uniquifier the database
+    /// allocates at write time, which a search-time comparison does not need. Transcribed from the data
+    /// layer's IdHelper.ToId (pure math, no dependencies), since this Core project cannot reference it.
     /// </summary>
     private static long ToSurrogateId(DateTimeOffset dateTimeOffset)
     {

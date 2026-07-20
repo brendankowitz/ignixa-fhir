@@ -3,10 +3,9 @@ using Ignixa.Search.Models;
 namespace Ignixa.Search.Sql.Symbols;
 
 /// <summary>
-/// The compiler's only I/O seam. Resolves search-parameter and resource-type identity to the
-/// integer surrogate keys the search-index schema actually stores. Implemented by the data layer
-/// (e.g. Ignixa.DataLayer.SqlEntityFramework) -- this project has no EF/ASP.NET reference and does
-/// no I/O of its own. See docs/superpowers/specs/2026-07-14-fhir-to-sql-compiler-design.md, "Resolve".
+/// The compiler's only I/O seam. Resolves search-parameter and resource-type identity to the integer
+/// surrogate keys the search-index schema stores. Implemented by the data layer; this project has no EF
+/// or ASP.NET reference and does no I/O of its own.
 /// </summary>
 public interface ISymbolResolver
 {

@@ -7,4 +7,5 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>The scanned structure of a search key (the left side of a search parameter), before schema binding.</summary>
 internal abstract record SearchKeySyntax;

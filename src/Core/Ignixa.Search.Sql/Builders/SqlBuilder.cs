@@ -1,17 +1,23 @@
 #pragma warning disable CA1724
 
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Sql.Ast;
 
-namespace Ignixa.Search.Sql.Ast;
+namespace Ignixa.Search.Sql.Builders;
 
 /// <summary>
-/// Turns a QueryPlan into parameterized T-SQL text -- deterministic (same plan -> byte-identical SQL).
-/// Every CteDefinition entry, including Intersect/Union, becomes its own named CTE, so Match can point
-/// at any depth of nesting without special-casing the outer SELECT. No user value is ever inlined into
-/// SQL text -- every SqlParameterRef becomes a named parameter (see design doc's AST invariant).
+/// Turns a <see cref="QueryPlan"/> into parameterized T-SQL text, deterministically — the same plan
+/// always emits byte-identical SQL. Every <see cref="CteDefinition"/> entry becomes its own named CTE, so
+/// Match can reference any nesting depth without special-casing the outer SELECT. No user value is ever
+/// inlined: every <see cref="SqlParameterRef"/> becomes a named @pN parameter.
 /// </summary>
-public static class Emit
+public static class SqlBuilder
 {
+    /// <summary>
+    /// Renders a plan to SQL and its bound parameters. Emits one of three shapes: a COUNT_BIG SELECT when
+    /// CountOnly, a plain (T1, Sid1) select (with optional sort/paging) when there are no includes, or a
+    /// match-page CTE plus per-stage include CTEs unioned into a (T1, Sid1, IsMatch, IsPartial) result.
+    /// </summary>
     public static EmittedSql Run(QueryPlan plan)
     {
         var parameters = new List<EmittedSqlParameter>();
@@ -151,6 +157,7 @@ public static class Emit
         return new EmittedSql(includeSql, parameters);
     }
 
+    /// <summary>Renders one CTE definition's inner SELECT by its node kind.</summary>
     private static string EmitCte(CteDefinition cte, List<EmittedSqlParameter> parameters) => cte switch
     {
         CteDefinition.ParamSource p => EmitParamSource(p, parameters),
@@ -172,6 +179,7 @@ public static class Emit
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
+    /// <summary>Renders a ParamSource: distinct (type, surrogate id) rows from one search-param table filtered by SearchParamId and its optional predicate.</summary>
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
     {
         var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
@@ -180,6 +188,7 @@ public static class Emit
                $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{predicateClause}";
     }
 
+    /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>
     private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters)
     {
         // Deliberately hand-rolled string interpolation, not Predicate.Equal/Predicate.Or routed
@@ -228,6 +237,7 @@ public static class Emit
         };
     }
 
+    /// <summary>The ReferenceSearchParam column holding a chain's output resource type, which side depends on direction.</summary>
     private static string OutputTypeColumn(ChainDirection direction) => direction switch
     {
         ChainDirection.Forward => "rsp.ResourceTypeId",
@@ -235,6 +245,7 @@ public static class Emit
         _ => throw new NotSupportedException($"Unknown ChainDirection '{direction}'."),
     };
 
+    /// <summary>Renders the joins to each sort key's search-param table (INNER for the primary key, LEFT for tie-breakers), filtered to the IsMin/IsMax row for the key's direction.</summary>
     private static string EmitSortJoins(SortSpec? sort)
     {
         if (sort is null)
@@ -268,6 +279,7 @@ public static class Emit
         return string.Concat(joins);
     }
 
+    /// <summary>Renders the NOT EXISTS filter that selects rows missing the primary sort key, used in the MissingPrimary phase in place of its join.</summary>
     private static string EmitMissingPrimaryFilter(SortSpec sort)
     {
         var key = sort.Keys[0];
@@ -286,6 +298,7 @@ public static class Emit
         return $"NOT EXISTS (SELECT 1 FROM dbo.{table} s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = {key.SearchParamId})";
     }
 
+    /// <summary>The key indices that carry a value in the current phase: all keys when Valued, all but the primary when MissingPrimary.</summary>
     private static IReadOnlyList<int> ActiveKeyIndices(SortSpec? sort)
         => sort is null
             ? []
@@ -294,10 +307,9 @@ public static class Emit
                 : Enumerable.Range(1, sort.Keys.Count - 1).ToList();
 
     /// <summary>
-    /// The F1 invariant (design §3.3): this is the ONLY place a sort key's value expression is
-    /// rendered. EmitOrderBy and EmitSeekPredicate both call this -- neither hand-writes an
-    /// ISNULL(...)/sentinel string independently, so the ORDER BY and seek-predicate expressions for
-    /// a given key can never drift out of sync.
+    /// Renders a sort key's value expression — the raw column, or ISNULL(column, sentinel) where the value
+    /// can be missing. This is the single place a key's value expression is produced, so the ORDER BY,
+    /// SELECT, and seek-predicate renderings for a key can never drift apart.
     /// </summary>
     private static string SortValueExpr(SortSpec sort, int index)
     {
@@ -320,6 +332,7 @@ public static class Emit
         return $"ISNULL({raw}, {sentinel})";
     }
 
+    /// <summary>Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then the (T1, Sid1) tiebreak.</summary>
     private static string EmitOrderBy(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
@@ -328,6 +341,7 @@ public static class Emit
         return string.Join(", ", terms.Append("m.T1 ASC").Append("m.Sid1 ASC"));
     }
 
+    /// <summary>Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the projected SortValueN columns, then the (T1, Sid1) tiebreak.</summary>
     private static string EmitOuterOrderByForIncludes(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
@@ -336,6 +350,7 @@ public static class Emit
         return string.Join(", ", terms.Prepend("IsMatch DESC").Append("T1 ASC").Append("Sid1 ASC"));
     }
 
+    /// <summary>Renders the ", SortValueN AS ..." select-list columns that project each active key's value for the outer ORDER BY to read.</summary>
     private static string EmitSortSelectColumns(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
@@ -344,6 +359,11 @@ public static class Emit
             : ", " + string.Join(", ", activeIndices.Select((idx, ordinal) => $"{SortValueExpr(sort!, idx)} AS SortValue{ordinal}"));
     }
 
+    /// <summary>
+    /// Renders the keyset-seek WHERE predicate that skips everything up to the page boundary: an OR of
+    /// lexicographic branches over the active sort keys, then the (T1, Sid1) tiebreak, so it stays in step
+    /// with the ORDER BY. Throws if the boundary value count does not match the current phase's active keys.
+    /// </summary>
     private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {
         var activeIndices = ActiveKeyIndices(sort);
@@ -384,6 +404,7 @@ public static class Emit
             : $"({string.Join("\n       OR ", branches)})";
     }
 
+    /// <summary>Renders a CompartmentSource: rows of dbo.ReferenceSearchParam for the membership SearchParamId, any of the member resource types, and the fixed compartment reference.</summary>
     private static string EmitCompartmentSource(CteDefinition.CompartmentSource cs, List<EmittedSqlParameter> parameters)
         => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
            $"    FROM dbo.ReferenceSearchParam\n" +
@@ -391,6 +412,7 @@ public static class Emit
            $"      AND {EmitTypeInFilter("ResourceTypeId", cs.ResourceTypeIds)}\n" +
            $"      AND {EmitPredicate(cs.Predicate, parameters)}";
 
+    /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
     {
         var predicateClause = rs.Predicate is null ? string.Empty : $" AND {EmitPredicate(rs.Predicate, parameters)}";
@@ -399,6 +421,7 @@ public static class Emit
                $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0{predicateClause}";
     }
 
+    /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>
     private static string EmitIncludeStage(IncludeStage stage)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, seedCorrelationAlias) = stage.Direction switch
@@ -437,12 +460,14 @@ public static class Emit
                $"    ORDER BY T1 ASC, Sid1 ASC";
     }
 
+    /// <summary>Renders a "column = a OR column = b ..." type-id filter, parenthesized when there is more than one id.</summary>
     private static string EmitTypeInFilter(string column, IReadOnlyList<short> typeIds)
     {
         var filter = string.Join(" OR ", typeIds.Select(id => $"{column} = {id}"));
         return typeIds.Count > 1 ? $"({filter})" : filter;
     }
 
+    /// <summary>Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier stages — unioned together.</summary>
     private static string EmitSeedExists(IncludeStage stage, string correlationAlias)
     {
         var branches = new List<string>();
@@ -459,6 +484,7 @@ public static class Emit
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";
     }
 
+    /// <summary>Renders a predicate tree to a WHERE fragment, fully parenthesizing And/Or so operator precedence never depends on the surrounding context.</summary>
     private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch
     {
         Predicate.Equal e => $"{e.Column.Column} = {EmitParam(e.Value, parameters)}{EmitCollation(e.Collation)}",
@@ -472,6 +498,7 @@ public static class Emit
         _ => throw new NotSupportedException($"No Emit for {predicate.GetType().Name}."),
     };
 
+    /// <summary>Escapes the LIKE metacharacters in a value and wraps it in the % / _ pattern for its match kind, returning a parameter ref for binding.</summary>
     private static SqlParameterRef EscapeLike(Predicate.Like like)
     {
         var raw = (string)like.Value.Value;
@@ -489,6 +516,7 @@ public static class Emit
         return new SqlParameterRef(pattern);
     }
 
+    /// <summary>Binds a value as the next @pN parameter and returns its name — the single point where user values enter the SQL.</summary>
     private static string EmitParam(SqlParameterRef value, List<EmittedSqlParameter> parameters)
     {
         var name = $"@p{parameters.Count}";
@@ -496,5 +524,6 @@ public static class Emit
         return name;
     }
 
+    /// <summary>Renders a " COLLATE ..." suffix, or empty when the predicate has no explicit collation.</summary>
     private static string EmitCollation(string? collation) => collation is null ? string.Empty : $" COLLATE {collation}";
 }

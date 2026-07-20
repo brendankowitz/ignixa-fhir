@@ -10,6 +10,7 @@ using Ignixa.Search.Models;
 
 namespace Ignixa.Search.Expressions.Parsers.Binding;
 
+/// <summary>A bound chain link: the resolved reference parameter, the source and target resource types, the direction, and the next bound key.</summary>
 internal sealed record BoundChainKey(
     ImmutableArray<string> ResourceTypes,
     SearchParameterInfo ReferenceSearchParameter,

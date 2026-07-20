@@ -6,11 +6,9 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a Quantity search value to a ParamSource over QuantitySearchParam -- value comparison only.
-/// System/Code matching needs SystemId/QuantityCodeId resolution, a genuinely separate resolver
-/// mechanism (SearchIndexReferenceDataCache.GetOrCreateSystemIdAsync/GetOrCreateQuantityCodeIdAsync in
-/// the DataLayer today, no ISymbolResolver equivalent yet) -- not implemented; throws rather than
-/// silently ignoring a system/code constraint the user actually specified.
+/// Lowers a Quantity search value to a ParamSource over QuantitySearchParam — value comparison only.
+/// Matching System or Code needs SystemId/QuantityCodeId resolution that ISymbolResolver does not offer
+/// yet, so a search that specifies either throws rather than silently ignoring the constraint.
 /// </summary>
 public static class QuantityLoweringRule
 {

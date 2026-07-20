@@ -1,5 +1,6 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Catalog;
 
 namespace Ignixa.Search.Sql.Tests.Ast;
@@ -16,7 +17,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -49,7 +50,7 @@ public class EmitTests
             new CteRef(2));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -83,7 +84,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         // "Zorbaxil" is chosen because it cannot collide with any legitimate SQL token this Emit call
@@ -103,7 +104,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- COLLATE must bind to the column reference, immediately before LIKE, not to the
         // ESCAPE clause's literal (a postfix COLLATE there would be a syntactic no-op on the match).
@@ -128,7 +129,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("LowValue <= @p0 AND HighValue >= @p1");
@@ -146,7 +147,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("(HighValue < @p0 OR LowValue > @p1)");
@@ -159,7 +160,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("FROM dbo.Resource");
@@ -181,7 +182,7 @@ public class EmitTests
             new CteRef(2));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- correlates on BOTH T1 and Sid1, not Sid1 alone (matters once cross-resource-type
         // queries exist; correct by construction here, not by accident of this test's single-type scope)
@@ -201,7 +202,7 @@ public class EmitTests
             OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource");
@@ -219,7 +220,7 @@ public class EmitTests
             new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldNotContain("dbo.Resource");
@@ -237,7 +238,7 @@ public class EmitTests
             new CteRef(1));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("SELECT DISTINCT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1");
@@ -266,7 +267,7 @@ public class EmitTests
             new CteRef(1));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1");
@@ -304,7 +305,7 @@ public class EmitTests
             Includes: [stage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -369,7 +370,7 @@ public class EmitTests
             Includes: [stage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -432,7 +433,7 @@ public class EmitTests
             Includes: [stage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- no "rsp.SearchParamId = ", no type filters, straight to BaseUri + EXISTS
         emitted.Sql.ShouldContain(
@@ -457,7 +458,7 @@ public class EmitTests
             Includes: [stage0, stage1]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain(
@@ -483,7 +484,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -507,7 +508,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -536,7 +537,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.CompartmentSource([104], 77, predicate)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("      AND ResourceTypeId = 104\n");
@@ -553,7 +554,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -580,7 +581,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain(
@@ -604,7 +605,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
@@ -634,7 +635,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- same ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') text in both places.
         emitted.Sql.ShouldContain(
@@ -662,7 +663,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldNotContain("JOIN dbo.");
@@ -680,7 +681,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Page: page);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- branches.Count == 2 here (no key levels, just the two final type/sid tie-break
         // branches), so EmitSeekPredicate's multi-branch join applies: "\n       OR ", not a single
@@ -709,7 +710,7 @@ public class EmitTests
             Includes: [includeStage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain(
@@ -745,7 +746,7 @@ public class EmitTests
             Includes: [includeStage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain(
@@ -771,7 +772,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => Emit.Run(plan));
+        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan));
     }
 
     [Fact]
@@ -792,7 +793,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => Emit.Run(plan)).Message.ShouldContain("1 value(s)");
+        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("1 value(s)");
     }
 
     [Fact]
@@ -808,7 +809,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => Emit.Run(plan)).Message.ShouldContain("active key(s)");
+        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("active key(s)");
     }
 
     [Fact]
@@ -830,7 +831,7 @@ public class EmitTests
             Includes: [includeStage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the seek predicate is inside cteMatchPage's own WHERE, alongside the IsMin join.
         emitted.Sql.ShouldContain(
@@ -868,7 +869,7 @@ public class EmitTests
             Includes: [includeStage]);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
@@ -909,7 +910,7 @@ public class EmitTests
             OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the outer filter is ANDed against the whole parenthesized OR chain as a single
         // unit, not just its first branch. If the seek predicate's OR chain were unparenthesized, this
@@ -947,7 +948,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- before the fix, this "NOT EXISTS(...) AND (branch0 OR branch1 OR branch2)" text
         // would not exist: NOT EXISTS would only bind to branch0 via AND, and branch1/branch2 would sit
@@ -969,7 +970,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new CteRef(0));
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -992,7 +993,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldBe(
@@ -1017,7 +1018,7 @@ public class EmitTests
             OuterPredicate: outerPredicate, CountOnly: true);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert
         emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m\n" +
@@ -1039,7 +1040,7 @@ public class EmitTests
             Top: 10, Sort: sort, Includes: [includeStage], CountOnly: true);
 
         // Act
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
         // Assert -- no TOP, no ORDER BY, no sort join, no cteMatchPage, no UNION ALL anywhere.
         emitted.Sql.ShouldBe(

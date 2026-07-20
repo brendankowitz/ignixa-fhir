@@ -5,12 +5,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the comparator-dependent predicate shared by DateTime leaf lowering (base and composite --
-/// both store [StartDateTime, EndDateTime] with identical range-overlap semantics against the search
-/// value's own [Start, End], which already encodes FHIR partial-date precision by construction).
-/// Transcribed once from SearchValueExpressionBuilderHelper.Visit(DateTimeSearchValue), the real,
-/// live-executed comparator branch. :ap throws -- it requires DateTimeOffset.UtcNow at lowering time,
-/// which this pure function doesn't have.
+/// Builds the comparator-dependent predicate shared by base and composite DateTime lowering — both store
+/// [StartDateTime, EndDateTime] and compare, with range-overlap semantics, against the search value's own
+/// [Start, End] (which already encodes FHIR partial-date precision). :ap throws: it needs the current
+/// instant at lowering time, which this pure function does not have.
 /// </summary>
 internal static class DateTimeRangeComparison
 {

@@ -5,9 +5,9 @@ using Ignixa.Search.Sql.Symbols;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// The tier-1 (leaf) context: exposes symbol lookups and value parameterization only -- no CteRef,
-/// no Intersect/Union, no sibling access. A leaf rule cannot see or affect the rest of the plan by
-/// construction (design doc: "enforce the tier boundary as a type, not convention").
+/// The leaf (tier-1) context: exposes symbol lookups and value parameterization only — no CteRef, no
+/// Intersect/Union, no sibling access. By construction a leaf rule cannot see or affect the rest of the
+/// plan, making the tier boundary a type rather than a convention.
 /// </summary>
 public sealed class LeafContext
 {

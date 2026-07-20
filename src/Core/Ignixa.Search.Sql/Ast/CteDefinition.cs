@@ -3,24 +3,22 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// One node in the compiler's CTE graph. ParamSource (a single search-param table filtered by
-/// SearchParamId + Predicate), Intersect (AND), Union (OR), ResourceSource (all current, non-deleted
-/// resources of a type -- :not's base set), Except (set subtraction -- :not's own operation).
-/// ResourceSource's Predicate is null at the top level (QueryPlan.OuterPredicate is the mechanism
-/// there, unchanged); a nested scope (a chain's target expression, which has no 'outer' WHERE to
-/// attach to) uses it directly, Intersected with any ordinary predicates in that scope -- see the
-/// chain design doc §5 for the full reasoning. ParamSource.ResourceTypeId
-/// constrains which resource type's rows this CTE can return -- a SearchParamId is assigned per
-/// search-parameter-definition URL, not per resource type, so a shared definition (e.g. one search
-/// parameter spanning Patient/Practitioner) would otherwise let a ParamSource CTE return rows from the
-/// wrong resource type. ChainJoin represents a chain (forward or reverse) as a join through
-/// dbo.ReferenceSearchParam and dbo.Resource -- see the chain design doc for the full derivation.
-/// CompartmentSource represents a compartment-search grouped predicate -- all rows in
-/// dbo.ReferenceSearchParam matching one SearchParamId, any of a list of ResourceTypeIds (the
-/// resource types that share this particular membership parameter), and a fixed compartment
-/// reference -- one CTE per distinct membership SearchParamId (matching
-/// CompartmentSearchQueryGenerator's own grouping), Unioned by StructuralContext.LowerCompartment.
-/// See the compartment design doc §2 for the full derivation.
+/// One node in the compiler's CTE graph:
+/// <list type="bullet">
+/// <item><b>ParamSource</b> — one search-param table filtered by SearchParamId and an optional Predicate.</item>
+/// <item><b>Intersect</b> — set intersection (AND).</item>
+/// <item><b>Union</b> — set union (OR).</item>
+/// <item><b>ResourceSource</b> — all current, non-deleted resources of a type (the base set for :not).</item>
+/// <item><b>Except</b> — set subtraction (the :not operation itself).</item>
+/// <item><b>ChainJoin</b> — a forward or reverse chain, joined through dbo.ReferenceSearchParam and dbo.Resource.</item>
+/// <item><b>CompartmentSource</b> — compartment membership: rows of dbo.ReferenceSearchParam for one
+/// membership SearchParamId, any of a set of ResourceTypeIds, and a fixed compartment reference.</item>
+/// </list>
+/// ParamSource carries ResourceTypeId because a SearchParamId is assigned per parameter-definition URL,
+/// not per resource type, so a shared definition (e.g. one spanning Patient and Practitioner) would
+/// otherwise return rows of the wrong type. ResourceSource's Predicate is used only in a nested scope
+/// (e.g. a chain's target), which has no outer WHERE to attach to; at the top level QueryPlan.OuterPredicate
+/// carries resource-column filters instead.
 /// </summary>
 public abstract record CteDefinition
 {

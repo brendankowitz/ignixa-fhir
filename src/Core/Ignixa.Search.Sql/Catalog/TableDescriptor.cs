@@ -1,9 +1,6 @@
 namespace Ignixa.Search.Sql.Catalog;
 
-/// <summary>
-/// Describes one search-index table's schema, as the real DDL in
-/// src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Resources/97.sql states it.
-/// </summary>
+/// <summary>One search-index table's schema — its name and columns — as the DDL states it.</summary>
 public sealed record TableDescriptor(
     string SchemaName,
     string TableName,

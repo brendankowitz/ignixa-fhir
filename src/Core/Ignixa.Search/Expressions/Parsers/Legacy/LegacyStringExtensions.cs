@@ -24,6 +24,7 @@ using EnsureThat;
 
 namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
+/// <summary>String-splitting helpers (composite/OR separators) used only by the frozen <see cref="LegacyExpressionParser"/>, kept with it as a rollback lever.</summary>
 internal static class LegacyStringExtensions
 {
     private const char EscapingCharacter = '\\';

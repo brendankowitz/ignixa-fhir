@@ -7,49 +7,26 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Symbols;
 
 /// <summary>
-/// The compiler's Resolve stage: walks a typed predicate tree once, collects every search
-/// parameter it references, and resolves them all via <see cref="ISymbolResolver"/> -- the
-/// compiler's only I/O, done up front, producing an immutable <see cref="SymbolTable"/> that
-/// Lower/Emit consume synchronously. See
-/// docs/superpowers/specs/2026-07-14-fhir-to-sql-compiler-design.md, "Resolve".
+/// The compiler's Resolve stage: walks a typed predicate tree once (plus the includes, sort, and
+/// compartments), collects every search parameter and resource type it references, and resolves them all
+/// through <see cref="ISymbolResolver"/>. This is the compiler's only I/O, done up front, producing an
+/// immutable <see cref="SymbolTable"/> that Lower and Emit consume synchronously.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>OverridesUrl</b>: <see cref="ISymbolResolver.GetSearchParamIdAsync"/> takes the full
-/// <see cref="Ignixa.Search.Models.SearchParameterInfo"/>, not a bare URL, specifically so an
-/// implementation can apply the same override-URL fallback the existing data layer already does --
-/// <c>SearchIndexReferenceDataCache.GetSearchParamIdAsync(SearchParameterInfo)</c>
-/// (src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Indexing/SearchIndexReferenceDataCache.cs)
-/// tries the parameter's own <c>Url</c> first, then falls back to <c>OverridesUrl</c> if the
-/// primary lookup misses. Resolve does not duplicate that fallback logic; it passes the parameter
-/// through unchanged and lets the resolver implementation decide. The resulting id is stored under
-/// the *requesting* parameter's own <c>Url</c> (not the override target's), because that is the key
-/// Lower will look it up by later (<see cref="SymbolTable.SearchParamId"/> takes the predicate's own
-/// <see cref="Ignixa.Search.Models.SearchParameterInfo"/>) -- the override is an implementation
-/// detail of *how* the id was found, invisible once resolved.
+/// <see cref="ISymbolResolver.GetSearchParamIdAsync"/> takes the whole <see cref="SearchParameterInfo"/>,
+/// not a bare URL, so the resolver can apply its own override-URL fallback. The resolved id is stored
+/// under the requesting parameter's own <c>Url</c> — the key Lower looks it up by later — so how the id
+/// was found stays invisible once resolved.
 /// </para>
 /// <para>
-/// <b>Resource-type resolution</b> is out of scope for this stage beyond the caller-supplied
-/// <c>targetResourceType</c>, which is now nullable (matching Lower.Run's own Phase 8 part 1 widening
-/// for the wildcard-compartment-search case): when not null, it represents the query's own
-/// target resource type (e.g., "Patient" for a Patient?... search), and every ordinary leaf/composite
-/// predicate needs it to constrain <see cref="Ignixa.Search.Sql.Ast.CteDefinition.ParamSource"/>'s
-/// <c>ResourceTypeId</c> (a <c>SearchParamId</c> is assigned per search-parameter-definition URL, not
-/// per resource type, so a shared definition could otherwise match rows of the wrong resource type).
-/// When null, only resource types collected from the tree/includes/sort/compartments are resolved,
-/// with no forced addition. Beyond that, resolution extends to whatever <see cref="SymbolCollectingVisitor"/>
-/// collects into <c>ResourceTypes</c> -- see that type's remarks for the full list, which now includes
-/// <see cref="ReferenceSearchValue"/> leaves, a <c>_type</c> predicate's own value, and (as of Phase 6)
-/// a <see cref="ChainedExpression"/>'s <c>ReferenceSearchParameter</c> and both its
-/// <c>ResourceTypes</c>/<c>TargetResourceTypes</c> arrays. As of Phase 7, resolution also extends to
-/// every <see cref="IncludeExpression"/> passed via the includes/revIncludes parameters -- see
-/// SymbolCollectingVisitor.CollectInclude's remarks for the exact fields collected.
-/// As of Phase 8 part 2, resolution also extends to every <see cref="SortExpression"/> passed via the
-/// sort parameter -- see SymbolCollectingVisitor.CollectSort's remarks.
-/// As of Phase 8, Resolve also expands every SymbolCollectingVisitor.Compartments entry via
-/// ICompartmentDefinitionManager/ISearchParameterDefinitionManager (both optional, required only when
-/// a compartment search is actually present) into SymbolTable.CompartmentMembership -- see that
-/// method's remarks for the exact shape.
+/// <c>targetResourceType</c> is the query's own resource type (e.g. "Patient" for a
+/// Patient?... search); every ordinary leaf and composite predicate needs it to scope its ParamSource,
+/// because a SearchParamId is assigned per parameter-definition URL, not per resource type. It is
+/// nullable for the wildcard-compartment case, where only the types collected from the tree, includes,
+/// sort, and compartments are resolved. Compartment entries are expanded into
+/// <see cref="SymbolTable.CompartmentMembership"/> via the two optional definition managers, which are
+/// required only when a compartment search is actually present.
 /// </para>
 /// </remarks>
 public static class Resolve

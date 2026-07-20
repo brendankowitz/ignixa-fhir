@@ -5,12 +5,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the comparator-dependent predicate shared by Number and Quantity leaf lowering (both store
-/// LowValue/HighValue with identical range semantics). Mirrors the real, live SQL these comparators
-/// emit today via SearchValueExpressionBuilderHelper.GenerateNumberExpression -- Eq/Ne widen the raw
-/// value by the FHIR "implied decimal precision" tolerance (DecimalExtensions.GetPrescisionModifier)
-/// before comparing, matching the interpreter's Ap-goto-Eq/Ne pipeline. Ap throws: it requires an
-/// additional relative tolerance (ApproximateMultiplier) this pure function doesn't have.
+/// Builds the comparator-dependent predicate shared by Number and Quantity leaf lowering — both store
+/// LowValue/HighValue with identical range semantics. Eq/Ne widen the value by the FHIR implied-decimal-
+/// precision tolerance before comparing. :ap throws: it needs an additional relative tolerance this pure
+/// function does not have.
 /// </summary>
 internal static class NumericRangeComparison
 {

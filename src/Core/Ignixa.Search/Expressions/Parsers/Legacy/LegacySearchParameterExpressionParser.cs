@@ -20,6 +20,7 @@ using Ignixa.Serialization;
 
 namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
+/// <summary>The pre-rewrite per-parameter value parser, frozen alongside <see cref="LegacyExpressionParser"/> as a rollback lever and parity-test oracle.</summary>
 public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpressionParser
 {
     private static readonly Tuple<string, SearchComparator>[] SearchParamComparators = Enum.GetValues(typeof(SearchComparator))

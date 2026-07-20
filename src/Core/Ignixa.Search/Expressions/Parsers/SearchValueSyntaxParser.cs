@@ -15,6 +15,11 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>
+/// Scans a raw search value string into a <see cref="Syntax.SearchValueSyntax"/> tree — separating
+/// comparator prefixes, comma-separated alternatives, and <c>$</c>-separated composites. It does not
+/// type the values; that is <see cref="SearchAtomicValueParser"/>'s job.
+/// </summary>
 internal static class SearchValueSyntaxParser
 {
     private static readonly ImmutableArray<(string Literal, SearchComparator Comparator)> SearchComparators =

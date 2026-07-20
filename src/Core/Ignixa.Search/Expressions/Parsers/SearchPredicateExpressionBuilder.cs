@@ -15,9 +15,9 @@ namespace Ignixa.Search.Expressions.Parsers;
 
 /// <summary>
 /// Builds a <see cref="SearchParameterPredicateExpression"/> from the same typed
-/// <see cref="ISearchValue"/> the parser already constructs during parsing -- the sibling of
-/// <see cref="SearchValueExpressionBuilderHelper"/>, which flattens that same typed value into
-/// the old untyped field-level tree. See docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md.
+/// <see cref="ISearchValue"/> the parser already constructs during parsing — the sibling of
+/// <see cref="SearchValueExpressionBuilderHelper"/>, which instead flattens that typed value into the
+/// old field-level tree.
 /// </summary>
 internal sealed class SearchPredicateExpressionBuilder
 {

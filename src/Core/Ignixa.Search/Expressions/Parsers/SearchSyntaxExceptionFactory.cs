@@ -11,6 +11,7 @@ using Ignixa.Search.Indexing;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>Creates consistent search-syntax exceptions, with position information, for malformed keys and values.</summary>
 internal static class SearchSyntaxExceptionFactory
 {
     internal static InvalidSearchOperationException Create(

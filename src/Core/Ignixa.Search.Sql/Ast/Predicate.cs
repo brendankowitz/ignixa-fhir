@@ -3,8 +3,8 @@
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// A WHERE-clause fragment over one ParamSource CTE's own table -- never spans tables. Composites
-/// (out of scope for this plan) would express multiple column comparisons as nested And.
+/// A WHERE-clause fragment over a single table's columns; it never spans tables. Multiple column
+/// comparisons (e.g. a composite's two slots) are expressed as nested <see cref="And"/>.
 /// </summary>
 public abstract record Predicate
 {

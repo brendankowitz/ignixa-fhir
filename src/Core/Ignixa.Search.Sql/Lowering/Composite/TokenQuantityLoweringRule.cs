@@ -7,14 +7,11 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Lowers a TokenQuantity composite to a single ParamSource over TokenQuantityCompositeSearchParam --
+/// Lowers a TokenQuantity composite to a single ParamSource over TokenQuantityCompositeSearchParam —
 /// components[0] is the token slot (Code1), components[1] is the quantity slot (LowValue2/HighValue2,
-/// value comparison only -- SystemId2/QuantityCodeId2 need SystemId/QuantityCodeId resolution, the same
-/// gap QuantityLoweringRule already defers). LowValue2/HighValue2 are nullable in this composite table
-/// (unlike the base QuantitySearchParam's NOT NULL columns), which needs no special handling here:
-/// TokenQuantityCompositeRowGenerator always populates both columns for every row it writes (mirroring
-/// the base table's write-time invariant), so a NULL-Low/High row is not a real case this rule needs
-/// to account for.
+/// value comparison only; System/Code have the same unresolved-id gap as <see cref="Leaf.QuantityLoweringRule"/>).
+/// The Low/High columns are nullable in this table but are always populated at write time, so this rule
+/// need not handle NULL.
 /// </summary>
 public static class TokenQuantityLoweringRule
 {

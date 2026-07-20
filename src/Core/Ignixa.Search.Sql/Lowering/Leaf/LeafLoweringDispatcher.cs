@@ -5,8 +5,8 @@ using Ignixa.Search.Sql.Ast;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Dispatches a leaf predicate to its tier-1 lowering rule by the runtime type of its ISearchValue.
-/// Composites throw -- out of scope for this plan (see this plan's global constraints).
+/// Dispatches a leaf predicate to its lowering rule by the runtime type of its ISearchValue. A composite
+/// value has no leaf rule and throws — composites are lowered by <see cref="Composite.CompositeLoweringDispatcher"/>.
 /// </summary>
 public static class LeafLoweringDispatcher
 {

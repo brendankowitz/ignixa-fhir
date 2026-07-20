@@ -216,16 +216,16 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             }
         }
 
-        // STEP 2: Combine search expressions with AND
+        // STEP 2: Combine search expressions with AND. The canonical output is the typed predicate tree;
+        // the date-equality index optimization is a SQL-backend concern that only matches the lowered
+        // field-level shape, so it now runs there (LegacyExpressionLowerer.LowerToLegacy), not here.
         if (searchExpressions.Count == 1)
         {
-            options.Expression = searchExpressions[0]
-                .AcceptVisitor(DateTimeEqualityRewriter.Instance, null);
+            options.Expression = searchExpressions[0];
         }
         else if (searchExpressions.Count > 1)
         {
-            options.Expression = Expression.And(searchExpressions.ToArray())
-                .AcceptVisitor(DateTimeEqualityRewriter.Instance, null);
+            options.Expression = Expression.And(searchExpressions.ToArray());
         }
 
         // STEP 3: Parse sorting

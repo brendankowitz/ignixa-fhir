@@ -9,5 +9,6 @@ using System.Collections.Immutable;
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>Comma-separated value alternatives — an OR over the items (e.g. <c>a,b,c</c>).</summary>
 internal sealed record AlternativesValueSyntax(
     ImmutableArray<SearchValueSyntax> Items) : SearchValueSyntax;

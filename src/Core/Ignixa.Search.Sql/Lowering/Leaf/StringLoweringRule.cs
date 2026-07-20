@@ -7,23 +7,16 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a String search value to a ParamSource over StringSearchParam. Values within the inline
-/// width compare against Text; values beyond it compare against TextOverflow, which holds the whole
-/// value per this plan's task 1 (matching fhir-server's convention).
-///
-/// This single-column choice is NOT correct for every modifier once a row has overflowed (Text ==
-/// TextOverflow's first-256-char prefix, not its full value): a `:contains` search value within the
-/// inline width can never be expressed correctly against `Text` alone, because a true substring match
-/// that only occurs at or after character 256 of an overflowed row's real value is invisible to
-/// `Text LIKE '%x%'` -- this rule throws NotSupportedException for that case rather than silently
-/// missing matches. An `:exact` search value of exactly the inline width has the same problem in the
-/// other direction: `Text = @p` can false-positive match an overflowed row whose true value merely
-/// shares that 256-char prefix -- this rule throws for that case too. The default/`StartsWith` case
-/// is safe in both the overflow and non-overflow case: a true "starts with X" match (X within the
-/// inline width) is always captured in the first 256 characters, so Text alone is sufficient.
-/// Fixing `:contains` and the exact-at-256 case for real would require either extending Predicate with
-/// Or/IsNull to search both Text and TextOverflow, or fhir-server's Text-prefix-seek technique; both
-/// are documented follow-ups, not implemented here.
+/// Lowers a String search value to a ParamSource over StringSearchParam. Values within the inline width
+/// compare against Text; longer values compare against TextOverflow, which holds the whole value.
+/// <para>
+/// Comparing a single column is not correct for every modifier once a row has overflowed, because Text
+/// then holds only the first 256 characters. <c>:contains</c> within the inline width would miss a
+/// substring that occurs only past character 256, and <c>:exact</c> at exactly the inline width could
+/// false-positive on a longer value sharing the same 256-char prefix — both throw rather than return
+/// wrong rows. The default StartsWith case is always safe, since a prefix within the inline width is
+/// fully captured in Text. Handling the two thrown cases would need the IR to search both columns.
+/// </para>
 /// </summary>
 public static class StringLoweringRule
 {

@@ -30,6 +30,11 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers.Legacy;
 
+/// <summary>
+/// The pre-rewrite search parser, frozen. Superseded by <see cref="ExpressionParser"/>'s scan → bind
+/// pipeline and not used in the parsing path; kept as a rollback lever and as the oracle for the
+/// old-vs-new parser parity tests.
+/// </summary>
 public sealed class LegacyExpressionParser : IExpressionParser
 {
     private const char SearchSplitChar = ':';

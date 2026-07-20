@@ -5,11 +5,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the code-only equality predicate shared by every composite type's Token slot (TokenToken,
-/// TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, ReferenceToken all have one) --
-/// identical semantics to TokenLoweringRule: System-qualified components (including System =
-/// string.Empty) and text-only components (no Code) both throw rather than silently producing a
-/// wrong-scope or always-false predicate.
+/// Builds the code-only equality predicate for a composite's Token slot (every composite type has one).
+/// Same semantics as <see cref="Leaf.TokenLoweringRule"/>: a system-qualified component (including the
+/// system-must-be-absent "|code" form) or a text-only component with no code throws rather than silently
+/// producing a wrong-scope or always-false predicate.
 /// </summary>
 internal static class TokenColumnEquality
 {

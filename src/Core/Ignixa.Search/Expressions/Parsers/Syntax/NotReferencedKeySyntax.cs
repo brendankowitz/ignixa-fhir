@@ -7,4 +7,5 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>A scanned <c>_not-referenced</c> key: an optional source resource type and reference path.</summary>
 internal sealed record NotReferencedKeySyntax(string? SourceResourceType, string? ReferencePath) : SearchKeySyntax;

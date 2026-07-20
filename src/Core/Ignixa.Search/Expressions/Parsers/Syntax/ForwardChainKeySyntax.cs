@@ -7,4 +7,5 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>A scanned forward chain key (e.g. <c>subject:Patient.name</c>): a reference name, an optional target resource type, and the chained key.</summary>
 internal sealed record ForwardChainKeySyntax(string ReferenceName, string? TargetResourceType, SearchKeySyntax Next) : SearchKeySyntax;

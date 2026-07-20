@@ -10,6 +10,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -72,9 +73,9 @@ public class CompiledSearchEndToEndTests
         // Act
         var symbolTable = await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None);
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null);
-        var emitted = Emit.Run(plan);
+        var emitted = SqlBuilder.Run(plan);
 
-        // CA2100 suppressed: emitted.Sql is Emit.Run's compiler-generated, fully parameterized T-SQL
+        // CA2100 suppressed: emitted.Sql is SqlBuilder.Run's compiler-generated, fully parameterized T-SQL
         // text (no user value is ever inlined into it -- that is this whole test's point), not
         // ad hoc string concatenation of user input.
 #pragma warning disable CA2100

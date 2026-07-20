@@ -7,4 +7,5 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>The scanned structure of a search value (the right side of a search parameter), before it is typed.</summary>
 internal abstract record SearchValueSyntax;

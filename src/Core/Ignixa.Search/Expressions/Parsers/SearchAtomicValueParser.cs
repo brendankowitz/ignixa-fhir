@@ -12,6 +12,10 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>
+/// Parses one atomic value's raw text into a typed <see cref="ISearchValue"/> for the search
+/// parameter's type (string, token, reference, date, quantity, number, uri).
+/// </summary>
 internal sealed class SearchAtomicValueParser
 {
     private readonly IReadOnlyDictionary<SearchParamType, Func<string, ISearchValue>> _parsers;

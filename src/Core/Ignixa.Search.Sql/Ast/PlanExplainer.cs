@@ -4,10 +4,8 @@ using Ignixa.Search.Expressions;
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// Renders a QueryPlan as human-readable text -- the compiler's plan-shape golden-test format.
-/// Read-only by design: no parser, no round-trip (design doc's Explain() rationale -- a parseable
-/// plan DSL would need a printer AND a parser, and would import SQL's semantics into a FHIR-meaning
-/// layer for no benefit).
+/// Renders a <see cref="QueryPlan"/> as human-readable text — the compiler's plan-shape golden-test
+/// format. One-way by design: there is no parser and no round-trip.
 /// </summary>
 public static class PlanExplainer
 {

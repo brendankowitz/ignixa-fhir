@@ -7,4 +7,5 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>A scanned reverse chain key (<c>_has:Source:reference:…</c>): the source resource type, the reference name, and the chained key.</summary>
 internal sealed record ReverseChainKeySyntax(string SourceResourceType, string ReferenceName, SearchKeySyntax Next) : SearchKeySyntax;

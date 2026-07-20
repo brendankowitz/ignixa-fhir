@@ -10,8 +10,8 @@
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageStability>stable</PackageStability>
-    <Description>FHIR search-to-SQL compiler infrastructure</Description>
+    <PackageStability>alpha</PackageStability>
+    <Description>FHIR search-to-SQL compiler infrastructure (alpha). Compiles a bound FHIR search expression tree into parameterized T-SQL against the Ignixa search-index schema. Experimental and not yet wired into a production data layer — the public API may change without notice.</Description>
   </PropertyGroup>
 
   <ItemGroup>

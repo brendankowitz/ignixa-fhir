@@ -1,24 +1,19 @@
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// The compiler's plan output -- Lower produces this, Emit consumes it. Every entry in Ctes,
-/// including Intersect/Union/ResourceSource/Except nodes, becomes its own named CTE when emitted --
-/// that is what makes this a graph rather than a tree of inline joins, and lets Match point at any
-/// depth of nesting. OuterPredicate is the one exception to "everything is a CTE": ordinary
-/// resource-column predicates (_id/_type/_lastUpdated) are applied as a WHERE clause on an outer join
-/// to dbo.Resource, not folded into the CTE graph -- see task 6's plan section for why (avoids relying
-/// on SQL Server pushing a predicate through multiple CTE layers under TOP, a real, not hypothetical,
-/// risk). Includes (Phase 7) is the first tier-3 result-shape field -- non-null and non-empty only for
-/// queries with _include/_revinclude/:iterate; Emit materializes a cteMatchPage CTE and a
-/// (T1, Sid1, IsMatch, IsPartial) result shape only in that case, leaving every plan with no Includes
-/// byte-identical to before this field existed. Sort/Page (Phase 8 part 2) are the second tier-3
-/// result-shape fields -- Sort decorates ordering only (never membership), synthesized entirely inside
-/// Emit's page-selection sites; Page is the keyset boundary a caller decodes from a continuation
-/// token. Both are purely additive -- a plan with neither is byte-identical to before these fields
-/// existed. CountOnly (Phase 9) is a third tier-3 result-shape field -- when true, Emit ignores
-/// Top/Sort/Page/Includes entirely and renders a single COUNT_BIG(DISTINCT Sid1) terminal SELECT
-/// instead of any row-returning shape; a plan with CountOnly false (the default) is byte-identical to
-/// before this field existed.
+/// The compiler's plan output: Lower produces it, Emit consumes it. Every entry in <see cref="Ctes"/>
+/// becomes its own named CTE when emitted, which makes the plan a graph rather than a tree of inline
+/// joins and lets <see cref="Match"/> reference any nesting depth. <see cref="OuterPredicate"/> is the
+/// one thing not expressed as a CTE: resource-column filters (_id/_type/_lastUpdated) apply as a WHERE
+/// clause on an outer join to dbo.Resource, avoiding reliance on SQL Server pushing a predicate through
+/// multiple CTE layers under TOP.
+/// <para>
+/// <see cref="Includes"/>, <see cref="Sort"/>, <see cref="Page"/>, and <see cref="CountOnly"/> are
+/// additive result-shape modifiers. With all of them at their defaults, Emit renders the plain
+/// (T1, Sid1) row shape. A non-empty <see cref="Includes"/> switches to a (T1, Sid1, IsMatch, IsPartial)
+/// shape; <see cref="CountOnly"/> replaces every row-returning shape with a single
+/// COUNT_BIG(DISTINCT Sid1) SELECT.
+/// </para>
 /// </summary>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,

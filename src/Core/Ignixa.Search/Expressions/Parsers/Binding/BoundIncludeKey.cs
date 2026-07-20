@@ -10,6 +10,7 @@ using Ignixa.Search.Models;
 
 namespace Ignixa.Search.Expressions.Parsers.Binding;
 
+/// <summary>A bound <c>_include</c>/<c>_revinclude</c> key: the resolved reference parameter (null for a wildcard) and the source, target, and referenced resource types.</summary>
 internal sealed record BoundIncludeKey(
     SearchParameterInfo? ReferenceSearchParameter,
     string SourceResourceType,

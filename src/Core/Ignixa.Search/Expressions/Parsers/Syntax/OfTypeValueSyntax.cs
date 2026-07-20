@@ -7,6 +7,7 @@
 
 namespace Ignixa.Search.Expressions.Parsers.Syntax;
 
+/// <summary>A scanned <c>:of-type</c> value: the identifier type system, the type code, and the identifier value.</summary>
 internal sealed record OfTypeValueSyntax(
     string TypeSystem,
     string TypeCode,
