@@ -1221,7 +1221,9 @@ Apply the same decomposition to the `CountOnly` and includes paths, adding `Sect
     [Fact]
     public void GivenAnIncludesPlan_WhenEmitted_ThenTailBlocksAreLabelledNotAutoNumbered()
     {
-        var emitted = SqlBuilder.Run(IncludesPlan(), new EmitOptions(IncludeTextRanges: true));
+        var plan = IncludesPlan();
+
+        var emitted = SqlBuilder.Run(plan, new EmitOptions(IncludeTextRanges: true));
 
         var labels = emitted.TextRanges!.Select(r => r.Label).ToList();
         labels.ShouldContain("cteMatchPage");
@@ -1230,7 +1232,7 @@ Apply the same decomposition to the `CountOnly` and includes paths, adding `Sect
         labels.ShouldNotContain(label => label.StartsWith("cte", StringComparison.Ordinal)
             && label != "cteMatchPage"
             && int.TryParse(label.AsSpan(3), out var i)
-            && i >= 1);
+            && i >= plan.Ctes.Count);
     }
 ```
 
@@ -1261,7 +1263,14 @@ git commit -m "feat(search-sql): record SQL section text ranges via a section-sc
 **Files:**
 - Create: `src/Core/Ignixa.Search/Parsing/TraceStage.cs`, `ParameterOutcome.cs`, `ParameterTrace.cs`
 - Modify: `src/Core/Ignixa.Search/Parsing/SearchOptionsBuilder.cs`
+- Modify: `src/Core/Ignixa.Search/Parsing/ISearchOptionsBuilder.cs` — the overload goes on the **interface** too
 - Test: `test/Ignixa.Application.Tests/Search/Parsing/ParameterOutcomeTests.cs`
+
+**The collector overload must be added to `ISearchOptionsBuilder`, not just the concrete class.**
+`ISearchOptionsBuilderFactory.Create(...)` returns `ISearchOptionsBuilder`, and DI registers only the
+interface — so Task 8's `CompileAsync` receives the interface and could not reach a concrete-only method
+without a downcast. `SearchOptionsBuilder` is the sole implementer (no fakes, no decorators), so widening
+the interface breaks nothing.
 
 **Three decisions pinned here so Task 8's implementer does not have to re-derive them:**
 
@@ -1412,17 +1421,21 @@ git commit -m "feat(search): report per-parameter outcomes from SearchOptionsBui
 public static async Task<SearchTrace> CompileAsync(
     string resourceType,
     IReadOnlyList<QueryParameter> parameters,
-    SearchOptionsBuilder optionsBuilder,
+    ISearchOptionsBuilder optionsBuilder,
     ISymbolResolver resolver,
     CancellationToken cancellationToken,
     ICompartmentDefinitionManager? compartmentDefinitionManager = null,
     ISearchParameterDefinitionManager? searchParameterDefinitionManager = null)
 ```
 
-It takes the **concrete** `SearchOptionsBuilder`, not `ISearchOptionsBuilder` — this is a compiler entry
-point, not a DI seam, and Task 7 adds the outcome-collector overload only to the concrete class. Do not
-widen `ISearchOptionsBuilder`. The parameter order mirrors `Resolve.RunAsync`, which likewise places
-`cancellationToken` before its two optional definition managers.
+It takes **`ISearchOptionsBuilder`**, the interface. `ISearchOptionsBuilderFactory.Create(...)` returns the
+interface and DI registers only the interface, so a concrete-typed parameter would force
+`(SearchOptionsBuilder)factory.Create(...)` into the first real caller — and the spec requires production
+wiring to consume `CompileAsync`, which a downcast would make brittle the day the factory returns a
+decorator. Task 7 therefore puts the collector overload on the interface as well.
+
+The parameter order mirrors `Resolve.RunAsync`, which likewise places `cancellationToken` before its two
+optional definition managers — consistency with the sibling API this sits directly on top of.
 
 - [ ] **Step 1: Write the failing test**
 
