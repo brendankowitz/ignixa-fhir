@@ -142,6 +142,13 @@ public class SchemaDeployerDeploymentTests
             tableNames.ShouldContain("Resource");
             tableNames.ShouldContain("TokenSearchParam");
             tableNames.ShouldContain("ResourceType");
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(CancellationToken.None);
+            await using var versionCommand = connection.CreateCommand();
+            versionCommand.CommandText = "SELECT MAX(Version) FROM dbo.SchemaVersion";
+            var stampedVersion = (int)(await versionCommand.ExecuteScalarAsync(CancellationToken.None))!;
+            stampedVersion.ShouldBe(SchemaVersionConstants.CurrentVersion);
         }
         finally
         {

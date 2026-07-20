@@ -83,6 +83,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // immediately before acting, with no deeper DacFx-level backstop).
         dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
         _logger.LogInformation("Deployed schema to tenant {TenantId}'s new database '{DatabaseName}'.", tenantId, databaseName);
+        await StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
     }
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)
@@ -158,5 +159,15 @@ public sealed class SchemaDeployer : ISchemaDeployer
         command.CommandText = "SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Resource') THEN 0 ELSE 1 END";
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return (int)result! == 1;
+    }
+
+    private static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT dbo.SchemaVersion (Version) VALUES (@version)";
+        command.Parameters.AddWithValue("@version", version);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
