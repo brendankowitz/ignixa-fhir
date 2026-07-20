@@ -40,4 +40,25 @@ public class PlanProvenanceTests
         // Assert
         lowered.Provenance.Origins.ShouldContain(o => ReferenceEquals(o.SourceNode, inner));
     }
+
+    [Fact]
+    public void GivenAnOrOfCompositeAlternatives_WhenLowered_ThenEachAlternativeHasItsOwnProvenance()
+    {
+        // Arrange
+        var (wrapper, alternative1, alternative2, symbols) = LowerTestFixtures.OrOfCompositeAlternatives();
+
+        // Act
+        var lowered = Lower.Run(
+            wrapper, symbols, targetResourceType: "Observation",
+            includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null);
+
+        // Assert
+        lowered.Provenance.Origins.Count.ShouldBe(2);
+        var sourceNodes = lowered.Provenance.Origins.Select(o => o.SourceNode).ToList();
+        ReferenceEquals(sourceNodes[0], sourceNodes[1]).ShouldBeFalse();
+        ReferenceEquals(sourceNodes[0], alternative1).ShouldBeTrue();
+        ReferenceEquals(sourceNodes[1], alternative2).ShouldBeTrue();
+        sourceNodes.ShouldNotContain(n => ReferenceEquals(n, wrapper));
+    }
 }

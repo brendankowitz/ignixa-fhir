@@ -148,7 +148,7 @@ public static class Lower
                 .Select(e =>
                 {
                     TryGetCompositeComponents(e, out var alt);
-                    return context.LowerComposite(sp.Parameter, alt!, resourceType, provenanceNode: sp);
+                    return context.LowerComposite(sp.Parameter, alt!, resourceType, provenanceNode: e);
                 })
                 .ToList();
             return context.Union(refs);
