@@ -12,6 +12,7 @@ public static class ServiceCollectionExtensions
 
         services.Configure<SqlServerOptions>(configuration.GetSection(SqlServerOptions.SectionName));
         services.AddSingleton<ISchemaDeployer, SchemaDeployer>();
+        services.AddSingleton<ISchemaVersionResolver, SchemaVersionResolver>();
         return services;
     }
 }
