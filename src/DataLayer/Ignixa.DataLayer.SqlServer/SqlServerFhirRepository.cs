@@ -3,6 +3,7 @@ using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -22,8 +23,15 @@ namespace Ignixa.DataLayer.SqlServer;
 /// (<see cref="GetAsync"/>, <see cref="CreateOrUpdateAsync"/>, <see cref="DeleteAsync"/>,
 /// <see cref="GetNextTransactionIdAsync"/>, <see cref="CommitTransactionAsync"/>) plus the two shared
 /// private helpers (<see cref="GetOrCreateResourceTypeIdAsync"/>, <see cref="GetNextSurrogateIdAsync"/>)
-/// and <see cref="UpsertResourceTtlAsync"/>/<see cref="DeleteSearchIndexEntriesAsync"/>. The remaining
-/// 7 members are intentionally unimplemented placeholders (Tasks 7-9 fill them in on this same class).
+/// and <see cref="UpsertResourceTtlAsync"/>/<see cref="DeleteSearchIndexEntriesAsync"/>.
+///
+/// Phase D Task 7 adds <see cref="BatchWriteAsync"/> and <see cref="GetStalledTransactionsAsync"/>,
+/// porting <c>SqlEntityFrameworkRepository.cs:337-631/651-685</c>: cache-first resource-type
+/// resolution with a single batched fallback query, 100-item-chunked existing-resource lookup via a
+/// <c>VALUES</c> table-value constructor join (one round trip per chunk, not N), and the client-side
+/// version/surrogate-id pre-flight checks that mirror the merge stored procedure's own validation.
+/// The remaining 5 members are intentionally unimplemented placeholders (Tasks 8-9 fill them in on
+/// this same class).
 /// </summary>
 public class SqlServerFhirRepository(
     ISqlExecutionService sqlExecutionService,
@@ -298,24 +306,152 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
+    public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         CancellationToken ct = default)
-        => throw new NotImplementedException("BatchWriteAsync is implemented in a later Phase D task.");
+    {
+        // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense.
+        ArgumentNullException.ThrowIfNull(operations);
+
+        _logger.LogDebug(
+            "Batch writing {Count} resources for transaction {TransactionId}",
+            operations.Count,
+            transactionId.Value);
+
+        var resourceTypeMap = await ResolveResourceTypeIdsAsync(operations, ct);
+
+        var resourceLookupKeys = operations
+            .Select(op => (TypeId: resourceTypeMap[op.resourceType], op.resourceId))
+            .Distinct()
+            .ToList();
+
+        var currentVersions = await GetExistingResourceVersionsAsync(resourceLookupKeys, ct);
+
+        _logger.LogDebug(
+            "Batch query found {ExistingCount} existing resources, {NewCount} are new",
+            currentVersions.Count,
+            operations.Count - currentVersions.Count);
+
+        // Validate surrogate IDs and versions BEFORE building the wrapper / sending to the database.
+        // This replicates the stored procedure's validation check to catch issues early with better
+        // error messages.
+        var resourceWrappers = new List<ResourceWrapper>(operations.Count);
+
+        foreach (var (resourceType, resourceId, resource, searchIndexes, httpMethod, entryIndex) in operations)
+        {
+            var resourceTypeId = resourceTypeMap[resourceType];
+            var key = (resourceTypeId, resourceId);
+            var newSurrogateId = transactionId.Value + entryIndex;
+
+            var hasCurrentVersion = currentVersions.TryGetValue(key, out var existing);
+            var newVersion = (hasCurrentVersion ? existing.MaxVersion : 0) + 1;
+
+            if (hasCurrentVersion)
+            {
+                if (newVersion <= existing.MaxVersion)
+                {
+                    throw new InvalidOperationException(
+                        $"Version constraint violation for {resourceType}/{resourceId}: " +
+                        $"NewVersion={newVersion} <= PreviousVersion={existing.MaxVersion}");
+                }
+
+                if (newSurrogateId <= existing.MaxSurrogateId)
+                {
+                    throw new ResourceVersionConflictException(
+                        resourceType,
+                        resourceId,
+                        newSurrogateId,
+                        existing.MaxSurrogateId);
+                }
+            }
+
+            // Update the JsonNode meta to reflect the calculated version -- ensures the stored JSON
+            // has the correct meta.versionId and meta.lastUpdated (same IdHelper mechanism as
+            // CreateOrUpdateAsync).
+            resource.Meta.VersionId = newVersion.ToString();
+            resource.Meta.LastUpdated = transactionId.Value.ToDate();
+
+            var wrapper = new ResourceWrapper(
+                ResourceType: resourceType,
+                ResourceId: resourceId,
+                VersionId: newVersion.ToString(),
+                LastModified: resource.Meta.LastUpdated.Value,
+                Resource: resource,
+                Request: new ResourceRequest(httpMethod, $"{resourceType}/{resourceId}"),
+                IsDeleted: false)
+            {
+                SearchIndices = searchIndexes,
+                TenantId = null
+            };
+
+            resourceWrappers.Add(wrapper);
+        }
+
+        var entryIndices = operations.Select(op => op.entryIndex).ToList();
+
+        // Delegate the actual write to the merge repository -- same mechanism as CreateOrUpdateAsync.
+        // Does NOT commit internally: commit happens later via a separate CommitTransactionAsync call.
+        await _mergeRepository.MergeResourcesAsync(
+            transactionId.Value,
+            singleTransaction: true,
+            resourceWrappers,
+            entryIndices,
+            ct);
+
+        var results = new List<ResourceKey>(operations.Count);
+        for (var i = 0; i < operations.Count; i++)
+        {
+            results.Add(new ResourceKey(operations[i].resourceType, operations[i].resourceId, resourceWrappers[i].VersionId, null));
+        }
+
+        _logger.LogInformation(
+            "Batch wrote {Count} resources for transaction {TransactionId}",
+            operations.Count,
+            transactionId.Value);
+
+        return results;
+    }
 
     /// <inheritdoc/>
-    public ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
+    public async ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
         TimeSpan stallThreshold,
         CancellationToken ct = default)
-        => throw new NotImplementedException("GetStalledTransactionsAsync is implemented in a later Phase D task.");
+    {
+        var threshold = DateTime.UtcNow - stallThreshold;
+
+        _logger.LogDebug(
+            "Querying for stalled transactions (IsCompleted = false, HeartbeatDate < {Threshold})",
+            threshold);
+
+        using var command = new SqlCommand(
+            "SELECT SurrogateIdRangeFirstValue FROM dbo.Transactions WHERE IsCompleted = 0 AND HeartbeatDate < @StalledBefore;");
+        command.Parameters.Add("@StalledBefore", SqlDbType.DateTime).Value = threshold;
+
+        var stalledTransactions = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId, command, reader => new TransactionId(reader.GetInt64(0)), ct);
+
+        if (stalledTransactions.Count > 0)
+        {
+            _logger.LogWarning(
+                "Found {Count} stalled transactions in database (threshold: {Threshold})",
+                stalledTransactions.Count,
+                threshold);
+        }
+        else
+        {
+            _logger.LogDebug("No stalled transactions found");
+        }
+
+        return stalledTransactions;
+    }
 
     /// <inheritdoc/>
     public IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
         ResourceKey key,
         HistoryQueryParameters parameters,
         CancellationToken ct = default)
-        => throw new NotImplementedException("GetResourceHistoryAsync is implemented in a later Phase D task.");
+        => throw new System.NotImplementedException("GetResourceHistoryAsync is implemented in a later Phase D task.");
 
     /// <inheritdoc/>
     public IAsyncEnumerable<SearchEntryResult> GetTypeHistoryAsync(
@@ -323,27 +459,27 @@ public class SqlServerFhirRepository(
         int tenantId,
         HistoryQueryParameters parameters,
         CancellationToken ct = default)
-        => throw new NotImplementedException("GetTypeHistoryAsync is implemented in a later Phase D task.");
+        => throw new System.NotImplementedException("GetTypeHistoryAsync is implemented in a later Phase D task.");
 
     /// <inheritdoc/>
     public IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
         int tenantId,
         HistoryQueryParameters parameters,
         CancellationToken ct = default)
-        => throw new NotImplementedException("GetSystemHistoryAsync is implemented in a later Phase D task.");
+        => throw new System.NotImplementedException("GetSystemHistoryAsync is implemented in a later Phase D task.");
 
     /// <inheritdoc/>
     public Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
         int batchSize,
         CancellationToken ct = default)
-        => throw new NotImplementedException("GetExpiredResourcesAsync is implemented in a later Phase D task.");
+        => throw new System.NotImplementedException("GetExpiredResourcesAsync is implemented in a later Phase D task.");
 
     /// <inheritdoc/>
     public Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
         CancellationToken ct = default)
-        => throw new NotImplementedException("HardDeleteResourceAsync is implemented in a later Phase D task.");
+        => throw new System.NotImplementedException("HardDeleteResourceAsync is implemented in a later Phase D task.");
 
     // Corrected during plan review: an earlier draft routed the insert path through
     // _cache.GetResourceTypeIdAsync (the read-only lookup, which caches a "confirmed missing"
@@ -372,6 +508,160 @@ public class SqlServerFhirRepository(
         var newId = results[0];
         _cache.CacheResourceTypeId(resourceType, newId);
         return newId;
+    }
+
+    // BatchWriteAsync's resource-type resolution: cache-first (no DB round trip on a hit), then ONE
+    // batched "WHERE Name IN (...)" query for every cache miss (not one query per miss), then
+    // GetOrCreateResourceTypeIdAsync for anything still missing after the batch query (new FHIR
+    // resource types -- very rare). Mirrors SqlEntityFrameworkRepository.cs:353-410.
+    private async Task<Dictionary<string, short>> ResolveResourceTypeIdsAsync(
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
+        CancellationToken ct)
+    {
+        var uniqueResourceTypes = operations.Select(op => op.resourceType).Distinct().ToList();
+
+        var resourceTypeMap = new Dictionary<string, short>();
+        var cacheMisses = new List<string>();
+
+        foreach (var resourceType in uniqueResourceTypes)
+        {
+            var cachedId = _cache.TryGetResourceTypeIdFromCache(resourceType);
+            if (cachedId.HasValue)
+            {
+                resourceTypeMap[resourceType] = cachedId.Value;
+            }
+            else
+            {
+                cacheMisses.Add(resourceType);
+            }
+        }
+
+        if (cacheMisses.Count == 0)
+        {
+            return resourceTypeMap;
+        }
+
+        _logger.LogDebug(
+            "BatchWrite: {CacheHits} cache hits, {CacheMisses} cache misses for resource types",
+            uniqueResourceTypes.Count - cacheMisses.Count,
+            cacheMisses.Count);
+
+        var parameterNames = new string[cacheMisses.Count];
+        for (var i = 0; i < cacheMisses.Count; i++)
+        {
+            parameterNames[i] = $"@Name{i}";
+        }
+
+        // CA2100 suppressed: the query text is built purely from a fixed sequence of numbered
+        // placeholders (@Name0, @Name1, ...) whose count is bounded by the batch's own distinct
+        // resource-type count -- actual values always flow through parameters, never string
+        // concatenation. Same rationale as DeleteSearchIndexEntriesAsync below.
+#pragma warning disable CA2100
+        using var command = new SqlCommand(
+            $"SELECT ResourceTypeId, Name FROM dbo.ResourceType WHERE Name IN ({string.Join(", ", parameterNames)})");
+#pragma warning restore CA2100
+        for (var i = 0; i < cacheMisses.Count; i++)
+        {
+            command.Parameters.Add(parameterNames[i], SqlDbType.NVarChar).Value = cacheMisses[i];
+        }
+
+        var dbResults = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId, command, reader => (Id: reader.GetInt16(0), Name: reader.GetString(1)), ct);
+
+        foreach (var (id, name) in dbResults)
+        {
+            resourceTypeMap[name] = id;
+            _cache.CacheResourceTypeId(name, id);
+            cacheMisses.Remove(name);
+        }
+
+        if (cacheMisses.Count > 0)
+        {
+            _logger.LogWarning(
+                "BatchWrite: Creating {NewTypeCount} new ResourceTypes (unusual): {Types}",
+                cacheMisses.Count,
+                string.Join(", ", cacheMisses));
+
+            foreach (var resourceType in cacheMisses)
+            {
+                resourceTypeMap[resourceType] = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
+            }
+        }
+
+        return resourceTypeMap;
+    }
+
+    // BatchWriteAsync's existing-resource lookup, chunked at exactly 100 items per round trip.
+    // SQL Server doesn't support tuple IN directly, so each chunk is joined against a VALUES
+    // table-value constructor -- one round trip per 100-item chunk, not N round trips. The 100-item
+    // chunk size mirrors SqlEntityFrameworkRepository.cs:423-446; that original comment's own
+    // rationale (EF Core's expression-tree compiler stack-overflowing on large Contains() lists)
+    // doesn't apply to hand-written SQL, but the chunking itself is kept: SQL Server's own
+    // parameter-count limits and query-plan size make very large IN/parameterized-list clauses a
+    // real, separate concern.
+    private async Task<Dictionary<(short TypeId, string ResourceId), (int MaxVersion, long MaxSurrogateId)>> GetExistingResourceVersionsAsync(
+        IReadOnlyList<(short TypeId, string resourceId)> resourceLookupKeys,
+        CancellationToken ct)
+    {
+        var currentVersions = new Dictionary<(short, string), (int MaxVersion, long MaxSurrogateId)>();
+
+        const int chunkSize = 100;
+        foreach (var chunk in resourceLookupKeys.Chunk(chunkSize))
+        {
+            var typeParamNames = new string[chunk.Length];
+            var idParamNames = new string[chunk.Length];
+            var valuesParts = new string[chunk.Length];
+            for (var i = 0; i < chunk.Length; i++)
+            {
+                typeParamNames[i] = $"@Type{i}";
+                idParamNames[i] = $"@Id{i}";
+                valuesParts[i] = $"({typeParamNames[i]}, {idParamNames[i]})";
+            }
+
+            // CA2100 suppressed: same rationale as ResolveResourceTypeIdsAsync above -- the query
+            // text is built purely from a fixed sequence of numbered placeholders bounded by this
+            // chunk's own size (<= 100), with actual values always flowing through parameters.
+#pragma warning disable CA2100
+            using var command = new SqlCommand(
+                $"""
+                SELECT r.ResourceTypeId, r.ResourceId, r.Version, r.ResourceSurrogateId
+                FROM dbo.Resource r
+                INNER JOIN (VALUES {string.Join(", ", valuesParts)}) AS k(TypeId, ResourceId)
+                    ON r.ResourceTypeId = k.TypeId AND r.ResourceId = k.ResourceId
+                WHERE r.IsHistory = 0;
+                """);
+#pragma warning restore CA2100
+            for (var i = 0; i < chunk.Length; i++)
+            {
+                command.Parameters.Add(typeParamNames[i], SqlDbType.SmallInt).Value = chunk[i].TypeId;
+                command.Parameters.Add(idParamNames[i], SqlDbType.VarChar).Value = chunk[i].resourceId;
+            }
+
+            var rows = await _sqlExecutionService.ExecuteReaderAsync(
+                _tenantId,
+                command,
+                reader => (
+                    TypeId: reader.GetInt16(0),
+                    ResourceId: reader.GetString(1),
+                    Version: reader.GetInt32(2),
+                    SurrogateId: reader.GetInt64(3)),
+                ct);
+
+            foreach (var row in rows)
+            {
+                var key = (row.TypeId, row.ResourceId);
+                if (currentVersions.TryGetValue(key, out var existing))
+                {
+                    currentVersions[key] = (Math.Max(existing.MaxVersion, row.Version), Math.Max(existing.MaxSurrogateId, row.SurrogateId));
+                }
+                else
+                {
+                    currentVersions[key] = (row.Version, row.SurrogateId);
+                }
+            }
+        }
+
+        return currentVersions;
     }
 
     private async Task<long> GetNextSurrogateIdAsync(CancellationToken ct)
