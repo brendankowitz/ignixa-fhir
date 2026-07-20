@@ -44,6 +44,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.Tests" />
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.IntegrationTests" />
+    <!-- Ignixa.SchemaUpgrade.Cli (Phase C Task 6) re-uses SqlExecutionService.ResolveConnectionStringAsync
+         rather than duplicating tenant-storage-type/inheritance resolution logic. -->
+    <InternalsVisibleTo Include="Ignixa.SchemaUpgrade.Cli" />
   </ItemGroup>
 
 </Project>
