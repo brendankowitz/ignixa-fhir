@@ -65,29 +65,44 @@ public class DifferentialTestHarnessTests : IAsyncLifetime
     }
 
     [Fact]
-    public void GivenMultiRowSnapshotsDifferingOnlyInAnIgnoredColumnWithDifferentSortOrders_WhenAssertEquivalentCalledWithThatColumnIgnored_ThenRowsPairCorrectlyAndDoesNotThrow()
+    public void GivenMultiRowSnapshotsWhereIgnoredColumnNameSortsBeforeDiscriminatingColumn_WhenAssertEquivalentCalledWithThatColumnIgnored_ThenRowsPairCorrectlyAndDoesNotThrow()
     {
         // Proves Finding 1's fix: BuildSortKey must exclude ignored columns from the sort key.
-        // Both rows are identical on every NON-ignored column ("Code"), but each side's
-        // ResourceSurrogateId is independently allocated and, crucially, ordered OPPOSITELY between
-        // legacy and new (legacy: 1000 then 2000; new: 9000 then 1000). If ResourceSurrogateId still
-        // participated in the sort key, legacy would sort as [Code=A/1000, Code=B/2000] while new
-        // would sort as [Code=B/1000, Code=A/9000] -- pairing row 0 of each side ("A" vs "B") and
-        // producing a spurious mismatch despite the data being equivalent on every non-ignored column.
+        //
+        // BuildSortKey orders columns ALPHABETICALLY BY NAME before concatenating them into the
+        // composite sort key, and StringComparer.Ordinal resolves a comparison on the first
+        // differing character -- so whichever column's name sorts first alphabetically dominates
+        // the key. Naming the ignored column "ResourceSurrogateId" (R) against a discriminating
+        // "Code" (C) -- as an earlier version of this test did -- puts "Code=" first in the key
+        // and "Code" alone decides sort order under BOTH the buggy and fixed algorithms, so that
+        // choice can never actually exercise the fix. This test instead names the ignored column
+        // "AaaSurrogateId" (A), which sorts BEFORE "Code" (C), so it genuinely dominates the sort
+        // key whenever it participates in it.
+        //
+        // Both rows are identical on the only non-ignored column ("Code"), but each side's
+        // AaaSurrogateId is independently allocated and, crucially, ordered OPPOSITELY relative to
+        // Code between legacy and new (legacy: A/1000 then B/2000; new: B/1000 then A/9000). Under
+        // the OLD (buggy) algorithm, which still hashes AaaSurrogateId into the sort key, legacy
+        // sorts as [A/1000, B/2000] (key dominated by "1000" < "2000") while new sorts as
+        // [B/1000, A/9000] (key dominated by "1000" < "9000") -- pairing row 0 of each side
+        // ("A" vs "B") and producing a spurious Code mismatch despite the data being equivalent on
+        // every non-ignored column. Under the FIXED algorithm, which excludes AaaSurrogateId from
+        // the key, both sides sort purely by Code ([A, B] on both sides), pairing correctly and
+        // producing no mismatch.
         var legacy = new RowStateSnapshot(
             [
-                new Dictionary<string, object?> { ["Code"] = "A", ["ResourceSurrogateId"] = 1000L },
-                new Dictionary<string, object?> { ["Code"] = "B", ["ResourceSurrogateId"] = 2000L },
+                new Dictionary<string, object?> { ["Code"] = "A", ["AaaSurrogateId"] = 1000L },
+                new Dictionary<string, object?> { ["Code"] = "B", ["AaaSurrogateId"] = 2000L },
             ],
             "dbo.TestTable");
         var @new = new RowStateSnapshot(
             [
-                new Dictionary<string, object?> { ["Code"] = "B", ["ResourceSurrogateId"] = 1000L },
-                new Dictionary<string, object?> { ["Code"] = "A", ["ResourceSurrogateId"] = 9000L },
+                new Dictionary<string, object?> { ["Code"] = "B", ["AaaSurrogateId"] = 1000L },
+                new Dictionary<string, object?> { ["Code"] = "A", ["AaaSurrogateId"] = 9000L },
             ],
             "dbo.TestTable");
 
-        Should.NotThrow(() => _harness.AssertEquivalent(legacy, @new, "ResourceSurrogateId"));
+        Should.NotThrow(() => _harness.AssertEquivalent(legacy, @new, "AaaSurrogateId"));
     }
 
     [Fact]
