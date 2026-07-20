@@ -108,7 +108,7 @@ public abstract class ExpressionRewriter<TContext> : IExpressionVisitor<TContext
         Expression visitedExpression = expression.WrappedExpression.AcceptVisitor(this, context);
         if (ReferenceEquals(visitedExpression, expression.WrappedExpression)) return expression;
 
-        return new CompositeComponentExpression(expression.ComponentSearchParameter, expression.Position, visitedExpression);
+        return new CompositeComponentExpression(expression.ComponentSearchParameter, expression.Position, visitedExpression) { Span = expression.Span };
     }
 
     protected IReadOnlyList<TExpression> VisitArray<TExpression>(IReadOnlyList<TExpression> inputArray, TContext context)

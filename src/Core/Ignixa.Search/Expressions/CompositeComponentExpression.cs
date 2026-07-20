@@ -44,6 +44,9 @@ public sealed class CompositeComponentExpression : Expression
     /// </summary>
     public Expression WrappedExpression { get; }
 
+    /// <summary>Where this composite component came from in the parameter's source text. Never part of identity or rendering.</summary>
+    public SourceSpan? Span { get; init; }
+
     public override TOutput AcceptVisitor<TContext, TOutput>(IExpressionVisitor<TContext, TOutput> visitor, TContext context)
     {
         EnsureArg.IsNotNull(visitor, nameof(visitor));

@@ -235,7 +235,10 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                     effective,
                     modifier: null,
                     index,
-                    componentSyntax));
+                    componentSyntax))
+            {
+                Span = componentSyntax.Span,
+            };
         }
 
         return Expression.And(expressions);
@@ -256,7 +259,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
 
         return new AtomicValueSyntax(
             $"{syntax.Comparator.GetLiteral()}{syntax.RawText}",
-            SearchComparator.Eq);
+            SearchComparator.Eq) { Span = syntax.Span };
     }
 
     private static SearchParameterInfo InferEffectiveParameter(
@@ -319,7 +322,8 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
         // parameter is gracefully ignored -- rather than surfacing later as a hard failure during lowering.
         _ = new SearchValueExpressionBuilderHelper().Build(searchParameter.Code, modifier, syntax.Comparator, componentIndex, value);
 
-        return new SearchPredicateExpressionBuilder().Build(searchParameter, modifier, syntax.Comparator, value);
+        return new SearchPredicateExpressionBuilder().Build(
+            searchParameter, modifier, syntax.Comparator, value, syntax.Span);
     }
 
     private static ISearchValue ApplyReferenceTarget(

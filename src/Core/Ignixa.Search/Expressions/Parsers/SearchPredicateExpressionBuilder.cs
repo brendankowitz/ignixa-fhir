@@ -21,11 +21,16 @@ namespace Ignixa.Search.Expressions.Parsers;
 /// </summary>
 internal sealed class SearchPredicateExpressionBuilder
 {
-    public SearchParameterPredicateExpression Build(SearchParameterInfo parameter, SearchModifier? modifier, SearchComparator comparator, ISearchValue value)
+    public SearchParameterPredicateExpression Build(
+        SearchParameterInfo parameter,
+        SearchModifier? modifier,
+        SearchComparator comparator,
+        ISearchValue value,
+        SourceSpan? span = null)
     {
         EnsureArg.IsNotNull(parameter, nameof(parameter));
         EnsureArg.IsNotNull(value, nameof(value));
 
-        return new SearchParameterPredicateExpression(parameter, comparator, modifier, value);
+        return new SearchParameterPredicateExpression(parameter, comparator, modifier, value) { Span = span };
     }
 }
