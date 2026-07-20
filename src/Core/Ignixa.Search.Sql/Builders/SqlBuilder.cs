@@ -55,6 +55,7 @@ public static class SqlBuilder
         {
             var sortJoins = EmitSortJoins(plan.Sort);
             var sortColumns = EmitSortSelectColumns(plan.Sort);
+            var orderByText = EmitOrderBy(plan.Sort);
 
             var whereClauses = new List<string>();
             int? seekClauseIndex = null;
@@ -95,7 +96,7 @@ public static class SqlBuilder
             writer.Append("\nORDER BY ");
             using (writer.Section("orderBy"))
             {
-                writer.Append(EmitOrderBy(plan.Sort));
+                writer.Append(orderByText);
             }
 
             return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
