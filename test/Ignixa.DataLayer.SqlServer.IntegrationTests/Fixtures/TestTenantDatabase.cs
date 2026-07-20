@@ -85,6 +85,20 @@ public sealed class TestTenantDatabase
         return (T)Convert.ChangeType(result!, typeof(T));
     }
 
+    // CA2100 suppressed: this is a test-only raw-SQL helper -- callers pass literal assertion
+    // queries, never untrusted input, matching the same suppression rationale used throughout this
+    // fixture and SchemaDeployerUpgradeTests.cs for test-controlled SQL text.
+    public async Task ExecuteNonQueryAsync(string sql, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqlConnection(BuildConnectionStringForDatabase(_databaseName));
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+#pragma warning disable CA2100
+        command.CommandText = sql;
+#pragma warning restore CA2100
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task DisposeAsync() => await DropDatabaseAsync(_databaseName, CancellationToken.None);
 
     private sealed class SingleTenantStore : ITenantConfigurationStore
