@@ -27,12 +27,17 @@ namespace Ignixa.Search.Parsing;
 /// and is not serializable. Anything crossing a wire or reaching a renderer must go through
 /// <see cref="IrProjector.Describe"/>, which flattens it to <see cref="IrRow"/>s.
 /// </para>
+/// <para>
+/// The parameter order interleaves <see cref="Key"/> with <see cref="KeySyntax"/> and <see cref="Value"/>
+/// with <see cref="ValueSyntax"/> on purpose: no two adjacent constructor parameters share a type, so a
+/// positional transposition at a call site is a compile error rather than a silent swap.
+/// </para>
 /// </remarks>
 public sealed record ParameterTrace(
     int Ordinal,
     string Key,
-    string Value,
     SyntaxNode? KeySyntax,
+    string Value,
     SyntaxNode? ValueSyntax,
     Expression? Ir,
     ParameterOutcome Outcome);

@@ -235,6 +235,21 @@ public class IrProjectorTests
             .Message.ShouldContain(nameof(CompartmentSearchExpression));
     }
 
+    [Fact]
+    public void GivenAFieldLevelNodeWithNoTraceProducer_WhenDescribed_ThenItThrowsRatherThanInventingAToken()
+    {
+        // Arrange -- the legacy field-level factories feed the EF query generator; no binder path
+        // puts these shapes into a traced IR.
+        var binary = Expression.GreaterThan(FieldName.TokenCode, null, "8480-6");
+        var missingField = Expression.Missing(FieldName.TokenSystem, null);
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => IrProjector.Describe(binary))
+            .Message.ShouldContain(nameof(BinaryExpression));
+        Should.Throw<NotSupportedException>(() => IrProjector.Describe(missingField))
+            .Message.ShouldContain(nameof(MissingFieldExpression));
+    }
+
     private static Expression ParsePatient(
         (string Code, SearchParamType Type) searchParameter,
         (string Key, string Value) query)

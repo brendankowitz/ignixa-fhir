@@ -19,7 +19,10 @@ namespace Ignixa.Search.Expressions;
 /// Covers the untyped field-level kinds as well as the typed ones: <c>:text</c> and <c>:of-type</c> bind
 /// through <c>SearchValueExpressionBuilderHelper</c> and so put a bare <see cref="StringExpression"/> or a
 /// multiary of them into a parameter's IR. Those are ordinary FHIR searches, not exotica, so refusing to
-/// project them would make <see cref="Describe"/> throw on real traffic.
+/// project them would make <see cref="Describe"/> throw on real traffic. The remaining field-level kinds
+/// (<see cref="BinaryExpression"/>, <see cref="MissingFieldExpression"/>) have no binder path into a traced
+/// IR — the legacy factories that make them feed the EF query generator, not a parse — so they are left to
+/// the loud <see cref="NotSupportedException"/> arm rather than given tokens nothing can produce.
 /// </para>
 /// </remarks>
 public static class IrProjector
@@ -65,8 +68,6 @@ public static class IrProjector
         IncludeExpression => "include",
         SortExpression => "sort",
         StringExpression => "stringField",
-        BinaryExpression => "binaryField",
-        MissingFieldExpression => "missingField",
         _ => throw new NotSupportedException($"No IR projection for {node.GetType().Name}."),
     };
 

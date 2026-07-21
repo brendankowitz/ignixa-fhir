@@ -13,10 +13,12 @@ public static class PlanExplainer
         => string.Join('\n', Describe(plan).Select(row => $"{row.Label} = {row.Body}"));
 
     /// <summary>
-    /// The label for the CTE at <paramref name="index"/>. Both this explainer's rows and the emitted SQL's
-    /// <see cref="Builders.SqlTextRange"/>s are labelled through here, because tooling joins a plan row to
-    /// its SQL text by that string — two independent format strings would be one silent typo from breaking
-    /// that join with nothing to fail at compile time.
+    /// The label for the CTE at <paramref name="index"/>. This is the single producer of the <c>cte{i}</c>
+    /// identifier everywhere it appears: this explainer's rows, the emitted SQL's CTE definitions and
+    /// references (<see cref="Builders.SqlBuilder"/>), and the <see cref="Builders.SqlTextRange"/> labels.
+    /// Tooling joins a plan row to its parameter and its SQL text by that string, and SQL Server joins a
+    /// CTE reference to its definition by it — two independent format strings would be one silent typo from
+    /// breaking those joins with nothing to fail at compile time.
     /// </summary>
     public static string CteLabel(int index) => $"cte{index}";
 
@@ -112,13 +114,13 @@ public static class PlanExplainer
         CteDefinition.ParamSource p =>
             $"{p.Table.TableName}[{p.ResourceTypeId},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
         CteDefinition.Intersect x =>
-            $"Intersect(cte{x.Left.Index}, cte{x.Right.Index}){PrintTop(top)}",
+            $"Intersect({CteLabel(x.Left.Index)}, {CteLabel(x.Right.Index)}){PrintTop(top)}",
         CteDefinition.Union u =>
-            $"Union({string.Join(", ", u.Parts.Select(r => $"cte{r.Index}"))}){PrintTop(top)}",
+            $"Union({string.Join(", ", u.Parts.Select(r => CteLabel(r.Index)))}){PrintTop(top)}",
         CteDefinition.ResourceSource rs => PrintResourceSource(rs, top, ref parameterOrdinal),
-        CteDefinition.Except ex => $"Except(cte{ex.Left.Index}, cte{ex.Right.Index}){PrintTop(top)}",
+        CteDefinition.Except ex => $"Except({CteLabel(ex.Left.Index)}, {CteLabel(ex.Right.Index)}){PrintTop(top)}",
         CteDefinition.ChainJoin cj =>
-            $"ChainJoin(cte{cj.InnerMatch.Index}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
+            $"ChainJoin({CteLabel(cj.InnerMatch.Index)}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
         CteDefinition.CompartmentSource cs =>
             $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),

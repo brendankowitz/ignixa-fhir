@@ -20,5 +20,33 @@ namespace Ignixa.Search.Expressions;
 /// arrive in pre-order. A renderer can therefore indent straight from <see cref="Depth"/> without tracking a
 /// stack, and never has to handle a level appearing out of nowhere.
 /// </para>
+/// <para>
+/// Not a positional record: construction rejects negative depths, so the invariant a renderer relies on
+/// holds no matter who produced the rows.
+/// </para>
 /// </remarks>
-public sealed record IrRow(string Kind, string Text, int Depth);
+public sealed record IrRow
+{
+    public IrRow(string kind, string text, int depth)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(kind);
+        ArgumentException.ThrowIfNullOrEmpty(text);
+        ArgumentOutOfRangeException.ThrowIfNegative(depth);
+        Kind = kind;
+        Text = text;
+        Depth = depth;
+    }
+
+    public string Kind { get; init; }
+
+    public string Text { get; init; }
+
+    public int Depth { get; init; }
+
+    public void Deconstruct(out string kind, out string text, out int depth)
+    {
+        kind = Kind;
+        text = Text;
+        depth = Depth;
+    }
+}

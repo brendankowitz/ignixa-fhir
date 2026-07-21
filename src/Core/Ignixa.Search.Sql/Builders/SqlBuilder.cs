@@ -2,6 +2,7 @@
 
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using static Ignixa.Search.Sql.Ast.PlanExplainer;
 
 namespace Ignixa.Search.Sql.Builders;
 
@@ -26,15 +27,15 @@ public static class SqlBuilder
 
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
-            cteBlocks.Add($"cte{i} AS (\n{EmitCte(plan.Ctes[i], parameters)}\n)");
+            cteBlocks.Add($"{CteLabel(i)} AS (\n{EmitCte(plan.Ctes[i], parameters)}\n)");
         }
 
         if (plan.CountOnly)
         {
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
+            writer.AppendJoin(",\n", cteBlocks, CteLabel);
             writer.Append("\n");
-            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m");
+            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
 
             if (plan.OuterPredicate is not null)
             {
@@ -76,9 +77,9 @@ public static class SqlBuilder
             }
 
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
+            writer.AppendJoin(",\n", cteBlocks, CteLabel);
             writer.Append("\n");
-            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}");
+            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
 
             if (whereClauses.Count > 0)
             {
@@ -162,14 +163,14 @@ public static class SqlBuilder
         }
 
         writer.Append(";WITH ");
-        writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
+        writer.AppendJoin(",\n", cteBlocks, CteLabel);
         writer.Append(",\n");
         using (writer.Section("cteMatchPage"))
         {
             writer.Append(
                 $"cteMatchPage AS (\n" +
                 $"    SELECT {top}m.T1, m.Sid1{matchSortColumns}\n" +
-                $"    FROM cte{plan.Match.Index} m{matchSortJoins}{matchResourceJoin}");
+                $"    FROM {CteLabel(plan.Match.Index)} m{matchSortJoins}{matchResourceJoin}");
 
             if (matchWhereClauses.Count > 0)
             {
@@ -242,18 +243,18 @@ public static class SqlBuilder
     {
         CteDefinition.ParamSource p => EmitParamSource(p, parameters),
         CteDefinition.Intersect x =>
-            $"    SELECT cte{x.Left.Index}.T1, cte{x.Left.Index}.Sid1\n" +
-            $"    FROM cte{x.Left.Index}\n" +
-            $"    INNER JOIN cte{x.Right.Index} ON cte{x.Left.Index}.T1 = cte{x.Right.Index}.T1 AND cte{x.Left.Index}.Sid1 = cte{x.Right.Index}.Sid1",
+            $"    SELECT {CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1\n" +
+            $"    FROM {CteLabel(x.Left.Index)}\n" +
+            $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1",
         CteDefinition.Union u =>
-            string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM cte{r.Index}")),
+            string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM {CteLabel(r.Index)}")),
         CteDefinition.ResourceSource rs => EmitResourceSource(rs, parameters),
         CteDefinition.Except ex =>
-            $"    SELECT cte{ex.Left.Index}.T1, cte{ex.Left.Index}.Sid1\n" +
-            $"    FROM cte{ex.Left.Index}\n" +
+            $"    SELECT {CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1\n" +
+            $"    FROM {CteLabel(ex.Left.Index)}\n" +
             $"    WHERE NOT EXISTS (\n" +
-            $"        SELECT 1 FROM cte{ex.Right.Index}\n" +
-            $"        WHERE cte{ex.Right.Index}.T1 = cte{ex.Left.Index}.T1 AND cte{ex.Right.Index}.Sid1 = cte{ex.Left.Index}.Sid1)",
+            $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
+            $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
@@ -294,7 +295,7 @@ public static class SqlBuilder
                 $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                 $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
                 $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
-                $"    INNER JOIN cte{cj.InnerMatch.Index} m\n" +
+                $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
                 $"        ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
                 $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
                 $"      AND rsp.ReferenceResourceTypeId = {cj.InnerResourceTypeId}\n" +
@@ -303,7 +304,7 @@ public static class SqlBuilder
             ChainDirection.Reverse =>
                 $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
                 $"    FROM dbo.ReferenceSearchParam rsp\n" +
-                $"    INNER JOIN cte{cj.InnerMatch.Index} m\n" +
+                $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
                 $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
                 $"    INNER JOIN dbo.Resource r\n" +
                 $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +

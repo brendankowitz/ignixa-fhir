@@ -184,8 +184,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                             outcomes.Add(new ParameterTrace(
                                 searchOrdinal++,
                                 param.Name,
-                                param.Value,
                                 parseResult.KeySyntax,
+                                param.Value,
                                 parseResult.ValueSyntax,
                                 parseResult.Expression,
                                 new ParameterOutcome.Compiled()));
@@ -242,8 +242,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                     outcomes.Add(new ParameterTrace(
                         searchOrdinal++,
                         param.Name,
-                        param.Value,
                         null,
+                        param.Value,
                         null,
                         null,
                         new ParameterOutcome.Ignored(ex.Message, null)));
@@ -257,8 +257,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                     outcomes.Add(new ParameterTrace(
                         searchOrdinal++,
                         param.Name,
-                        param.Value,
                         null,
+                        param.Value,
                         null,
                         null,
                         new ParameterOutcome.Ignored(ex.Message, null)));

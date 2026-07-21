@@ -32,6 +32,14 @@ public class SqlTextRangeTests
     }
 
     [Fact]
+    public void GivenInvalidBounds_WhenConstructed_ThenItThrows()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => new SqlTextRange("cte0", -1, 5));
+        Should.Throw<ArgumentOutOfRangeException>(() => new SqlTextRange("cte0", 0, -1));
+        Should.Throw<ArgumentException>(() => new SqlTextRange(string.Empty, 0, 5));
+    }
+
+    [Fact]
     public void GivenTracingEnabled_WhenEmitted_ThenEachRangeExtractsTheSectionItClaims()
     {
         var emitted = SqlBuilder.Run(LeafPlan(), new EmitOptions(IncludeTextRanges: true));
