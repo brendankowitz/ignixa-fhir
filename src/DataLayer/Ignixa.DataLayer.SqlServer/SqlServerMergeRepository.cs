@@ -146,18 +146,13 @@ public class SqlServerMergeRepository(
             resources.Count,
             transactionId);
 
-        // Ensure cache is preloaded for small reference data (if not already done)
-        if (_referenceDataCache.ResourceTypeMappings.Count == 0)
-        {
-            _logger.LogInformation("Preloading resource type mappings");
-            await _referenceDataCache.PreloadResourceTypesAsync(cancellationToken);
-        }
-
-        if (_referenceDataCache.SearchParameterMappings.Count == 0)
-        {
-            _logger.LogInformation("Preloading search parameter mappings (limited to 10,000 rows)");
-            await _referenceDataCache.PreloadSearchParamsAsync(maxRows: 10000, cancellationToken);
-        }
+        // Ensure cache is fully and safely preloaded before reading from it below. A bare
+        // Count == 0 check here (the previous code) raced against concurrent callers on a cold
+        // cache and could silently read a partially-populated dictionary -- see
+        // docs/superpowers/specs/2026-07-20-sqlserver-search-param-cache-race-fix-design.md.
+        // EnsureResourceTypesPreloadedAsync/EnsureSearchParametersPreloadedAsync are race-free.
+        await _referenceDataCache.EnsureResourceTypesPreloadedAsync(cancellationToken);
+        await _referenceDataCache.EnsureSearchParametersPreloadedAsync(cancellationToken);
 
         // Access cache dictionaries directly (no method call overhead)
         var resourceTypeIdMap = _referenceDataCache.ResourceTypeMappings;
