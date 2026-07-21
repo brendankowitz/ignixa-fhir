@@ -10,8 +10,22 @@ namespace Ignixa.Search.Sql.Ast;
 public static class PlanExplainer
 {
     public static string Print(QueryPlan plan)
+        => string.Join('\n', Describe(plan).Select(row => $"{row.Label} = {row.Body}"));
+
+    /// <summary>
+    /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
+    /// the label kept apart from the body. Tooling needs the label to address a row (and to join it to the
+    /// owning parameter via <see cref="Tracing.CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
+    /// terms of this method so the two can never disagree.
+    /// </summary>
+    public static IReadOnlyList<PlanExplainRow> Describe(QueryPlan plan)
     {
-        var lines = new List<string>();
+        ArgumentNullException.ThrowIfNull(plan);
+
+        var rows = new List<PlanExplainRow>();
+
+        // Shared across every body that binds parameters, in traversal order: @pN numbering here must
+        // match the emitted SQL's, so no row may render its body out of sequence.
         var parameterOrdinal = 0;
 
         for (var i = 0; i < plan.Ctes.Count; i++)
@@ -19,39 +33,39 @@ public static class PlanExplainer
             var isRoot = i == plan.Match.Index;
             var label = isRoot ? "root" : $"cte{i}";
             var top = isRoot ? plan.Top : null;
-            var line = $"{label} = {PrintCte(plan.Ctes[i], top, ref parameterOrdinal)}";
+            var body = PrintCte(plan.Ctes[i], top, ref parameterOrdinal);
             if (isRoot && plan.OuterPredicate is not null)
             {
-                line += $" WHERE {PrintPredicate(plan.OuterPredicate, ref parameterOrdinal)}";
+                body += $" WHERE {PrintPredicate(plan.OuterPredicate, ref parameterOrdinal)}";
             }
 
-            lines.Add(line);
+            rows.Add(new PlanExplainRow(label, body));
         }
 
         if (plan.Includes is { Count: > 0 } includes)
         {
             for (var i = 0; i < includes.Count; i++)
             {
-                lines.Add($"inc{i} = {PrintIncludeStage(includes[i])}");
+                rows.Add(new PlanExplainRow($"inc{i}", PrintIncludeStage(includes[i])));
             }
         }
 
         if (plan.Sort is { } sort)
         {
-            lines.Add($"sort = {PrintSortSpec(sort)}");
+            rows.Add(new PlanExplainRow("sort", PrintSortSpec(sort)));
         }
 
         if (plan.Page is { } page)
         {
-            lines.Add($"page = {PrintPageSpec(page, ref parameterOrdinal)}");
+            rows.Add(new PlanExplainRow("page", PrintPageSpec(page, ref parameterOrdinal)));
         }
 
         if (plan.CountOnly)
         {
-            lines.Add("countOnly = true");
+            rows.Add(new PlanExplainRow("countOnly", "true"));
         }
 
-        return string.Join('\n', lines);
+        return rows;
     }
 
     private static string PrintSortSpec(SortSpec sort)

@@ -1,4 +1,5 @@
-﻿using Ignixa.Search.Definition;
+﻿using System.Globalization;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
@@ -88,7 +89,52 @@ public static class SearchCompiler
             }
         }
 
-        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace, failure);
+        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace, failure)
+        {
+            Implicit = DetectImplicit(parameters, options),
+        };
+    }
+
+    /// <summary>
+    /// Reports the control values that took effect without the caller sending them, reading each one back
+    /// off the resolved <see cref="SearchOptions"/> rather than restating a default — a changed default
+    /// then shows up in the trace instead of drifting away from it.
+    /// </summary>
+    /// <remarks>
+    /// Supplied-ness is decided by <see cref="QueryParameter.Category"/>, the same classification the
+    /// builder switches on, so a name form the builder would not treat as <c>_count</c> is not treated as
+    /// one here either. A resolved value carrying no decision (<see cref="TotalType.None"/>,
+    /// <see cref="SummaryType.None"/>) is skipped: a chip reading "nothing happened" is noise.
+    /// </remarks>
+    private static IReadOnlyList<ImplicitParameter> DetectImplicit(IReadOnlyList<QueryParameter> parameters, SearchOptions options)
+    {
+        const string ServerDefault = "server default";
+
+        var supplied = parameters.Select(p => p.Category).ToHashSet();
+        var implicitParameters = new List<ImplicitParameter>();
+
+        if (!supplied.Contains(ParameterCategory.Count))
+        {
+            implicitParameters.Add(new ImplicitParameter(
+                "_count",
+                options.MaxItemCount.ToString(CultureInfo.InvariantCulture),
+                ServerDefault));
+        }
+
+        if (!supplied.Contains(ParameterCategory.Total) && options.Total != TotalType.None)
+        {
+            // SearchOptionsBuilder promotes Total to Accurate for _summary=count. Naming the cause beats
+            // "server default", which would suggest a total the caller could not have predicted.
+            var reason = options.Summary == SummaryType.Count ? "implied by _summary=count" : ServerDefault;
+            implicitParameters.Add(new ImplicitParameter("_total", options.Total.ToString(), reason));
+        }
+
+        if (!supplied.Contains(ParameterCategory.Summary) && options.Summary != SummaryType.None)
+        {
+            implicitParameters.Add(new ImplicitParameter("_summary", options.Summary.ToString(), ServerDefault));
+        }
+
+        return implicitParameters;
     }
 
     /// <summary>Marks the owning trace Failed(Resolve, ...) for every parameter Resolve could not find, matching against every parameter-bearing node in that trace's IR -- not leaf predicates alone, since a chain's or a :missing's parameter appears nowhere else.</summary>
@@ -143,7 +189,7 @@ public static class SearchCompiler
             }
         }
 
-        return new QueryPlanTrace(lowered.Plan.Explain(), ctes);
+        return new QueryPlanTrace(lowered.Plan.Explain(), ctes, PlanExplainer.Describe(lowered.Plan));
     }
 
     /// <summary>
