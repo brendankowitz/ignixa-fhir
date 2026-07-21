@@ -2,6 +2,7 @@
 
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Builders;
 
@@ -26,21 +27,21 @@ public static class SqlBuilder
 
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
-            cteBlocks.Add($"cte{i} AS (\n{EmitCte(plan.Ctes[i], parameters)}\n)");
+            cteBlocks.Add($"{CteLabel(i)} AS (\n{EmitCte(plan.Ctes[i], parameters)}\n)");
         }
 
         if (plan.CountOnly)
         {
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
+            writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
             writer.Append("\n");
-            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m");
+            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
 
             if (plan.OuterPredicate is not null)
             {
                 var outerPredicateText = EmitPredicate(plan.OuterPredicate, parameters);
                 writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\nWHERE ");
-                using (writer.Section("where"))
+                using (writer.Section(Where, SqlRangeKind.Where))
                 {
                     writer.Append(outerPredicateText);
                 }
@@ -76,9 +77,9 @@ public static class SqlBuilder
             }
 
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
+            writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
             writer.Append("\n");
-            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}");
+            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
 
             if (whereClauses.Count > 0)
             {
@@ -87,14 +88,14 @@ public static class SqlBuilder
                     : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
                 writer.Append(resourceJoin);
                 writer.Append("\nWHERE ");
-                using (writer.Section("where"))
+                using (writer.Section(Where, SqlRangeKind.Where))
                 {
                     WriteAndJoinedClauses(writer, whereClauses, seekClauseIndex);
                 }
             }
 
             writer.Append("\nORDER BY ");
-            using (writer.Section("orderBy"))
+            using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
             {
                 writer.Append(orderByText);
             }
@@ -143,7 +144,7 @@ public static class SqlBuilder
             incLimBlocks.Add(
                 $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
                 $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
-                $"    FROM inc{i}\n" +
+                $"    FROM {IncludeLabel(i)}\n" +
                 $"    ORDER BY T1 ASC, Sid1 ASC");
         }
 
@@ -152,29 +153,29 @@ public static class SqlBuilder
 
         var unionBlocks = new List<string>
         {
-            $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM cteMatchPage",
+            $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}",
         };
         for (var i = 0; i < includes.Count; i++)
         {
             unionBlocks.Add(
-                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM inc{i}lim i\n" +
-                $"WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
+                $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 
         writer.Append(";WITH ");
-        writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
+        writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
         writer.Append(",\n");
-        using (writer.Section("cteMatchPage"))
+        using (writer.Section(MatchPage, SqlRangeKind.MatchPage))
         {
             writer.Append(
-                $"cteMatchPage AS (\n" +
+                $"{MatchPage} AS (\n" +
                 $"    SELECT {top}m.T1, m.Sid1{matchSortColumns}\n" +
-                $"    FROM cte{plan.Match.Index} m{matchSortJoins}{matchResourceJoin}");
+                $"    FROM {CteLabel(plan.Match.Index)} m{matchSortJoins}{matchResourceJoin}");
 
             if (matchWhereClauses.Count > 0)
             {
                 writer.Append("\n    WHERE ");
-                using (writer.Section("where"))
+                using (writer.Section(Where, SqlRangeKind.Where))
                 {
                     WriteAndJoinedClauses(writer, matchWhereClauses, matchSeekClauseIndex);
                 }
@@ -187,22 +188,30 @@ public static class SqlBuilder
         for (var i = 0; i < includes.Count; i++)
         {
             writer.Append(",\n");
-            using (writer.Section($"inc{i}"))
+            using (writer.Section(IncludeLabel(i), SqlRangeKind.Include))
             {
-                writer.Append($"inc{i} AS (\n{incBlocks[i]}\n)");
+                writer.Append($"{IncludeLabel(i)} AS (\n{incBlocks[i]}\n)");
             }
 
             writer.Append(",\n");
-            using (writer.Section($"inc{i}lim"))
+            using (writer.Section(IncludeLimitLabel(i), SqlRangeKind.IncludeLimit))
             {
-                writer.Append($"inc{i}lim AS (\n{incLimBlocks[i]}\n)");
+                writer.Append($"{IncludeLimitLabel(i)} AS (\n{incLimBlocks[i]}\n)");
             }
         }
 
         writer.Append("\n");
-        writer.Append(string.Join("\nUNION ALL\n", unionBlocks));
+
+        // The final UNION ALL stitches the match page to every include stage, so like the other
+        // structural sections it belongs to no single plan row. Sectioned anyway: until it was, this
+        // stretch carried no range at all and could not be addressed even as structure.
+        using (writer.Section(Assembly, SqlRangeKind.Assembly))
+        {
+            writer.Append(string.Join("\nUNION ALL\n", unionBlocks));
+        }
+
         writer.Append("\nORDER BY ");
-        using (writer.Section("orderBy"))
+        using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
         {
             writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
         }
@@ -225,7 +234,7 @@ public static class SqlBuilder
 
             if (i == seekClauseIndex)
             {
-                using (writer.Section("seek"))
+                using (writer.Section(Seek, SqlRangeKind.Seek))
                 {
                     writer.Append(clauses[i]);
                 }
@@ -242,18 +251,18 @@ public static class SqlBuilder
     {
         CteDefinition.ParamSource p => EmitParamSource(p, parameters),
         CteDefinition.Intersect x =>
-            $"    SELECT cte{x.Left.Index}.T1, cte{x.Left.Index}.Sid1\n" +
-            $"    FROM cte{x.Left.Index}\n" +
-            $"    INNER JOIN cte{x.Right.Index} ON cte{x.Left.Index}.T1 = cte{x.Right.Index}.T1 AND cte{x.Left.Index}.Sid1 = cte{x.Right.Index}.Sid1",
+            $"    SELECT {CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1\n" +
+            $"    FROM {CteLabel(x.Left.Index)}\n" +
+            $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1",
         CteDefinition.Union u =>
-            string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM cte{r.Index}")),
+            string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM {CteLabel(r.Index)}")),
         CteDefinition.ResourceSource rs => EmitResourceSource(rs, parameters),
         CteDefinition.Except ex =>
-            $"    SELECT cte{ex.Left.Index}.T1, cte{ex.Left.Index}.Sid1\n" +
-            $"    FROM cte{ex.Left.Index}\n" +
+            $"    SELECT {CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1\n" +
+            $"    FROM {CteLabel(ex.Left.Index)}\n" +
             $"    WHERE NOT EXISTS (\n" +
-            $"        SELECT 1 FROM cte{ex.Right.Index}\n" +
-            $"        WHERE cte{ex.Right.Index}.T1 = cte{ex.Left.Index}.T1 AND cte{ex.Right.Index}.Sid1 = cte{ex.Left.Index}.Sid1)",
+            $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
+            $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
@@ -294,7 +303,7 @@ public static class SqlBuilder
                 $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                 $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
                 $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
-                $"    INNER JOIN cte{cj.InnerMatch.Index} m\n" +
+                $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
                 $"        ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
                 $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
                 $"      AND rsp.ReferenceResourceTypeId = {cj.InnerResourceTypeId}\n" +
@@ -303,7 +312,7 @@ public static class SqlBuilder
             ChainDirection.Reverse =>
                 $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
                 $"    FROM dbo.ReferenceSearchParam rsp\n" +
-                $"    INNER JOIN cte{cj.InnerMatch.Index} m\n" +
+                $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
                 $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
                 $"    INNER JOIN dbo.Resource r\n" +
                 $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
@@ -553,12 +562,12 @@ public static class SqlBuilder
         var branches = new List<string>();
         if (stage.SeedFromMatch)
         {
-            branches.Add($"SELECT 1 FROM cteMatchPage m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            branches.Add($"SELECT 1 FROM {MatchPage} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         foreach (var seedStageIndex in stage.SeedStages)
         {
-            branches.Add($"SELECT 1 FROM inc{seedStageIndex}lim m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            branches.Add($"SELECT 1 FROM {IncludeLimitLabel(seedStageIndex)} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";

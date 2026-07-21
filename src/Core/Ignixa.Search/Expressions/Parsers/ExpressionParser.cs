@@ -9,6 +9,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers.Binding;
 using Ignixa.Search.Expressions.Parsers.Syntax;
 using Ignixa.Search.Indexing;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
@@ -101,6 +102,7 @@ public class ExpressionParser : IExpressionParser
             return new ParseResult(
                 notReferencedExpression,
                 SyntaxProjector.Project(notReferencedSyntax),
+                null,
                 null);
         }
 
@@ -108,6 +110,10 @@ public class ExpressionParser : IExpressionParser
         BoundSearchKey bound = _keyBinder.Bind(resourceTypes, keySyntax);
 
         SyntaxNode valueSyntax = null;
+
+        // The binder invokes this for the parameter the value is actually matched against -- the terminal
+        // one for a chain -- so this is where the declared type is known without re-walking anything.
+        SearchParamType? dataType = null;
         Expression expression = SearchExpressionBinder.BindKey(
             bound,
             parameter =>
@@ -117,10 +123,11 @@ public class ExpressionParser : IExpressionParser
                     parameter.Modifier,
                     value);
                 valueSyntax = parsed.ValueSyntax;
+                dataType = parameter.SearchParameter.Type;
                 return parsed.Expression;
             });
 
-        return new ParseResult(expression, SyntaxProjector.Project(keySyntax), valueSyntax);
+        return new ParseResult(expression, SyntaxProjector.Project(keySyntax), valueSyntax, dataType);
     }
 
     public IncludeExpression ParseInclude(

@@ -1,5 +1,7 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Tracing;
 
 namespace Ignixa.Search.Sql.Tests.Tracing;
@@ -61,7 +63,7 @@ public class SearchTraceTests
                 ctes[i].ParameterOrdinal.ShouldBeNull($"{scenario}: cte{i} should be exempt from provenance");
             }
 
-            trace.Sql!.Ranges.ShouldContain(r => r.Label == $"cte{i}", $"{scenario}: cte{i} has no SQL text range");
+            trace.Sql!.Ranges.ShouldContain(r => r.Label == SqlLabels.CteLabel(i), $"{scenario}: {SqlLabels.CteLabel(i)} has no SQL text range");
         }
     }
 
@@ -203,5 +205,16 @@ public class SearchTraceTests
         trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
         trace.Failure.Message.ShouldContain("_sort supports at most 3 keys");
         trace.Failure.Span.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenALeafCte_WhenTraced_ThenItContributesOnlyItsOwnParameter()
+    {
+        var trace = await SearchTraceFixtures.TracePatientActiveTrueAsync();
+
+        trace.Plan.ShouldNotBeNull();
+        var leaf = trace.Plan!.Ctes.First(c => c.ParameterOrdinal == 0);
+
+        leaf.ContributingOrdinals.ShouldBe([0]);
     }
 }

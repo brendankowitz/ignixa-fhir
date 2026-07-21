@@ -235,6 +235,72 @@ public class IrProjectorTests
             .Message.ShouldContain(nameof(CompartmentSearchExpression));
     }
 
+    [Fact]
+    public void GivenAFieldLevelNodeWithNoTraceProducer_WhenDescribed_ThenItThrowsRatherThanInventingAToken()
+    {
+        // Arrange -- the legacy field-level factories feed the EF query generator; no binder path
+        // puts these shapes into a traced IR.
+        var binary = Expression.GreaterThan(FieldName.TokenCode, null, "8480-6");
+        var missingField = Expression.Missing(FieldName.TokenSystem, null);
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => IrProjector.Describe(binary))
+            .Message.ShouldContain(nameof(BinaryExpression));
+        Should.Throw<NotSupportedException>(() => IrProjector.Describe(missingField))
+            .Message.ShouldContain(nameof(MissingFieldExpression));
+    }
+
+    [Fact]
+    public void GivenAnUnprojectableNode_WhenTryDescribed_ThenItReportsFailureInsteadOfThrowing()
+    {
+        // Arrange
+        var node = Expression.CompartmentSearch("Patient", "123");
+
+        // Act
+        var projected = IrProjector.TryDescribe(node, out var rows, out var reason);
+
+        // Assert -- no partial tree: a half-drawn projection misrepresents what will execute.
+        projected.ShouldBeFalse();
+        rows.ShouldBeEmpty();
+
+        // The reason must name the shape, or a blank IR panel is indistinguishable from a render bug.
+        reason.ShouldNotBeNull();
+        reason.ShouldContain(nameof(CompartmentSearchExpression));
+    }
+
+    [Fact]
+    public void GivenAProjectableRootOverAnUnprojectableChild_WhenTryDescribed_ThenNoPartialRowsEscape()
+    {
+        // Arrange -- the root projects fine and would have produced rows before the child threw. This is
+        // the case the all-or-nothing contract exists for; a root-level failure would not exercise it.
+        var node = Expression.And(
+            Expression.StringEquals(FieldName.String, null, "Smith", false),
+            Expression.CompartmentSearch("Patient", "123"));
+
+        // Act
+        var projected = IrProjector.TryDescribe(node, out var rows, out var reason);
+
+        // Assert
+        projected.ShouldBeFalse();
+        rows.ShouldBeEmpty();
+        reason.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenAProjectableNode_WhenTryDescribed_ThenItReturnsTheSameRowsAsDescribeAndNoReason()
+    {
+        // Arrange
+        var ir = ParsePatient(("name", SearchParamType.String), ("name", "Smith"));
+
+        // Act
+        var projected = IrProjector.TryDescribe(ir, out var rows, out var reason);
+
+        // Assert
+        projected.ShouldBeTrue();
+        reason.ShouldBeNull();
+        rows.ShouldBe(IrProjector.Describe(ir));
+    }
+
     private static Expression ParsePatient(
         (string Code, SearchParamType Type) searchParameter,
         (string Key, string Value) query)
